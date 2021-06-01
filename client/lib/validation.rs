@@ -10,7 +10,7 @@ use casper_execution_engine::{
 use casper_node::{
     crypto::hash::Digest,
     rpcs::chain::{BlockIdentifier, EraSummary, GetEraInfoResult},
-    types::{json_compatibility, Block, BlockValidationError, JsonBlock},
+    types::{error::BlockValidationError, json_compatibility, Block, JsonBlock},
 };
 use casper_types::{bytesrepr, Key, U512};
 
@@ -38,8 +38,8 @@ pub enum ValidateResponseError {
     ValidationError(#[from] ValidationError),
 
     /// Failed to validate a block.
-    #[error("Block validation error {0}")]
-    BlockValidationError(BlockValidationError),
+    #[error(transparent)]
+    BlockValidationError(#[from] BlockValidationError),
 
     /// Serialized value not contained in proof.
     #[error("serialized value not contained in proof")]
@@ -61,12 +61,6 @@ pub enum ValidateResponseError {
 impl From<bytesrepr::Error> for ValidateResponseError {
     fn from(e: bytesrepr::Error) -> Self {
         ValidateResponseError::BytesRepr(e)
-    }
-}
-
-impl From<BlockValidationError> for ValidateResponseError {
-    fn from(e: BlockValidationError) -> Self {
-        ValidateResponseError::BlockValidationError(e)
     }
 }
 

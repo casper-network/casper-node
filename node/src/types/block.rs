@@ -5,20 +5,20 @@
 use std::iter;
 use std::{
     array::TryFromSliceError,
+    cmp::Reverse,
     collections::BTreeMap,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
-    hash::Hash,
 };
 
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::HexList;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
@@ -33,7 +33,6 @@ use casper_types::{
     EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 
-use super::{Item, Tag, Timestamp};
 #[cfg(test)]
 use crate::crypto::generate_ed25519_keypair;
 #[cfg(test)]
@@ -46,9 +45,14 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
+    types::{
+        error::{BlockCreationError, BlockValidationError},
+        Deploy, DeployHash, DeployOrTransferHash, JsonBlock,
+    },
     utils::DisplayIter,
 };
+
+use super::{Item, Tag, Timestamp};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -149,6 +153,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         next_era_validator_weights,
         protocol_version,
     )
+    .expect("could not construct block")
 });
 static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let block = Block::doc_example().clone();
@@ -597,6 +602,31 @@ impl EraEnd {
     pub fn era_report(&self) -> &EraReport {
         &self.era_report
     }
+
+    pub fn hash(&self) -> Digest {
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let EraEnd {
+            next_era_validator_weights,
+            era_report,
+        } = self;
+        // Sort next era validator weights by descending weight. Assuming the top validators are
+        // online, a client can get away with just a few (plus a Merkle proof of the rest)
+        // to check finality signatures.
+        let descending_validator_weight_hashed_pairs: Vec<Digest> = next_era_validator_weights
+            .iter()
+            .sorted_by_key(|(_, weight)| Reverse(**weight))
+            .map(|(validator_id, weight)| {
+                let validator_hash =
+                    hash::hash(validator_id.to_bytes().expect("Could not hash validator"));
+                let weight_hash = hash::hash(weight.to_bytes().expect("Could not hash weight"));
+                hash::hash_pair(&validator_hash, &weight_hash)
+            })
+            .collect();
+        let hashed_next_era_validator_weights =
+            hash::hash_vec_merkle_tree(descending_validator_weight_hashed_pairs);
+        let hashed_era_report: Digest = era_report.hash();
+        hash::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
+    }
 }
 
 impl ToBytes for EraEnd {
@@ -652,6 +682,12 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
+    /// The [`HashingAlgorithmVersion`] used for the header (as well for as its corresponding block
+    /// body).
+    pub fn hashing_algorithm_version(&self) -> HashingAlgorithmVersion {
+        HashingAlgorithmVersion::from_protocol_version(&self.protocol_version)
+    }
+
     /// The parent block's hash.
     pub fn parent_hash(&self) -> &BlockHash {
         &self.parent_hash
@@ -733,9 +769,66 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
+        match HashingAlgorithmVersion::from_protocol_version(&self.protocol_version) {
+            HashingAlgorithmVersion::V1 => self.hash_v1(),
+            HashingAlgorithmVersion::V2 => self.hash_v2(),
+        }
+    }
+
+    fn hash_v1(&self) -> BlockHash {
         let serialized_header = Self::serialize(&self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(hash::hash(&serialized_header))
+    }
+
+    fn hash_v2(&self) -> BlockHash {
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let BlockHeader {
+            parent_hash,
+            era_id,
+            body_hash,
+            state_root_hash,
+            era_end,
+            height,
+            timestamp,
+            protocol_version,
+            random_bit,
+            accumulated_seed,
+        } = self;
+
+        let hashed_era_end = match era_end {
+            None => hash::SENTINEL0,
+            Some(era_end) => era_end.hash(),
+        };
+
+        let hashed_era_id = hash::hash(era_id.to_bytes().expect("Could not serialize era_id"));
+        let hashed_height = hash::hash(height.to_bytes().expect("Could not serialize height"));
+        let hashed_timestamp =
+            hash::hash(timestamp.to_bytes().expect("Could not serialize timestamp"));
+        let hashed_protocol_version = hash::hash(
+            protocol_version
+                .to_bytes()
+                .expect("Could not serialize protocol version"),
+        );
+        let hashed_random_bit = hash::hash(
+            random_bit
+                .to_bytes()
+                .expect("Could not serialize protocol version"),
+        );
+
+        hash::hash_slice_rfold(&[
+            parent_hash.0,
+            hashed_era_id,
+            *body_hash,
+            *state_root_hash,
+            hashed_era_end,
+            hashed_height,
+            hashed_timestamp,
+            hashed_protocol_version,
+            hashed_random_bit,
+            *accumulated_seed,
+        ])
+        .into()
     }
 
     /// Returns true if block is Genesis' child.
@@ -828,7 +921,7 @@ impl FromBytes for BlockHeader {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct BlockHeaderWithMetadata {
     pub block_header: BlockHeader,
     pub block_signatures: BlockSignatures,
@@ -838,6 +931,103 @@ impl Display for BlockHeaderWithMetadata {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{} and {}", self.block_header, self.block_signatures)
     }
+}
+
+/// A node in a Merkle linked-list used for hashing data structures.
+pub struct MerkleLinkedListNode<T> {
+    value: T,
+    merkle_proof_of_rest: Digest,
+}
+
+impl<T> MerkleLinkedListNode<T> {
+    /// Constructs a new [`MerkleLinkedListNode`].
+    pub fn new(value: T, merkle_proof_of_rest: Digest) -> MerkleLinkedListNode<T> {
+        MerkleLinkedListNode {
+            value,
+            merkle_proof_of_rest,
+        }
+    }
+
+    /// Gets the hash of the rest of the linked list.
+    pub fn merkle_proof_of_rest(&self) -> &Digest {
+        &self.merkle_proof_of_rest
+    }
+
+    /// Converts a [`MerkleLinkedListNode`] into its underlying value.
+    pub fn take_value(self) -> T {
+        self.value
+    }
+}
+
+/// A fragment of a Merkle-treeified [`BlockBody`].
+///
+/// Has the following hash structure:
+///
+/// ```text
+/// merkle_linked_list_node_hash
+///     |          \
+/// value_hash      merkle_linked_list_node::merkle_proof_of_rest
+///     |
+/// merkle_linked_list_node::value
+/// ```
+pub struct MerkleBlockBodyPart<'a, T> {
+    value_hash: Digest,
+    merkle_linked_list_node: MerkleLinkedListNode<&'a T>,
+    merkle_linked_list_node_hash: Digest,
+}
+
+impl<'a, T> MerkleBlockBodyPart<'a, T> {
+    fn new(value: &T, value_hash: Digest, merkle_proof_of_rest: Digest) -> MerkleBlockBodyPart<T> {
+        MerkleBlockBodyPart {
+            value_hash,
+            merkle_linked_list_node: MerkleLinkedListNode {
+                value,
+                merkle_proof_of_rest,
+            },
+            merkle_linked_list_node_hash: hash::hash_pair(&value_hash, &merkle_proof_of_rest),
+        }
+    }
+
+    /// The value of the block body part
+    pub fn value(&self) -> &'a T {
+        self.merkle_linked_list_node.value
+    }
+
+    /// The hash of the value and the rest of the linked list as a slice
+    pub fn value_and_rest_hashes_slice(&self) -> [Digest; 2] {
+        [
+            self.value_hash,
+            self.merkle_linked_list_node.merkle_proof_of_rest,
+        ]
+    }
+
+    /// The hash of the value of the block body part
+    pub fn value_hash(&self) -> &Digest {
+        &self.value_hash
+    }
+
+    /// The hash of the linked list node
+    pub fn merkle_linked_list_node_hash(&self) -> &Digest {
+        &self.merkle_linked_list_node_hash
+    }
+}
+
+/// A [`BlockBody`] that has been hashed so its parts may be stored as a Merkle linked-list.
+///
+/// ```text
+///                   body_hash (root)
+///                   /      \__________________
+/// hash(deploy_hashes)      /                  \_____________
+///                   hash(transfer_hashes)     /             \
+///                                         hash(proposer)   SENTINEL
+/// ```
+pub struct MerkleBlockBody<'a> {
+    /// Merklized [`BlockBody::deploy_hashes`].
+    pub deploy_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
+    /// Merklized [`BlockBody::transfer_hashes`].
+    pub transfer_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
+    /// Merklized [`BlockBody::proposer`].
+    pub proposer: MerkleBlockBodyPart<'a, PublicKey>,
 }
 
 /// The body portion of a block.
@@ -877,12 +1067,52 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
-    /// Computes the body hash
-    pub(crate) fn hash(&self) -> Digest {
+    /// Computes the body hash by hashing the serialized bytes.
+    fn hash_v1(&self) -> Digest {
         let serialized_body = self
             .to_bytes()
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
         hash::hash(&serialized_body)
+    }
+
+    /// Construct the
+    pub fn merklize(&self) -> MerkleBlockBody {
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let BlockBody {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
+        } = self;
+
+        let proposer = MerkleBlockBodyPart::new(
+            proposer,
+            hash::hash(&proposer.to_bytes().expect("Could not serialize proposer")),
+            hash::SENTINEL1,
+        );
+
+        let transfer_hashes = MerkleBlockBodyPart::new(
+            transfer_hashes,
+            hash::hash_vec_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from).collect()),
+            proposer.merkle_linked_list_node_hash,
+        );
+
+        let deploy_hashes = MerkleBlockBodyPart::new(
+            deploy_hashes,
+            hash::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
+            transfer_hashes.merkle_linked_list_node_hash,
+        );
+
+        MerkleBlockBody {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
+        }
+    }
+
+    /// Computes the body hash by taking the root of the Merkle tree representation of the block
+    /// body.
+    fn hash_v2(&self) -> Digest {
+        self.merklize().deploy_hashes.merkle_linked_list_node_hash
     }
 }
 
@@ -923,43 +1153,8 @@ impl FromBytes for BlockBody {
     }
 }
 
-/// An error that can arise when validating a block's cryptographic integrity using its hashes
-#[derive(Debug)]
-pub enum BlockValidationError {
-    /// Problem serializing some of a block's data into bytes
-    SerializationError(bytesrepr::Error),
-
-    /// The body hash in the header is not the same as the hash of the body of the block
-    UnexpectedBodyHash {
-        /// The block body hash specified in the header that is apparently incorrect
-        expected_by_block_header: Digest,
-        /// The actual hash of the block's body
-        actual: Digest,
-    },
-
-    /// The block's hash is not the same as the header's hash
-    UnexpectedBlockHash {
-        /// The hash specified by the block
-        expected_by_block: BlockHash,
-        /// The actual hash of the block
-        actual: BlockHash,
-    },
-}
-
-impl Display for BlockValidationError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{:?}", self)
-    }
-}
-
-impl From<bytesrepr::Error> for BlockValidationError {
-    fn from(err: bytesrepr::Error) -> Self {
-        BlockValidationError::SerializationError(err)
-    }
-}
-
 /// A storage representation of finality signatures with the associated block hash.
-#[derive(Debug, Serialize, Deserialize, Clone, DataSize, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Eq, PartialEq)]
 pub struct BlockSignatures {
     /// The block hash for a given block.
     pub(crate) block_hash: BlockHash,
@@ -1026,7 +1221,34 @@ pub struct Block {
     body: BlockBody,
 }
 
+/// The hashing algorithm used for the header and the block body of a block
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum HashingAlgorithmVersion {
+    /// Version 1
+    V1,
+    /// Version 2
+    V2,
+}
+
+impl HashingAlgorithmVersion {
+    const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 0);
+    fn from_protocol_version(protocol_version: &ProtocolVersion) -> Self {
+        if *protocol_version < Self::HASH_V2_PROTOCOL_VERSION {
+            HashingAlgorithmVersion::V1
+        } else {
+            HashingAlgorithmVersion::V2
+        }
+    }
+}
+
 impl Block {
+    fn hash_block_body(protocol_version: &ProtocolVersion, block_body: &BlockBody) -> Digest {
+        match HashingAlgorithmVersion::from_protocol_version(&protocol_version) {
+            HashingAlgorithmVersion::V1 => block_body.hash_v1(),
+            HashingAlgorithmVersion::V2 => block_body.hash_v2(),
+        }
+    }
+
     pub(crate) fn new(
         parent_hash: BlockHash,
         parent_seed: Digest,
@@ -1034,22 +1256,31 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
-    ) -> Self {
+    ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
             finalized_block.proposer.clone(),
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
         );
-        let body_hash = body.hash();
 
-        let era_end = match finalized_block.era_report {
-            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
-            None => None,
+        let body_hash = Self::hash_block_body(&protocol_version, &body);
+
+        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
+            (None, None) => None,
+            (Some(era_report), Some(next_era_validator_weights)) => {
+                Some(EraEnd::new(era_report, next_era_validator_weights))
+            }
+            (maybe_era_report, maybe_next_era_validator_weights) => {
+                return Err(BlockCreationError::CouldNotCreateEraEnd {
+                    maybe_era_report,
+                    maybe_next_era_validator_weights,
+                })
+            }
         };
 
         let mut accumulated_seed = [0; Digest::LENGTH];
 
-        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
+        let mut hasher = VarBlake2b::new(Digest::LENGTH)?;
         hasher.update(parent_seed);
         hasher.update([finalized_block.random_bit as u8]);
         hasher.finalize_variable(|slice| {
@@ -1069,12 +1300,21 @@ impl Block {
             protocol_version,
         };
 
-        Self::new_from_header_and_body(header, body)
+        Ok(Block {
+            hash: header.hash(),
+            header,
+            body,
+        })
     }
 
-    pub(crate) fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
+    pub(crate) fn new_from_header_and_body(
+        header: BlockHeader,
+        body: BlockBody,
+    ) -> Result<Self, BlockValidationError> {
         let hash = header.hash();
-        Block { hash, header, body }
+        let block = Block { hash, header, body };
+        block.verify()?;
+        Ok(block)
     }
 
     pub(crate) fn header(&self) -> &BlockHeader {
@@ -1136,20 +1376,23 @@ impl Block {
 
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_body_hash = self.body.hash();
-        if self.header.body_hash != actual_body_hash {
-            return Err(BlockValidationError::UnexpectedBodyHash {
-                expected_by_block_header: self.header.body_hash,
-                actual: actual_body_hash,
-            });
-        }
-        let actual_header_hash = self.header.hash();
-        if self.hash != actual_header_hash {
+        let actual_block_header_hash = self.header().hash();
+        if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
-                expected_by_block: self.hash,
-                actual: actual_header_hash,
+                block: Box::new(self.to_owned()),
+                actual_block_header_hash,
             });
         }
+
+        let actual_block_body_hash =
+            Self::hash_block_body(&self.header.protocol_version, &self.body);
+        if self.header.body_hash != actual_block_body_hash {
+            return Err(BlockValidationError::UnexpectedBodyHash {
+                block: Box::new(self.to_owned()),
+                actual_block_body_hash,
+            });
+        }
+
         Ok(())
     }
 
@@ -1197,6 +1440,7 @@ impl Block {
             next_era_validator_weights,
             protocol_version,
         )
+        .expect("Could not create random block with specifics")
     }
 }
 
@@ -1267,51 +1511,31 @@ impl Item for Block {
 
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum BlockByHeight {
-    Absent(u64),
-    Block(Box<Block>),
+pub struct BlockWithMetadata {
+    pub block: Block,
+    pub finality_signatures: BlockSignatures,
 }
 
-impl From<Block> for BlockByHeight {
-    fn from(block: Block) -> Self {
-        BlockByHeight::new(block)
-    }
-}
-
-impl BlockByHeight {
-    /// Creates a new `BlockByHeight`
-    pub fn new(block: Block) -> Self {
-        BlockByHeight::Block(Box::new(block))
-    }
-
-    pub fn height(&self) -> u64 {
-        match self {
-            BlockByHeight::Absent(height) => *height,
-            BlockByHeight::Block(block) => block.height(),
-        }
-    }
-}
-
-impl Display for BlockByHeight {
+impl Display for BlockWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockByHeight::Absent(height) => write!(f, "Block at height {} was absent.", height),
-            BlockByHeight::Block(block) => {
-                let hash: BlockHash = block.header().hash();
-                write!(f, "Block at {} with hash {} found.", block.height(), hash)
-            }
-        }
+        write!(
+            f,
+            "Block at {} with hash {} with {} finality signatures.",
+            self.block.height(),
+            self.block.hash(),
+            self.finality_signatures.proofs.len()
+        )
     }
 }
 
-impl Item for BlockByHeight {
+impl Item for BlockWithMetadata {
     type Id = u64;
 
-    const TAG: Tag = Tag::BlockByHeight;
+    const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
-        self.height()
+        self.block.height()
     }
 }
 
@@ -1639,11 +1863,13 @@ impl Display for FinalitySignature {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use casper_types::bytesrepr;
 
-    use super::*;
     use crate::testing::TestRng;
-    use std::rc::Rc;
+
+    use super::*;
 
     #[test]
     fn json_block_roundtrip() {
@@ -1720,15 +1946,9 @@ mod tests {
         let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_hash;
 
-        let actual_body_hash = block.body.hash();
-
         // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
-            Err(BlockValidationError::UnexpectedBodyHash {
-                expected_by_block_header,
-                actual,
-            }) if expected_by_block_header == bogus_block_hash && actual == actual_body_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
+        if block.verify().is_ok() {
+            panic!("Block has bogus body hash: {:?}", block)
         }
     }
 
@@ -1740,14 +1960,13 @@ mod tests {
         let bogus_block_hash: BlockHash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
         block.hash = bogus_block_hash;
 
-        let actual_block_hash = block.header.hash();
-
         // No Eq trait for BlockValidationError, so pattern match
         match block.verify() {
             Err(BlockValidationError::UnexpectedBlockHash {
-                expected_by_block,
-                actual,
-            }) if expected_by_block == bogus_block_hash && actual == actual_block_hash => {}
+                block,
+                actual_block_header_hash,
+            }) if block.hash == bogus_block_hash
+                && block.header.hash() == actual_block_header_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }

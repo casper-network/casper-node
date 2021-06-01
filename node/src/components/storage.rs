@@ -52,22 +52,23 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use lmdb::{
-    Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
+    Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
+    WriteFlags,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
 
 use super::Component;
-#[cfg(test)]
-use crate::crypto::hash::Digest;
 use crate::{
+    components::storage::lmdb_ext::LmdbExtError::CouldNotDeleteBlockBodyPart,
+    crypto::hash::{self, Digest},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -75,8 +76,10 @@ use crate::{
     fatal,
     reactor::ReactorEvent,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
+        error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployHeader, DeployMetadata, HashingAlgorithmVersion, MerkleBlockBody,
+        MerkleBlockBodyPart, MerkleLinkedListNode, TimeDiff,
     },
     utils::WithDir,
     NodeRng,
@@ -102,7 +105,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 7;
+const MAX_DB_COUNT: u32 = 11;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -166,6 +169,9 @@ pub enum Error {
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
+    /// Error when validating a block.
+    #[error(transparent)]
+    BlockValidationError(#[from] BlockValidationError),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -187,7 +193,19 @@ pub struct Storage {
     block_header_db: Database,
     /// The block body database.
     #[data_size(skip)]
-    block_body_db: Database,
+    block_body_v1_db: Database,
+    /// The Merkle-hashed block body database.
+    #[data_size(skip)]
+    block_body_v2_db: Database,
+    /// The deploy hashes database.
+    #[data_size(skip)]
+    deploy_hashes_db: Database,
+    /// The transfer hashes database.
+    #[data_size(skip)]
+    transfer_hashes_db: Database,
+    /// The proposers database.
+    #[data_size(skip)]
+    proposer_db: Database,
     /// The block metadata db.
     #[data_size(skip)]
     block_metadata_db: Database,
@@ -288,7 +306,11 @@ impl Storage {
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
-        let block_body_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
+        let block_body_v1_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
+        let block_body_v2_db = env.create_db(Some("block_body_merkle"), DatabaseFlags::empty())?;
+        let deploy_hashes_db = env.create_db(Some("deploy_hashes"), DatabaseFlags::empty())?;
+        let transfer_hashes_db = env.create_db(Some("transfer_hashes"), DatabaseFlags::empty())?;
+        let proposer_db = env.create_db(Some("proposers"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
@@ -299,16 +321,28 @@ impl Storage {
         let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
         let mut deleted_block_hashes = HashSet::new();
+        let mut deleted_block_body_hashes_v1 = HashSet::new();
+        let mut deleted_block_body_hashes_v2 = HashSet::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
-            let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
+            let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
                 // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
-                if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
-                    let _ = deleted_block_hashes.insert(block.hash());
+                if block_header.era_id() >= invalid_era
+                    && block_header.protocol_version() < protocol_version
+                {
+                    match block_header.hashing_algorithm_version() {
+                        HashingAlgorithmVersion::V1 => {
+                            let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
+                        }
+                        HashingAlgorithmVersion::V2 => {
+                            let _ = deleted_block_body_hashes_v2.insert(*block_header.body_hash());
+                        }
+                    }
+                    let _ = deleted_block_hashes.insert(block_header.hash());
                     cursor.del(WriteFlags::empty())?;
                     continue;
                 }
@@ -317,7 +351,7 @@ impl Storage {
             if should_check_integrity {
                 assert_eq!(
                     raw_key,
-                    block.hash().as_ref(),
+                    block_header.hash().as_ref(),
                     "found corrupt block in database"
                 );
             }
@@ -325,23 +359,19 @@ impl Storage {
             insert_to_block_header_indices(
                 &mut block_height_index,
                 &mut switch_block_era_id_index,
-                &block,
+                &block_header,
             )?;
 
             let mut body_txn = env.begin_ro_txn()?;
             let block_body: BlockBody = body_txn
-                .get_value(block_body_db, block.body_hash())?
+                .get_value(block_body_v1_db, block_header.body_hash())?
                 .expect("non-existent block body referred to by header");
 
             if should_check_integrity {
-                assert_eq!(
-                    *block.body_hash(),
-                    block_body.hash(),
-                    "found corrupt block body in database"
-                );
+                Block::new_from_header_and_body(block_header.clone(), block_body.clone())?;
             }
 
-            insert_to_deploy_index(&mut deploy_hash_index, block.hash(), &block_body)?;
+            insert_to_deploy_index(&mut deploy_hash_index, block_header.hash(), &block_body)?;
         }
         info!("block store reindexing complete");
         drop(cursor);
@@ -349,11 +379,23 @@ impl Storage {
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
-        initialize_block_body_db(
+        initialize_block_body_v1_db(
             &env,
-            &block_body_db,
-            &deleted_block_hashes_raw,
+            &block_header_db,
+            &block_body_v1_db,
+            &deleted_block_body_hashes_v1
+                .iter()
+                .map(Digest::as_ref)
+                .collect(),
             should_check_integrity,
+        )?;
+        initialize_block_body_v2_db(
+            &env,
+            &block_body_v2_db,
+            &deploy_hashes_db,
+            &transfer_hashes_db,
+            &proposer_db,
+            deleted_block_body_hashes_v2,
         )?;
         initialize_block_metadata_db(
             &env,
@@ -367,7 +409,11 @@ impl Storage {
             root,
             env,
             block_header_db,
-            block_body_db,
+            block_body_v1_db,
+            block_body_v2_db,
+            deploy_hashes_db,
+            transfer_hashes_db,
+            proposer_db,
             block_metadata_db,
             deploy_db,
             deploy_metadata_db,
@@ -459,23 +505,33 @@ impl Storage {
         // average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
+                // Validate the block prior to inserting it into the database
+                block.verify()?;
                 let mut txn = self.env.begin_rw_txn()?;
-                if !txn.put_value(
-                    self.block_body_db,
-                    block.header().body_hash(),
-                    block.body(),
-                    true,
-                )? {
-                    error!("Could not insert block body for block: {}", block);
-                    txn.abort();
-                    return Ok(responder.respond(false).ignore());
+
+                {
+                    let block_body_hash = block.header().body_hash();
+                    let block_body = block.body();
+                    let success = match block.header().hashing_algorithm_version() {
+                        HashingAlgorithmVersion::V1 => {
+                            self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
+                        }
+                        HashingAlgorithmVersion::V2 => {
+                            self.put_single_block_body_v2(&mut txn, block_body)?
+                        }
+                    };
+                    if !success {
+                        error!("Could not insert body for: {}", block);
+                        txn.abort();
+                        return Ok(responder.respond(false).ignore());
+                    }
                 }
+
                 if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
                     error!("Could not insert block header for block: {}", block);
                     txn.abort();
                     return Ok(responder.respond(false).ignore());
                 }
-                txn.commit()?;
                 insert_to_block_header_indices(
                     &mut self.block_height_index,
                     &mut self.switch_block_era_id_index,
@@ -486,6 +542,7 @@ impl Storage {
                     block.header().hash(),
                     block.body(),
                 )?;
+                txn.commit()?;
                 responder.respond(true).ignore()
             }
             StorageRequest::GetBlock {
@@ -676,13 +733,18 @@ impl Storage {
                     };
                 // Check that the hash of the block retrieved is correct.
                 assert_eq!(&block_hash, block.hash());
-                let signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.header().era_id()),
-                };
-                assert!(signatures.verify().is_ok());
-
-                responder.respond(Some((block, signatures))).ignore()
+                let finality_signatures =
+                    match self.get_finality_signatures(&mut txn, &block_hash)? {
+                        Some(signatures) => signatures,
+                        None => BlockSignatures::new(block_hash, block.header().era_id()),
+                    };
+                assert!(finality_signatures.verify().is_ok());
+                responder
+                    .respond(Some(BlockWithMetadata {
+                        block,
+                        finality_signatures,
+                    }))
+                    .ignore()
             }
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
@@ -698,11 +760,16 @@ impl Storage {
                     };
 
                 let hash = block.hash();
-                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
-                responder.respond(Some((block, signatures))).ignore()
+                responder
+                    .respond(Some(BlockWithMetadata {
+                        block,
+                        finality_signatures,
+                    }))
+                    .ignore()
             }
             StorageRequest::GetHighestBlockWithMetadata { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
@@ -718,12 +785,15 @@ impl Storage {
                     return Ok(responder.respond(None).ignore());
                 };
                 let hash = highest_block.hash();
-                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(*hash, highest_block.header().era_id()),
                 };
                 responder
-                    .respond(Some((highest_block, signatures)))
+                    .respond(Some(BlockWithMetadata {
+                        block: highest_block,
+                        finality_signatures,
+                    }))
                     .ignore()
             }
             StorageRequest::PutBlockSignatures {
@@ -761,6 +831,39 @@ impl Storage {
             }
             StorageRequest::GetFinalizedDeploys { ttl, responder } => {
                 responder.respond(self.get_finalized_deploys(ttl)?).ignore()
+            }
+            StorageRequest::GetBlockHeaderAndMetadataByHeight {
+                block_height,
+                responder,
+            } => {
+                let result = self.get_block_header_and_metadata_by_height(
+                    &mut self.env.begin_ro_txn()?,
+                    block_height,
+                )?;
+                responder.respond(result).ignore()
+            }
+            StorageRequest::PutBlockHeader {
+                block_header,
+                responder,
+            } => {
+                let mut txn = self.env.begin_rw_txn()?;
+                if !txn.put_value(
+                    self.block_header_db,
+                    &block_header.hash(),
+                    &block_header,
+                    false,
+                )? {
+                    error!("Could not insert block header: {}", block_header);
+                    txn.abort();
+                    return Ok(responder.respond(false).ignore());
+                }
+                insert_to_block_header_indices(
+                    &mut self.block_height_index,
+                    &mut self.switch_block_era_id_index,
+                    &block_header,
+                )?;
+                txn.commit()?;
+                responder.respond(true).ignore()
             }
         })
     }
@@ -832,6 +935,7 @@ impl Storage {
         tx: &mut Tx,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        debug!(switch_block_era_id_index = ?self.switch_block_era_id_index);
         self.switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
@@ -973,9 +1077,140 @@ impl Storage {
             return Err(LmdbExtError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash: *block_hash,
                 found_block_header_hash,
+                block_header: Box::new(block_header),
             });
         };
         Ok(Some(block_header))
+    }
+
+    fn get_merkle_linked_list_node<Tx, T>(
+        &self,
+        tx: &mut Tx,
+        part_database: Database,
+        key_to_block_body_db: &Digest,
+    ) -> Result<Option<MerkleLinkedListNode<T>>, LmdbExtError>
+    where
+        Tx: Transaction,
+        T: DeserializeOwned,
+    {
+        let [part_to_value_db, merkle_proof_of_rest]: [Digest; 2] =
+            match tx.get_value(self.block_body_v2_db, key_to_block_body_db)? {
+                Some(slice) => slice,
+                None => return Ok(None),
+            };
+        let value = match tx.get_value(part_database, &part_to_value_db)? {
+            Some(value) => value,
+            None => return Ok(None),
+        };
+        Ok(Some(MerkleLinkedListNode::new(value, merkle_proof_of_rest)))
+    }
+
+    /// Retrieves a single Merklized block body in a separate transaction from storage.
+    fn get_single_block_body_v2<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_body_hash: &Digest,
+    ) -> Result<Option<BlockBody>, LmdbExtError> {
+        let deploy_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> =
+            match self.get_merkle_linked_list_node(tx, self.deploy_hashes_db, block_body_hash)? {
+                Some(deploy_hashes_with_proof) => deploy_hashes_with_proof,
+                None => return Ok(None),
+            };
+        let transfer_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> = match self
+            .get_merkle_linked_list_node(
+                tx,
+                self.transfer_hashes_db,
+                deploy_hashes_with_proof.merkle_proof_of_rest(),
+            )? {
+            Some(transfer_hashes_with_proof) => transfer_hashes_with_proof,
+            None => return Ok(None),
+        };
+        let proposer_with_proof: MerkleLinkedListNode<PublicKey> = match self
+            .get_merkle_linked_list_node(
+                tx,
+                self.proposer_db,
+                transfer_hashes_with_proof.merkle_proof_of_rest(),
+            )? {
+            Some(proposer_with_proof) => {
+                debug_assert_eq!(*proposer_with_proof.merkle_proof_of_rest(), hash::SENTINEL1);
+                proposer_with_proof
+            }
+            None => return Ok(None),
+        };
+        let block_body = BlockBody::new(
+            proposer_with_proof.take_value(),
+            deploy_hashes_with_proof.take_value(),
+            transfer_hashes_with_proof.take_value(),
+        );
+
+        Ok(Some(block_body))
+    }
+
+    /// Writes a single block body in a separate transaction to storage.
+    fn put_single_block_body_v1(
+        &self,
+        tx: &mut RwTransaction,
+        block_body_hash: &Digest,
+        block_body: &BlockBody,
+    ) -> Result<bool, LmdbExtError> {
+        tx.put_value(self.block_body_v1_db, block_body_hash, block_body, true)
+            .map_err(Into::into)
+    }
+
+    fn put_merkle_block_body_part<'a, T>(
+        &self,
+        tx: &mut RwTransaction,
+        part_database: Database,
+        merklized_block_body_part: &MerkleBlockBodyPart<'a, T>,
+    ) -> Result<bool, LmdbExtError>
+    where
+        T: Serialize,
+    {
+        // It's possible the value is already present (ie, if it is a block proposer).
+        // We put the value and rest hashes in first, since we need that present even if the value
+        // is already there.
+        if !tx.put_value(
+            self.block_body_v2_db,
+            merklized_block_body_part.merkle_linked_list_node_hash(),
+            &merklized_block_body_part.value_and_rest_hashes_slice(),
+            true,
+        )? {
+            return Ok(false);
+        };
+
+        if !tx.put_value(
+            part_database,
+            merklized_block_body_part.value_hash(),
+            merklized_block_body_part.value(),
+            true,
+        )? {
+            return Ok(false);
+        };
+        Ok(true)
+    }
+
+    /// Writes a single merklized block body in a separate transaction to storage.
+    fn put_single_block_body_v2(
+        &self,
+        tx: &mut RwTransaction,
+        block_body: &BlockBody,
+    ) -> Result<bool, LmdbExtError> {
+        let merkle_block_body = block_body.merklize();
+        let MerkleBlockBody {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
+        } = &merkle_block_body;
+        if !self.put_merkle_block_body_part(tx, self.deploy_hashes_db, deploy_hashes)? {
+            return Ok(false);
+        };
+        if !self.put_merkle_block_body_part(tx, self.transfer_hashes_db, transfer_hashes)? {
+            return Ok(false);
+        };
+        if !self.put_merkle_block_body_part(tx, self.proposer_db, proposer)? {
+            return Ok(false);
+        };
+        Ok(true)
     }
 
     // Retrieves a block header to handle a network request.
@@ -999,20 +1234,34 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let block_body: BlockBody =
-            match tx.get_value(self.block_body_db, block_header.body_hash())? {
-                Some(block_header) => block_header,
-                None => return Ok(None),
-            };
-        let found_block_body_hash = block_body.hash();
-        if found_block_body_hash != *block_header.body_hash() {
-            return Err(LmdbExtError::BlockBodyNotStoredUnderItsHash {
-                queried_block_body_hash: *block_header.body_hash(),
-                found_block_body_hash,
-            });
-        }
-        let block = Block::new_from_header_and_body(block_header, block_body);
+        let maybe_block_body: Option<BlockBody> = match block_header.hashing_algorithm_version() {
+            HashingAlgorithmVersion::V1 => {
+                self.get_single_v1_block_body(tx, block_header.body_hash())?
+            }
+            HashingAlgorithmVersion::V2 => {
+                self.get_single_block_body_v2(tx, block_header.body_hash())?
+            }
+        };
+        let block_body = match maybe_block_body {
+            Some(block_body) => block_body,
+            None => {
+                warn!(
+                    ?block_header,
+                    "retrieved block header but block body is missing from database"
+                );
+                return Ok(None);
+            }
+        };
+        let block = Block::new_from_header_and_body(block_header, block_body)?;
         Ok(Some(block))
+    }
+
+    fn get_single_v1_block_body<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_body_hash: &Digest,
+    ) -> Result<Option<BlockBody>, LmdbExtError> {
+        tx.get_value(self.block_body_v1_db, block_body_hash)
     }
 
     /// Retrieves a set of deploys from storage.
@@ -1306,38 +1555,149 @@ impl Storage {
     }
 }
 
+fn construct_block_body_to_block_header_reverse_lookup(
+    tx: &impl Transaction,
+    block_header_db: &Database,
+) -> Result<BTreeMap<Digest, BlockHeader>, LmdbExtError> {
+    let mut block_body_hash_to_header_map: BTreeMap<Digest, BlockHeader> = BTreeMap::new();
+    for (_raw_key, raw_val) in tx.open_ro_cursor(*block_header_db)?.iter() {
+        let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
+        block_body_hash_to_header_map.insert(block_header.body_hash().to_owned(), block_header);
+    }
+    Ok(block_body_hash_to_header_map)
+}
+
 /// Purges stale entries from the block body database, and checks the integrity of the remainder if
 /// `should_check_integrity` is true.
-fn initialize_block_body_db(
+fn initialize_block_body_v1_db(
     env: &Environment,
-    block_body_db: &Database,
-    deleted_block_hashes: &HashSet<&[u8]>,
+    block_header_db: &Database,
+    block_body_v1_db: &Database,
+    deleted_block_body_hashes_raw: &HashSet<&[u8]>,
     should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
-    info!("initializing block body database");
+    info!("initializing v1 block body database");
     let mut txn = env.begin_rw_txn()?;
-    let mut cursor = txn.open_rw_cursor(*block_body_db)?;
+    let mut cursor = txn.open_rw_cursor(*block_body_v1_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
-        if deleted_block_hashes.contains(raw_key) {
+    for (raw_key, _raw_val) in cursor.iter() {
+        if deleted_block_body_hashes_raw.contains(raw_key) {
+            info!(?raw_key, "deleting v1 block body");
             cursor.del(WriteFlags::empty())?;
             continue;
-        }
-
-        if should_check_integrity {
-            let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
-            assert_eq!(
-                raw_key,
-                body.hash().as_ref(),
-                "found corrupt block body in database"
-            );
         }
     }
 
     drop(cursor);
+
+    if should_check_integrity {
+        let expected_hashing_algorithm_version = HashingAlgorithmVersion::V1;
+        let block_body_hash_to_header_map =
+            construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
+        for (raw_key, raw_val) in txn.open_ro_cursor(*block_body_v1_db)?.iter() {
+            let block_body_hash: Digest = lmdb_ext::deserialize(raw_key)?;
+            let block_body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+            if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
+                let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
+                if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
+                    return Err(LmdbExtError::UnexpectedHashingAlgorithmVersion {
+                        expected_hashing_algorithm_version,
+                        actual_hashing_algorithm_version,
+                    });
+                }
+                // Use smart constructor for block and propagate validation error accordingly
+                Block::new_from_header_and_body(block_header.to_owned(), block_body)?;
+            } else {
+                return Err(LmdbExtError::NoBlockHeaderForBlockBody {
+                    block_body_hash,
+                    hashing_algorithm_version: expected_hashing_algorithm_version,
+                    block_body: Box::new(block_body),
+                });
+            }
+        }
+    }
+    txn.commit()?;
+    info!("v1 block body database initialized");
+    Ok(())
+}
+
+fn delete_merkle_block_body_part(
+    tx: &mut RwTransaction,
+    block_body_v2_db: &Database,
+    value_database: &Database,
+    key: Digest,
+) -> Result<Digest, LmdbExtError> {
+    let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
+        match tx.get_value(*block_body_v2_db, &key)? {
+            Some(slice) => slice,
+            None => {
+                return Err(CouldNotDeleteBlockBodyPart {
+                    merkle_linked_list_node_hash: key,
+                })
+            }
+        };
+    tx.del(*value_database, &key_to_part_db, None)?;
+    tx.del(*block_body_v2_db, &key, None)?;
+    Ok(merkle_proof_of_rest)
+}
+
+/// Writes a single merklized block body in a separate transaction to storage.
+fn delete_single_block_body_v2(
+    tx: &mut RwTransaction,
+    block_body_v2_db: &Database,
+    deploy_hashes_db: &Database,
+    transfer_hashes_db: &Database,
+    digest_key_to_delete: Digest,
+) -> Result<(), LmdbExtError> {
+    info!(?digest_key_to_delete, "deleting deploy hashes");
+    let digest_key_to_delete = delete_merkle_block_body_part(
+        tx,
+        block_body_v2_db,
+        deploy_hashes_db,
+        digest_key_to_delete,
+    )?;
+    info!(?digest_key_to_delete, "deleting transfer hashes");
+    delete_merkle_block_body_part(
+        tx,
+        block_body_v2_db,
+        transfer_hashes_db,
+        digest_key_to_delete,
+    )?;
+    // Don't delete proposer since it might be shared
+    Ok(())
+}
+
+/// Purges stale entries from the (Merklized) block body database, and checks the integrity of the
+/// remainder if `should_check_integrity` is true.
+fn initialize_block_body_v2_db(
+    env: &Environment,
+    block_body_v2_db: &Database,
+    deploy_hashes_db: &Database,
+    transfer_hashes_db: &Database,
+    _proposer_db: &Database,
+    deleted_block_body_hashes: HashSet<Digest>,
+    // should_check_integrity: bool,
+) -> Result<(), LmdbExtError> {
+    info!("initializing v2 block body database");
+    let mut txn = env.begin_rw_txn()?;
+    for digest_key_to_delete in deleted_block_body_hashes {
+        info!(?digest_key_to_delete, "deleting v2 block body");
+        delete_single_block_body_v2(
+            &mut txn,
+            block_body_v2_db,
+            deploy_hashes_db,
+            transfer_hashes_db,
+            digest_key_to_delete,
+        )?;
+    }
+
+    // TODO: Clean up proposers properly
+
     txn.commit()?;
 
-    info!("block body database initialized");
+    // TODO: Should check integrity
+
+    info!("v2 block body database initialized");
     Ok(())
 }
 

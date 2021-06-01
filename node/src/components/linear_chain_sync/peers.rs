@@ -57,11 +57,6 @@ impl<I: Clone + PartialEq + 'static> PeersState<I> {
         self.succ_peers.retain(|p| p != peer);
     }
 
-    /// Returns whether known peer set is empty.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.peers.is_empty()
-    }
-
     /// Adds a new peer.
     pub(crate) fn push(&mut self, peer: I) {
         self.peers.push(peer.clone());

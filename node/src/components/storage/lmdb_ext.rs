@@ -10,10 +10,16 @@
 //! Serialization errors are unified into a generic, type erased `std` error to allow for easy
 //! interchange of the serialization format if desired.
 
-use crate::{crypto::hash::Digest, types::BlockHash};
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
+
+use crate::{
+    crypto::hash::Digest,
+    types::{
+        error::BlockValidationError, BlockBody, BlockHash, BlockHeader, HashingAlgorithmVersion,
+    },
+};
 
 /// Error wrapper for lower-level storage errors.
 ///
@@ -41,20 +47,51 @@ pub enum LmdbExtError {
     #[error(
         "Block header not stored under its hash. \
          Queried block hash: {queried_block_hash}, \
-         Found block header hash: {found_block_header_hash}"
+         Found block header hash: {found_block_header_hash}, \
+         Block header: {block_header}"
     )]
     BlockHeaderNotStoredUnderItsHash {
         queried_block_hash: BlockHash,
         found_block_header_hash: BlockHash,
+        block_header: Box<BlockHeader>,
     },
     #[error(
-        "Block body not stored under the hash in its header. \
-         Queried block body hash: {queried_block_body_hash}, \
-         Found block body hash: {found_block_body_hash}"
+        "No block header corresponding to block body found in LMDB. \
+         Block body hash: {block_body_hash:?}, \
+         Hashing algorithm version: {hashing_algorithm_version:?}, \
+         Block body: {block_body:?}"
     )]
-    BlockBodyNotStoredUnderItsHash {
-        queried_block_body_hash: Digest,
-        found_block_body_hash: Digest,
+    NoBlockHeaderForBlockBody {
+        block_body_hash: Digest,
+        hashing_algorithm_version: HashingAlgorithmVersion,
+        block_body: Box<BlockBody>,
+    },
+    #[error(
+        "Unexpected hashing algorithm version. \
+         Expected: {expected_hashing_algorithm_version:?}, \
+         Actual: {actual_hashing_algorithm_version:?}"
+    )]
+    UnexpectedHashingAlgorithmVersion {
+        expected_hashing_algorithm_version: HashingAlgorithmVersion,
+        actual_hashing_algorithm_version: HashingAlgorithmVersion,
+    },
+    #[error(transparent)]
+    BlockValidationError(#[from] BlockValidationError),
+    #[error(
+        "Block body does not have correct Merkle root for its hash. \
+         Block body hash: {block_body_hash}, \
+         Merkle root: {merkle_root}"
+    )]
+    IncorrectBlockBodyMerkleRoot {
+        block_body_hash: Digest,
+        merkle_root: Digest,
+    },
+    #[error(
+        "Could not delete block body part with Merkle linked list node hash: \
+         {merkle_linked_list_node_hash:?}"
+    )]
+    CouldNotDeleteBlockBodyPart {
+        merkle_linked_list_node_hash: Digest,
     },
 }
 
