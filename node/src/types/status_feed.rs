@@ -177,9 +177,7 @@ impl GetStatusResult {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
-            starting_state_root_hash: status_feed
-                .chainspec_info
-                .starting_state_root_hash,
+            starting_state_root_hash: status_feed.chainspec_info.starting_state_root_hash,
             peers: PeersMap::from(status_feed.peers),
             last_added_block_info: status_feed.last_added_block.map(Into::into),
             our_public_signing_key: status_feed.our_public_signing_key,
