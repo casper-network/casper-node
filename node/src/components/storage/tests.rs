@@ -51,6 +51,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         &WithDir::new(harness.tmp.path(), cfg),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
+        false,
     )
     .expect("could not create storage component fixture")
 }
@@ -71,6 +72,7 @@ fn storage_fixture_with_hard_reset(
         &WithDir::new(harness.tmp.path(), cfg),
         Some(reset_era_id),
         ProtocolVersion::from_parts(1, 1, 0),
+        false,
     )
     .expect("could not create storage component fixture")
 }

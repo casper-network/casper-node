@@ -11,8 +11,6 @@ pub struct GossiperMetrics {
     pub(super) times_gossiped: IntCounter,
     /// Number of times the process had to pause due to running out of peers.
     pub(super) times_ran_out_of_peers: IntCounter,
-    /// Number of items in the gossip table that are paused.
-    pub(super) table_items_paused: IntGauge,
     /// Number of items in the gossip table that are currently being gossiped.
     pub(super) table_items_current: IntGauge,
     /// Number of items in the gossip table that are finished.
@@ -39,13 +37,6 @@ impl GossiperMetrics {
                 name
             ),
         )?;
-        let table_items_paused = IntGauge::new(
-            format!("{}_table_items_paused", name),
-            format!(
-                "number of items in the gossip table of {} in state paused",
-                name
-            ),
-        )?;
         let table_items_current = IntGauge::new(
             format!("{}_table_items_current", name),
             format!(
@@ -64,7 +55,6 @@ impl GossiperMetrics {
         registry.register(Box::new(items_received.clone()))?;
         registry.register(Box::new(times_gossiped.clone()))?;
         registry.register(Box::new(times_ran_out_of_peers.clone()))?;
-        registry.register(Box::new(table_items_paused.clone()))?;
         registry.register(Box::new(table_items_current.clone()))?;
         registry.register(Box::new(table_items_finished.clone()))?;
 
@@ -72,7 +62,6 @@ impl GossiperMetrics {
             items_received,
             times_gossiped,
             times_ran_out_of_peers,
-            table_items_paused,
             table_items_current,
             table_items_finished,
             registry: registry.clone(),
@@ -85,7 +74,6 @@ impl Drop for GossiperMetrics {
         unregister_metric!(self.registry, self.items_received);
         unregister_metric!(self.registry, self.times_gossiped);
         unregister_metric!(self.registry, self.times_ran_out_of_peers);
-        unregister_metric!(self.registry, self.table_items_paused);
         unregister_metric!(self.registry, self.table_items_current);
         unregister_metric!(self.registry, self.table_items_finished);
     }
