@@ -50,7 +50,7 @@ use crate::{
 pub(crate) use cl_context::ClContext;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::EraSupervisor;
+pub(crate) use era_supervisor::{bonded_eras, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 

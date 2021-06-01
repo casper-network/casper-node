@@ -11,7 +11,6 @@ use std::{
 };
 
 pub use config::Config;
-use smallvec::SmallVec;
 
 pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
 
@@ -20,7 +19,7 @@ use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -28,24 +27,27 @@ use casper_execution_engine::{
         ExecuteRequest, GetEraValidatorsError, GetEraValidatorsRequest, RewardItem, SlashItem,
         StepRequest, StepResult,
     },
-    shared::newtypes::{Blake2bHash, CorrelationId},
+    shared::{
+        newtypes::{Blake2bHash, CorrelationId},
+        stored_value::StoredValue,
+    },
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
-        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
+        transaction_source::lmdb::LmdbEnvironment, trie::Trie, trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
-    system::auction::ValidatorWeights, ExecutionResult, ProtocolVersion, PublicKey, U512,
+    system::auction::ValidatorWeights, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
     components::Component,
     crypto::hash::Digest,
     effect::{
-        announcements::ContractRuntimeAnnouncement,
+        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployHeader, FinalizedBlock,
@@ -61,11 +63,6 @@ pub enum Event {
     /// A request made for the contract runtime component.
     #[from]
     Request(Box<ContractRuntimeRequest>),
-    /// Indicates that block has already been finalized and executed in the past.
-    BlockAlreadyExists(Box<Block>),
-    /// Indicates that a block is not known yet, and needs to be executed.
-    BlockIsNew(Box<FinalizedBlock>),
-
     /// Results received by the contract runtime.
     #[from]
     Result(Box<ContractRuntimeResult>),
@@ -289,7 +286,7 @@ impl ContractRuntimeMetrics {
 
 impl<REv: ReactorEventT> Component<REv> for ContractRuntime
 where
-    REv: From<Event> + Send,
+    REv: From<Event> + From<ControlAnnouncement> + Send,
 {
     type Event = Event;
     type ConstructionError = ConfigError;
@@ -483,13 +480,8 @@ where
                         responder,
                     } => {
                         trace!(?trie_key, "read_trie request");
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
+                        let result = self.read_trie(trie_key);
                         async move {
-                            let correlation_id = CorrelationId::new();
-                            let start = Instant::now();
-                            let result = engine_state.read_trie(correlation_id, trie_key);
-                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
                             let result = match result {
                                 Ok(result) => result,
                                 Err(error) => {
@@ -521,15 +513,9 @@ where
                         .ignore()
                     }
                     ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
-                        debug!(?finalized_block, "execute block");
-                        effect_builder
-                            .get_block_at_height_local(finalized_block.height())
-                            .event(move |maybe_block| {
-                                maybe_block.map(Box::new).map_or_else(
-                                    || Event::BlockIsNew(Box::new(finalized_block)),
-                                    Event::BlockAlreadyExists,
-                                )
-                            })
+                        info!(?finalized_block, "execute finalized block");
+                        operations::get_deploys_and_finalize_block(effect_builder, finalized_block)
+                            .map_some(std::convert::identity)
                     }
                     ContractRuntimeRequest::GetBids {
                         get_bids_request,
@@ -567,14 +553,6 @@ where
                         .ignore()
                     }
                 }
-            }
-            Event::BlockAlreadyExists(block) => effect_builder
-                .announce_block_already_executed(*block)
-                .ignore(),
-            // If we haven't executed the block before in the past (for example during
-            // joining), do it now.
-            Event::BlockIsNew(finalized_block) => {
-                self.get_deploys(effect_builder, *finalized_block)
             }
             Event::Result(contract_runtime_result) => match *contract_runtime_result {
                 ContractRuntimeResult::GetDeploysResult {
@@ -759,52 +737,6 @@ impl ContractRuntime {
         self.parent_map = parent_map;
     }
 
-    /// Gets the deploy(s) of the given finalized block from storage.
-    fn get_deploys<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        finalized_block: FinalizedBlock,
-    ) -> Effects<Event> {
-        let deploy_hashes = finalized_block
-            .deploys_and_transfers_iter()
-            .map(DeployHash::from)
-            .collect::<SmallVec<_>>();
-        if deploy_hashes.is_empty() {
-            let result_event = move |_| {
-                Event::Result(Box::new(ContractRuntimeResult::GetDeploysResult {
-                    finalized_block,
-                    deploys: VecDeque::new(),
-                }))
-            };
-            return effect_builder.immediately().event(result_event);
-        }
-
-        let era_id = finalized_block.era_id();
-        let height = finalized_block.height();
-
-        // Get all deploys in order they appear in the finalized block.
-        effect_builder
-            .get_deploys_from_storage(deploy_hashes)
-            .event(move |result| {
-                Event::Result(Box::new(ContractRuntimeResult::GetDeploysResult {
-                    finalized_block,
-                    deploys: result
-                        .into_iter()
-                        // Assumes all deploys are present
-                        .map(|maybe_deploy| {
-                            maybe_deploy.unwrap_or_else(|| {
-                                panic!(
-                                "deploy for block in era={} and height={} is expected to exist \
-                                in the storage",
-                                era_id, height
-                            )
-                            })
-                        })
-                        .collect(),
-                }))
-            })
-    }
-
     /// Creates and announces the linear chain block.
     fn finalize_block_execution<REv: ReactorEventT>(
         &mut self,
@@ -812,8 +744,7 @@ impl ContractRuntime {
         state: Box<RequestState>,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Effects<Event> {
-        // The state hash of the last execute-commit cycle is used as the block's post state
-        // hash.
+        // The state hash of the last execute-commit cycle is used as the block's post state hash.
         let next_height = state.finalized_block.height() + 1;
         // Update the metric.
         self.metrics
@@ -972,7 +903,7 @@ impl ContractRuntime {
             // Read it from the storage.
             let height = finalized_block.height();
             effect_builder
-                .get_block_at_height_local(height - 1)
+                .get_block_at_height_from_storage(height - 1)
                 .event(|parent| {
                     Event::Result(Box::new(ContractRuntimeResult::GetParentResult {
                         finalized_block,
@@ -1090,6 +1021,20 @@ impl ContractRuntime {
     /// either genesis or the highest known block at the time of initializing the component.
     fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
         finalized_block.height() == self.initial_state.child_height
+    }
+
+    /// Read a [Trie<Key, StoredValue>] from the trie store.
+    pub fn read_trie(
+        &mut self,
+        trie_key: Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = self.engine_state.read_trie(correlation_id, trie_key);
+        self.metrics
+            .read_trie
+            .observe(start.elapsed().as_secs_f64());
+        result
     }
 }
 

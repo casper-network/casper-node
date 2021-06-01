@@ -55,7 +55,7 @@ use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
-use rand::seq::IteratorRandom;
+use rand::seq::{IteratorRandom, SliceRandom};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
@@ -940,6 +940,11 @@ where
             Event::NetworkInfoRequest { req } => match *req {
                 NetworkInfoRequest::GetPeers { responder } => {
                     responder.respond(self.peers()).ignore()
+                }
+                NetworkInfoRequest::GetPeersInRandomOrder { responder } => {
+                    let mut peers_vec: Vec<NodeId> = self.peers().keys().cloned().collect();
+                    peers_vec.shuffle(rng);
+                    responder.respond(peers_vec).ignore()
                 }
             },
             Event::PeerAddressReceived(gossiped_address) => {

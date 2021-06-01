@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        consensus, gossiper,
+        consensus,
+        fetcher::FetchedOrNotFound,
+        gossiper,
         small_network::{GossipedAddress, MessageKind, Payload},
     },
     types::{Deploy, FinalitySignature, Item, Tag},
@@ -59,9 +61,11 @@ impl Payload for Message {
                     Tag::Block => MessageKind::BlockTransfer,
                     // This is a weird message, which we should not encounter here?
                     Tag::GossipedAddress => MessageKind::Other,
-                    Tag::BlockByHeight => MessageKind::BlockTransfer,
+                    Tag::BlockAndMetadataByHeight => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
+                    // TODO: This is wrong
+                    Tag::Trie => MessageKind::Other,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -77,7 +81,12 @@ impl Message {
         })
     }
 
-    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, bincode::Error> {
+    pub(crate) fn new_get_response<T>(
+        item: &FetchedOrNotFound<T, T::Id>,
+    ) -> Result<Self, bincode::Error>
+    where
+        T: Item,
+    {
         Ok(Message::GetResponse {
             tag: T::TAG,
             serialized_item: bincode::serialize(item)?,

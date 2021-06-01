@@ -3,19 +3,19 @@ use prometheus::{IntCounter, Registry};
 use crate::unregister_metric;
 
 #[derive(Debug)]
-pub(super) struct FetcherMetrics {
+pub struct FetcherMetrics {
     /// Number of fetch requests that found an item in the storage.
-    pub(super) found_in_storage: IntCounter,
+    pub found_in_storage: IntCounter,
     /// Number of fetch requests that fetched an item from peer.
-    pub(super) found_on_peer: IntCounter,
+    pub found_on_peer: IntCounter,
     /// Number of fetch requests that timed out.
-    pub(super) timeouts: IntCounter,
+    pub timeouts: IntCounter,
     /// Reference to the registry for unregistering.
     registry: Registry,
 }
 
 impl FetcherMetrics {
-    pub(super) fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
         let found_in_storage = IntCounter::new(
             format!("{}_found_in_storage", name),
             format!(

@@ -828,7 +828,7 @@ impl FromBytes for BlockHeader {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct BlockHeaderWithMetadata {
     pub block_header: BlockHeader,
     pub block_signatures: BlockSignatures,
@@ -959,7 +959,7 @@ impl From<bytesrepr::Error> for BlockValidationError {
 }
 
 /// A storage representation of finality signatures with the associated block hash.
-#[derive(Debug, Serialize, Deserialize, Clone, DataSize, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Eq, PartialEq)]
 pub struct BlockSignatures {
     /// The block hash for a given block.
     pub(crate) block_hash: BlockHash,
@@ -1267,51 +1267,31 @@ impl Item for Block {
 
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum BlockByHeight {
-    Absent(u64),
-    Block(Box<Block>),
+pub struct BlockWithMetadata {
+    pub block: Block,
+    pub finality_signatures: BlockSignatures,
 }
 
-impl From<Block> for BlockByHeight {
-    fn from(block: Block) -> Self {
-        BlockByHeight::new(block)
-    }
-}
-
-impl BlockByHeight {
-    /// Creates a new `BlockByHeight`
-    pub fn new(block: Block) -> Self {
-        BlockByHeight::Block(Box::new(block))
-    }
-
-    pub fn height(&self) -> u64 {
-        match self {
-            BlockByHeight::Absent(height) => *height,
-            BlockByHeight::Block(block) => block.height(),
-        }
-    }
-}
-
-impl Display for BlockByHeight {
+impl Display for BlockWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockByHeight::Absent(height) => write!(f, "Block at height {} was absent.", height),
-            BlockByHeight::Block(block) => {
-                let hash: BlockHash = block.header().hash();
-                write!(f, "Block at {} with hash {} found.", block.height(), hash)
-            }
-        }
+        write!(
+            f,
+            "Block at {} with hash {} with {} finality signatures.",
+            self.block.height(),
+            self.block.hash(),
+            self.finality_signatures.proofs.len()
+        )
     }
 }
 
-impl Item for BlockByHeight {
+impl Item for BlockWithMetadata {
     type Id = u64;
 
-    const TAG: Tag = Tag::BlockByHeight;
+    const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
-        self.height()
+        self.block.height()
     }
 }
 
