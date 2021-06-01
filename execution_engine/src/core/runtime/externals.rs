@@ -15,7 +15,11 @@ use casper_types::{
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
-    shared::{gas::Gas, host_function_costs::Cost, stored_value::StoredValue},
+    shared::{
+        gas::Gas,
+        host_function_costs::{Cost, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
+        stored_value::StoredValue,
+    },
     storage::global_state::StateReader,
 };
 
@@ -972,7 +976,7 @@ where
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
 
                 self.charge_host_function_call(
-                    &host_function_costs.create_local,
+                    &DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
                     [output_size_ptr],
                 )?;
                 let ret = self.create_local(output_size_ptr)?;
@@ -992,10 +996,10 @@ where
                     _,
                 ) = Args::parse(args)?;
                 self.charge_host_function_call(
-                    &host_function_costs.dictionary_get,
+                    &host_function_costs.read_value_local,
                     [
-                        uref_ptr,
-                        uref_size,
+                        // uref_ptr,
+                        // uref_size,
                         key_bytes_ptr,
                         key_bytes_size,
                         output_size_ptr,
@@ -1014,10 +1018,10 @@ where
             FunctionIndex::DictionaryPutFuncIndex => {
                 let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
                 self.charge_host_function_call(
-                    &host_function_costs.dictionary_put,
+                    &host_function_costs.write_local,
                     [
-                        uref_ptr,
-                        uref_size,
+                        // uref_ptr,
+                        // uref_size,
                         key_bytes_ptr,
                         key_bytes_size,
                         value_ptr,

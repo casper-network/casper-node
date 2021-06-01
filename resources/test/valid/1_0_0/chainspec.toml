@@ -71,7 +71,6 @@ call_contract = { cost = 104, arguments = [0, 1, 2, 3, 4, 5, 6] }
 call_versioned_contract = { cost = 105, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] }
 create_contract_package_at_hash = { cost = 106, arguments = [0, 1] }
 create_contract_user_group = { cost = 107, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
-new_dictionary = { cost = 142, arguments = [0] }
 create_purse = { cost = 108, arguments = [0, 1] }
 disable_contract_version = { cost = 109, arguments = [0, 1, 2, 3] }
 get_balance = { cost = 110, arguments = [0, 1, 2] }
@@ -92,7 +91,7 @@ provision_contract_user_group_uref = { cost = 124, arguments = [0,1,2,3,4] }
 put_key = { cost = 125, arguments = [0, 1, 2, 3] }
 read_host_buffer = { cost = 126, arguments = [0, 1, 2] }
 read_value = { cost = 127, arguments = [0, 1, 0] }
-dictionary_get = { cost = 128,  arguments = [0, 0, 0, 1, 0] }
+read_value_local = { cost = 128,  arguments = [0, 1, 0] }
 remove_associated_key = { cost = 129, arguments = [0, 1] }
 remove_contract_user_group = { cost = 130, arguments = [0, 1, 2, 3] }
 remove_contract_user_group_urefs = { cost = 131, arguments = [0,1,2,3,4,5] }
@@ -105,7 +104,7 @@ transfer_from_purse_to_purse = { cost = 137, arguments = [0, 1, 2, 3, 4, 5, 6, 7
 transfer_to_account = { cost = 138, arguments = [0, 1, 2, 3, 4, 5, 6] }
 update_associated_key = { cost = 139, arguments = [0, 1, 2] }
 write = { cost = 140,  arguments = [0, 1, 0, 2] }
-dictionary_put = { cost = 141, arguments = [0, 1, 2, 3, 4, 5] }
+write_local = { cost = 141, arguments = [0, 1, 2, 3] }
 
 [system_costs]
 wasmless_transfer_cost = 10_000
