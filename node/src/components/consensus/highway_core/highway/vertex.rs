@@ -272,6 +272,7 @@ where
 {
     pub(crate) panorama: Panorama<C>,
     pub(crate) panorama_hash: C::Hash,
+    pub(crate) previous: Option<C::Hash>,
     pub(crate) creator: ValidatorIndex,
     pub(crate) instance_id: C::InstanceId,
     pub(crate) value: Option<C::ConsensusValue>,
@@ -298,7 +299,7 @@ impl<C: Context> Debug for WireUnit<C> {
             .field("instance_id", &self.instance_id)
             .field("seq_number", &self.seq_number)
             .field("timestamp", &self.timestamp.millis())
-            .field("panorama", self.panorama.as_ref())
+            .field("previous", &self.previous)
             .field("round_exp", &self.round_exp)
             .field("endorsed", &self.endorsed)
             .field("round_id()", &self.round_id())
@@ -318,7 +319,7 @@ impl<C: Context> WireUnit<C> {
 
     /// Returns the creator's previous unit.
     pub(crate) fn previous(&self) -> Option<&C::Hash> {
-        self.panorama[self.creator].correct()
+        self.previous.as_ref()
     }
 
     /// Returns the unit's hash, which is used as a unit identifier.

@@ -857,6 +857,7 @@ pub(crate) mod tests {
         let wunit = WireUnit {
             panorama,
             panorama_hash,
+            previous: None,
             creator: CAROL,
             instance_id: highway.instance_id,
             value: Some(0),
@@ -989,6 +990,7 @@ pub(crate) mod tests {
         let mut wunit0 = WireUnit {
             panorama: panorama.clone(),
             panorama_hash,
+            previous: None,
             creator: CAROL,
             instance_id: highway.instance_id,
             value: Some(0),
@@ -1000,6 +1002,7 @@ pub(crate) mod tests {
         let wunit1 = WireUnit {
             panorama,
             panorama_hash,
+            previous: None,
             creator: CAROL,
             instance_id: highway.instance_id,
             value: Some(1),

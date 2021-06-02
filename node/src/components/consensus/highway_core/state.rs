@@ -684,6 +684,7 @@ impl<C: Context> State<C> {
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
             panorama_hash: unit.panorama_hash,
+            previous: unit.panorama[unit.creator].correct().cloned(),
             creator: unit.creator,
             instance_id,
             value,

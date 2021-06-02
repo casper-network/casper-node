@@ -33,15 +33,16 @@ macro_rules! add_unit {
         let creator = $creator;
         let panorama = panorama!($($obs),*);
         let seq_number = panorama.next_seq_num(&$state, creator);
-        let maybe_parent_hash = panorama[creator].correct();
+        let previous = panorama[creator].correct().cloned();
         // Use our most recent round exponent, or the configured initial one.
-        let round_exp = maybe_parent_hash.map_or_else(
+        let round_exp = previous.as_ref().map_or_else(
             || $state.params().init_round_exp(),
             |vh| $state.unit(vh).round_exp,
         );
         let value = Option::from($val);
         // At most two units per round are allowed.
-        let two_units_limit = maybe_parent_hash
+        let two_units_limit = previous
+            .as_ref()
             .and_then(|ph| $state.unit(ph).previous())
             .map(|pph| $state.unit(pph))
             .map(|unit| unit.round_id() + unit.round_len());
@@ -65,6 +66,7 @@ macro_rules! add_unit {
         let wunit = WireUnit {
             panorama: panorama.clone(),
             panorama_hash,
+            previous,
             creator,
             instance_id: TEST_INSTANCE_ID,
             value,
@@ -90,11 +92,13 @@ macro_rules! add_unit {
 
         let creator = $creator;
         let panorama = panorama!($($obs),*);
+        let previous = panorama[creator].correct().cloned();
         let panorama_hash = panorama.hash();
         let seq_number = panorama.next_seq_num(&$state, creator);
         let wunit = WireUnit {
             panorama: panorama.clone(),
             panorama_hash,
+            previous,
             creator,
             instance_id: TEST_INSTANCE_ID,
             value: ($val).into(),
