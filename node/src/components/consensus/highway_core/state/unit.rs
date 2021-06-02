@@ -59,6 +59,7 @@ impl<C: Context> Unit<C> {
     /// Values must be stored as a block, with the same hash.
     pub(super) fn new(
         swunit: SignedWireUnit<C>,
+        panorama: Panorama<C>,
         fork_choice: Option<&C::Hash>,
         state: &State<C>,
     ) -> (Unit<C>, Option<C::ConsensusValue>) {
@@ -78,7 +79,7 @@ impl<C: Context> Unit<C> {
                 .expect("nonempty panorama has nonempty fork choice")
         };
         let mut skip_idx = Vec::new();
-        if let Some(hash) = wunit.panorama.get(wunit.creator).correct() {
+        if let Some(hash) = panorama.get(wunit.creator).correct() {
             skip_idx.push(*hash);
             for i in 0..wunit.seq_number.trailing_zeros() as usize {
                 let old_unit = state.unit(&skip_idx[i]);
@@ -86,7 +87,7 @@ impl<C: Context> Unit<C> {
             }
         }
         let unit = Unit {
-            panorama: wunit.panorama,
+            panorama,
             seq_number: wunit.seq_number,
             creator: wunit.creator,
             block,

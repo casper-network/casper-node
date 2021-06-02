@@ -145,16 +145,17 @@ impl State<TestContext> {
     pub(crate) fn add_unit(
         &mut self,
         swunit: SignedWireUnit<TestContext>,
+        panorama: Panorama<TestContext>,
     ) -> Result<(), AddUnitError<TestContext>> {
-        if let Err(err) = self
-            .pre_validate_unit(&swunit)
-            .and_then(|()| self.validate_unit(&swunit))
-        {
+        if let Err(err) = self.pre_validate_unit(&swunit, Some(&panorama)) {
             return Err(swunit.with_error(err));
         }
-        assert_eq!(None, swunit.wire_unit().panorama.missing_dependency(self));
+        assert_eq!(None, panorama.missing_dependency(self));
+        if let Err(err) = self.validate_unit(&swunit, &panorama) {
+            return Err(swunit.with_error(err));
+        }
         assert_eq!(None, self.needs_endorsements(&swunit));
-        self.add_valid_unit(swunit);
+        self.add_valid_unit(swunit, panorama);
         Ok(())
     }
 }
@@ -177,8 +178,9 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let _a1 = add_unit!(state, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
+    let panorama = panorama!(N, b1, c0);
     let mut wunit = WireUnit {
-        panorama: panorama!(N, b1, c0),
+        panorama: panorama.clone(),
         creator: BOB,
         instance_id: TEST_INSTANCE_ID,
         value: None,
@@ -188,23 +190,23 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         endorsed: BTreeSet::new(),
     };
     let unit = SignedWireUnit::new(wunit.clone().into_hashed(), &BOB_SEC);
-    let maybe_err = state.add_unit(unit).err().map(unit_err);
+    let maybe_err = state.add_unit(unit, panorama.clone()).err().map(unit_err);
     assert_eq!(Some(UnitError::SequenceNumber), maybe_err);
     // Still not valid: This would be the third unit in the first round.
     wunit.seq_number = 2;
     let unit = SignedWireUnit::new(wunit.into_hashed(), &BOB_SEC);
-    let maybe_err = state.add_unit(unit).err().map(unit_err);
+    let maybe_err = state.add_unit(unit, panorama).err().map(unit_err);
     assert_eq!(Some(UnitError::ThreeUnitsInRound), maybe_err);
 
     // Inconsistent panorama: If you see b1, you have to see c0, too.
     let maybe_err = add_unit!(state, CAROL, None; N, b1, N).err().map(unit_err);
     assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), maybe_err);
-    // And you can't make the round exponent too small
+    // You can't make the round exponent too small.
     let maybe_err = add_unit!(state, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
         .map(unit_err);
     assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), maybe_err);
-    // And you can't make the round exponent too big
+    // And you can't make the round exponent too big.
     let maybe_err = add_unit!(state, CAROL, 50, 40u8, None; N, b1, c0)
         .err()
         .map(unit_err);

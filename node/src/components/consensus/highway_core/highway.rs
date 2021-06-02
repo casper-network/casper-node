@@ -318,8 +318,16 @@ impl<C: Context> Highway<C> {
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
-                Vertex::Unit(unit) | Vertex::UnitWithPanorama(unit, _) => {
-                    self.add_valid_unit(unit, now)
+                Vertex::Unit(unit) => {
+                    // TODO: Merge validate_vertex and missing_dependency. Make ValidVertex a
+                    // separate enum with only a UnitWithPanorama variant, and none without
+                    // panorama.
+                    error!(?unit, "ValidVertex should always include the panorama");
+                    let panorama = unit.wire_unit().panorama.clone();
+                    self.add_valid_unit(unit, now, panorama)
+                }
+                Vertex::UnitWithPanorama(unit, panorama) => {
+                    self.add_valid_unit(unit, now, panorama)
                 }
                 Vertex::Evidence(evidence) => self.add_evidence(evidence),
                 Vertex::Endorsements(endorsements) => self.add_endorsements(endorsements),
@@ -570,7 +578,7 @@ impl<C: Context> Highway<C> {
     /// `PreValidatedVertex` and `validate_vertex`.)
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
-            Vertex::Unit(unit) | Vertex::UnitWithPanorama(unit, _) => {
+            Vertex::Unit(unit) => {
                 let creator = unit.wire_unit().creator;
                 let v_id = self.validators.id(creator).ok_or(UnitError::Creator)?;
                 if unit.wire_unit().instance_id != self.instance_id {
@@ -579,7 +587,18 @@ impl<C: Context> Highway<C> {
                 if !C::verify_signature(&unit.hash(), v_id, &unit.signature) {
                     return Err(UnitError::Signature.into());
                 }
-                Ok(self.state.pre_validate_unit(unit)?)
+                Ok(self.state.pre_validate_unit(unit, None)?)
+            }
+            Vertex::UnitWithPanorama(unit, panorama) => {
+                let creator = unit.wire_unit().creator;
+                let v_id = self.validators.id(creator).ok_or(UnitError::Creator)?;
+                if unit.wire_unit().instance_id != self.instance_id {
+                    return Err(UnitError::InstanceId.into());
+                }
+                if !C::verify_signature(&unit.hash(), v_id, &unit.signature) {
+                    return Err(UnitError::Signature.into());
+                }
+                Ok(self.state.pre_validate_unit(unit, Some(panorama))?)
             }
             Vertex::Evidence(evidence) => {
                 Ok(evidence.validate(&self.validators, &self.instance_id, self.state.params())?)
@@ -615,10 +634,10 @@ impl<C: Context> Highway<C> {
             Vertex::Unit(unit) => {
                 // TODO: Compute panorama.
                 let panorama = unit.wire_unit().panorama.clone();
-                self.state.validate_unit(unit)?;
+                self.state.validate_unit(unit, &panorama)?;
                 return Ok(Some(panorama));
             }
-            Vertex::UnitWithPanorama(unit, _) => self.state.validate_unit(unit)?,
+            Vertex::UnitWithPanorama(unit, panorama) => self.state.validate_unit(unit, panorama)?,
             Vertex::Evidence(_) | Vertex::Endorsements(_) | Vertex::Ping(_) => {}
         }
         Ok(None)
@@ -638,11 +657,16 @@ impl<C: Context> Highway<C> {
     ///
     /// Validity must be checked before calling this! Adding an invalid unit will result in a panic
     /// or an inconsistent state.
-    fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>, now: Timestamp) -> Vec<Effect<C>> {
+    fn add_valid_unit(
+        &mut self,
+        swunit: SignedWireUnit<C>,
+        now: Timestamp,
+        panorama: Panorama<C>,
+    ) -> Vec<Effect<C>> {
         let unit_hash = swunit.hash();
         let creator = swunit.wire_unit().creator;
         let was_honest = !self.state.is_faulty(creator);
-        self.state.add_valid_unit(swunit);
+        self.state.add_valid_unit(swunit, panorama);
         self.log_if_missing_proposal(&unit_hash);
         let mut evidence_effects = self
             .state

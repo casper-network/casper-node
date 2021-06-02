@@ -455,7 +455,7 @@ impl<C: Context> State<C> {
     /// Adds the unit to the protocol state.
     ///
     /// The unit must be valid (see `validate_unit`), and its dependencies satisfied.
-    pub(crate) fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>) {
+    pub(crate) fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>, panorama: Panorama<C>) {
         let wunit = swunit.wire_unit();
         let hash = swunit.hash();
         if self.has_unit(&hash) {
@@ -463,8 +463,8 @@ impl<C: Context> State<C> {
             return;
         }
         let instance_id = wunit.instance_id;
-        let fork_choice = self.fork_choice(&wunit.panorama).cloned();
-        let (unit, maybe_value) = Unit::new(swunit, fork_choice.as_ref(), self);
+        let fork_choice = self.fork_choice(&panorama).cloned();
+        let (unit, maybe_value) = Unit::new(swunit, panorama, fork_choice.as_ref(), self);
         if let Some(value) = maybe_value {
             let block = Block::new(fork_choice, value, self);
             self.blocks.insert(hash, block);
@@ -752,7 +752,11 @@ impl<C: Context> State<C> {
 
     /// Returns an error if `swunit` is invalid. This can be called even if the dependencies are
     /// not present yet.
-    pub(crate) fn pre_validate_unit(&self, swunit: &SignedWireUnit<C>) -> Result<(), UnitError> {
+    pub(crate) fn pre_validate_unit(
+        &self,
+        swunit: &SignedWireUnit<C>,
+        _maybe_panorama: Option<&Panorama<C>>,
+    ) -> Result<(), UnitError> {
         let wunit = swunit.wire_unit();
         let creator = wunit.creator;
         if creator.0 as usize >= self.validator_count() {
@@ -782,10 +786,13 @@ impl<C: Context> State<C> {
 
     /// Returns an error if `swunit` is invalid. Must only be called once `pre_validate_unit`
     /// returned `Ok` and all dependencies have been added to the state.
-    pub(crate) fn validate_unit(&self, swunit: &SignedWireUnit<C>) -> Result<(), UnitError> {
+    pub(crate) fn validate_unit(
+        &self,
+        swunit: &SignedWireUnit<C>,
+        panorama: &Panorama<C>,
+    ) -> Result<(), UnitError> {
         let wunit = swunit.wire_unit();
         let creator = wunit.creator;
-        let panorama = &wunit.panorama;
         let timestamp = wunit.timestamp;
         panorama.validate(self)?;
         if panorama.iter_correct(self).any(|v| v.timestamp > timestamp)
@@ -841,7 +848,7 @@ impl<C: Context> State<C> {
             }
         }
         for hash in &wunit.endorsed {
-            if !wunit.panorama.sees(self, hash) {
+            if !panorama.sees(self, hash) {
                 return Err(UnitError::EndorsedButUnseen {
                     hash: format!("{:?}", hash),
                     wire_unit: format!("{:?}", wunit),
