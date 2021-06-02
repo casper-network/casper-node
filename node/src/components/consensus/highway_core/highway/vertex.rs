@@ -28,6 +28,11 @@ where
     C: Context,
 {
     Unit(C::Hash),
+    /// The unit with its full panorama.
+    UnitWithPanorama(C::Hash),
+    /// A unit specified by sequence number and validator index, as seen by another unit, given by
+    /// hash.
+    UnitBySeqNum(u64, ValidatorIndex, C::Hash),
     Evidence(ValidatorIndex),
     Endorsement(C::Hash),
     Ping(ValidatorIndex, Timestamp),
@@ -37,6 +42,15 @@ impl<C: Context> Dependency<C> {
     /// Returns whether this identifies a unit, as opposed to other types of vertices.
     pub(crate) fn is_unit(&self) -> bool {
         matches!(self, Dependency::Unit(_))
+    }
+    /// Returns `true` if both refer to the same vertex, even if they differ in whether they
+    /// include the panorama.
+    pub(crate) fn matches(&self, other: &Dependency<C>) -> bool {
+        match (self, other) {
+            (Dependency::UnitWithPanorama(hash0), Dependency::Unit(hash1))
+            | (Dependency::Unit(hash0), Dependency::UnitWithPanorama(hash1)) => hash0 == hash1,
+            (dep0, dep1) => dep0 == dep1,
+        }
     }
 }
 

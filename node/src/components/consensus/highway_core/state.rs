@@ -871,7 +871,11 @@ impl<C: Context> State<C> {
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
     /// or `None` if the sequence number is higher than that of the unit with `hash`.
-    fn find_in_swimlane<'a>(&'a self, hash: &'a C::Hash, seq_number: u64) -> Option<&'a C::Hash> {
+    pub(super) fn find_in_swimlane<'a>(
+        &'a self,
+        hash: &'a C::Hash,
+        seq_number: u64,
+    ) -> Option<&'a C::Hash> {
         let unit = self.unit(hash);
         match unit.seq_number.checked_sub(seq_number) {
             None => None,          // There is no unit with seq_number in our swimlane.
