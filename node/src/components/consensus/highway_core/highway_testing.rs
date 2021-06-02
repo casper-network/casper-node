@@ -632,8 +632,8 @@ where
             .highway()
             .get_dependency(&missing_dependency)
         {
-            GetDepOutcome::Vertex(vv) => {
-                self.add_vertex(rng, recipient, sender, vv.0, delivery_time)
+            GetDepOutcome::Vertex(vertex) => {
+                self.add_vertex(rng, recipient, sender, vertex, delivery_time)
             }
             GetDepOutcome::Evidence(_) | GetDepOutcome::None => Err(
                 TestRunError::SenderMissingDependency(sender, missing_dependency),
