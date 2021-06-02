@@ -253,7 +253,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             AvEffect::NewVertex(vv) => {
                 self.log_unit_size(vv.inner(), "sending new unit");
                 self.calculate_round_exponent(&vv, now);
-                self.process_new_vertex(vv.inner().clone())
+                // We send the unit without its panorama, to save bandwidth.
+                self.process_new_vertex(vv.without_panorama())
             }
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ProtocolOutcome::ScheduleTimer(
@@ -340,11 +341,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         };
 
         // If the vertex contains a consensus value, i.e. it is a proposal, request validation.
-        if let Vertex::Unit(swunit) = vv.inner() {
+        if let Vertex::UnitWithPanorama(swunit, panorama) = vv.inner() {
             let wunit = swunit.wire_unit();
             if let Some(value) = &wunit.value {
                 if value.needs_validation() {
-                    let panorama = &swunit.wire_unit().panorama;
                     let fork_choice = self.highway.state().fork_choice(&panorama);
                     self.log_proposal(vv.inner(), "requesting proposal validation");
                     let ancestor_values = self.ancestors(fork_choice).cloned().collect();
