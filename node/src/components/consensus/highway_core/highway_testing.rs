@@ -18,8 +18,8 @@ use super::{
     active_validator::Effect,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
-        Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, SignedWireUnit,
-        ValidVertex, Vertex, VertexError,
+        Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, SignedWireUnit, Vertex,
+        VertexError,
     },
     state::Fault,
     validators::Validators,
@@ -108,7 +108,8 @@ impl From<Effect<TestContext>> for HighwayMessage {
         match eff {
             // The effect is `ValidVertex` but we want to gossip it to other
             // validators so for them it's just `Vertex` that needs to be validated.
-            Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(Box::new(v)),
+            // We omit the panorama to save bandwidth.
+            Effect::NewVertex(vv) => HighwayMessage::NewVertex(Box::new(vv.without_panorama())),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
             Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
             Effect::WeAreFaulty(fault) => HighwayMessage::WeAreFaulty(Box::new(fault)),
