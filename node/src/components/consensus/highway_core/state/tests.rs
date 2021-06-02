@@ -179,8 +179,10 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
     let panorama = panorama!(N, b1, c0);
+    let panorama_hash = panorama.hash();
     let mut wunit = WireUnit {
         panorama: panorama.clone(),
+        panorama_hash,
         creator: BOB,
         instance_id: TEST_INSTANCE_ID,
         value: None,

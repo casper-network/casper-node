@@ -852,8 +852,11 @@ pub(crate) mod tests {
             state,
             active_validator: None,
         };
+        let panorama = Panorama::new(WEIGHTS.len());
+        let panorama_hash = panorama.hash();
         let wunit = WireUnit {
-            panorama: Panorama::new(WEIGHTS.len()),
+            panorama,
+            panorama_hash,
             creator: CAROL,
             instance_id: highway.instance_id,
             value: Some(0),
@@ -981,8 +984,11 @@ pub(crate) mod tests {
         };
 
         // Two units with different values and the same sequence number. Carol equivocated!
+        let panorama = Panorama::new(WEIGHTS.len());
+        let panorama_hash = panorama.hash();
         let mut wunit0 = WireUnit {
-            panorama: Panorama::new(WEIGHTS.len()),
+            panorama: panorama.clone(),
+            panorama_hash,
             creator: CAROL,
             instance_id: highway.instance_id,
             value: Some(0),
@@ -992,7 +998,8 @@ pub(crate) mod tests {
             endorsed: BTreeSet::new(),
         };
         let wunit1 = WireUnit {
-            panorama: Panorama::new(WEIGHTS.len()),
+            panorama,
+            panorama_hash,
             creator: CAROL,
             instance_id: highway.instance_id,
             value: Some(1),

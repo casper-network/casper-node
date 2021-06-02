@@ -683,6 +683,7 @@ impl<C: Context> State<C> {
         let endorsed = unit.claims_endorsed().cloned().collect();
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
+            panorama_hash: unit.panorama_hash,
             creator: unit.creator,
             instance_id,
             value,
