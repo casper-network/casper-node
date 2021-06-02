@@ -996,14 +996,8 @@ where
                     _,
                 ) = Args::parse(args)?;
                 self.charge_host_function_call(
-                    &host_function_costs.read_value_local,
-                    [
-                        // uref_ptr,
-                        // uref_size,
-                        key_bytes_ptr,
-                        key_bytes_size,
-                        output_size_ptr,
-                    ],
+                    &host_function_costs.dictionary_get,
+                    [key_bytes_ptr, key_bytes_size, output_size_ptr],
                 )?;
                 scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
                 let ret = self.dictionary_get(
@@ -1018,15 +1012,8 @@ where
             FunctionIndex::DictionaryPutFuncIndex => {
                 let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
                 self.charge_host_function_call(
-                    &host_function_costs.write_local,
-                    [
-                        // uref_ptr,
-                        // uref_size,
-                        key_bytes_ptr,
-                        key_bytes_size,
-                        value_ptr,
-                        value_ptr_size,
-                    ],
+                    &host_function_costs.dictionary_put,
+                    [key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size],
                 )?;
                 scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
                 scoped_instrumenter.add_property("value_size", value_ptr_size);
