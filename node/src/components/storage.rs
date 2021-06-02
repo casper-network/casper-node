@@ -252,7 +252,7 @@ impl Storage {
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         should_check_integrity: bool,
-        network_name: &String,
+        network_name: &str,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
