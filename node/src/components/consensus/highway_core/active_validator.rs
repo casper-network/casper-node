@@ -437,8 +437,9 @@ impl<C: Context> ActiveValidator<C> {
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
         let panorama_hash = panorama.hash();
+        let seq_num_panorama = panorama.to_seq_num_panorama(&state);
         let hwunit = WireUnit {
-            panorama: panorama.clone(),
+            seq_num_panorama,
             panorama_hash,
             previous,
             creator: self.vidx,
@@ -644,7 +645,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::components::consensus::highway_core::{
-        highway_testing::TEST_INSTANCE_ID, validators::ValidatorMap,
+        highway::ObservationSeqNum, highway_testing::TEST_INSTANCE_ID, validators::ValidatorMap,
     };
 
     use super::{
@@ -652,7 +653,7 @@ mod tests {
             finality_detector::FinalityDetector,
             state::{tests::*, State, Weight},
         },
-        Vertex, *,
+        *,
     };
 
     type Eff = Effect<TestContext>;
@@ -989,7 +990,6 @@ mod tests {
 
         // Store `a2` unit as the Alice's last unit.
         write_last_unit(&unit_file, &a2, &a2_panorama).expect("storing unit should succeed");
-
         // Alice's last unit is `a2` but `State` is empty. She must synchronize first.
         let (mut alice, alice_init_effects) = ActiveValidator::new(
             ALICE,
@@ -1037,8 +1037,8 @@ mod tests {
             "new unit should have correct seq_number"
         );
         assert_eq!(
-            proposal_wunit.wire_unit().panorama,
-            panorama!(a2.hash()),
+            proposal_wunit.wire_unit().seq_num_panorama[ALICE],
+            ObservationSeqNum::Correct(2),
             "new unit should cite the latest unit"
         );
 

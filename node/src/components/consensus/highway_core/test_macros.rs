@@ -63,8 +63,9 @@ macro_rules! add_unit {
             }
         }
         let panorama_hash = panorama.hash();
+        let seq_num_panorama = panorama.to_seq_num_panorama(&$state);
         let wunit = WireUnit {
-            panorama: panorama.clone(),
+            seq_num_panorama,
             panorama_hash,
             previous,
             creator,
@@ -95,8 +96,9 @@ macro_rules! add_unit {
         let previous = panorama[creator].correct().cloned();
         let panorama_hash = panorama.hash();
         let seq_number = panorama.next_seq_num(&$state, creator);
+        let seq_num_panorama = panorama.to_seq_num_panorama(&$state);
         let wunit = WireUnit {
-            panorama: panorama.clone(),
+            seq_num_panorama,
             panorama_hash,
             previous,
             creator,
