@@ -67,8 +67,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::SymmetricallyFramed;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
@@ -135,7 +134,7 @@ const SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 #[derive(Clone, DataSize, Debug)]
 pub struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    sender: UnboundedSender<Message<P>>,
+    sender: UnboundedSender<Arc<Message<P>>>,
     peer_addr: SocketAddr,
 }
 
@@ -347,7 +346,7 @@ where
     }
 
     /// Queues a message to be sent to all nodes.
-    fn broadcast_message(&self, msg: Message<P>) {
+    fn broadcast_message(&self, msg: Arc<Message<P>>) {
         for peer_id in self.outgoing_manager.connected_peers() {
             self.send_message(peer_id, msg.clone());
         }
@@ -357,7 +356,7 @@ where
     fn gossip_message(
         &self,
         rng: &mut NodeRng,
-        msg: Message<P>,
+        msg: Arc<Message<P>>,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
@@ -387,7 +386,7 @@ where
     }
 
     /// Queues a message to be sent to a specific node.
-    fn send_message(&self, dest: NodeId, msg: Message<P>) {
+    fn send_message(&self, dest: NodeId, msg: Arc<Message<P>>) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             if let Err(msg) = connection.sender.send(msg) {
@@ -915,13 +914,13 @@ where
                     } => {
                         // We're given a message to send out.
                         self.net_metrics.direct_message_requests.inc();
-                        self.send_message(*dest, Message::Payload(*payload));
+                        self.send_message(*dest, Arc::new(Message::Payload(*payload)));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.
                         self.net_metrics.broadcast_requests.inc();
-                        self.broadcast_message(Message::Payload(*payload));
+                        self.broadcast_message(Arc::new(Message::Payload(*payload)));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Gossip {
@@ -931,8 +930,12 @@ where
                         responder,
                     } => {
                         // We're given a message to gossip.
-                        let sent_to =
-                            self.gossip_message(rng, Message::Payload(*payload), count, exclude);
+                        let sent_to = self.gossip_message(
+                            rng,
+                            Arc::new(Message::Payload(*payload)),
+                            count,
+                            exclude,
+                        );
                         responder.respond(sent_to).ignore()
                     }
                 }
@@ -1086,9 +1089,10 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub type FramedTransport<P> = SymmetricallyFramed<
-    Framed<Transport, LengthDelimitedCodec>,
+pub type FramedTransport<P> = tokio_serde::Framed<
+    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
+    Arc<Message<P>>,
     CountingFormat<MessagePackFormat>,
 >;
 
@@ -1104,14 +1108,14 @@ where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let length_delimited = Framed::new(
+    let length_delimited = tokio_util::codec::Framed::new(
         stream,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
     );
 
-    SymmetricallyFramed::new(
+    tokio_serde::Framed::new(
         length_delimited,
         CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
