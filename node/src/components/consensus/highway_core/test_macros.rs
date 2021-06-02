@@ -61,8 +61,10 @@ macro_rules! add_unit {
                 timestamp += r_len;
             }
         }
+        let panorama_hash = panorama.hash();
         let wunit = WireUnit {
             panorama: panorama.clone(),
+            panorama_hash,
             creator,
             instance_id: TEST_INSTANCE_ID,
             value,
@@ -88,9 +90,11 @@ macro_rules! add_unit {
 
         let creator = $creator;
         let panorama = panorama!($($obs),*);
+        let panorama_hash = panorama.hash();
         let seq_number = panorama.next_seq_num(&$state, creator);
         let wunit = WireUnit {
             panorama: panorama.clone(),
+            panorama_hash,
             creator,
             instance_id: TEST_INSTANCE_ID,
             value: ($val).into(),

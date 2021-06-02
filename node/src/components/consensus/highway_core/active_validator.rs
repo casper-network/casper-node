@@ -435,8 +435,10 @@ impl<C: Context> ActiveValidator<C> {
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
+        let panorama_hash = panorama.hash();
         let hwunit = WireUnit {
             panorama: panorama.clone(),
+            panorama_hash,
             creator: self.vidx,
             instance_id,
             value,

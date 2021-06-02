@@ -213,6 +213,11 @@ impl<C: Context> Panorama<C> {
         self.enumerate().filter_map(missing_dep).next()
     }
 
+    /// Returns the checksum of all hashes in this panorama.
+    pub(crate) fn hash(&self) -> C::Hash {
+        <C as Context>::hash(&bincode::serialize(self).expect("serialize Panorama"))
+    }
+
     /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see
     /// every honest message and every fault seen by `other`.
     pub(super) fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {

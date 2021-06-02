@@ -91,7 +91,9 @@ mod serde_unit_with_panorama {
         deserializer: D,
     ) -> Result<(SignedWireUnit<C>, Panorama<C>), D::Error> {
         let (swunit, panorama) = <(SignedWireUnit<C>, Panorama<C>)>::deserialize(deserializer)?;
-        // TODO: Validate panorama hash.
+        if panorama.hash() != swunit.wire_unit().panorama_hash {
+            return Err(serde::de::Error::custom("wrong panorama hash"));
+        }
         Ok((swunit, panorama))
     }
 }
@@ -269,6 +271,7 @@ where
     C: Context,
 {
     pub(crate) panorama: Panorama<C>,
+    pub(crate) panorama_hash: C::Hash,
     pub(crate) creator: ValidatorIndex,
     pub(crate) instance_id: C::InstanceId,
     pub(crate) value: Option<C::ConsensusValue>,
