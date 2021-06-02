@@ -144,8 +144,9 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let seq_number = panorama.next_seq_num(&state, creator);
     let now = Timestamp::zero();
     let panorama_hash = panorama.hash();
+    let seq_num_panorama = panorama.to_seq_num_panorama(&state);
     let wunit: WireUnit<ClContext> = WireUnit {
-        panorama,
+        seq_num_panorama,
         panorama_hash,
         previous: None,
         creator,
@@ -198,9 +199,10 @@ fn send_a_valid_wire_unit() {
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
     let panorama_hash = panorama.hash();
+    let seq_num_panorama = panorama.to_seq_num_panorama(&state);
     let mut now = Timestamp::zero();
     let wunit: WireUnit<ClContext> = WireUnit {
-        panorama,
+        seq_num_panorama,
         panorama_hash,
         previous: None,
         creator,
@@ -267,8 +269,9 @@ fn detect_doppelganger() {
     let now = Timestamp::zero();
     let value = Arc::new(BlockPayload::new(vec![], vec![], vec![], false));
     let panorama_hash = panorama.hash();
+    let seq_num_panorama = panorama.to_seq_num_panorama(&state);
     let wunit: WireUnit<ClContext> = WireUnit {
-        panorama,
+        seq_num_panorama,
         panorama_hash,
         previous: None,
         creator,

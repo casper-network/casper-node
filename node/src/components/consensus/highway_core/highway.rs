@@ -2,7 +2,8 @@ mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{
-    Dependency, Endorsements, HashedWireUnit, Ping, SignedWireUnit, Vertex, WireUnit,
+    Dependency, Endorsements, HashedWireUnit, ObservationSeqNum, Ping, SignedWireUnit, Vertex,
+    WireUnit,
 };
 
 use std::path::PathBuf;
@@ -119,6 +120,7 @@ impl<C: Context> ValidVertex<C> {
     pub(crate) fn is_proposal(&self) -> bool {
         self.0.value().is_some()
     }
+
     pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
         match &self.0 {
             Vertex::Endorsements(endorsements) => Some(endorsements),
@@ -267,15 +269,14 @@ impl<C: Context> Highway<C> {
                     None
                 }
             }
-            Vertex::Unit(unit) => unit
-                .wire_unit()
-                .panorama
-                .missing_dependency(&self.state)
-                .or_else(|| {
-                    self.state
-                        .needs_endorsements(unit)
-                        .map(Dependency::Endorsement)
-                }),
+            Vertex::Unit(unit) => {
+                if let Err(dep) = self.state.compute_panorama(unit) {
+                    return Some(dep);
+                }
+                self.state
+                    .needs_endorsements(unit)
+                    .map(Dependency::Endorsement)
+            }
             Vertex::UnitWithPanorama(unit, panorama) => {
                 panorama.missing_dependency(&self.state).or_else(|| {
                     self.state
@@ -323,7 +324,10 @@ impl<C: Context> Highway<C> {
                     // separate enum with only a UnitWithPanorama variant, and none without
                     // panorama.
                     error!(?unit, "ValidVertex should always include the panorama");
-                    let panorama = unit.wire_unit().panorama.clone();
+                    let panorama = self
+                        .state
+                        .compute_panorama(&unit)
+                        .expect("called add_valid_vertex with missing dependencies");
                     self.add_valid_unit(unit, now, panorama)
                 }
                 Vertex::UnitWithPanorama(unit, panorama) => {
@@ -632,8 +636,12 @@ impl<C: Context> Highway<C> {
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<Option<Panorama<C>>, VertexError> {
         match vertex {
             Vertex::Unit(unit) => {
-                // TODO: Compute panorama.
-                let panorama = unit.wire_unit().panorama.clone();
+                // TODO: Merge validate_vertex and missing_dependency. Make ValidVertex a separate
+                // enum with only a UnitWithPanorama variant, and none without panorama.
+                let panorama = self
+                    .state
+                    .compute_panorama(unit)
+                    .expect("called do_validate_vertex with missing dependencies");
                 self.state.validate_unit(unit, &panorama)?;
                 return Ok(Some(panorama));
             }
@@ -854,8 +862,9 @@ pub(crate) mod tests {
         };
         let panorama = Panorama::new(WEIGHTS.len());
         let panorama_hash = panorama.hash();
+        let seq_num_panorama = panorama.to_seq_num_panorama(highway.state());
         let wunit = WireUnit {
-            panorama,
+            seq_num_panorama,
             panorama_hash,
             previous: None,
             creator: CAROL,
@@ -918,11 +927,21 @@ pub(crate) mod tests {
         let pvv_a = highway.pre_validate_vertex(Vertex::Unit(wunit_a)).unwrap();
         let pvv_end_a = highway.pre_validate_vertex(vertex_end_a).unwrap();
         let pvv_ev_c = highway.pre_validate_vertex(Vertex::Evidence(ev_c)).unwrap();
-        let pvv_b = highway.pre_validate_vertex(Vertex::Unit(wunit_b)).unwrap();
+        let pvv_b = highway
+            .pre_validate_vertex(Vertex::Unit(wunit_b.clone()))
+            .unwrap();
+        let b_panorama = state.unit(&b).panorama.clone();
+        let pvv_b_with_panorama = highway
+            .pre_validate_vertex(Vertex::UnitWithPanorama(wunit_b, b_panorama))
+            .unwrap();
 
         assert_eq!(
-            Some(Dependency::Unit(a)),
+            Some(Dependency::UnitBySeqNum(0, ALICE, b)), // Requesting `a` by sequence number.
             highway.missing_dependency(&pvv_b)
+        );
+        assert_eq!(
+            Some(Dependency::Unit(a)), // Requesting `a` by hash.
+            highway.missing_dependency(&pvv_b_with_panorama)
         );
         assert_eq!(
             Some(Dependency::Unit(a)),
@@ -937,6 +956,10 @@ pub(crate) mod tests {
             Some(Dependency::Evidence(CAROL)),
             highway.missing_dependency(&pvv_b)
         );
+        assert_eq!(
+            Some(Dependency::Evidence(CAROL)),
+            highway.missing_dependency(&pvv_b_with_panorama)
+        );
         assert_eq!(None, highway.missing_dependency(&pvv_ev_c));
         let vv_ev_c = highway.validate_vertex(pvv_ev_c).unwrap();
         highway.add_valid_vertex(vv_ev_c, now);
@@ -945,12 +968,17 @@ pub(crate) mod tests {
             Some(Dependency::Endorsement(a)),
             highway.missing_dependency(&pvv_b)
         );
+        assert_eq!(
+            Some(Dependency::Endorsement(a)),
+            highway.missing_dependency(&pvv_b_with_panorama)
+        );
         assert_eq!(None, highway.missing_dependency(&pvv_end_a));
         let vv_end_a = highway.validate_vertex(pvv_end_a).unwrap();
         highway.add_valid_vertex(vv_end_a, now);
 
         assert_eq!(None, highway.missing_dependency(&pvv_b));
         let vv_b = highway.validate_vertex(pvv_b).unwrap();
+        assert_eq!(vv_b, highway.validate_vertex(pvv_b_with_panorama).unwrap());
         highway.add_valid_vertex(vv_b, now);
 
         Ok(())
@@ -987,8 +1015,9 @@ pub(crate) mod tests {
         // Two units with different values and the same sequence number. Carol equivocated!
         let panorama = Panorama::new(WEIGHTS.len());
         let panorama_hash = panorama.hash();
+        let seq_num_panorama = panorama.to_seq_num_panorama(highway.state());
         let mut wunit0 = WireUnit {
-            panorama: panorama.clone(),
+            seq_num_panorama: seq_num_panorama.clone(),
             panorama_hash,
             previous: None,
             creator: CAROL,
@@ -1000,7 +1029,7 @@ pub(crate) mod tests {
             endorsed: BTreeSet::new(),
         };
         let wunit1 = WireUnit {
-            panorama,
+            seq_num_panorama,
             panorama_hash,
             previous: None,
             creator: CAROL,

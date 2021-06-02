@@ -33,7 +33,10 @@ use crate::{
         highway_core::{
             endorsement::{Endorsement, SignedEndorsement},
             evidence::Evidence,
-            highway::{Endorsements, HashedWireUnit, SignedWireUnit, WireUnit},
+            highway::{
+                Dependency, Endorsements, HashedWireUnit, ObservationSeqNum, SignedWireUnit,
+                WireUnit,
+            },
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -62,10 +65,14 @@ pub(crate) enum UnitError {
     PanoramaLength(usize),
     #[error("The unit accuses its own creator as faulty.")]
     FaultyCreator,
+    #[error("The previous unit doesn't match the panorama entry.")]
+    PreviousUnit,
     #[error("The panorama has a unit from {:?} in the slot for {:?}.", _0, _1)]
     PanoramaIndex(ValidatorIndex, ValidatorIndex),
     #[error("The panorama is missing units indirectly cited via {:?}.", _0)]
     InconsistentPanorama(ValidatorIndex),
+    #[error("Hash-based and sequence number-based panoramas disagree in {:?}.", _0)]
+    PanoramaMismatch(ValidatorIndex),
     #[error("The unit contains the wrong sequence number.")]
     SequenceNumber,
     #[error("The unit's timestamp is older than a justification's.")]
@@ -347,6 +354,87 @@ impl<C: Context> State<C> {
             .iter()
             .find(|hash| !self.endorsements.contains_key(&hash))
             .cloned()
+    }
+
+    /// Computes the full panorama from the sequence number-based one, or returns missing
+    /// dependencies.
+    pub(crate) fn compute_panorama(
+        &self,
+        swunit: &SignedWireUnit<C>,
+    ) -> Result<Panorama<C>, Dependency<C>> {
+        let wunit = swunit.wire_unit();
+
+        // First we request all predecessors of the unit, i.e. wunit.creator's swimlane.
+        let _maybe_prev_unit = if let Some(previous) = wunit.previous() {
+            if let Some(unit) = self.units.get(previous) {
+                Some(unit) // We already have the predecessor and thus the whole swimlane.
+            } else {
+                // Compute the lowest sequence number that is still missing in our state.
+                let maybe_next_seq_num = match self.panorama[wunit.creator] {
+                    Observation::Correct(hash) => self.unit(&hash).seq_number.checked_add(1),
+                    Observation::None => Some(0),
+                    Observation::Faulty => None, // If faulty we always request by hash.
+                };
+                // If more than one unit is still missing request the earliest one. Otherwise
+                // request the predecessor by hash.
+                let dep = maybe_next_seq_num
+                    .filter(|sn| sn.saturating_add(1) < wunit.seq_number)
+                    .map_or_else(
+                        || Dependency::Unit(*previous),
+                        |seq_num| Dependency::UnitBySeqNum(seq_num, wunit.creator, swunit.hash()),
+                    );
+                return Err(dep);
+            }
+        } else {
+            None // This is the first unit by wunit.creator.
+        };
+
+        // TODO: Use sequence number _differences_. Compare with maybe_prev_unit.
+        // We try to construct the full panorama from the sequence number-based one, or request
+        // the missing units if any.
+        let panorama = wunit
+            .seq_num_panorama
+            .enumerate()
+            .zip(&self.panorama)
+            .map(|((idx, sn_obs), obs)| match (sn_obs, obs) {
+                // The incoming unit doesn't cite validator number idx at all.
+                (ObservationSeqNum::None, _) => Ok(Observation::None),
+                // It cites them as faulty, and we already have evidende.
+                (ObservationSeqNum::Faulty, Observation::Faulty) => Ok(Observation::Faulty),
+                // It cites them as faulty: We need to request evidence.
+                (ObservationSeqNum::Faulty, Observation::Correct(_))
+                | (ObservationSeqNum::Faulty, Observation::None) => Err(Dependency::Evidence(idx)),
+                // It cites them as correct but we know they're faulty. We don't know which fork to
+                // use, so we have to request the full panorama.
+                (ObservationSeqNum::Correct(_), Observation::Faulty) => {
+                    Err(Dependency::UnitWithPanorama(swunit.hash()))
+                }
+                // It cites them as correct and we also see them as correct. If we have the cited
+                // sequence number we assume it's the right unit. Otherwise we request the cited
+                // validator's next unit.
+                (ObservationSeqNum::Correct(seq_num), Observation::Correct(hash)) => self
+                    .find_in_swimlane(hash, *seq_num)
+                    .ok_or_else(|| {
+                        let next_seq_num = self.unit(hash).seq_number.saturating_add(1);
+                        Dependency::UnitBySeqNum(next_seq_num, idx, swunit.hash())
+                    })
+                    .map(|hash| Observation::Correct(*hash)),
+                // It cites them as correct but we don't have any unit from them yet. We request
+                // the cited validator's first unit.
+                (ObservationSeqNum::Correct(_), Observation::None) => {
+                    Err(Dependency::UnitBySeqNum(0, idx, swunit.hash()))
+                }
+            })
+            .collect::<Result<Panorama<C>, Dependency<C>>>()?;
+
+        // We computed the hash-based panorama. If its hash doesn't match someone must have
+        // equivocated whom neither we nor wunit's panorama has marked as faulty. Then we need to
+        // download the hash-based panorama from the peer.
+        if wunit.panorama_hash == panorama.hash() {
+            Ok(panorama)
+        } else {
+            Err(Dependency::UnitWithPanorama(swunit.hash()))
+        }
     }
 
     /// Returns the timestamp of the last ping or unit received from the validator, or the start
@@ -682,7 +770,7 @@ impl<C: Context> State<C> {
         let value = maybe_block.map(|block| block.value.clone());
         let endorsed = unit.claims_endorsed().cloned().collect();
         let wunit = WireUnit {
-            panorama: unit.panorama.clone(),
+            seq_num_panorama: unit.panorama.to_seq_num_panorama(&self),
             panorama_hash: unit.panorama_hash,
             previous: unit.panorama[unit.creator].correct().cloned(),
             creator: unit.creator,
@@ -757,7 +845,7 @@ impl<C: Context> State<C> {
     pub(crate) fn pre_validate_unit(
         &self,
         swunit: &SignedWireUnit<C>,
-        _maybe_panorama: Option<&Panorama<C>>,
+        maybe_panorama: Option<&Panorama<C>>,
     ) -> Result<(), UnitError> {
         let wunit = swunit.wire_unit();
         let creator = wunit.creator;
@@ -774,14 +862,47 @@ impl<C: Context> State<C> {
         if wunit.round_exp > self.params.max_round_exp() {
             return Err(UnitError::RoundLengthExpGreaterThanMaximum);
         }
-        if wunit.value.is_none() && !wunit.panorama.has_correct() {
+        if wunit.value.is_none()
+            && !wunit
+                .seq_num_panorama
+                .iter()
+                .any(ObservationSeqNum::is_correct)
+        {
             return Err(UnitError::MissingBlock);
         }
-        if wunit.panorama.len() != self.validator_count() {
-            return Err(UnitError::PanoramaLength(wunit.panorama.len()));
+        if wunit.seq_num_panorama.len() != self.validator_count() {
+            return Err(UnitError::PanoramaLength(wunit.seq_num_panorama.len()));
         }
-        if wunit.panorama.get(creator).is_faulty() {
-            return Err(UnitError::FaultyCreator);
+        match (wunit.seq_num_panorama.get(creator), wunit.previous) {
+            (ObservationSeqNum::Faulty, _) => return Err(UnitError::FaultyCreator),
+            (ObservationSeqNum::None, Some(_)) | (ObservationSeqNum::Correct(_), None) => {
+                return Err(UnitError::PreviousUnit);
+            }
+            (ObservationSeqNum::Correct(seq_num), Some(_)) => {
+                if seq_num.checked_add(1) != Some(wunit.seq_number) {
+                    return Err(UnitError::SequenceNumber);
+                }
+            }
+            (ObservationSeqNum::None, None) if wunit.seq_number != 0 => {
+                return Err(UnitError::SequenceNumber);
+            }
+            _ => {}
+        }
+        if let Some(panorama) = maybe_panorama {
+            if panorama.len() != self.validator_count() {
+                return Err(UnitError::PanoramaLength(panorama.len()));
+            }
+            if panorama.get(creator).correct() != wunit.previous.as_ref() {
+                return Err(UnitError::PreviousUnit);
+            }
+            for ((vidx, obs), sn_obs) in panorama.enumerate().zip(&wunit.seq_num_panorama) {
+                match (obs, sn_obs) {
+                    (Observation::Correct(_), ObservationSeqNum::Correct(_))
+                    | (Observation::None, ObservationSeqNum::None)
+                    | (Observation::Faulty, ObservationSeqNum::Faulty) => {}
+                    (_, _) => return Err(UnitError::PanoramaMismatch(vidx)),
+                }
+            }
         }
         Ok(())
     }
@@ -801,6 +922,15 @@ impl<C: Context> State<C> {
             || wunit.timestamp < self.params.start_timestamp()
         {
             return Err(UnitError::Timestamps);
+        }
+        for ((vidx, obs), seq_obs) in panorama.enumerate().zip(&wunit.seq_num_panorama) {
+            match (obs, seq_obs) {
+                (Observation::Faulty, ObservationSeqNum::Faulty)
+                | (Observation::None, ObservationSeqNum::None) => {}
+                (Observation::Correct(hash), ObservationSeqNum::Correct(seq_number))
+                    if self.unit(hash).seq_number == *seq_number => {}
+                (_, _) => return Err(UnitError::PanoramaMismatch(vidx)),
+            }
         }
         if wunit.seq_number != panorama.next_seq_num(self, creator) {
             return Err(UnitError::SequenceNumber);

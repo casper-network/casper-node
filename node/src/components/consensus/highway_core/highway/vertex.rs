@@ -10,7 +10,7 @@ use crate::{
             evidence::Evidence,
             highway::{PingError, VertexError},
             state::{self, Panorama},
-            validators::{ValidatorIndex, Validators},
+            validators::{ValidatorIndex, ValidatorMap, Validators},
         },
         traits::{Context, ValidatorSecret},
     },
@@ -43,6 +43,7 @@ impl<C: Context> Dependency<C> {
     pub(crate) fn is_unit(&self) -> bool {
         matches!(self, Dependency::Unit(_))
     }
+
     /// Returns `true` if both refer to the same vertex, even if they differ in whether they
     /// include the panorama.
     pub(crate) fn matches(&self, other: &Dependency<C>) -> bool {
@@ -97,6 +98,7 @@ mod serde_unit_with_panorama {
         Ok((swunit, panorama))
     }
 }
+
 impl<C: Context> Vertex<C> {
     /// Returns the consensus value mentioned in this vertex, if any.
     ///
@@ -260,6 +262,41 @@ impl<'de, C: Context> Deserialize<'de> for HashedWireUnit<C> {
     }
 }
 
+/// An entry in a sequence number-based panorama.
+#[derive(Debug, Clone, DataSize, Eq, PartialEq, Hash)]
+pub(crate) enum ObservationSeqNum {
+    Correct(u64),
+    Faulty,
+    None,
+}
+
+impl ObservationSeqNum {
+    pub(crate) fn is_correct(&self) -> bool {
+        matches!(self, ObservationSeqNum::Correct(_))
+    }
+}
+
+impl Serialize for ObservationSeqNum {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            ObservationSeqNum::Correct(seq_num) => seq_num.saturating_add(1),
+            ObservationSeqNum::Faulty => u64::MAX,
+            ObservationSeqNum::None => 0,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ObservationSeqNum {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match u64::deserialize(deserializer)? {
+            0 => ObservationSeqNum::None,
+            u64::MAX => ObservationSeqNum::Faulty,
+            sn_plus_1 => ObservationSeqNum::Correct(sn_plus_1.saturating_sub(1)),
+        })
+    }
+}
+
 /// A unit as it is sent over the wire, possibly containing a new block.
 #[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
@@ -270,7 +307,7 @@ pub(crate) struct WireUnit<C>
 where
     C: Context,
 {
-    pub(crate) panorama: Panorama<C>,
+    pub(crate) seq_num_panorama: ValidatorMap<ObservationSeqNum>,
     pub(crate) panorama_hash: C::Hash,
     pub(crate) previous: Option<C::Hash>,
     pub(crate) creator: ValidatorIndex,
@@ -434,5 +471,24 @@ impl<C: Context> Ping<C> {
     fn hash(creator: ValidatorIndex, timestamp: Timestamp, instance_id: C::InstanceId) -> C::Hash {
         let bytes = bincode::serialize(&(creator, timestamp, instance_id)).expect("serialize Ping");
         <C as Context>::hash(&bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_observation_seq_num() {
+        fn test_roundtrip(obs: ObservationSeqNum) {
+            let serialized = bincode::serialize(&obs).expect("serialize");
+            let deserialized = bincode::deserialize(&serialized).expect("deserialize");
+            assert_eq!(obs, deserialized);
+        }
+
+        test_roundtrip(ObservationSeqNum::None);
+        test_roundtrip(ObservationSeqNum::Faulty);
+        test_roundtrip(ObservationSeqNum::Correct(0));
+        test_roundtrip(ObservationSeqNum::Correct(10));
     }
 }
