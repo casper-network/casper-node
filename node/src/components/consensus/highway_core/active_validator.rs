@@ -779,9 +779,11 @@ mod tests {
             let effects = validator.propose(cv, block_context, &self.state, self.instance_id);
 
             // Add the new unit to the state.
-            let (proposal_wunit, _panorama) = unwrap_single(&effects).unwrap_unit();
+            let (proposal_wunit, panorama) = unwrap_single(&effects).unwrap_unit();
             let prop_hash = proposal_wunit.hash();
-            self.state.add_unit(proposal_wunit.clone()).unwrap();
+            self.state
+                .add_unit(proposal_wunit.clone(), panorama)
+                .unwrap();
             let effects = validator.on_new_unit(
                 &prop_hash,
                 proposal_timestamp + 1.into(),
@@ -846,8 +848,8 @@ mod tests {
                 .collect();
             match *new_units {
                 [] => (),
-                [(unit, _panorama)] => {
-                    let _ = self.state.add_unit(unit.clone()).unwrap();
+                [(unit, panorama)] => {
+                    let _ = self.state.add_unit(unit.clone(), panorama.clone()).unwrap();
                 }
                 _ => panic!("Expected at most one unit to be added: {:?}", new_units),
             }
@@ -969,6 +971,8 @@ mod tests {
             let a2 = add_unit!(state, ALICE, None; a1.hash())?;
             state.wire_unit(&a2, instance_id).unwrap()
         };
+        let a0_panorama = state.unit(&a0.hash()).panorama.clone();
+        let a1_panorama = state.unit(&a1.hash()).panorama.clone();
         let a2_panorama = state.unit(&a2.hash()).panorama.clone();
         // Clean state. We want Alice to synchronize first.
         state.retain_evidence_only();
@@ -1004,10 +1008,14 @@ mod tests {
         };
 
         // Alice has to synchronize up until `a2` (including) before she starts proposing.
-        for unit in vec![a0, a1, a2.clone()] {
+        for (unit, panorama) in vec![
+            (a0, a0_panorama),
+            (a1, a1_panorama),
+            (a2.clone(), a2_panorama),
+        ] {
             next_proposal_timer =
                 assert_no_proposal(&mut alice, &state, instance_id, next_proposal_timer);
-            state.add_unit(unit)?;
+            state.add_unit(unit, panorama)?;
         }
 
         // After synchronizing the protocol state up until `last_own_unit`, Alice can now propose a

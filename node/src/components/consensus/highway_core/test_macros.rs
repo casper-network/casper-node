@@ -62,7 +62,7 @@ macro_rules! add_unit {
             }
         }
         let wunit = WireUnit {
-            panorama,
+            panorama: panorama.clone(),
             creator,
             instance_id: TEST_INSTANCE_ID,
             value,
@@ -74,7 +74,7 @@ macro_rules! add_unit {
         let hwunit = wunit.into_hashed();
         let hash = hwunit.hash();
         let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0));
-        $state.add_unit(swunit).map(|()| hash)
+        $state.add_unit(swunit, panorama).map(|()| hash)
     }};
     ($state: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
         add_unit!($state, $creator, $time, $round_exp, $val; $($obs),*; std::collections::BTreeSet::new())
@@ -90,7 +90,7 @@ macro_rules! add_unit {
         let panorama = panorama!($($obs),*);
         let seq_number = panorama.next_seq_num(&$state, creator);
         let wunit = WireUnit {
-            panorama,
+            panorama: panorama.clone(),
             creator,
             instance_id: TEST_INSTANCE_ID,
             value: ($val).into(),
@@ -102,7 +102,7 @@ macro_rules! add_unit {
         let hwunit = wunit.into_hashed();
         let hash = hwunit.hash();
         let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0));
-        $state.add_unit(swunit).map(|()| hash)
+        $state.add_unit(swunit, panorama).map(|()| hash)
     }};
 }
 
