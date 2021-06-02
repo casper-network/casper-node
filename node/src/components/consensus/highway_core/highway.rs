@@ -337,7 +337,18 @@ impl<C: Context> Highway<C> {
     /// Returns whether we have a vertex that satisfies the dependency.
     pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
         match dependency {
-            Dependency::Unit(hash) => self.state.has_unit(hash),
+            Dependency::Unit(hash) | Dependency::UnitWithPanorama(hash) => {
+                self.state.has_unit(hash)
+            }
+            Dependency::UnitBySeqNum(seq_num, vidx, hash) => {
+                self.validators.id(*vidx).is_some()
+                    && self
+                        .state
+                        .maybe_unit(hash)
+                        .and_then(|unit| unit.panorama[*vidx].correct())
+                        .and_then(|hash| self.state.find_in_swimlane(hash, *seq_num))
+                        .is_some()
+            }
             Dependency::Evidence(idx) => self.state.is_faulty(*idx),
             Dependency::Endorsement(hash) => self.state.is_endorsed(hash),
             Dependency::Ping(_, _) => false, // We don't store signatures; nothing depends on pings.
@@ -354,6 +365,23 @@ impl<C: Context> Highway<C> {
                 None => GetDepOutcome::None,
                 Some(swunit) => GetDepOutcome::Vertex(Vertex::Unit(swunit)),
             },
+            Dependency::UnitWithPanorama(hash) => self
+                .state
+                .wire_unit(hash, self.instance_id)
+                .map_or(GetDepOutcome::None, |swunit| {
+                    // TODO: Return Vertex::UnitWithPanorama.
+                    GetDepOutcome::Vertex(Vertex::Unit(swunit))
+                }),
+            Dependency::UnitBySeqNum(seq_num, vidx, hash) => self
+                .validators
+                .id(*vidx)
+                .and_then(|_| self.state.maybe_unit(hash))
+                .and_then(|unit| unit.panorama[*vidx].correct())
+                .and_then(|hash| self.state.find_in_swimlane(hash, *seq_num))
+                .and_then(|hash| self.state.wire_unit(hash, self.instance_id))
+                .map_or(GetDepOutcome::None, |wunit| {
+                    GetDepOutcome::Vertex(Vertex::Unit(wunit))
+                }),
             Dependency::Evidence(idx) => match self.state.maybe_fault(*idx) {
                 None | Some(Fault::Banned) => GetDepOutcome::None,
                 Some(Fault::Direct(ev)) => GetDepOutcome::Vertex(Vertex::Evidence(ev.clone())),
