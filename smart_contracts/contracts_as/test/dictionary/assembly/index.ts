@@ -25,6 +25,7 @@ const DEFAULT_DICTIONARY_NAME = "Default Key";
 const DEFAULT_DICTIONARY_VALUE = "Default Value";
 const ACCESS_KEY_NAME = "access_key";
 const DICTIONARY_REF = "new_dictionary";
+const MALICIOUS_KEY_NAME = "invalid dictionary name";
 
 function getDictionaryURef(): URef {
   let key = CL.getKey(DICTIONARY_NAME);
@@ -83,6 +84,16 @@ export function share_w(): void {
 
 
 export function call(): void {
+  if (CL.hasKey(MALICIOUS_KEY_NAME)) {
+    unreachable();
+    return;
+  }
+  newDictionary(MALICIOUS_KEY_NAME);
+  if (!CL.hasKey(MALICIOUS_KEY_NAME)) {
+    unreachable();
+    return;
+  }
+
   let entryPoints = new CL.EntryPoints();
 
   let entryPointModifyWrite = new CL.EntryPoint("modify_write", new Array(), new CLType(CLTypeTag.Unit), new CL.PublicAccess(), CL.EntryPointType.Contract);

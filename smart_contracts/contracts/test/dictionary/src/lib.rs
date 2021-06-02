@@ -28,6 +28,7 @@ const CONTRACT_PACKAGE_HASH_NAME: &str = "package_hash_name";
 pub const DEFAULT_DICTIONARY_NAME: &str = "Default Key";
 pub const DEFAULT_DICTIONARY_VALUE: &str = "Default Value";
 pub const DICTIONARY_REF: &str = "new_dictionary";
+pub const MALICIOUS_KEY_NAME: &str = "invalid dictionary name";
 
 #[no_mangle]
 fn modify_write() {
@@ -76,6 +77,15 @@ fn share_w() {
 }
 
 pub fn delegate() {
+    // Empty key name is invalid
+    assert!(storage::new_dictionary("").is_err());
+    // Assert that we don't have this key yet
+    assert!(!runtime::has_key(MALICIOUS_KEY_NAME));
+    // Create and put a new dictionary in named keys
+    storage::new_dictionary(MALICIOUS_KEY_NAME).unwrap();
+    // Can't do it twice
+    assert!(storage::new_dictionary(MALICIOUS_KEY_NAME).is_err());
+
     let mut entry_points = EntryPoints::new();
     entry_points.add_entry_point(EntryPoint::new(
         MODIFY_WRITE_ENTRYPOINT,

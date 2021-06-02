@@ -14,7 +14,11 @@ import * as CL from "./";
  * @category Storage
  * @returns Returns newly provisioned [[URef]]
  */
-export function newDictionary(key_name: String): URef {
+export function newDictionary(keyName: String): URef {
+    if (keyName.length == 0 || CL.hasKey(keyName)) {
+        Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
+        return <URef>unreachable();
+    }
     let outputSize = new Uint32Array(1);
     let ret = externals.casper_new_dictionary(outputSize.dataStart);
     const error = Error.fromResult(ret);
@@ -25,7 +29,7 @@ export function newDictionary(key_name: String): URef {
     let urefBytes = readHostBuffer(outputSize[0]);
     const uref = URef.fromBytes(urefBytes).unwrap();
     const key = Key.fromURef(uref);
-    CL.putKey(key_name, key);
+    CL.putKey(keyName, key);
     return uref;
 }
 

@@ -46,6 +46,14 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
+
+    assert!(account
+        .named_keys()
+        .contains_key(dictionary::MALICIOUS_KEY_NAME));
+    assert!(account
+        .named_keys()
+        .contains_key(dictionary::DICTIONARY_REF));
+
     let contract_hash = account
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
