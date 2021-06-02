@@ -252,11 +252,12 @@ impl Storage {
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         should_check_integrity: bool,
+        network_name: &String,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
         // Create the database directory.
-        let root = cfg.with_dir(config.path.clone());
+        let root = cfg.with_dir(config.path.clone()).join(network_name);
         if !root.exists() {
             fs::create_dir_all(&root)
                 .map_err(|err| Error::CreateDatabaseDirectory(root.clone(), err))?;
