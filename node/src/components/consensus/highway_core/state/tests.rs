@@ -183,6 +183,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let mut wunit = WireUnit {
         panorama: panorama.clone(),
         panorama_hash,
+        previous: Some(b1),
         creator: BOB,
         instance_id: TEST_INSTANCE_ID,
         value: None,

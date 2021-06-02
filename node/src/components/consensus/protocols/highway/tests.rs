@@ -147,6 +147,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         panorama_hash,
+        previous: None,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: None,
@@ -201,6 +202,7 @@ fn send_a_valid_wire_unit() {
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         panorama_hash,
+        previous: None,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: Some(Arc::new(BlockPayload::new(vec![], vec![], vec![], false))),
@@ -268,6 +270,7 @@ fn detect_doppelganger() {
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         panorama_hash,
+        previous: None,
         creator,
         instance_id,
         value: Some(value),

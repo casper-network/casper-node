@@ -433,12 +433,14 @@ impl<C: Context> ActiveValidator<C> {
             );
             return None;
         }
+        let previous = panorama[self.vidx].correct().cloned();
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
         let panorama_hash = panorama.hash();
         let hwunit = WireUnit {
             panorama: panorama.clone(),
             panorama_hash,
+            previous,
             creator: self.vidx,
             instance_id,
             value,
