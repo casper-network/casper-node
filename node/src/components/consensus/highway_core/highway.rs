@@ -131,7 +131,7 @@ pub(crate) enum GetDepOutcome<C: Context> {
     /// We don't have this dependency.
     None,
     /// This vertex satisfies the dependency.
-    Vertex(ValidVertex<C>),
+    Vertex(Vertex<C>),
     /// The dependency must be satisfied by providing evidence against this faulty validator, but
     /// this `Highway` instance does not have direct evidence.
     Evidence(C::ValidatorId),
@@ -352,13 +352,11 @@ impl<C: Context> Highway<C> {
         match dependency {
             Dependency::Unit(hash) => match self.state.wire_unit(hash, self.instance_id) {
                 None => GetDepOutcome::None,
-                Some(unit) => GetDepOutcome::Vertex(ValidVertex(Vertex::Unit(unit))),
+                Some(swunit) => GetDepOutcome::Vertex(Vertex::Unit(swunit)),
             },
             Dependency::Evidence(idx) => match self.state.maybe_fault(*idx) {
                 None | Some(Fault::Banned) => GetDepOutcome::None,
-                Some(Fault::Direct(ev)) => {
-                    GetDepOutcome::Vertex(ValidVertex(Vertex::Evidence(ev.clone())))
-                }
+                Some(Fault::Direct(ev)) => GetDepOutcome::Vertex(Vertex::Evidence(ev.clone())),
                 Some(Fault::Indirect) => {
                     let vid = self.validators.id(*idx).expect("missing validator").clone();
                     GetDepOutcome::Evidence(vid)
@@ -366,7 +364,7 @@ impl<C: Context> Highway<C> {
             },
             Dependency::Endorsement(hash) => match self.state.maybe_endorsements(hash) {
                 None => GetDepOutcome::None,
-                Some(e) => GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(e))),
+                Some(e) => GetDepOutcome::Vertex(Vertex::Endorsements(e)),
             },
             Dependency::Ping(_, _) => GetDepOutcome::None, // We don't store ping signatures.
         }
