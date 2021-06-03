@@ -1229,7 +1229,7 @@ fn should_actually_move_specified_files() {
     let harness = ComponentHarness::default();
     let cfg = new_config(&harness);
     let file_names = ["temp1.txt", "temp2.txt", "temp3.txt"];
-    let root = cfg.path.clone();
+    let root = cfg.path;
     let subdir = root.join("test");
     let src_path1 = root.join(file_names[0]);
     let src_path2 = root.join(file_names[1]);
