@@ -70,7 +70,7 @@ function log_error ()
 #######################################
 # Step logging helper..
 #######################################
-function log_step() 
+function log_step_upgrades()
 {
     local STEP_ID=${1}
     local MSG=${2}

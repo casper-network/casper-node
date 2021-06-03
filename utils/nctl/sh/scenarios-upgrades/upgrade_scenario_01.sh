@@ -50,7 +50,7 @@ function _step_01()
 {
     local STAGE_ID=${1}
 
-    log_step 1 "starting network from stage ($STAGE_ID)"
+    log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
@@ -59,7 +59,7 @@ function _step_01()
 # Step 02: Await era-id >= 1.
 function _step_02()
 {
-    log_step 2 "awaiting genesis era completion"
+    log_step_upgrades 2 "awaiting genesis era completion"
 
     sleep 60.0
     await_until_era_n 1
@@ -68,7 +68,7 @@ function _step_02()
 # Step 03: Populate global state -> native + wasm transfers.
 function _step_03()
 {
-    log_step 3 "dispatching deploys to populate global state"
+    log_step_upgrades 3 "dispatching deploys to populate global state"
 
     log "... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
@@ -82,7 +82,7 @@ function _step_03()
 # Step 04: Await era-id += 1.
 function _step_04()
 {
-    log_step 4 "awaiting next era"
+    log_step_upgrades 4 "awaiting next era"
 
     await_n_eras 1
 }
@@ -92,7 +92,7 @@ function _step_05()
 {
     local STAGE_ID=${1}
 
-    log_step 5 "upgrading network from stage ($STAGE_ID)"
+    log_step_upgrades 5 "upgrading network from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
@@ -110,7 +110,7 @@ function _step_06()
     local HEIGHT_2
     local NODE_ID
 
-    log_step 6 "asserting node upgrades"
+    log_step_upgrades 6 "asserting node upgrades"
 
     # Assert no nodes have stopped.
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
@@ -158,7 +158,7 @@ function _step_07()
     local NODE_ID
     local TRUSTED_HASH
 
-    log_step 7 "joining passive nodes"
+    log_step_upgrades 7 "joining passive nodes"
 
     log "... submitting auction bids"
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
@@ -203,7 +203,7 @@ function _step_08()
     local NX_STATE_ROOT_HASH
     local RETRY_COUNT
 
-    log_step 8 "asserting joined nodes are running upgrade"
+    log_step_upgrades 8 "asserting joined nodes are running upgrade"
 
     # Assert all nodes are live.
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
@@ -271,7 +271,7 @@ function _step_08()
 # Step 09: Terminate.
 function _step_09()
 {
-    log_step 7 "test successful - tidying up"
+    log_step_upgrades 7 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
