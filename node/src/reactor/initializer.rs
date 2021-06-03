@@ -203,7 +203,7 @@ impl Reactor {
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.initial_block_header(),
             chainspec_loader.chainspec().protocol_config.version,
-            storage_config,
+            storage.root_path(),
             &config.value().contract_runtime,
             registry,
         )?;

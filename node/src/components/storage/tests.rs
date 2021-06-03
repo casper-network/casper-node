@@ -1171,7 +1171,7 @@ fn should_create_subdir_named_after_network() {
     let expected_path = cfg.path.join("test");
 
     assert!(expected_path.exists());
-    assert_eq!(expected_path, storage.root);
+    assert_eq!(expected_path, storage.root_path());
 }
 
 #[test]
