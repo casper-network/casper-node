@@ -79,8 +79,7 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Returns whether dependency exists in the pending vertices collection.
     fn contains_dependency(&self, d: &Dependency<C>) -> bool {
         self.0.keys().any(|pvv| match (&pvv.inner().id(), d) {
-            (Dependency::Unit(hash0), Dependency::UnitWithPanorama(hash1))
-            | (Dependency::UnitWithPanorama(hash0), Dependency::Unit(hash1)) => hash0 == hash1,
+            (Dependency::UnitWithPanorama(hash0), Dependency::Unit(hash1)) => hash0 == hash1,
             (dep0, dep1) => dep0 == dep1,
         })
     }

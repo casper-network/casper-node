@@ -283,15 +283,22 @@ fn transitive_proposal_dependency() {
 
     // We use round exponent 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
     //
-    // time:  0x00 0x0A 0x1A 0x2A 0x3A
+    // time:  0x00 0x0A 0x1A 0x2A
     //
-    // Carol   c0 — c1
-    //                \
-    // Bob             — b0
+    //              a0'
+    // Alice      /
+    //           /  a0 ——
+    //          / /       \
+    // Carol   c0 — c1     \
+    //                \     \
+    // Bob             — b0 — b1
 
     let c0 = add_unit!(state, CAROL, 0x00, 4u8, 0xA; N, N, N).unwrap();
     let c1 = add_unit!(state, CAROL, 0x0A, 4u8, None; N, N, c0).unwrap();
-    let b0 = add_unit!(state, BOB, 0x2A, 4u8, None; N, N, c1).unwrap();
+    let a0 = add_unit!(state, ALICE, 0x0A, 4u8, None; N, N, c0).unwrap();
+    let a0_prime = add_unit!(state, ALICE, 0x0A, 8u8, None; N, N, c0).unwrap();
+    let b0 = add_unit!(state, BOB, 0x1A, 4u8, None; N, N, c1).unwrap();
+    let b1 = add_unit!(state, BOB, 0x2A, 4u8, None; a0, b0, c1).unwrap();
 
     // Returns the WireUnit with the specified hash.
     let unit = |hash: u64| Vertex::Unit(state.wire_unit(&hash, TEST_INSTANCE_ID).unwrap());
@@ -321,7 +328,7 @@ fn transitive_proposal_dependency() {
         TEST_INSTANCE_ID,
     );
 
-    let highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
+    let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
     let now = 0x20.into();
 
     assert!(matches!(
@@ -369,7 +376,58 @@ fn transitive_proposal_dependency() {
     assert_eq!(pv.vertex(), &unit(c0));
     // `b0` depends on `c1` and `c0` transitively but `c0`'s deploys are being downloaded,
     // so we don't re-request it.
-    assert!(outcomes.is_empty())
+    assert!(outcomes.is_empty());
+
+    let vv_c0 = highway.validate_vertex(pvv(c0)).expect("c0 is valid");
+    highway.add_valid_vertex(vv_c0, now);
+    let vv_c1 = highway.validate_vertex(pvv(c1)).expect("c1 is valid");
+    highway.add_valid_vertex(vv_c1, now);
+    let vv_b0 = highway.validate_vertex(pvv(b0)).expect("b0 is valid");
+    highway.add_valid_vertex(vv_b0, now);
+    let vv_a0p = highway
+        .validate_vertex(pvv(a0_prime))
+        .expect("a0' is valid");
+    highway.add_valid_vertex(vv_a0p, now);
+
+    // We added the wrong fork of Alice. We'll fail to compute the panorama of b1 and request it.
+    assert!(matches!(
+        *sync.schedule_add_vertex(peer0, pvv(b1), now),
+        [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+    ));
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
+    assert!(pv.is_none());
+    assert_targeted_message(
+        &unwrap_single(outcomes),
+        &peer0,
+        HighwayMessage::RequestDependency(Dependency::UnitWithPanorama(b1)),
+    );
+
+    // Once we received the full panorama, we request a0 by hash.
+    assert!(matches!(
+        *sync.schedule_add_vertex(peer0, pvv_with_panorama(b1), now),
+        [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+    ));
+    assert!(sync.remove_satisfied_deps(&highway).is_empty());
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
+    assert!(pv.is_none());
+    assert_targeted_message(
+        &unwrap_single(outcomes),
+        &peer0,
+        HighwayMessage::RequestDependency(Dependency::Unit(a0)),
+    );
+
+    // With a0 added, we can finally add b1 as well.
+    let vv_a0 = highway.validate_vertex(pvv(a0)).expect("a0 is valid");
+    highway.add_valid_vertex(vv_a0, now);
+    assert!(matches!(
+        *sync.remove_satisfied_deps(&highway),
+        [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+    ));
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
+    let pv = maybe_pv.unwrap();
+    assert_eq!(pv.sender(), &peer0);
+    assert_eq!(pv.vertex(), &unit_with_panorama(b1));
+    assert!(outcomes.is_empty());
 }
 
 fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
