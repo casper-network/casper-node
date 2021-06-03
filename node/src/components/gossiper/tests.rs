@@ -187,7 +187,7 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             false,
-            &String::from("test"),
+            "test",
         )
         .unwrap();
 

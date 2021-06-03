@@ -52,7 +52,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         false,
-        &String::from("test"),
+        "test",
     )
     .expect("could not create storage component fixture")
 }
@@ -74,7 +74,7 @@ fn storage_fixture_with_hard_reset(
         Some(reset_era_id),
         ProtocolVersion::from_parts(1, 1, 0),
         false,
-        &String::from("test"),
+        "test",
     )
     .expect("could not create storage component fixture")
 }
@@ -1152,15 +1152,16 @@ fn should_create_subdir_named_after_network() {
     let harness = ComponentHarness::default();
     let cfg = new_config(&harness);
 
-    let _storage = Storage::new(
+    let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         false,
-        &String::from("test"),
+        "test",
     )
     .unwrap();
 
-    let expected_path = cfg.path.join(String::from("test"));
+    let expected_path = cfg.path.join("test");
     assert!(expected_path.exists());
+    assert_eq!(expected_path, storage.root);
 }

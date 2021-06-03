@@ -166,6 +166,10 @@ pub enum Error {
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
+
+    /// filesystem error while trying to move file.
+    #[error("unable to move file {0} to {1}")]
+    UnableToMoveFile(PathBuf, PathBuf),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -257,11 +261,26 @@ impl Storage {
         let config = cfg.value();
 
         // Create the database directory.
-        let root = cfg.with_dir(config.path.clone()).join(network_name);
-        if !root.exists() {
-            fs::create_dir_all(&root)
-                .map_err(|err| Error::CreateDatabaseDirectory(root.clone(), err))?;
+        let mut root = cfg.with_dir(config.path.clone());
+        let network_subdir = root.join(network_name);
+
+        if !network_subdir.exists() {
+            fs::create_dir_all(&network_subdir)
+                .map_err(|err| Error::CreateDatabaseDirectory(network_subdir.clone(), err))?;
         }
+
+        let lmdb_files = [
+            "data.lmdb",
+            "data.lmdb-lock",
+            "storage.lmdb",
+            "storage.lmdb-lock",
+        ];
+
+        if should_move_storage_files_to_network_subdir(&root, &lmdb_files) {
+            move_storage_files_to_network_subdir(&root, &network_subdir, &lmdb_files)?;
+        }
+
+        root = network_subdir;
 
         // Calculate the upper bound for the memory map that is potentially used.
         let total_size = config
@@ -1150,6 +1169,29 @@ fn insert_to_deploy_index(
     {
         deploy_hash_index.insert(*hash, block_hash);
     }
+
+    Ok(())
+}
+
+fn should_move_storage_files_to_network_subdir(root: &PathBuf, file_names: &[&str]) -> bool {
+    file_names
+        .iter()
+        .map(|file_name| root.join(file_name))
+        .all(|file_path| file_path.exists())
+}
+
+fn move_storage_files_to_network_subdir(
+    root: &PathBuf,
+    subdir: &PathBuf,
+    file_names: &[&str],
+) -> Result<(), Error> {
+    file_names
+        .iter()
+        .map(|file_name| (root.join(file_name), subdir.join(file_name)))
+        .map(|(src, dest)| {
+            fs::rename(src.clone(), dest.clone()).map_err(|_| Error::UnableToMoveFile(src, dest))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
 
     Ok(())
 }
