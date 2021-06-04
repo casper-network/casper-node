@@ -1175,7 +1175,7 @@ fn should_create_subdir_named_after_network() {
 }
 
 #[test]
-fn should_not_move_nonexistent_files() {
+fn should_not_try_to_move_nonexistent_files() {
     let harness = ComponentHarness::default();
     let cfg = new_config(&harness);
     let file_names = ["temp.txt"];
@@ -1240,8 +1240,7 @@ fn should_actually_move_specified_files() {
 
     // Storage will create this in the constructor,
     // doing this manually since we're not calling the constructor in this test.
-    fs::create_dir(root.clone()).unwrap();
-    fs::create_dir(subdir.clone()).unwrap();
+    fs::create_dir_all(subdir.clone()).unwrap();
 
     // create empty files for testing.
     File::create(src_path1.clone()).unwrap();

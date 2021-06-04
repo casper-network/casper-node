@@ -116,6 +116,13 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
+const LMDB_FILES: [&str; 4] = [
+    "data.lmdb",
+    "data.lmdb-lock",
+    "storage.lmdb",
+    "storage.lmdb-lock",
+];
+
 #[derive(Debug, From, Serialize)]
 #[repr(u8)]
 pub enum Event {
@@ -276,15 +283,8 @@ impl Storage {
                 .map_err(|err| Error::CreateDatabaseDirectory(network_subdir.clone(), err))?;
         }
 
-        let lmdb_files = [
-            "data.lmdb",
-            "data.lmdb-lock",
-            "storage.lmdb",
-            "storage.lmdb-lock",
-        ];
-
-        if should_move_storage_files_to_network_subdir(&root, &lmdb_files) {
-            move_storage_files_to_network_subdir(&root, &network_subdir, &lmdb_files)?;
+        if should_move_storage_files_to_network_subdir(&root, &LMDB_FILES) {
+            move_storage_files_to_network_subdir(&root, &network_subdir, &LMDB_FILES)?;
         }
 
         root = network_subdir;
@@ -1194,14 +1194,13 @@ fn move_storage_files_to_network_subdir(
 ) -> Result<(), Error> {
     file_names
         .iter()
-        .map(|file_name| (root.join(file_name), subdir.join(file_name)))
-        .map(|(source_path, dest_path)| {
-            fs::rename(source_path.clone(), dest_path.clone()).map_err(|original_error| {
-                Error::UnableToMoveFile {
-                    source_path,
-                    dest_path,
-                    original_error,
-                }
+        .map(|file_name| {
+            let source_path = root.join(file_name);
+            let dest_path = subdir.join(file_name);
+            fs::rename(&source_path, &dest_path).map_err(|original_error| Error::UnableToMoveFile {
+                source_path,
+                dest_path,
+                original_error,
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
