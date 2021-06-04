@@ -168,8 +168,15 @@ pub enum Error {
     InternalStorage(#[from] LmdbExtError),
 
     /// filesystem error while trying to move file.
-    #[error("unable to move file {0} to {1}")]
-    UnableToMoveFile(PathBuf, PathBuf),
+    #[error("unable to move file {source_path} to {dest_path}: {original_error}")]
+    UnableToMoveFile {
+        /// the path to the file that should have been moved.
+        source_path: PathBuf,
+        /// the path where the file should have been moved to.
+        dest_path: PathBuf,
+        /// the original io::Error from fs::rename.
+        original_error: io::Error,
+    },
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -1188,8 +1195,14 @@ fn move_storage_files_to_network_subdir(
     file_names
         .iter()
         .map(|file_name| (root.join(file_name), subdir.join(file_name)))
-        .map(|(src, dest)| {
-            fs::rename(src.clone(), dest.clone()).map_err(|_| Error::UnableToMoveFile(src, dest))
+        .map(|(source_path, dest_path)| {
+            fs::rename(source_path.clone(), dest_path.clone()).map_err(|original_error| {
+                Error::UnableToMoveFile {
+                    source_path,
+                    dest_path,
+                    original_error,
+                }
+            })
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
