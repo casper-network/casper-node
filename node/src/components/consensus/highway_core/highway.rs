@@ -18,7 +18,7 @@ use crate::{
         highway_core::{
             active_validator::{ActiveValidator, Effect},
             evidence::EvidenceError,
-            state::{Fault, Panorama, State, UnitError, Weight},
+            state::{Fault, Observation, Panorama, State, UnitError, Weight},
             validators::{Validator, Validators},
         },
         traits::Context,
@@ -373,23 +373,41 @@ impl<C: Context> Highway<C> {
     }
 
     /// Returns whether we have a vertex that satisfies the dependency.
-    pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
+    ///
+    /// If it's ambiguous, i.e. the dependency is specified by sequence number and we don't have
+    /// the citing unit, `None` is returned.
+    pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> Option<bool> {
         match dependency {
             Dependency::Unit(hash) | Dependency::UnitWithPanorama(hash) => {
-                self.state.has_unit(hash)
+                Some(self.state.has_unit(hash))
             }
             Dependency::UnitBySeqNum(seq_num, vidx, hash) => {
-                self.validators.id(*vidx).is_some()
-                    && self
-                        .state
-                        .maybe_unit(hash)
-                        .and_then(|unit| unit.panorama[*vidx].correct())
+                if self.validators.id(*vidx).is_none() {
+                    return Some(false);
+                }
+                if let Some(unit) = self.state.maybe_unit(hash) {
+                    let result = unit.panorama[*vidx]
+                        .correct()
                         .and_then(|hash| self.state.find_in_swimlane(hash, *seq_num))
-                        .is_some()
+                        .is_some();
+                    return Some(result);
+                }
+                match self.state.panorama()[*vidx] {
+                    Observation::Faulty => None,
+                    Observation::None => Some(false),
+                    Observation::Correct(hash) => {
+                        if self.state.find_in_swimlane(&hash, *seq_num).is_none() {
+                            Some(false)
+                        } else {
+                            None
+                        }
+                    }
+                }
             }
-            Dependency::Evidence(idx) => self.state.is_faulty(*idx),
-            Dependency::Endorsement(hash) => self.state.is_endorsed(hash),
-            Dependency::Ping(_, _) => false, // We don't store signatures; nothing depends on pings.
+            Dependency::Evidence(idx) => Some(self.state.is_faulty(*idx)),
+            Dependency::Endorsement(hash) => Some(self.state.is_endorsed(hash)),
+            // We don't store signatures; nothing depends on pings.
+            Dependency::Ping(_, _) => Some(false),
         }
     }
 

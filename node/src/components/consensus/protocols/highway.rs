@@ -624,7 +624,7 @@ where
             Ok(HighwayMessage::NewVertex(v)) => {
                 let v_id = v.id();
                 // If we already have that vertex, do not process it.
-                if self.highway.has_dependency(&v_id) {
+                if self.highway.has_dependency(&v_id) == Some(true) {
                     return vec![];
                 }
                 let pvv = match self.pre_validate_vertex(v) {

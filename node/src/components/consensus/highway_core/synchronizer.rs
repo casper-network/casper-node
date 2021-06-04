@@ -316,7 +316,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         let satisfied_deps = self
             .vertices_awaiting_deps
             .keys()
-            .filter(|dep| highway.has_dependency(dep))
+            .filter(|dep| highway.has_dependency(dep) != Some(false))
             .cloned()
             .collect_vec();
         // Safe to unwrap: We know the keys exist. TODO: Replace with BTreeMap::retain once stable.
