@@ -328,7 +328,7 @@ where
 }
 
 /// Parameters required to negotiate a handshake.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct HandshakeParameters<'a> {
     /// Chain spec information.
     chain_info: &'a ChainInfo,
@@ -555,18 +555,28 @@ pub(super) async fn message_sender<P>(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use prometheus::Registry;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
     };
 
     use crate::{
-        components::small_network::{SmallNetworkIdentity, Transport},
+        components::{
+            networking_metrics::NetworkingMetrics,
+            small_network::{
+                chain_info::ChainInfo,
+                counting_format::{ConnectionId, Role},
+                framed, SmallNetworkIdentity, Transport,
+            },
+        },
         testing::init_logging,
         types::NodeId,
     };
 
-    use super::{server_setup_tls, tls_connect};
+    use super::{negotiate_handshake, server_setup_tls, tls_connect, HandshakeParameters};
 
     /// An established TLS connection pair.
     struct TlsConnectionPair {
@@ -574,6 +584,8 @@ mod tests {
         server_transport: Transport,
         /// Client end of the connection.
         client_transport: Transport,
+        /// The connection ID on both ends.
+        connection_id: ConnectionId,
     }
 
     /// Creates a established TLS connection pair using the same TLS setup that the node itself
@@ -633,9 +645,18 @@ mod tests {
 
         assert_eq!(peer_id_from_client_pov, server_id);
 
+        let connection_id_server =
+            ConnectionId::from_connection(server_transport.ssl(), server_id, client_id);
+        let connection_id_client =
+            ConnectionId::from_connection(client_transport.ssl(), client_id, server_id);
+
+        // Technically, these should always be the same, we are including an extra check here.
+        assert_eq!(connection_id_server, connection_id_client);
+
         TlsConnectionPair {
             server_transport,
             client_transport,
+            connection_id: connection_id_server,
         }
     }
 
@@ -664,5 +685,76 @@ mod tests {
             .expect("read failed");
 
         assert_eq!(recv_buffer, SHORT_MESSAGE);
+    }
+
+    #[tokio::test]
+    async fn can_handshake_with_itself() {
+        let TlsConnectionPair {
+            server_transport,
+            client_transport,
+            connection_id,
+        } = create_tls_connection_pair().await;
+
+        let server_public_addr = server_transport
+            .get_ref()
+            .local_addr()
+            .expect("failed to get server_addr");
+
+        let registry = Registry::new();
+        let metrics = Arc::new(NetworkingMetrics::new(&registry).expect("could not setup metrics"));
+
+        let mut server_framed = framed::<crate::protocol::Message>(
+            Arc::downgrade(&metrics),
+            connection_id,
+            server_transport,
+            Role::Listener,
+            10_000_000,
+        );
+
+        let mut client_framed = framed::<crate::protocol::Message>(
+            Arc::downgrade(&metrics),
+            connection_id,
+            client_transport,
+            Role::Listener,
+            10_000_000,
+        );
+
+        // RFC5737 address, as we are not running a client to connect back to.
+        let client_public_addr = "192.0.2.1:12345".parse().unwrap();
+
+        // Start the clients handshake negotation.
+        let client_handshake = tokio::spawn(async move {
+            let chain_info = ChainInfo::create_for_testing();
+            let handshake_parameters = HandshakeParameters {
+                chain_info: &chain_info,
+                public_addr: client_public_addr,
+                consensus_keys: None,
+                connection_id,
+            };
+
+            negotiate_handshake(handshake_parameters, &mut client_framed).await
+        });
+
+        // Perform the same on the server side.
+        let chain_info = ChainInfo::create_for_testing();
+        let handshake_parameters = HandshakeParameters {
+            chain_info: &chain_info,
+            public_addr: server_public_addr,
+            consensus_keys: None,
+            connection_id,
+        };
+        let (server_received_public_addr, server_received_public_key) =
+            negotiate_handshake(handshake_parameters, &mut server_framed)
+                .await
+                .expect("server handshake failed");
+        assert_eq!(server_received_public_addr, client_public_addr);
+        assert!(server_received_public_key.is_none());
+
+        let (client_received_public_addr, client_received_public_key) = client_handshake
+            .await
+            .expect("client handshake not joined")
+            .expect("client handshake failed");
+        assert_eq!(client_received_public_addr, server_public_addr);
+        assert!(client_received_public_key.is_none());
     }
 }
