@@ -1205,7 +1205,11 @@ fn should_move_storage_files_to_network_subdir(
     let should_move_files = files_found.len() == file_names.len();
 
     if !should_move_files && files_found.len() > 0 {
-        error!("missing storage files: {:?}", files_not_found);
+        // error!("missing storage files: {:?}", files_not_found);
+        error!(
+            "found storage files: {:?}, missing storage files: {:?}",
+            files_found, files_not_found
+        );
 
         return Err(Error::MissingStorageFiles {
             missing_files: files_not_found.clone(),
