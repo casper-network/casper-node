@@ -42,7 +42,7 @@ use crate::{
         metrics::ConsensusMetrics,
         traits::NodeIdT,
         ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
-        TimerId,
+        TimerId, ValidatorChange,
     },
     crypto::hash::Digest,
     effect::{
@@ -237,6 +237,17 @@ where
         }
     }
 
+    /// Returns a list of validator status changes, by public key.
+    pub(super) fn get_validator_info(&self) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
+        let mut result: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> = BTreeMap::new();
+        for ((_, era0), (era_id, era1)) in self.active_eras.iter().tuple_windows() {
+            for (pub_key, change) in ValidatorChange::era_changes(era0, era1) {
+                result.entry(pub_key).or_default().push((*era_id, change));
+            }
+        }
+        result
+    }
+
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let mut result = [0; Digest::LENGTH];
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
@@ -363,6 +374,7 @@ where
             start_time,
             start_height,
             newly_slashed,
+            inactive,
             slashed,
             validators,
         );

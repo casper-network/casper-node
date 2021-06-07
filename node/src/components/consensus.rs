@@ -13,6 +13,7 @@ mod protocols;
 #[cfg(test)]
 mod tests;
 mod traits;
+mod validator_change;
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -53,6 +54,7 @@ pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+pub(crate) use validator_change::ValidatorChange;
 
 #[cfg(test)]
 pub(crate) use era_supervisor::oldest_bonded_era;
@@ -339,6 +341,9 @@ where
             }
             Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 handling_es.status(responder)
+            }
+            Event::ConsensusRequest(ConsensusRequest::ValidatorInfo(responder)) => {
+                responder.respond(self.get_validator_info()).ignore()
             }
         }
     }

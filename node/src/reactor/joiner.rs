@@ -886,6 +886,10 @@ impl reactor::Reactor for Reactor {
                 // no consensus, respond with None
                 responder.respond(None).ignore()
             }
+            Event::ConsensusRequest(ConsensusRequest::ValidatorInfo(responder)) => {
+                // no consensus, respond with empty map
+                responder.respond(Default::default()).ignore()
+            }
         }
     }
 

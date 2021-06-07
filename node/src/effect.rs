@@ -104,7 +104,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1715,6 +1715,18 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ConsensusRequest>,
     {
         self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+            .await
+    }
+
+    /// Returns a list of validator status changes, by public key.
+    // TODO: Expose this via RPC.
+    pub(crate) async fn _get_consensus_validator_info(
+        self,
+    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(ConsensusRequest::ValidatorInfo, QueueKind::Regular)
             .await
     }
 
