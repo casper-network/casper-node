@@ -192,7 +192,7 @@ where
             chain_info: &self.chain_info,
             public_addr: self.public_addr,
             consensus_keys: self.consensus_keys.as_ref(),
-            connection_id: connection_id,
+            connection_id,
         }
     }
 }
@@ -341,8 +341,8 @@ struct HandshakeParameters<'a> {
 }
 
 /// Negotiates a connection handshake over the given transport.
-async fn negotiate_handshake<'a, P>(
-    parameters: HandshakeParameters<'a>,
+async fn negotiate_handshake<P>(
+    parameters: HandshakeParameters<'_>,
     transport: &mut FramedTransport<P>,
 ) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
 where
