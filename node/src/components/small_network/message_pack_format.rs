@@ -23,6 +23,8 @@ use super::Message;
 #[derive(Debug)]
 pub struct MessagePackFormat;
 
+// TODO: Fix settings for encoding/decoding.
+
 impl<P> Serializer<Arc<Message<P>>> for MessagePackFormat
 where
     Message<P>: Serialize,

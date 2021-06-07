@@ -521,8 +521,10 @@ where
             ConnectionError::TlsInitialization(_)
             | ConnectionError::TcpConnection(_)
             | ConnectionError::TlsHandshake(_)
+            | ConnectionError::HandshakeSerialization(_)
             | ConnectionError::HandshakeSend(_)
-            | ConnectionError::HandshakeRecv(_) => false,
+            | ConnectionError::HandshakeRecv(_)
+            | ConnectionError::HandshakeDeserialization(_) => false,
 
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate

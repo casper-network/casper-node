@@ -1,6 +1,7 @@
 //! Tasks run by the component.
 
 use std::{
+    convert::TryFrom,
     error::Error as StdError,
     fmt::Display,
     io,
@@ -23,6 +24,7 @@ use openssl::{
 use prometheus::IntGauge;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::{mpsc::UnboundedReceiver, watch},
 };
@@ -49,10 +51,16 @@ use crate::{
     types::NodeId,
 };
 
-// TODO: Constants need to be made configurable.
+// TODO: Some constants need to be made configurable.
 
 /// Maximum time allowed to send or receive a handshake.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Maximum size allowed for handshake.
+///
+/// Set to 128 KB which should be plenty. As the buffer for the handshake is pre-allocated, this
+/// constant should not be too large to avoid issues with resource exhaustion attacks.
+const HANDSHAKE_MAX_SIZE: u32 = 128 * 1024;
 
 /// Low-level TLS connection function.
 ///
@@ -129,7 +137,12 @@ where
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
+    match negotiate_handshake_using_wire_protocol(
+        context.handshake_parameters(connection_id),
+        &mut transport,
+    )
+    .await
+    {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -239,7 +252,12 @@ where
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
+    match negotiate_handshake_using_wire_protocol(
+        context.handshake_parameters(connection_id),
+        &mut transport,
+    )
+    .await
+    {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -339,8 +357,98 @@ struct HandshakeParameters<'a> {
     connection_id: ConnectionId,
 }
 
+/// Negotiates handshake.
+async fn negotiate_handshake(
+    parameters: HandshakeParameters<'_>,
+    transport: &mut Transport,
+) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError> {
+    // Serialize and send a handshake.
+
+    // Note: For legacy reasons, a handshake is encoded as a `Message` enum variant instead of its
+    // own type, which requires a payload type to be specified. We use `()` here, as we never expect
+    // to send or receive an actual payload.
+    let handshake = parameters.chain_info.create_handshake::<()>(
+        parameters.public_addr,
+        parameters.consensus_keys,
+        parameters.connection_id,
+    );
+
+    let handshake_serialized =
+        rmp_serde::to_vec(&handshake).map_err(ConnectionError::HandshakeSerialization)?;
+
+    io_timeout(HANDSHAKE_TIMEOUT, async {
+        let len = u32::try_from(handshake_serialized.len()).expect("handshake is too large?");
+        assert!(len < HANDSHAKE_MAX_SIZE);
+        transport.write_all(&len.to_be_bytes()).await?;
+        transport.write_all(&handshake_serialized).await
+    })
+    .await
+    .map_err(ConnectionError::HandshakeSend)?;
+
+    // Receive remote handshake and decode it.
+    let remote_handshake_raw = io_timeout(HANDSHAKE_TIMEOUT, async {
+        let mut len_raw = [0u8; 4];
+        transport.read_exact(&mut len_raw).await?;
+
+        let len = u32::from_be_bytes(len_raw);
+        if len > HANDSHAKE_MAX_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "advertised remote handshake size of {} exceeds limit of {}",
+                    len, HANDSHAKE_MAX_SIZE
+                ),
+            ));
+        }
+
+        let mut handshake_raw = Vec::new();
+        transport
+            .take(u64::from(len))
+            .read_to_end(&mut handshake_raw)
+            .await?;
+
+        Ok(handshake_raw)
+    })
+    .await
+    .map_err(ConnectionError::HandshakeRecv)?;
+
+    let remote_handshake: Message<()> = rmp_serde::from_read(io::Cursor::new(remote_handshake_raw))
+        .map_err(ConnectionError::HandshakeDeserialization)?;
+
+    // Now we can process it.
+    if let Message::Handshake {
+        network_name,
+        public_addr,
+        protocol_version,
+        consensus_certificate,
+    } = remote_handshake
+    {
+        debug!(%protocol_version, "handshake received");
+
+        // The handshake was valid, we can check the network name.
+        if network_name != parameters.chain_info.network_name {
+            return Err(ConnectionError::WrongNetwork(network_name));
+        }
+
+        let peer_consensus_public_key = consensus_certificate
+            .map(|cert| {
+                cert.validate(parameters.connection_id)
+                    .map_err(ConnectionError::InvalidConsensusCertificate)
+            })
+            .transpose()?;
+
+        Ok((public_addr, peer_consensus_public_key))
+    } else {
+        // Received a non-handshake, this is an error.
+        Err(ConnectionError::DidNotSendHandshake)
+    }
+}
+
 /// Negotiates a connection handshake over the given transport.
-async fn negotiate_handshake<P>(
+///
+/// This function uses the wire protocol to frame handshake messages and thus emulates the V1
+/// behavior of the node.
+async fn negotiate_handshake_using_wire_protocol<P>(
     parameters: HandshakeParameters<'_>,
     transport: &mut FramedTransport<P>,
 ) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
@@ -575,7 +683,9 @@ mod tests {
         types::NodeId,
     };
 
-    use super::{negotiate_handshake, server_setup_tls, tls_connect, HandshakeParameters};
+    use super::{
+        negotiate_handshake_using_wire_protocol, server_setup_tls, tls_connect, HandshakeParameters,
+    };
 
     /// An established TLS connection pair.
     struct TlsConnectionPair {
@@ -731,7 +841,7 @@ mod tests {
                 connection_id,
             };
 
-            negotiate_handshake(handshake_parameters, &mut client_framed).await
+            negotiate_handshake_using_wire_protocol(handshake_parameters, &mut client_framed).await
         });
 
         // Perform the same on the server side.
@@ -743,7 +853,7 @@ mod tests {
             connection_id,
         };
         let (server_received_public_addr, server_received_public_key) =
-            negotiate_handshake(handshake_parameters, &mut server_framed)
+            negotiate_handshake_using_wire_protocol(handshake_parameters, &mut server_framed)
                 .await
                 .expect("server handshake failed");
         assert_eq!(server_received_public_addr, client_public_addr);

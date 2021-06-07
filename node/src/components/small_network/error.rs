@@ -160,6 +160,13 @@ pub enum ConnectionError {
     /// TLS validation error.
     #[error("TLS validation error of peer certificate")]
     PeerCertificateInvalid(#[source] ValidationError),
+    /// Failed to serialize handshake.
+    #[error("handshake serialization failed")]
+    HandshakeSerialization(
+        #[serde(skip_serializing)]
+        #[source]
+        rmp_serde::encode::Error,
+    ),
     /// Failed to send handshake.
     #[error("handshake send failed")]
     HandshakeSend(
@@ -173,6 +180,13 @@ pub enum ConnectionError {
         #[serde(skip_serializing)]
         #[source]
         IoError<io::Error>,
+    ),
+    /// Failed to deserialize handshake.
+    #[error("handshake deserialization failed")]
+    HandshakeDeserialization(
+        #[serde(skip_serializing)]
+        #[source]
+        rmp_serde::decode::Error,
     ),
     /// Peer reported a network name that does not match ours.
     #[error("peer is on different network: {0}")]
