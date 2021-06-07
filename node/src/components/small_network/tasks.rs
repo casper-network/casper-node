@@ -110,7 +110,7 @@ where
     REv: 'static,
     P: Payload,
 {
-    let (peer_id, transport) =
+    let (peer_id, mut transport) =
         match tls_connect(&context.our_cert, &context.secret_key, peer_addr).await {
             Ok(value) => value,
             Err(error) => return OutgoingConnection::FailedEarly { peer_addr, error },
@@ -128,21 +128,9 @@ where
 
     // Setup connection sink and stream.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = WireProtocol::V1.framed::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Dialer,
-        context.chain_info.maximum_net_message_size,
-    );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake_using_wire_protocol(
-        context.handshake_parameters(connection_id),
-        &mut transport,
-    )
-    .await
-    {
+    match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -154,6 +142,14 @@ where
             }
 
             // Close the receiving end of the transport.
+            let transport = WireProtocol::V1.framed::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                transport,
+                Role::Dialer,
+                context.chain_info.maximum_net_message_size,
+            );
+
             let (sink, _stream) = transport.split();
 
             OutgoingConnection::Established {
@@ -223,7 +219,7 @@ where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let (peer_id, transport) =
+    let (peer_id, mut transport) =
         match server_setup_tls(stream, &context.our_cert, &context.secret_key).await {
             Ok(value) => value,
             Err(error) => {
@@ -243,27 +239,23 @@ where
 
     // Setup connection sink and stream.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = WireProtocol::V1.framed::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Listener,
-        context.chain_info.maximum_net_message_size,
-    );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake_using_wire_protocol(
-        context.handshake_parameters(connection_id),
-        &mut transport,
-    )
-    .await
-    {
+    match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
 
             // Close the receiving end of the transport.
+            let transport = WireProtocol::V1.framed::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                transport,
+                Role::Listener,
+                context.chain_info.maximum_net_message_size,
+            );
+
             let (_sink, stream) = transport.split();
 
             IncomingConnection::Established {
@@ -448,6 +440,7 @@ async fn negotiate_handshake(
 ///
 /// This function uses the wire protocol to frame handshake messages and thus emulates the V1
 /// behavior of the node.
+#[cfg(test)]
 async fn negotiate_handshake_using_wire_protocol<P>(
     parameters: HandshakeParameters<'_>,
     transport: &mut FramedTransport<P>,
