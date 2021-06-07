@@ -684,7 +684,8 @@ mod tests {
     };
 
     use super::{
-        negotiate_handshake_using_wire_protocol, server_setup_tls, tls_connect, HandshakeParameters,
+        negotiate_handshake, negotiate_handshake_using_wire_protocol, server_setup_tls,
+        tls_connect, HandshakeParameters,
     };
 
     /// An established TLS connection pair.
@@ -797,7 +798,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn can_handshake_with_itself() {
+    async fn can_handshake_with_itself_using_legacy_handshake() {
         let TlsConnectionPair {
             server_transport,
             client_transport,
@@ -854,6 +855,69 @@ mod tests {
         };
         let (server_received_public_addr, server_received_public_key) =
             negotiate_handshake_using_wire_protocol(handshake_parameters, &mut server_framed)
+                .await
+                .expect("server handshake failed");
+        assert_eq!(server_received_public_addr, client_public_addr);
+        assert!(server_received_public_key.is_none());
+
+        let (client_received_public_addr, client_received_public_key) = client_handshake
+            .await
+            .expect("client handshake not joined")
+            .expect("client handshake failed");
+        assert_eq!(client_received_public_addr, server_public_addr);
+        assert!(client_received_public_key.is_none());
+    }
+
+    #[tokio::test]
+    async fn can_handshake_across_handshake_implementations() {
+        let TlsConnectionPair {
+            mut server_transport,
+            client_transport,
+            connection_id,
+        } = create_tls_connection_pair().await;
+
+        let server_public_addr = server_transport
+            .get_ref()
+            .local_addr()
+            .expect("failed to get server_addr");
+
+        let registry = Registry::new();
+        let metrics = Arc::new(NetworkingMetrics::new(&registry).expect("could not setup metrics"));
+
+        let mut client_framed = WireProtocol::V1.framed::<crate::protocol::Message>(
+            Arc::downgrade(&metrics),
+            connection_id,
+            client_transport,
+            Role::Listener,
+            10_000_000,
+        );
+
+        // RFC5737 address, as we are not running a client to connect back to.
+        let client_public_addr = "192.0.2.1:12345".parse().unwrap();
+
+        // Start the clients handshake negotation.
+        let client_handshake = tokio::spawn(async move {
+            let chain_info = ChainInfo::create_for_testing();
+            let handshake_parameters = HandshakeParameters {
+                chain_info: &chain_info,
+                public_addr: client_public_addr,
+                consensus_keys: None,
+                connection_id,
+            };
+
+            negotiate_handshake_using_wire_protocol(handshake_parameters, &mut client_framed).await
+        });
+
+        // Perform the same on the server side.
+        let chain_info = ChainInfo::create_for_testing();
+        let handshake_parameters = HandshakeParameters {
+            chain_info: &chain_info,
+            public_addr: server_public_addr,
+            consensus_keys: None,
+            connection_id,
+        };
+        let (server_received_public_addr, server_received_public_key) =
+            negotiate_handshake(handshake_parameters, &mut server_transport)
                 .await
                 .expect("server handshake failed");
         assert_eq!(server_received_public_addr, client_public_addr);
