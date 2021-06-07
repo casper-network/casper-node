@@ -184,6 +184,12 @@ pub enum Error {
         /// The original `io::Error` from `fs::rename`.
         original_error: io::Error,
     },
+    /// Mix of missing and found storage files.
+    #[error("expected files to exist: {missing_files:?}.")]
+    MissingStorageFiles {
+        /// The files that were not be found in the storage directory.
+        missing_files: Vec<PathBuf>,
+    },
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -283,7 +289,7 @@ impl Storage {
                 .map_err(|err| Error::CreateDatabaseDirectory(network_subdir.clone(), err))?;
         }
 
-        if should_move_storage_files_to_network_subdir(&root, &LMDB_FILES) {
+        if should_move_storage_files_to_network_subdir(&root, &LMDB_FILES)? {
             move_storage_files_to_network_subdir(&root, &network_subdir, &LMDB_FILES)?;
         }
 
@@ -1180,11 +1186,33 @@ fn insert_to_deploy_index(
     Ok(())
 }
 
-fn should_move_storage_files_to_network_subdir(root: &PathBuf, file_names: &[&str]) -> bool {
-    file_names
-        .iter()
-        .map(|file_name| root.join(file_name))
-        .all(|file_path| file_path.exists())
+fn should_move_storage_files_to_network_subdir(
+    root: &PathBuf,
+    file_names: &[&str],
+) -> Result<bool, Error> {
+    let mut files_found = vec![];
+    let mut files_not_found = vec![];
+
+    file_names.iter().for_each(|file_name| {
+        let file_path = root.join(file_name);
+
+        match file_path.exists() {
+            true => files_found.push(file_path),
+            false => files_not_found.push(file_path),
+        }
+    });
+
+    let should_move_files = files_found.len() == file_names.len();
+
+    if !should_move_files && files_found.len() > 0 {
+        error!("missing storage files: {:?}", files_not_found);
+
+        return Err(Error::MissingStorageFiles {
+            missing_files: files_not_found.clone(),
+        });
+    }
+
+    Ok(should_move_files)
 }
 
 fn move_storage_files_to_network_subdir(
@@ -1205,6 +1233,10 @@ fn move_storage_files_to_network_subdir(
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
+    info!(
+        "moved files: {:?} from: {:?} to: {:?}",
+        file_names, root, subdir
+    );
     Ok(())
 }
 

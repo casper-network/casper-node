@@ -1180,7 +1180,7 @@ fn should_not_try_to_move_nonexistent_files() {
     let cfg = new_config(&harness);
     let file_names = ["temp.txt"];
 
-    let actual = should_move_storage_files_to_network_subdir(&cfg.path, &file_names);
+    let actual = should_move_storage_files_to_network_subdir(&cfg.path, &file_names).unwrap();
 
     assert_eq!(false, actual);
 }
@@ -1200,13 +1200,13 @@ fn should_move_files_if_they_exist() {
     File::create(cfg.path.join(file_names[1])).unwrap();
     File::create(cfg.path.join(file_names[2])).unwrap();
 
-    let actual = should_move_storage_files_to_network_subdir(&cfg.path, &file_names);
+    let actual = should_move_storage_files_to_network_subdir(&cfg.path, &file_names).unwrap();
 
     assert_eq!(true, actual);
 }
 
 #[test]
-fn should_not_move_files_if_some_missing() {
+fn should_return_error_if_files_missing() {
     let harness = ComponentHarness::default();
     let cfg = new_config(&harness);
     let file_names = ["temp1.txt", "temp2.txt", "temp3.txt"];
@@ -1221,7 +1221,7 @@ fn should_not_move_files_if_some_missing() {
 
     let actual = should_move_storage_files_to_network_subdir(&cfg.path, &file_names);
 
-    assert_eq!(false, actual);
+    assert!(actual.is_err());
 }
 
 #[test]
