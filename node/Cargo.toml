@@ -26,6 +26,7 @@ casper-node-macros = { version = "1.0.0", path = "../node_macros" }
 casper-types = { version = "1.0.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
+derivative = "2.2.0"
 derive_more = "0.99.7"
 derp = "0.0.14"
 ed25519-dalek = { version = "1", default-features = false, features = ["rand", "serde", "u64_backend"] }

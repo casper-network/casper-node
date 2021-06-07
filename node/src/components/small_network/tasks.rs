@@ -11,10 +11,9 @@ use std::{
     time::Duration,
 };
 
-use casper_types::PublicKey;
+use casper_types::{ProtocolVersion, PublicKey};
 use futures::{
     future::{self, Either},
-    stream::{SplitSink, SplitStream},
     Future, SinkExt, StreamExt,
 };
 use openssl::{
@@ -42,7 +41,7 @@ use super::{
     error::{display_error, ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
     message::ConsensusKeyPair,
-    Event, FramedTransport, Message, Payload, Transport, WireProtocol,
+    BoxedTransportSink, BoxedTransportStream, Event, Message, Payload, Transport, WireProtocol,
 };
 use crate::{
     components::networking_metrics::NetworkingMetrics,
@@ -131,7 +130,7 @@ where
 
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+        Ok((public_addr, peer_consensus_public_key, their_version)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -142,15 +141,15 @@ where
             }
 
             // Close the receiving end of the transport.
-            let transport = WireProtocol::V1.framed::<P>(
+            let (sink, _stream) = WireProtocol::from_protocol_versions::<P>(
+                context.chain_info.protocol_version,
+                their_version,
                 context.net_metrics.clone(),
                 connection_id,
                 transport,
                 Role::Dialer,
                 context.chain_info.maximum_net_message_size,
             );
-
-            let (sink, _stream) = transport.split();
 
             OutgoingConnection::Established {
                 peer_addr,
@@ -242,21 +241,21 @@ where
 
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+        Ok((public_addr, peer_consensus_public_key, their_version)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
 
             // Close the receiving end of the transport.
-            let transport = WireProtocol::V1.framed::<P>(
+            let (_sink, stream) = WireProtocol::from_protocol_versions::<P>(
+                context.chain_info.protocol_version,
+                their_version,
                 context.net_metrics.clone(),
                 connection_id,
                 transport,
                 Role::Listener,
                 context.chain_info.maximum_net_message_size,
             );
-
-            let (_sink, stream) = transport.split();
 
             IncomingConnection::Established {
                 peer_addr,
@@ -353,7 +352,7 @@ struct HandshakeParameters<'a> {
 async fn negotiate_handshake(
     parameters: HandshakeParameters<'_>,
     transport: &mut Transport,
-) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError> {
+) -> Result<(SocketAddr, Option<PublicKey>, ProtocolVersion), ConnectionError> {
     // Serialize and send a handshake.
 
     // Note: For legacy reasons, a handshake is encoded as a `Message` enum variant instead of its
@@ -429,7 +428,7 @@ async fn negotiate_handshake(
             })
             .transpose()?;
 
-        Ok((public_addr, peer_consensus_public_key))
+        Ok((public_addr, peer_consensus_public_key, protocol_version))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -569,7 +568,7 @@ pub(super) async fn server<P, REv>(
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: SplitStream<FramedTransport<P>>,
+    mut stream: BoxedTransportStream<P>,
     mut shutdown_receiver: watch::Receiver<()>,
     peer_id: NodeId,
     span: Span,
@@ -625,7 +624,7 @@ where
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Arc<Message<P>>>,
-    mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
+    mut sink: BoxedTransportSink<P>,
     limiter: Box<dyn BandwidthLimiterHandle>,
     counter: IntGauge,
 ) where
@@ -909,7 +908,7 @@ mod tests {
             consensus_keys: None,
             connection_id,
         };
-        let (server_received_public_addr, server_received_public_key) =
+        let (server_received_public_addr, server_received_public_key, _their_version) =
             negotiate_handshake(handshake_parameters, &mut server_transport)
                 .await
                 .expect("server handshake failed");

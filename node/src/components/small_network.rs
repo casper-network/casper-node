@@ -49,9 +49,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, ProtocolVersion, PublicKey};
 use datasize::DataSize;
-use futures::{future::BoxFuture, FutureExt};
+use futures::{future::BoxFuture, FutureExt, Sink, Stream, StreamExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
@@ -1105,7 +1105,45 @@ enum WireProtocol {
     V1,
 }
 
+pub type BoxedTransportSink<P> =
+    Box<dyn Sink<Arc<Message<P>>, Error = futures_io::Error> + Send + Sync + Unpin>;
+pub type BoxedTransportStream<P> = Box<
+    dyn Stream<Item = std::result::Result<Message<P>, futures_io::Error>> + Send + Sync + Unpin,
+>;
+
 impl WireProtocol {
+    /// Constructs a wire protocol based on the protocol version.
+    pub fn from_protocol_versions<P>(
+        our_version: ProtocolVersion,
+        their_version: ProtocolVersion,
+        metrics: Weak<NetworkingMetrics>,
+        connection_id: ConnectionId,
+        stream: Transport,
+        role: Role,
+        maximum_net_message_size: u32,
+    ) -> (BoxedTransportSink<P>, BoxedTransportStream<P>)
+    where
+        P: Payload,
+        for<'de> P: Serialize + Deserialize<'de>,
+        for<'de> Message<P>: Serialize + Deserialize<'de>,
+    {
+        match (our_version, their_version) {
+            _ => {
+                let framed_transport = WireProtocol::V1.framed(
+                    metrics,
+                    connection_id,
+                    stream,
+                    role,
+                    maximum_net_message_size,
+                );
+
+                let (sink, stream) = framed_transport.split();
+
+                (Box::new(sink), Box::new(stream))
+            }
+        }
+    }
+
     /// Constructs a new framed transport on a stream.
     pub fn framed<P>(
         self,

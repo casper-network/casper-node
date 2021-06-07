@@ -3,17 +3,19 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io, mem,
     net::SocketAddr,
-    sync::Arc,
 };
 
 use casper_types::PublicKey;
+use derivative::Derivative;
 use derive_more::From;
-use futures::stream::{SplitSink, SplitStream};
 use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
+use super::{
+    error::ConnectionError, BoxedTransportSink, BoxedTransportStream, GossipedAddress, Message,
+    NodeId,
+};
 use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
@@ -171,7 +173,8 @@ impl<P: Display> Display for Event<P> {
 }
 
 /// Outcome of an incoming connection negotiation.
-#[derive(Debug, Serialize)]
+#[derive(Derivative, Serialize)]
+#[derivative(Debug)]
 pub enum IncomingConnection<P> {
     /// The connection failed early on, before even a peer's [`NodeId`] could be determined.
     FailedEarly {
@@ -203,7 +206,8 @@ pub enum IncomingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
-        stream: SplitStream<FramedTransport<P>>,
+        #[derivative(Debug = "ignore")]
+        stream: BoxedTransportStream<P>,
     },
 }
 
@@ -243,7 +247,8 @@ impl<P> Display for IncomingConnection<P> {
 }
 
 /// Outcome of an outgoing connection attempt.
-#[derive(Debug, Serialize)]
+#[derive(Derivative, Serialize)]
+#[derivative(Debug)]
 pub enum OutgoingConnection<P> {
     /// The outgoing connection failed early on, before a peer's [`NodeId`] could be determined.
     FailedEarly {
@@ -273,7 +278,8 @@ pub enum OutgoingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
         #[serde(skip_serializing)]
-        sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
+        #[derivative(Debug = "ignore")]
+        sink: BoxedTransportSink<P>,
     },
 }
 
