@@ -318,23 +318,6 @@ where
         .map_err(IoError::Error)
 }
 
-/// Performs an IO-operation that can time out or result in a closed connection.
-async fn io_opt_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
-where
-    F: Future<Output = Option<Result<T, E>>>,
-    E: StdError + 'static,
-{
-    let item = tokio::time::timeout(duration, future)
-        .await
-        .map_err(|_elapsed| IoError::Timeout)?;
-
-    match item {
-        Some(Ok(value)) => Ok(value),
-        Some(Err(err)) => Err(IoError::Error(err)),
-        None => Err(IoError::UnexpectedEof),
-    }
-}
-
 /// Parameters required to negotiate a handshake.
 #[derive(Clone, Debug)]
 struct HandshakeParameters<'a> {
@@ -429,61 +412,6 @@ async fn negotiate_handshake(
             .transpose()?;
 
         Ok((public_addr, peer_consensus_public_key, protocol_version))
-    } else {
-        // Received a non-handshake, this is an error.
-        Err(ConnectionError::DidNotSendHandshake)
-    }
-}
-
-/// Negotiates a connection handshake over the given transport.
-///
-/// This function uses the wire protocol to frame handshake messages and thus emulates the V1
-/// behavior of the node.
-#[cfg(test)]
-async fn negotiate_handshake_using_wire_protocol<P>(
-    parameters: HandshakeParameters<'_>,
-    transport: &mut FramedTransport<P>,
-) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
-where
-    P: Payload,
-{
-    // Send down a handshake and expect one in response.
-    let handshake = parameters.chain_info.create_handshake(
-        parameters.public_addr,
-        parameters.consensus_keys,
-        parameters.connection_id,
-    );
-
-    io_timeout(HANDSHAKE_TIMEOUT, transport.send(Arc::new(handshake)))
-        .await
-        .map_err(ConnectionError::HandshakeSend)?;
-
-    let remote_handshake = io_opt_timeout(HANDSHAKE_TIMEOUT, transport.next())
-        .await
-        .map_err(ConnectionError::HandshakeRecv)?;
-
-    if let Message::Handshake {
-        network_name,
-        public_addr,
-        protocol_version,
-        consensus_certificate,
-    } = remote_handshake
-    {
-        debug!(%protocol_version, "handshake received");
-
-        // The handshake was valid, we can check the network name.
-        if network_name != parameters.chain_info.network_name {
-            return Err(ConnectionError::WrongNetwork(network_name));
-        }
-
-        let peer_consensus_public_key = consensus_certificate
-            .map(|cert| {
-                cert.validate(parameters.connection_id)
-                    .map_err(ConnectionError::InvalidConsensusCertificate)
-            })
-            .transpose()?;
-
-        Ok((public_addr, peer_consensus_public_key))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -654,13 +582,16 @@ pub(super) async fn message_sender<P>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{error::Error as StdError, net::SocketAddr, sync::Arc, time::Duration};
 
+    use casper_types::PublicKey;
+    use futures::{Future, SinkExt, StreamExt};
     use prometheus::Registry;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
     };
+    use tracing::debug;
 
     use crate::{
         components::{
@@ -668,18 +599,91 @@ mod tests {
             small_network::{
                 chain_info::ChainInfo,
                 counting_format::{ConnectionId, Role},
-                SmallNetworkIdentity, Transport, WireProtocol,
+                error::{ConnectionError, IoError},
+                FramedTransport, Payload, SmallNetworkIdentity, Transport, WireProtocol,
             },
         },
+        protocol::Message,
         testing::init_logging,
         types::NodeId,
     };
 
     use super::{
-        negotiate_handshake, negotiate_handshake_using_wire_protocol, server_setup_tls,
-        tls_connect, HandshakeParameters,
+        io_timeout, negotiate_handshake, server_setup_tls, tls_connect, HandshakeParameters,
+        HANDSHAKE_TIMEOUT,
     };
 
+    /// Performs an IO-operation that can time out or result in a closed connection.
+    async fn io_opt_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
+    where
+        F: Future<Output = Option<Result<T, E>>>,
+        E: StdError + 'static,
+    {
+        let item = tokio::time::timeout(duration, future)
+            .await
+            .map_err(|_elapsed| IoError::Timeout)?;
+
+        match item {
+            Some(Ok(value)) => Ok(value),
+            Some(Err(err)) => Err(IoError::Error(err)),
+            None => Err(IoError::UnexpectedEof),
+        }
+    }
+
+    /// Negotiates a connection handshake over the given transport.
+    ///
+    /// This function uses the wire protocol to frame handshake messages and thus emulates the V1
+    /// behavior of the node.
+    #[cfg(test)]
+    async fn negotiate_handshake_using_wire_protocol<P>(
+        parameters: HandshakeParameters<'_>,
+        transport: &mut FramedTransport<P>,
+    ) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
+    where
+        P: Payload,
+    {
+        // Send down a handshake and expect one in response.
+        let handshake = parameters.chain_info.create_handshake(
+            parameters.public_addr,
+            parameters.consensus_keys,
+            parameters.connection_id,
+        );
+
+        io_timeout(HANDSHAKE_TIMEOUT, transport.send(Arc::new(handshake)))
+            .await
+            .map_err(ConnectionError::HandshakeSend)?;
+
+        let remote_handshake = io_opt_timeout(HANDSHAKE_TIMEOUT, transport.next())
+            .await
+            .map_err(ConnectionError::HandshakeRecv)?;
+
+        if let crate::components::small_network::Message::Handshake {
+            network_name,
+            public_addr,
+            protocol_version,
+            consensus_certificate,
+        } = remote_handshake
+        {
+            debug!(%protocol_version, "handshake received");
+
+            // The handshake was valid, we can check the network name.
+            if network_name != parameters.chain_info.network_name {
+                return Err(ConnectionError::WrongNetwork(network_name));
+            }
+
+            let peer_consensus_public_key = consensus_certificate
+                .map(|cert| {
+                    cert.validate(parameters.connection_id)
+                        .map_err(ConnectionError::InvalidConsensusCertificate)
+                })
+                .transpose()?;
+
+            Ok((public_addr, peer_consensus_public_key))
+        } else {
+            // Received a non-handshake, this is an error.
+            Err(ConnectionError::DidNotSendHandshake)
+        }
+    }
     /// An established TLS connection pair.
     struct TlsConnectionPair {
         /// Server end of the connection.
@@ -805,7 +809,7 @@ mod tests {
         let registry = Registry::new();
         let metrics = Arc::new(NetworkingMetrics::new(&registry).expect("could not setup metrics"));
 
-        let mut server_framed = WireProtocol::V1.framed::<crate::protocol::Message>(
+        let mut server_framed = WireProtocol::V1.framed::<Message>(
             Arc::downgrade(&metrics),
             connection_id,
             server_transport,
@@ -813,7 +817,7 @@ mod tests {
             10_000_000,
         );
 
-        let mut client_framed = WireProtocol::V1.framed::<crate::protocol::Message>(
+        let mut client_framed = WireProtocol::V1.framed::<Message>(
             Arc::downgrade(&metrics),
             connection_id,
             client_transport,
@@ -876,7 +880,7 @@ mod tests {
         let registry = Registry::new();
         let metrics = Arc::new(NetworkingMetrics::new(&registry).expect("could not setup metrics"));
 
-        let mut client_framed = WireProtocol::V1.framed::<crate::protocol::Message>(
+        let mut client_framed = WireProtocol::V1.framed::<Message>(
             Arc::downgrade(&metrics),
             connection_id,
             client_transport,

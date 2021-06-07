@@ -1113,6 +1113,7 @@ pub type BoxedTransportStream<P> = Box<
 
 impl WireProtocol {
     /// Constructs a wire protocol based on the protocol version.
+    #[allow(clippy::match_single_binding)]
     pub fn from_protocol_versions<P>(
         our_version: ProtocolVersion,
         their_version: ProtocolVersion,
