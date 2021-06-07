@@ -1096,29 +1096,39 @@ pub type FramedTransport<P> = tokio_serde::Framed<
     CountingFormat<MessagePackFormat>,
 >;
 
-/// Constructs a new framed transport on a stream.
-fn framed<P>(
-    metrics: Weak<NetworkingMetrics>,
-    connection_id: ConnectionId,
-    stream: Transport,
-    role: Role,
-    maximum_net_message_size: u32,
-) -> FramedTransport<P>
-where
-    for<'de> P: Serialize + Deserialize<'de>,
-    for<'de> Message<P>: Serialize + Deserialize<'de>,
-{
-    let length_delimited = tokio_util::codec::Framed::new(
-        stream,
-        LengthDelimitedCodec::builder()
-            .max_frame_length(maximum_net_message_size as usize)
-            .new_codec(),
-    );
+/// Node wire protocol identifier.
+#[derive(Copy, Clone, Debug)]
+enum WireProtocol {
+    /// The initial wire protocol shipped with version V_1_0_0, based on human-readable msgpack.
+    V1,
+}
 
-    tokio_serde::Framed::new(
-        length_delimited,
-        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
-    )
+impl WireProtocol {
+    /// Constructs a new framed transport on a stream.
+    pub fn framed<P>(
+        self,
+        metrics: Weak<NetworkingMetrics>,
+        connection_id: ConnectionId,
+        stream: Transport,
+        role: Role,
+        maximum_net_message_size: u32,
+    ) -> FramedTransport<P>
+    where
+        for<'de> P: Serialize + Deserialize<'de>,
+        for<'de> Message<P>: Serialize + Deserialize<'de>,
+    {
+        let length_delimited = tokio_util::codec::Framed::new(
+            stream,
+            LengthDelimitedCodec::builder()
+                .max_frame_length(maximum_net_message_size as usize)
+                .new_codec(),
+        );
+
+        tokio_serde::Framed::new(
+            length_delimited,
+            CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
+        )
+    }
 }
 
 impl<R, P> Debug for SmallNetwork<R, P>

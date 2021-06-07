@@ -39,9 +39,8 @@ use super::{
     counting_format::{ConnectionId, Role},
     error::{display_error, ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
-    framed,
     message::ConsensusKeyPair,
-    Event, FramedTransport, Message, Payload, Transport,
+    Event, FramedTransport, Message, Payload, Transport, WireProtocol,
 };
 use crate::{
     components::networking_metrics::NetworkingMetrics,
@@ -121,7 +120,7 @@ where
 
     // Setup connection sink and stream.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
+    let mut transport = WireProtocol::V1.framed::<P>(
         context.net_metrics.clone(),
         connection_id,
         transport,
@@ -231,7 +230,7 @@ where
 
     // Setup connection sink and stream.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
+    let mut transport = WireProtocol::V1.framed::<P>(
         context.net_metrics.clone(),
         connection_id,
         transport,
@@ -569,7 +568,7 @@ mod tests {
             small_network::{
                 chain_info::ChainInfo,
                 counting_format::{ConnectionId, Role},
-                framed, SmallNetworkIdentity, Transport,
+                SmallNetworkIdentity, Transport, WireProtocol,
             },
         },
         testing::init_logging,
@@ -703,7 +702,7 @@ mod tests {
         let registry = Registry::new();
         let metrics = Arc::new(NetworkingMetrics::new(&registry).expect("could not setup metrics"));
 
-        let mut server_framed = framed::<crate::protocol::Message>(
+        let mut server_framed = WireProtocol::V1.framed::<crate::protocol::Message>(
             Arc::downgrade(&metrics),
             connection_id,
             server_transport,
@@ -711,7 +710,7 @@ mod tests {
             10_000_000,
         );
 
-        let mut client_framed = framed::<crate::protocol::Message>(
+        let mut client_framed = WireProtocol::V1.framed::<crate::protocol::Message>(
             Arc::downgrade(&metrics),
             connection_id,
             client_transport,
