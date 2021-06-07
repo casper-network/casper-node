@@ -33,30 +33,29 @@ pub const MALICIOUS_KEY_NAME: &str = "invalid dictionary name";
 #[no_mangle]
 fn modify_write() {
     // Preserve for further modifications
-    let local = match runtime::get_key(DICTIONARY_NAME) {
+    let dictionary_uref = match runtime::get_key(DICTIONARY_NAME) {
         Some(key) => key.into_uref().unwrap_or_revert(),
         None => runtime::revert(ApiError::GetKey),
     };
 
     // Appends " Hello, world!" to a [66; 32] dictionary with spaces trimmed.
-    // Two runs should yield value "Hello, world! Hello, world!"
-    // read from local state
-    let mut res: String = storage::dictionary_get(local, DICTIONARY_PUT_KEY)
+    // Two runs should yield value "Hello, world! Hello, world!" read from dictionary
+    let mut res: String = storage::dictionary_get(dictionary_uref, DICTIONARY_PUT_KEY)
         .unwrap_or_default()
         .unwrap_or_default();
 
     res.push_str(HELLO_PREFIX);
     // Write "Hello, "
-    storage::dictionary_put(local, DICTIONARY_PUT_KEY, res);
+    storage::dictionary_put(dictionary_uref, DICTIONARY_PUT_KEY, res);
 
     // Read (this should exercise cache)
-    let mut res: String = storage::dictionary_get(local, DICTIONARY_PUT_KEY)
+    let mut res: String = storage::dictionary_get(dictionary_uref, DICTIONARY_PUT_KEY)
         .unwrap_or_revert()
         .unwrap_or_revert();
     // Append
     res.push_str(WORLD_SUFFIX);
     // Write
-    storage::dictionary_put(local, DICTIONARY_PUT_KEY, res.trim().to_string());
+    storage::dictionary_put(dictionary_uref, DICTIONARY_PUT_KEY, res.trim().to_string());
 }
 
 fn get_dictionary_uref() -> URef {
@@ -110,18 +109,18 @@ pub fn delegate() {
     ));
     let named_keys = {
         let uref = {
-            let local_uref = storage::new_dictionary(DICTIONARY_REF).unwrap_or_revert();
+            let dictionary_uref = storage::new_dictionary(DICTIONARY_REF).unwrap_or_revert();
             assert_eq!(
-                local_uref.access_rights() & AccessRights::READ_ADD_WRITE,
+                dictionary_uref.access_rights() & AccessRights::READ_ADD_WRITE,
                 AccessRights::READ_ADD_WRITE
             );
 
             storage::dictionary_put(
-                local_uref,
+                dictionary_uref,
                 DEFAULT_DICTIONARY_NAME,
                 DEFAULT_DICTIONARY_VALUE,
             );
-            local_uref
+            dictionary_uref
         };
         let mut named_keys = NamedKeys::new();
         named_keys.insert(DICTIONARY_NAME.to_string(), uref.into());

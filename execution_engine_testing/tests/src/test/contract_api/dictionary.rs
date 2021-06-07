@@ -96,7 +96,7 @@ fn should_modify_with_owned_access_rights() {
     let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
 
     let key_bytes = dictionary::DICTIONARY_PUT_KEY.to_bytes().unwrap();
-    let dictionary_value = Key::dictionary(dictionary_root_uref, &key_bytes);
+    let dictionary_key = Key::dictionary(dictionary_root_uref, &key_bytes);
 
     builder
         .exec(modify_write_request_1)
@@ -106,25 +106,25 @@ fn should_modify_with_owned_access_rights() {
     let stored_value = builder
         .query(None, dictionary_root_uref.into(), &[])
         .expect("should have value");
-    let local_uref_value = stored_value
+    let dictionary_uref_value = stored_value
         .as_cl_value()
         .cloned()
         .expect("should have cl value");
     assert_eq!(
-        local_uref_value.cl_type(),
+        dictionary_uref_value.cl_type(),
         &CLType::Unit,
         "created dictionary uref should be unit"
     );
 
     let stored_value = builder
-        .query(None, dictionary_value, &[])
+        .query(None, dictionary_key, &[])
         .expect("should have value");
-    let local_value = stored_value
+    let dictionary_value = stored_value
         .as_cl_value()
         .cloned()
         .expect("should have cl value");
 
-    let s: String = local_value.into_t().expect("should be a string");
+    let s: String = dictionary_value.into_t().expect("should be a string");
     assert_eq!(s, "Hello, world!");
 
     builder
@@ -133,14 +133,14 @@ fn should_modify_with_owned_access_rights() {
         .expect_success();
 
     let stored_value = builder
-        .query(None, dictionary_value, &[])
+        .query(None, dictionary_key, &[])
         .expect("should have value");
-    let local_value = stored_value
+    let dictionary_value = stored_value
         .as_cl_value()
         .cloned()
         .expect("should have cl value");
 
-    let s: String = local_value.into_t().expect("should be a string");
+    let s: String = dictionary_value.into_t().expect("should be a string");
     assert_eq!(s, "Hello, world! Hello, world!");
 }
 

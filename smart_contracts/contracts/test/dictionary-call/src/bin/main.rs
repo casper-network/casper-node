@@ -18,9 +18,9 @@ use dictionary_call::{
     NEW_DICTIONARY_NAME, NEW_DICTIONARY_VALUE,
 };
 
-/// Calls local state contract by hash as passed by `ARG_CONTRACT_HASH` argument and returns a
+/// Calls dictionary contract by hash as passed by `ARG_CONTRACT_HASH` argument and returns a
 /// single value.
-fn call_local_state_contract<T: CLTyped + FromBytes>(entrypoint: &str) -> T {
+fn call_dictionary_contract<T: CLTyped + FromBytes>(entrypoint: &str) -> T {
     let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
     runtime::call_contract(contract_hash, entrypoint, RuntimeArgs::default())
 }
@@ -35,13 +35,13 @@ pub extern "C" fn call() {
     match operation {
         Operation::Write => {
             let entrypoint: String = runtime::get_named_arg(ARG_SHARE_UREF_ENTRYPOINT);
-            let uref = call_local_state_contract(&entrypoint);
+            let uref = call_dictionary_contract(&entrypoint);
             let value: String = NEW_DICTIONARY_VALUE.to_string();
             storage::dictionary_put(uref, NEW_DICTIONARY_NAME, value);
         }
         Operation::Read => {
             let entrypoint: String = runtime::get_named_arg(ARG_SHARE_UREF_ENTRYPOINT);
-            let uref = call_local_state_contract(&entrypoint);
+            let uref = call_dictionary_contract(&entrypoint);
             let maybe_value =
                 storage::dictionary_get(uref, DEFAULT_DICTIONARY_NAME).unwrap_or_revert();
             // Whether the value exists or not we're mostly interested in validation of access

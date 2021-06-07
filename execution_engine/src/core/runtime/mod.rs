@@ -3347,7 +3347,7 @@ where
         Ok(())
     }
 
-    fn create_local(&mut self, output_size_ptr: u32) -> Result<Result<(), ApiError>, Error> {
+    fn new_dictionary(&mut self, output_size_ptr: u32) -> Result<Result<(), ApiError>, Error> {
         // Proceed with creating new URefs
         let new_uref = self.context.new_unit_uref()?;
 

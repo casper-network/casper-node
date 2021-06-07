@@ -979,7 +979,7 @@ where
                     &DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
                     [output_size_ptr],
                 )?;
-                let ret = self.create_local(output_size_ptr)?;
+                let ret = self.new_dictionary(output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
             FunctionIndex::DictionaryGetFuncIndex => {

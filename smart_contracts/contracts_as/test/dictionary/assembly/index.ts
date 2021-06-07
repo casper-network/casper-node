@@ -8,7 +8,7 @@ import {CLValue, CLType, CLTypeTag} from "../../../../contract_as/assembly/clval
 import { Key } from "../../../../contract_as/assembly/key";
 import { AccessRights, URef } from "../../../../contract_as/assembly/uref";
 import { Pair } from "../../../../contract_as/assembly/pair";
-import { newDictionary, dictionaryGet, dictionaryPut } from "../../../../contract_as/assembly/local";
+import { newDictionary, dictionaryGet, dictionaryPut } from "../../../../contract_as/assembly/dictionary";
 import { fromBytesString, toBytesString } from "../../../../contract_as/assembly/bytesrepr";
 import { revert } from "../../../../contract_as/assembly/externals";
 

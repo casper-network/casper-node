@@ -39,12 +39,12 @@ export function newDictionary(keyName: String): URef {
  * @category Storage
  * @returns Returns bytes of serialized value, otherwise a null if given dictionary does not exists.
  */
-export function dictionaryGet(seed_uref: URef, local: Array<u8>): Uint8Array | null {
+export function dictionaryGet(seed_uref: URef, key: Array<u8>): Uint8Array | null {
     let seedUrefBytes = seed_uref.toBytes();
-    const localBytes = arrayToTyped(local);
+    const keyBytes = arrayToTyped(key);
 
     let valueSize = new Uint8Array(1);
-    const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, localBytes.dataStart, localBytes.length, valueSize.dataStart);
+    const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
     if (ret == ErrorCode.ValueNotFound){
         return null;
     }
@@ -57,18 +57,18 @@ export function dictionaryGet(seed_uref: URef, local: Array<u8>): Uint8Array | n
 }
 
 /**
- * Writes `value` under `key` in the context-local partition of global state.
+ * Writes `value` under `key` in a dictionary.
  * @category Storage
  */
-export function dictionaryPut(uref: URef, local: Array<u8>, value: CLValue): void {
-    const localBytes = arrayToTyped(local);
+export function dictionaryPut(uref: URef, key: Array<u8>, value: CLValue): void {
+    const keyBytes = arrayToTyped(key);
     const urefBytes = uref.toBytes();
     const valueBytes = value.toBytes();
     externals.dictionary_put(
         urefBytes.dataStart,
         urefBytes.length,
-        localBytes.dataStart,
-        localBytes.length,
+        keyBytes.dataStart,
+        keyBytes.length,
         valueBytes.dataStart,
         valueBytes.length
     );
