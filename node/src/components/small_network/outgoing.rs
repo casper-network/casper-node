@@ -492,7 +492,7 @@ where
                         Some(DialRequest::Disconnect { span, handle })
                     }
                     OutgoingState::Waiting { .. } | OutgoingState::Connecting { .. } => {
-                        info!("address blocked");
+                        debug!("address blocked");
                         self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
                         None
                     }
@@ -688,13 +688,13 @@ where
             }
 
             DialOutcome::Failed { addr, error, when } => {
-                info!(err = display_error(&error), "outgoing connection failed");
+                debug!(err = display_error(&error), "outgoing connection failed");
 
                 let failures_so_far = if let Some(outgoing) = self.outgoing.get(&addr) {
                     if let OutgoingState::Connecting { failures_so_far,.. } = outgoing.state {
                          failures_so_far + 1
                     } else {
-                        warn!(
+                        debug!(
                             "processing dial outcome on a connection that was not marked as connecting"
                         );
                         1
