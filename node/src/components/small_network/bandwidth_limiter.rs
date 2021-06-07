@@ -402,7 +402,7 @@ mod tests {
         for handle in handles {
             let start = Instant::now();
 
-            // Send 9_0001 bytes, we expect this to take roughly 15 seconds.
+            // Send 9_001 bytes, we expect this to take roughly 15 seconds.
             handle.request_allowance(1000).await;
             handle.request_allowance(1000).await;
             handle.request_allowance(1000).await;
