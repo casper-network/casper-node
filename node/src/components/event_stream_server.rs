@@ -25,8 +25,10 @@ mod event;
 mod event_indexer;
 mod http_server;
 mod sse_server;
+#[cfg(test)]
+mod tests;
 
-use std::{convert::Infallible, fmt::Debug, path::PathBuf};
+use std::{convert::Infallible, fmt::Debug, net::SocketAddr, path::PathBuf};
 
 use datasize::DataSize;
 use tokio::sync::{
@@ -72,6 +74,7 @@ pub(crate) struct EventStreamServer {
     #[data_size(skip)]
     sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
     event_indexer: EventIndexer,
+    listening_address: SocketAddr,
 }
 
 impl EventStreamServer {
@@ -93,14 +96,15 @@ impl EventStreamServer {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.
-        let broadcast_channel_size = config.event_stream_buffer_length / 100
-            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE);
+        let broadcast_channel_size = config.event_stream_buffer_length
+            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
+            / 100;
         let (broadcaster, new_subscriber_info_receiver, sse_filter) =
             sse_server::create_channels_and_filter(broadcast_channel_size as usize);
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        let (actual_address, server_with_shutdown) = warp::serve(sse_filter)
+        let (listening_address, server_with_shutdown) = warp::serve(sse_filter)
             .try_bind_with_graceful_shutdown(required_address, async {
                 shutdown_receiver.await.ok();
             })
@@ -108,7 +112,7 @@ impl EventStreamServer {
                 address: required_address,
                 error: Box::new(error),
             })?;
-        info!(address=%actual_address, "started event stream server");
+        info!(address=%listening_address, "started event stream server");
 
         tokio::spawn(http_server::run(
             config,
@@ -123,6 +127,7 @@ impl EventStreamServer {
         Ok(EventStreamServer {
             sse_data_sender,
             event_indexer,
+            listening_address,
         })
     }
 

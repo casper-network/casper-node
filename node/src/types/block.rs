@@ -1588,7 +1588,7 @@ pub(crate) mod json_compatibility {
 /// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
 /// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
 /// the block as finalized.
-#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq, JsonSchema)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,
