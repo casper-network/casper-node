@@ -492,7 +492,7 @@ where
                         Some(DialRequest::Disconnect { span, handle })
                     }
                     OutgoingState::Waiting { .. } | OutgoingState::Connecting { .. } => {
-                        debug!("address blocked");
+                        info!("address blocked");
                         self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
                         None
                     }
