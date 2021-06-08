@@ -688,7 +688,7 @@ where
             }
 
             DialOutcome::Failed { addr, error, when } => {
-                debug!(err = display_error(&error), "outgoing connection failed");
+                info!(err = display_error(&error), "outgoing connection failed");
 
                 let failures_so_far = if let Some(outgoing) = self.outgoing.get(&addr) {
                     match outgoing.state {
