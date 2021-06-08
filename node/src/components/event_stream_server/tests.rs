@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     error::Error,
     fs, io, iter, str,
     sync::{
@@ -39,11 +38,6 @@ const BUFFER_LENGTH: u32 = EVENT_COUNT / 2;
 const MAX_TEST_TIME: Duration = Duration::from_secs(1);
 /// The duration of the sleep called between each event being sent by the server.
 const DELAY_BETWEEN_EVENTS: Duration = Duration::from_millis(1);
-
-thread_local!(
-    /// A per-test identifier for the clients.
-    static CLIENT_ID: RefCell<usize> = RefCell::new(0)
-);
 
 /// A helper to allow the synchronization of a single client joining the SSE server.
 ///
@@ -369,14 +363,11 @@ struct ReceivedEvent {
 /// The client waits at the barrier before connecting to the server, and then again immediately
 /// after connecting to ensure the server doesn't start sending events before the client is
 /// connected.
-async fn subscribe(url: &str, barrier: Arc<Barrier>) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
-    let client_id = CLIENT_ID.with(|client_id| {
-        let mut id = client_id.borrow_mut();
-        let copied_id = *id;
-        *id = copied_id + 1;
-        format!("client {}", copied_id)
-    });
-
+async fn subscribe(
+    url: &str,
+    barrier: Arc<Barrier>,
+    client_id: &str,
+) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
     debug!("{} waiting before connecting via {}", client_id, url);
     barrier.wait().await;
     let response = reqwest::get(url).await?;
@@ -400,19 +391,23 @@ async fn subscribe(url: &str, barrier: Arc<Barrier>) -> Result<Vec<ReceivedEvent
         }
     }
 
-    // Iterate the lines of the response body.  Each line should be one of
-    //   * an SSE event: line starts with "data:" and the remainder of the line is a JSON object
-    //   * an SSE event ID: line starts with "id:" and the remainder is a decimal encoded `u32`
-    //   * empty
-    //   * a keepalive: line contains exactly ":"
-    //
-    // The expected order is:
-    //   * data:<JSON-encoded ApiVersion> (note, no ID line follows this first event)
-    // then the following three repeated for as many events as are applicable to that stream:
-    //   * data:<JSON-encoded event>
-    //   * id:<integer>
-    //   * empty line
-    // then finally, repeated keepalive lines until the server is shut down.
+    Ok(parse_response(response_text, client_id))
+}
+
+/// Iterate the lines of the response body.  Each line should be one of
+///   * an SSE event: line starts with "data:" and the remainder of the line is a JSON object
+///   * an SSE event ID: line starts with "id:" and the remainder is a decimal encoded `u32`
+///   * empty
+///   * a keepalive: line contains exactly ":"
+///
+/// The expected order is:
+///   * data:<JSON-encoded ApiVersion> (note, no ID line follows this first event)
+/// then the following three repeated for as many events as are applicable to that stream:
+///   * data:<JSON-encoded event>
+///   * id:<integer>
+///   * empty line
+/// then finally, repeated keepalive lines until the server is shut down.
+fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> {
     let mut received_events = Vec::new();
     let mut line_itr = response_text.lines();
     while let Some(data_line) = line_itr.next() {
@@ -455,8 +450,7 @@ async fn subscribe(url: &str, barrier: Arc<Barrier>) -> Result<Vec<ReceivedEvent
 
         received_events.push(ReceivedEvent { id, data });
     }
-
-    Ok(received_events)
+    received_events
 }
 
 /// Client setup:
@@ -474,7 +468,7 @@ async fn should_serve_events_with_no_query(filter: EventFilter) {
     let server_address = fixture.run_server(sync_behavior).await;
 
     let url = url(server_address, filter, None);
-    let received_events = subscribe(&url, barrier).await.unwrap();
+    let received_events = subscribe(&url, barrier, "client").await.unwrap();
     fixture.stop_server().await;
 
     assert_eq!(received_events, fixture.all_filtered_events(filter));
@@ -509,7 +503,7 @@ async fn should_serve_events_with_query(filter: EventFilter) {
     let server_address = fixture.run_server(sync_behavior).await;
 
     let url = url(server_address, filter, Some(start_from_event_id));
-    let received_events = subscribe(&url, barrier).await.unwrap();
+    let received_events = subscribe(&url, barrier, "client").await.unwrap();
     fixture.stop_server().await;
 
     let expected_events = fixture.filtered_events(filter, start_from_event_id);
@@ -545,7 +539,7 @@ async fn should_serve_remaining_events_with_query(filter: EventFilter) {
     let server_address = fixture.run_server(sync_behavior).await;
 
     let url = url(server_address, filter, Some(start_from_event_id));
-    let received_events = subscribe(&url, barrier).await.unwrap();
+    let received_events = subscribe(&url, barrier, "client").await.unwrap();
     fixture.stop_server().await;
 
     let expected_first_event = connect_at_event_id - BUFFER_LENGTH;
@@ -579,7 +573,7 @@ async fn should_serve_events_with_query_for_future_event(filter: EventFilter) {
     let server_address = fixture.run_server(sync_behavior).await;
 
     let url = url(server_address, filter, Some(25));
-    let received_events = subscribe(&url, barrier).await.unwrap();
+    let received_events = subscribe(&url, barrier, "client").await.unwrap();
     fixture.stop_server().await;
 
     assert_eq!(received_events, fixture.all_filtered_events(filter));
@@ -613,8 +607,8 @@ async fn server_exit_should_gracefully_shut_down_stream() {
 
     // Run the two clients, and stop the server after a short delay.
     let (received_events1, received_events2, _) = join!(
-        subscribe(&url1, barrier1),
-        subscribe(&url2, barrier2),
+        subscribe(&url1, barrier1, "client 1"),
+        subscribe(&url2, barrier2, "client 2"),
         async {
             time::sleep(DELAY_BETWEEN_EVENTS * EVENT_COUNT / 2).await;
             fixture.stop_server().await
@@ -652,7 +646,10 @@ async fn lagging_clients_should_be_disconnected() {
     let url2 = url(server_address, EventFilter::Signatures, None);
 
     // Run the two clients, then stop the server.
-    let (result1, result2) = join!(subscribe(&url1, barrier1), subscribe(&url2, barrier2),);
+    let (result1, result2) = join!(
+        subscribe(&url1, barrier1, "client 1"),
+        subscribe(&url2, barrier2, "client 2"),
+    );
     fixture.stop_server().await;
 
     // Ensure both clients' streams terminated with an `UnexpectedEof` error.
@@ -786,7 +783,7 @@ async fn should_persist_event_ids(filter: EventFilter) {
 
         // Consume these and stop the server.
         let url = url(server_address, filter, None);
-        let _ = subscribe(&url, barrier).await.unwrap();
+        let _ = subscribe(&url, barrier, "client 1").await.unwrap();
         fixture.stop_server().await;
     }
 
@@ -801,7 +798,7 @@ async fn should_persist_event_ids(filter: EventFilter) {
 
         // Consume the events and assert their IDs are all >= 100.
         let url = url(server_address, filter, None);
-        let received_events = subscribe(&url, barrier).await.unwrap();
+        let received_events = subscribe(&url, barrier, "client 2").await.unwrap();
         fixture.stop_server().await;
 
         assert_eq!(received_events, fixture.all_filtered_events(filter));
@@ -851,9 +848,9 @@ async fn should_handle_wrapping_past_max_event_id(filter: EventFilter) {
     let url2 = url(server_address, filter, Some(start_index + 1));
     let url3 = url(server_address, filter, Some(0));
     let (received_events1, received_events2, received_events3) = join!(
-        subscribe(&url1, barrier1),
-        subscribe(&url2, barrier2),
-        subscribe(&url3, barrier3),
+        subscribe(&url1, barrier1, "client 1"),
+        subscribe(&url2, barrier2, "client 2"),
+        subscribe(&url3, barrier3, "client 3"),
     );
     fixture.stop_server().await;
 
