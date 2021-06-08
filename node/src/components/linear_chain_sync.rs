@@ -59,7 +59,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
-        Chainspec, FinalizedBlock, TimeDiff,
+        Chainspec, Deploy, FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
@@ -555,6 +555,7 @@ impl<I, REv> Component<REv> for LinearChainSync<I>
 where
     I: Debug + Display + Clone + Eq + Send + PartialEq + Sync + 'static,
     REv: ReactorEventT<I>
+        + From<FetcherRequest<I, Deploy>>
         + From<FetcherRequest<I, BlockHeader>>
         + From<FetcherRequest<I, Trie<Key, StoredValue>>>
         + From<FetcherRequest<I, BlockHeaderWithMetadata>>
@@ -817,7 +818,7 @@ where
                             )
                             .await
                             {
-                                Ok(()) => Some(Event::Start(peer_id)),
+                                Ok(_block_header) => Some(Event::Start(peer_id)),
                                 Err(error) => {
                                     fatal!(effect_builder, "{:?}", error).await;
                                     None

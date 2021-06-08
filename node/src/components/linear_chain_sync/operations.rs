@@ -24,7 +24,10 @@ use crate::{
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder,
     },
-    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Chainspec, Item},
+    types::{
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
+        Chainspec, Deploy, DeployHash, Item,
+    },
 };
 
 const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
@@ -71,6 +74,16 @@ where
                         "Fast sync could not fetch; trying next peer",
                     )
                 }
+                Err(FetcherError::TimedOutFromPeer { .. }) => {
+                    warn!(
+                        ?id,
+                        tag = ?T::TAG,
+                        ?peer,
+                        "Peer timed out",
+                    );
+                    // Peer timed out fetching the item, continue with the next peer
+                    continue;
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -93,6 +106,21 @@ where
         .put_block_header_to_storage(block_header.clone())
         .await;
     Ok(block_header)
+}
+
+/// Fetches and stores a deploy.
+async fn fetch_and_store_deploy<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    deploy_or_transfer_hash: DeployHash,
+) -> Result<Box<Deploy>, FetcherError<Deploy, I>>
+where
+    REv: From<FetcherRequest<I, Deploy>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
+    I: Eq + Debug + Clone + Send + 'static,
+{
+    let deploy =
+        fetch_retry_forever::<Deploy, REv, I>(effect_builder, deploy_or_transfer_hash).await?;
+    effect_builder.put_deploy_to_storage(deploy.clone()).await;
+    Ok(deploy)
 }
 
 /// Get trusted block headers; falls back to genesis if none are available
@@ -279,6 +307,116 @@ where
                 // If the peer we requested doesn't have the item, continue with the next peer
                 continue;
             }
+            Err(FetcherError::TimedOutFromPeer { .. }) => {
+                warn!(
+                    height,
+                    tag = ?BlockHeaderWithMetadata::TAG,
+                    ?peer,
+                    "Peer timed out",
+                );
+                // Peer timed out fetching the item, continue with the next peer
+                continue;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(None)
+}
+
+/// Fetches a block from the network by height.
+async fn fetch_and_store_block_by_height<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    height: u64,
+    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
+) -> Result<Option<Box<BlockWithMetadata>>, FetcherError<BlockWithMetadata, I>>
+where
+    REv: From<FetcherRequest<I, BlockWithMetadata>>
+        + From<NetworkInfoRequest<I>>
+        + From<StorageRequest>,
+    I: Eq + Debug + Clone + Send + 'static,
+{
+    for peer in effect_builder.get_peers_in_random_order().await {
+        match effect_builder
+            .fetch::<BlockWithMetadata, I>(height, peer.clone())
+            .await
+        {
+            Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
+            Ok(FetchedData::FromPeer { item, .. }) => {
+                let BlockWithMetadata {
+                    block,
+                    finality_signatures,
+                } = *item.clone();
+
+                if *block.hash() != block.header().hash() {
+                    warn!(
+                        ?block,
+                        actual_block_header_hash = ?block.header().hash(),
+                        ?peer,
+                        "Block from peer did not have correct block header hash.",
+                    );
+                    // TODO: ban peer
+                    continue;
+                }
+
+                if block.body().hash() != *block.header().body_hash() {
+                    warn!(
+                        ?block,
+                        actual_block_body_hash = ?block.body().hash(),
+                        ?peer,
+                        "Block from peer did not have correct block body hash.",
+                    );
+                    // TODO: ban peer
+                    continue;
+                }
+
+                if let Err(error) = validate_finality_signatures(
+                    block.header(),
+                    &trusted_validator_weights,
+                    finality_threshold_fraction,
+                    &finality_signatures,
+                ) {
+                    warn!(
+                        ?error,
+                        ?peer,
+                        "Error validating finality signatures from peer.",
+                    );
+                    // TODO: ban peer
+                    continue;
+                }
+
+                // Store the block
+                // effect_builder
+                //     .put_block_to_storage(Box::new(block.clone()))
+                //     .await;
+
+                // Store the finality signatures
+                effect_builder
+                    .put_signatures_to_storage(finality_signatures.clone())
+                    .await;
+
+                return Ok(Some(item));
+            }
+            Err(FetcherError::AbsentFromPeer { .. }) => {
+                warn!(
+                    height,
+                    tag = ?BlockWithMetadata::TAG,
+                    ?peer,
+                    "Block by height absent from peer",
+                );
+                // If the peer we requested doesn't have the item, continue with the next peer
+                continue;
+            }
+            Err(FetcherError::TimedOutFromPeer { .. }) => {
+                warn!(
+                    height,
+                    tag = ?BlockWithMetadata::TAG,
+                    ?peer,
+                    "Peer timed out",
+                );
+                // Peer timed out fetching the item, continue with the next peer
+                continue;
+            }
             Err(error) => return Err(error),
         }
     }
@@ -302,7 +440,7 @@ where
     let outstanding_tries = effect_builder
         .put_trie_and_find_missing_descendant_trie_keys(trie)
         .await?;
-    return Ok(outstanding_tries);
+    Ok(outstanding_tries)
 }
 
 /// Runs the fast synchronization task.
@@ -310,11 +448,13 @@ pub(crate) async fn run_fast_sync_task<REv, I>(
     effect_builder: EffectBuilder<REv>,
     trusted_hash: BlockHash,
     chainspec: Chainspec,
-) -> Result<(), LinearChainSyncError<I>>
+) -> Result<BlockHeader, LinearChainSyncError<I>>
 where
     REv: From<ContractRuntimeRequest>
         + From<FetcherRequest<I, BlockHeader>>
         + From<FetcherRequest<I, BlockHeaderWithMetadata>>
+        + From<FetcherRequest<I, BlockWithMetadata>>
+        + From<FetcherRequest<I, Deploy>>
         + From<FetcherRequest<I, Trie<Key, StoredValue>>>
         + From<NetworkInfoRequest<I>>
         + From<StorageRequest>,
@@ -421,5 +561,29 @@ where
         outstanding_trie_keys.extend(missing_descendant_trie_keys);
     }
 
-    Ok(())
+    while let Some(block_with_metadata) = fetch_and_store_block_by_height(
+        effect_builder,
+        most_recent_block_header.height(),
+        &trusted_validator_weights,
+        chainspec.highway_config.finality_threshold_fraction,
+    )
+    .await?
+    {
+        for deploy_hash in block_with_metadata.block.deploy_hashes() {
+            fetch_and_store_deploy(effect_builder, *deploy_hash).await?;
+        }
+
+        for transfer_hash in block_with_metadata.block.transfer_hashes() {
+            fetch_and_store_deploy(effect_builder, *transfer_hash).await?;
+        }
+
+        most_recent_block_header = block_with_metadata.block.take_header();
+        if let Some(new_trusted_validator_weights) =
+            most_recent_block_header.next_era_validator_weights()
+        {
+            trusted_validator_weights = new_trusted_validator_weights.clone();
+        }
+    }
+
+    Ok(most_recent_block_header)
 }
