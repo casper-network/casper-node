@@ -36,6 +36,25 @@ debug = true
 # TODO: nightly compiler has issues with linking libraries with LTO enabled.
 # Change this back to true once stable is supported by default.
 lto = false
+#debug = true
+
+#[profile.release.package.casper-types]
+#debug = false
+
+#[profile.release.package.casper-contract]
+#debug = false
+
+#[profile.release.package.delegate]
+#debug = false
+
+#[profile.release.package.undelegate]
+#debug = false
+
+[profile.release.package.casper-node]
+debug = true
+
+[profile.release.package.casper-execution-engine]
+debug = true
 
 [profile.bench]
 lto = true

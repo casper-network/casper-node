@@ -95,6 +95,7 @@ max_memory = 64
 # Max stack height (native WebAssembly stack limiter).
 max_stack_height = 65_536
 
+
 [wasm.storage_costs]
 # Gas charged per byte stored in the global state.
 gas_per_byte = 630_000
@@ -186,9 +187,9 @@ wasmless_transfer_cost = 10_000
 [system_costs.auction_costs]
 get_era_validators = 10_000
 read_seigniorage_recipients = 10_000
-add_bid = 10_000
+add_bid = 2_500_000_000
 withdraw_bid = 10_000
-delegate = 10_000
+delegate = 2_500_000_000
 undelegate = 10_000
 run_auction = 10_000
 slash = 10_000

@@ -45,7 +45,7 @@ export NCTL_DEFAULT_ERA_ACTIVATION_OFFSET=2
 export NCTL_DEFAULT_GAS_PAYMENT=10000000000   # (1e10)
 
 # Default gas price multiplier.
-export NCTL_DEFAULT_GAS_PRICE=10
+export NCTL_DEFAULT_GAS_PRICE=1
 
 # Default amount used when making transfers.
 export NCTL_DEFAULT_TRANSFER_AMOUNT=2500000000   # (1e9)
