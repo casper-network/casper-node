@@ -61,6 +61,8 @@ pub struct Era<I> {
     /// Validators that have been slashed in any of the recent BONDED_ERAS switch blocks. This
     /// includes `newly_slashed`.
     pub(crate) slashed: HashSet<PublicKey>,
+    /// Validators that are excluded from proposing new blocks.
+    pub(crate) cannot_propose: HashSet<PublicKey>,
     /// Accusations collected in this era so far.
     accusations: HashSet<PublicKey>,
     /// The validator weights.
@@ -74,6 +76,7 @@ impl<I> Era<I> {
         start_height: u64,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
+        cannot_propose: HashSet<PublicKey>,
         validators: BTreeMap<PublicKey, U512>,
     ) -> Self {
         Era {
@@ -83,6 +86,7 @@ impl<I> Era<I> {
             validation_states: HashMap::new(),
             newly_slashed,
             slashed,
+            cannot_propose,
             accusations: HashSet::new(),
             validators,
         }
@@ -181,6 +185,7 @@ where
             validation_states,
             newly_slashed,
             slashed,
+            cannot_propose,
             accusations,
             validators,
         } = self;
@@ -217,6 +222,7 @@ where
             .saturating_add(validation_states.estimate_heap_size())
             .saturating_add(newly_slashed.estimate_heap_size())
             .saturating_add(slashed.estimate_heap_size())
+            .saturating_add(cannot_propose.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())
             .saturating_add(validators.estimate_heap_size())
     }
