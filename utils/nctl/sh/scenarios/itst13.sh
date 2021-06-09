@@ -25,19 +25,36 @@ function main() {
     check_network_sync
     # 3. Stop the node
     do_stop_node '5'
-    # 4. wait auction_delay + 1
-    do_await_era_change '4'
-    # 5. Validate eviction occured
+    # 4. Wait until N+1
+    do_await_era_change '1'
+    # Wait 1 extra block to avoid potential overlap.
+    await_n_blocks '1' 'true'
+    # Gather Block Hash after stopping node for walkback later
+    local RESTART_HASH=$(do_read_lfb_hash '1')
+    # 5. Wait until N+2
+    do_await_era_change '1'
+    # 6. Assert node is marked as inactive
+    assert_inactive '5'
+
+    # 7. Re-bid & restart node 5
+    # CASE 1: Comment out and uncomment CASE 2 for comparison
+    do_start_node '5' "$RESTART_HASH"
+
+    # 8. Assert eviction of node
     assert_eviction '5'
-    # 6. Re-bid & restart node 5
-    do_submit_auction_bids "5"
-    do_read_lfb_hash "1"
-    do_start_node "5" "$LFB_HASH"
-    # 7. wait auction_delay + 1
-    do_await_era_change "4"
-    # 8. Assert that restarted validator is producing blocks.
-    assert_node_proposed "5" "180"
-    # 9. Check for equivocators
+    # 9. Assert node didn't propose since being shutdown
+    assert_no_proposal_walkback '5' "$RESTART_HASH"
+    # 10. Re-bid shutdown node
+    do_submit_auction_bids '5'
+
+    # CASE 2: Comment out and uncomment CASE 1 for comparison
+    #do_start_node '5' "$RESTART_HASH"
+
+    # 11. wait auction_delay + 1 + 1 more for partial era protection
+    do_await_era_change '5'
+    # 12. Assert that restarted validator is producing blocks.
+    assert_node_proposed '5' '180'
+    # 13. Check for equivocators
     assert_no_equivocators_logs
     log "------------------------------------------------------------"
     log "Scenario itst13 complete"
@@ -74,11 +91,30 @@ function is_trusted_validator() {
     return $?
 }
 
+function assert_inactive() {
+    local NODE_ID=${1}
+    log_step "Checking for inactive node-$NODE_ID..."
+    while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
+        if ( check_inactive "$NODE_ID" ); then
+            log "validator node-$NODE_ID is inactive! [expected]"
+            break
+        fi
+
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
+
+        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
+            log "ERROR: Time out. Failed to confirm node-$NODE_ID as inactive validator in $SYNC_TIMEOUT_SEC seconds."
+            exit 1
+        fi
+        sleep 1
+    done
+}
+
 function assert_eviction() {
     local NODE_ID=${1}
     log_step "Checking for evicted node-$NODE_ID..."
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        if ( ! is_trusted_validator "$NODE_ID" ) && ( check_inactive "$NODE_ID" ); then
+        if ( ! is_trusted_validator "$NODE_ID" ); then # && ( check_inactive "$NODE_ID" ); then
             log "validator node-$NODE_ID was ejected! [expected]"
             break
         fi
@@ -86,7 +122,7 @@ function assert_eviction() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
 
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Time out. Failed to confirm a faulty validator in $SYNC_TIMEOUT_SEC seconds."
+            log "ERROR: Time out. Failed to confirm node-$NODE_ID as evicted validator in $SYNC_TIMEOUT_SEC seconds."
             exit 1
         fi
         sleep 1
