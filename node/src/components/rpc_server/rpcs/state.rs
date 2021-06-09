@@ -19,7 +19,7 @@ use casper_execution_engine::{
     shared::stored_value::StoredValue as DomainStoredValue,
 };
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    bytesrepr::ToBytes, check_summed_hex, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
 };
 
 use super::{
@@ -207,7 +207,7 @@ impl RpcWithParamsExt for GetItem {
             let result = Self::ResponseResult {
                 api_version,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: check_summed_hex::encode(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -322,7 +322,7 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
-            let merkle_proof = hex::encode(proof_bytes);
+            let merkle_proof = check_summed_hex::encode(&proof_bytes);
 
             // Return the result.
             let result = Self::ResponseResult {

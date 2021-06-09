@@ -196,7 +196,7 @@
       ]
     },
     "Digest": {
-      "description": "Hex-encoded hash digest.",
+      "description": "Check-summed hex-encoded hash digest.",
       "type": "string"
     },
     "JsonBlock": {
@@ -334,7 +334,7 @@
       "additionalProperties": false
     },
     "PublicKey": {
-      "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+      "description": "Check-summed hex-encoded cryptographic public key, including the algorithm tag prefix.",
       "type": "string"
     },
     "Reward": {
@@ -440,7 +440,7 @@
       "additionalProperties": false
     },
     "Signature": {
-      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
+      "description": "Check-summed hex-encoded cryptographic signature, including the algorithm tag prefix.",
       "type": "string"
     },
     "Deploy": {
