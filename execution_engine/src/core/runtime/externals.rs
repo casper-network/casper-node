@@ -973,6 +973,7 @@ where
                 Ok(Some(RuntimeValue::I32(0)))
             }
             FunctionIndex::NewDictionaryFuncIndex => {
+                // args(0) = pointer to output size (output param)
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
 
                 self.charge_host_function_call(
@@ -1010,6 +1011,12 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
             FunctionIndex::DictionaryPutFuncIndex => {
+                // args(0) = pointer to uref in Wasm memory
+                // args(1) = size of uref in Wasm memory
+                // args(2) = pointer to key bytes pointer in Wasm memory
+                // args(3) = pointer to key bytes size in Wasm memory
+                // args(4) = pointer to value bytes pointer in Wasm memory
+                // args(5) = pointer to value bytes size in Wasm memory
                 let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.dictionary_put,

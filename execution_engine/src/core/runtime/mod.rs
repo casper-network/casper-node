@@ -3347,14 +3347,16 @@ where
         Ok(())
     }
 
+    /// Creates a dictionary
     fn new_dictionary(&mut self, output_size_ptr: u32) -> Result<Result<(), ApiError>, Error> {
-        // Proceed with creating new URefs
-        let new_uref = self.context.new_unit_uref()?;
-
         // check we can write to the host buffer
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
+
+        // Create new URef
+        let new_uref = self.context.new_unit_uref()?;
+
         // create CLValue for return value
         let new_uref_value = CLValue::from_t(new_uref)?;
         let value_size = new_uref_value.inner_bytes().len();
@@ -3371,8 +3373,7 @@ where
         Ok(Ok(()))
     }
 
-    /// Similar to `read`, this function is for reading from the "local cluster" of global state
-    /// referenced by the uref.
+    /// Reads the `value` under a `key` in a dictionary
     fn dictionary_get(
         &mut self,
         uref_ptr: u32,
@@ -3381,9 +3382,9 @@ where
         key_bytes_size: u32,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
-        if !self.can_write_to_host_buffer() {
-            // Exit early if the host buffer is already occupied
-            return Ok(Err(ApiError::HostBufferFull));
+        // check we can write to the host buffer
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
         }
 
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
@@ -3407,7 +3408,7 @@ where
         Ok(Ok(()))
     }
 
-    /// Writes `value` under a key derived from `key` in the dictionary partition of GlobalState
+    /// Writes a `key`, `value` pair in a dictionary
     fn dictionary_put(
         &mut self,
         uref_ptr: u32,

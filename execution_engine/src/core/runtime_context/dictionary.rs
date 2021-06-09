@@ -5,7 +5,11 @@ use casper_types::{
 
 use crate::shared::stored_value::StoredValue;
 
-/// Wraps a [`CLValue`] and extends it with a seed [`casper_types::URef`] and original key bytes.
+/// Wraps a [`CLValue`] for storage in a dictionary.
+///
+/// Note that we include the dictionary [`casper_types::URef`] and key used to create the
+/// `Key::Dictionary` under which this value is stored.  This is to allow migration to a different
+/// key representation in the future.
 #[derive(Clone)]
 pub struct DictionaryValue {
     /// Actual [`CLValue`] written to global state.
