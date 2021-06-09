@@ -1,6 +1,6 @@
-//! Reactor for validator nodes.
+//! Reactor for participating nodes.
 //!
-//! Validator nodes join the validator-only network upon startup.
+//! Participating nodes join the participating-only network upon startup.
 
 mod config;
 mod error;
@@ -304,8 +304,8 @@ impl Display for Event {
     }
 }
 
-/// The configuration needed to initialize a Validator reactor
-pub struct ValidatorInitConfig {
+/// The configuration needed to initialize a Participating reactor
+pub struct ParticipatingInitConfig {
     pub(super) root: PathBuf,
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
@@ -318,20 +318,20 @@ pub struct ValidatorInitConfig {
 }
 
 #[cfg(test)]
-impl ValidatorInitConfig {
+impl ParticipatingInitConfig {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
 }
 
-impl Debug for ValidatorInitConfig {
+impl Debug for ParticipatingInitConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ValidatorInitConfig {{ .. }}")
+        write!(f, "ParticipatingInitConfig {{ .. }}")
     }
 }
 
-/// Validator node reactor.
+/// Participating node reactor.
 #[derive(DataSize, Debug)]
 pub struct Reactor {
     metrics: Metrics,
@@ -378,7 +378,7 @@ impl reactor::Reactor for Reactor {
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = ValidatorInitConfig;
+    type Config = ParticipatingInitConfig;
     type Error = Error;
 
     fn new(
@@ -387,7 +387,7 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event>), Error> {
-        let ValidatorInitConfig {
+        let ParticipatingInitConfig {
             root,
             config,
             chainspec_loader,
@@ -891,7 +891,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_peer_id)) => {
-                trace!("new peer announcement not handled in the validator reactor");
+                trace!("new peer announcement not handled in the participating reactor");
                 Effects::new()
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
@@ -994,7 +994,7 @@ impl reactor::Reactor for Reactor {
             Event::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::BlockAlreadyExecuted(_),
             ) => {
-                debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
+                debug!("Ignoring `BlockAlreadyExecuted` announcement in `participating` reactor.");
                 Effects::new()
             }
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
