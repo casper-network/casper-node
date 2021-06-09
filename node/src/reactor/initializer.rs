@@ -195,6 +195,7 @@ impl Reactor {
             &storage_config,
             hard_reset_to_start_of_era,
             chainspec_loader.chainspec().protocol_config.version,
+            crashed,
         )?;
 
         let contract_runtime = ContractRuntime::new(

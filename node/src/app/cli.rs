@@ -212,7 +212,7 @@ impl Cli {
                     ReactorExit::ProcessShouldContinue => info!("finished initialization"),
                 }
 
-                let initializer = initializer_runner.into_inner();
+                let initializer = initializer_runner.drain_into_inner().await;
                 let root = config
                     .parent()
                     .map(|path| path.to_owned())
@@ -228,7 +228,9 @@ impl Cli {
                     ReactorExit::ProcessShouldContinue => info!("finished joining"),
                 }
 
-                let config = joiner_runner.into_inner().into_validator_config().await?;
+                let joiner_reactor = joiner_runner.drain_into_inner().await;
+                let config = joiner_reactor.into_validator_config().await?;
+
                 let mut validator_runner =
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
 

@@ -54,6 +54,11 @@ impl EventIndexer {
         self.index = index.wrapping_add(1);
         index
     }
+
+    #[cfg(test)]
+    pub(super) fn current_index(&self) -> EventIndex {
+        self.index
+    }
 }
 
 impl Drop for EventIndexer {
