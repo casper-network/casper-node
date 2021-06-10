@@ -780,7 +780,7 @@ where
                 .await
                 .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
                 .unwrap_or_else(|| {
-                    warn!("could not determine upcoming (current+2) era validators");
+                    debug!("could not determine upcoming (current+2) era validators");
                     Default::default()
                 });
 
