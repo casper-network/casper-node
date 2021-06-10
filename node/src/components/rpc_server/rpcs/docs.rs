@@ -26,7 +26,10 @@ use super::{
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
-use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
+use crate::{
+    effect::EffectBuilder,
+    rpcs::{chain::GetEraInfoBySwitchBlock, state::GetAccountInfo},
+};
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
     ProtocolVersion::from_parts(1, 0, 0);
@@ -69,6 +72,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
 
     schema.push_with_params::<PutDeploy>("receives a Deploy to be executed by the network");
     schema.push_with_params::<GetDeploy>("returns a Deploy from the network");
+    schema.push_with_params::<GetAccountInfo>("returns an Account from the network");
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");

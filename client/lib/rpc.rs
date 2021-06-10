@@ -19,8 +19,8 @@ use casper_node::{
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
         state::{
-            GetAuctionInfo, GetAuctionInfoParams, GetBalance, GetBalanceParams, GetItem,
-            GetItemParams,
+            GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
+            GetBalanceParams, GetItem, GetItemParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -243,6 +243,20 @@ impl RpcCall {
         Ok(response)
     }
 
+    pub(crate) fn get_account_info(self, public_key: &str, block_id: &str) -> Result<JsonRpc> {
+        let key = if let Ok(public_key) = PublicKey::from_hex(public_key) {
+            public_key
+        } else {
+            return Err(Error::FailedToParseKey);
+        };
+        let block_identifier = Self::block_identifier(block_id)?;
+        let params = GetAccountInfoParams {
+            public_key: key,
+            block_identifier,
+        };
+        GetAccountInfo::request_with_map_params(self, params)
+    }
+
     fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {
         if maybe_block_identifier.is_empty() {
             return Ok(None);
@@ -367,6 +381,10 @@ impl RpcClient for ListRpcs {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for GetAccountInfo {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 pub(crate) trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
@@ -389,3 +407,4 @@ impl IntoJsonMap for GetItemParams {}
 impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}
 impl IntoJsonMap for GetAuctionInfoParams {}
+impl IntoJsonMap for GetAccountInfoParams {}

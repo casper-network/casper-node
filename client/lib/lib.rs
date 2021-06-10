@@ -464,6 +464,31 @@ pub fn get_auction_info(
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info(maybe_block_id)
 }
 
+/// Retrieves an Account from the network.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+/// * `public_key` the public key associated with the `Account`
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
+///   `Block` height or empty. If empty, the latest `Block` will be retrieved.
+pub fn get_account_info(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+    public_key: &str,
+    block_id: &str,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_account_info(public_key, block_id)
+}
+
 /// Retrieves information and examples for all currently supported RPCs.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the

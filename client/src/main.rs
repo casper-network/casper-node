@@ -5,6 +5,7 @@ mod common;
 mod deploy;
 mod docs;
 mod generate_completion;
+mod get_account_info;
 mod get_auction_info;
 mod get_balance;
 mod get_era_info_by_switch_block;
@@ -22,7 +23,7 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
+    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetItem as QueryState},
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
@@ -54,6 +55,7 @@ enum DisplayOrder {
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
+    GetAccountInfo,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -87,6 +89,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
+        .subcommand(GetAccountInfo::build(DisplayOrder::GetAccountInfo as usize))
 }
 
 #[tokio::main]
@@ -114,6 +117,7 @@ async fn main() {
         (GenerateCompletion::NAME, Some(matches)) => (GenerateCompletion::run(matches), matches),
         (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches), matches),
         (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches), matches),
+        (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches), matches),
         _ => {
             let _ = cli().print_long_help();
             println!();
