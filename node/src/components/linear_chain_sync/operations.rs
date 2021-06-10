@@ -468,6 +468,7 @@ where
 
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height
+    let trusted_header_output = *trusted_header.clone();
     let mut most_recent_block_header = *trusted_header;
     loop {
         // If we encounter a block header of a version which is newer than ours we return an error
@@ -550,7 +551,7 @@ where
     // Use the state root to synchronize the trie.
     info!(
         state_root_hash = ?most_recent_block_header.state_root_hash(),
-        "Fast syncing",
+        "Syncing trie store",
     );
     let mut outstanding_trie_keys = vec![Blake2bHash::from(
         *most_recent_block_header.state_root_hash(),
@@ -561,9 +562,13 @@ where
         outstanding_trie_keys.extend(missing_descendant_trie_keys);
     }
 
+    info!(
+        most_recent_block_hash = ?most_recent_block_header.hash(),
+        "Syncing blocks to current",
+    );
     while let Some(block_with_metadata) = fetch_and_store_block_by_height(
         effect_builder,
-        most_recent_block_header.height(),
+        most_recent_block_header.height() + 1,
         &trusted_validator_weights,
         chainspec.highway_config.finality_threshold_fraction,
     )
@@ -585,5 +590,5 @@ where
         }
     }
 
-    Ok(most_recent_block_header)
+    Ok(trusted_header_output)
 }
