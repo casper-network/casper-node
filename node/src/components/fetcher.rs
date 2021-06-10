@@ -204,7 +204,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         effects
     }
 
-    /// Handles signalling responders with the item or `None`.
+    /// Handles signalling responders with the item or an error.
     fn signal(
         &mut self,
         id: T::Id,
