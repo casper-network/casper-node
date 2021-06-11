@@ -804,9 +804,7 @@ where
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
     ) -> Effects<Event<P>> {
-        self.net_metrics
-            .peers
-            .set(self.connection_symmetries.len() as i64);
+        self.net_metrics.peers.set(self.peers().len() as i64);
         effect_builder.announce_new_peer(peer_id).ignore()
     }
 
