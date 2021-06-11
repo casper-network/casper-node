@@ -284,9 +284,9 @@ impl ChainspecLoader {
     }
 
     /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
-    /// validator reactors' constructors to start the recurring task of checking for upgrades.  The
-    /// recurring tasks of the previous reactors will be cancelled when the relevant reactor is
-    /// destroyed during transition.
+    /// participating reactors' constructors to start the recurring task of checking for upgrades.
+    /// The recurring tasks of the previous reactors will be cancelled when the relevant reactor
+    /// is destroyed during transition.
     pub(crate) fn start_checking_for_upgrades<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
@@ -810,7 +810,9 @@ mod tests {
     use super::*;
     use crate::{
         logging,
-        reactor::{validator::Event as ValidatorEvent, EventQueueHandle, QueueKind, Scheduler},
+        reactor::{
+            participating::Event as ParticipatingEvent, EventQueueHandle, QueueKind, Scheduler,
+        },
         testing::TestRng,
         types::chainspec::CHAINSPEC_NAME,
     };
@@ -1000,7 +1002,7 @@ mod tests {
 
     struct TestFixture {
         chainspec_loader: ChainspecLoader,
-        effect_builder: EffectBuilder<ValidatorEvent>,
+        effect_builder: EffectBuilder<ParticipatingEvent>,
     }
 
     impl TestFixture {

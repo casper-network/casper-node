@@ -12,7 +12,7 @@ use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey,
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
     crypto::AsymmetricKeyExt,
-    reactor::validator,
+    reactor::participating,
     testing::{
         self,
         multi_stage_test_reactor::{InitializerReactorConfigWithChainspec, CONFIG_DIR},
@@ -167,27 +167,27 @@ impl TestChain {
             small_network::Config::default_local_net(self.first_node_port)
         };
 
-        let mut validator_config = validator::Config {
+        let mut participating_config = participating::Config {
             network,
             gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
         };
 
         // ...and the secret key for our validator.
-        validator_config.consensus.secret_key_path = External::from_value(secret_key);
+        participating_config.consensus.secret_key_path = External::from_value(secret_key);
 
         // Set a trust hash if one has been provided.
-        validator_config.node.trusted_hash = trusted_hash;
+        participating_config.node.trusted_hash = trusted_hash;
 
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
-        validator_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
+        participating_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
-        validator_config.storage = storage_config;
+        participating_config.storage = storage_config;
 
         // Bundle our config with a chainspec for creating a multi-stage reactor
         let config = InitializerReactorConfigWithChainspec {
-            config: (false, WithDir::new(&*CONFIG_DIR, validator_config)),
+            config: (false, WithDir::new(&*CONFIG_DIR, participating_config)),
             chainspec: Arc::clone(&self.chainspec),
         };
 
@@ -215,7 +215,7 @@ fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
 }
 
 #[tokio::test]
-async fn run_validator_network() {
+async fn run_participating_network() {
     testing::init_logging();
 
     let mut rng = crate::new_rng();

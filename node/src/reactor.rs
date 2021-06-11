@@ -27,8 +27,8 @@
 mod event_queue_metrics;
 pub mod initializer;
 pub mod joiner;
+pub mod participating;
 mod queue_kind;
-pub mod validator;
 
 #[cfg(test)]
 use std::sync::Arc;
