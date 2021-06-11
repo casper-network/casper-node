@@ -879,6 +879,7 @@ impl Storage {
         tx: &mut Tx,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        debug!(switch_block_era_id_index = ?self.switch_block_era_id_index);
         self.switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
