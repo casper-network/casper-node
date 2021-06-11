@@ -57,6 +57,13 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
             .or_insert(time_received);
     }
 
+    /// Adds a holder to the vertex that satisfies `dep`.
+    fn add_holder(&mut self, dep: &Dependency<C>, sender: I, time_received: Timestamp) {
+        if let Some((_, holders)) = self.0.iter_mut().find(|(pvv, _)| pvv.inner().id() == *dep) {
+            holders.insert(sender, time_received);
+        }
+    }
+
     /// Adds a vertex, or updates its timestamp.
     fn push(&mut self, pv: PendingVertex<I, C>) {
         self.add(pv.sender, pv.pvv, pv.time_received)
@@ -345,10 +352,13 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 Some(pv) => pv,
             };
             if let Some(dep) = highway.missing_dependency(pv.pvv()) {
+                let sender = pv.sender().clone();
+                let time_received = pv.time_received;
                 // Find the first dependency that `pv` needs that we haven't synchronized yet
                 // and request it from the sender of `pv`. Since it relies on it, it should have
                 // it as well.
-                let transitive_dependency = self.find_transitive_dependency(dep.clone());
+                let transitive_dependency =
+                    self.find_transitive_dependency(dep.clone(), &sender, time_received);
                 if self
                     .vertices_no_deps
                     .contains_dependency(&transitive_dependency)
@@ -362,8 +372,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 }
                 // We are still missing a dependency. Store the vertex in the map and request
                 // the dependency from the sender.
-                let sender = pv.sender().clone();
-                let time_received = pv.time_received;
                 // Make `pv` depend on the direct dependency `dep` and not `transitive_dependency`
                 // since there's a higher chance of adding `pv` to the protocol
                 // state after `dep` is added, rather than `transitive_dependency`.
@@ -426,27 +434,23 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     // Finds the highest missing dependency (i.e. one that we are waiting to be downloaded) and
     // returns it, if any.
-    fn find_transitive_dependency(&self, mut missing_dependency: Dependency<C>) -> Dependency<C> {
+    fn find_transitive_dependency(
+        &mut self,
+        mut missing_dependency: Dependency<C>,
+        sender: &I,
+        time_received: Timestamp,
+    ) -> Dependency<C> {
         // If `missing_dependency` is already downloaded and waiting for its dependency to be
         // resolved, we will follow that dependency until we find "the bottom" of the
         // chain – when there are no more known dependency requests scheduled,
         // and we request the last one in the chain.
-        loop {
-            let maybe_next_missing = self
-                .vertices_awaiting_deps
-                .iter()
-                .find(|(_, pv)| pv.contains_dependency(&missing_dependency))
-                .map(|(next_dep, _)| next_dep);
-            match maybe_next_missing {
-                None => {
-                    // If we hit the end of a dependency chain, request downloading the last one
-                    // missing.
-                    break;
-                }
-                Some(next_missing) => {
-                    missing_dependency = next_missing.clone();
-                }
-            }
+        while let Some((next_missing, pvs)) = self
+            .vertices_awaiting_deps
+            .iter_mut()
+            .find(|(_, pvs)| pvs.contains_dependency(&missing_dependency))
+        {
+            pvs.add_holder(&missing_dependency, sender.clone(), time_received);
+            missing_dependency = next_missing.clone();
         }
         missing_dependency
     }
