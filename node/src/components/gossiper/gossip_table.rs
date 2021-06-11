@@ -971,6 +971,86 @@ mod tests {
         assert!(!gossip_table.finished.contains(&data_id));
     }
 
+    #[test]
+    fn timeouts_purge_in_order() {
+        let mut timeouts = Timeouts::new();
+        let now = Instant::now();
+        let later_100 = now + Duration::from_millis(100);
+        let later_200 = now + Duration::from_millis(200);
+
+        // Timeouts are added and purged in chronological order.
+        timeouts.push(now.clone(), 0);
+        timeouts.push(later_100, 1);
+        timeouts.push(later_200, 2);
+
+        let now_after_time_travel = now + Duration::from_millis(10);
+        let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
+
+        assert_eq!(purged, vec![0]);
+    }
+
+    #[test]
+    fn timeouts_purge_in_order_2() {
+        let mut timeouts = Timeouts::new();
+        let now = Instant::now();
+        let later_100 = now + Duration::from_millis(100);
+        let later_200 = now + Duration::from_millis(200);
+        let later_300 = now + Duration::from_millis(300);
+
+        timeouts.push(later_100, 1);
+        timeouts.push(later_200, 2);
+        timeouts.push(later_300, 3);
+
+        // If a node's system time was changed to a time earlier than
+        // the earliest timeout, and a new timeout is added with an instant
+        // corresponding to this new early time, then this would make the earliest
+        // timeout the LAST timeout in the vec.
+        timeouts.push(now.clone(), 0);
+
+        let now_after_time_travel = now + Duration::from_millis(10);
+        let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
+        let empty: Vec<i32> = vec![];
+
+        // This isn't a problem and the order will eventually
+        // be restored.
+        assert_eq!(purged, empty);
+    }
+
+    #[test]
+    fn timeouts_may_over_drain_if_system_time_changed() {
+        let mut timeouts = Timeouts::new();
+        let now = Instant::now();
+        let later_100 = now + Duration::from_millis(100);
+        let later_200 = now + Duration::from_millis(200);
+        let later_300 = now + Duration::from_millis(300);
+        let later_400 = now + Duration::from_millis(400);
+        let later_500 = now + Duration::from_millis(500);
+
+        timeouts.push(later_100, 1);
+        timeouts.push(later_200, 2);
+        timeouts.push(later_300, 3);
+
+        // If a node's system time was changed to a time earlier than
+        // the earliest timeout, and a new timeout is added with an instant
+        // corresponding to this new "early" time, then this would make the earliest
+        // timeout the LAST timeout in the vec.
+        timeouts.push(now.clone(), 0);
+
+        // And then more timeouts are added, in chronological order, starting
+        // with an instant later than the "early" time referenced above
+        timeouts.push(later_400, 4);
+        timeouts.push(later_500, 5);
+
+        let now_after_time_travel = now + Duration::from_millis(10);
+        let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
+
+        // Then the cache vec may be over-drained.
+        // Depending on how out-of-order the vec is,
+        // this could happen again and again, but eventually
+        // the order would be restored.
+        assert_eq!(purged, vec![1, 2, 3, 0]);
+    }
+
     #[bench]
     fn benchmark_purging(bencher: &mut Bencher) {
         const ENTRY_COUNT: usize = 10_000;
