@@ -979,7 +979,7 @@ mod tests {
         let later_200 = now + Duration::from_millis(200);
 
         // Timeouts are added and purged in chronological order.
-        timeouts.push(now.clone(), 0);
+        timeouts.push(now, 0);
         timeouts.push(later_100, 1);
         timeouts.push(later_200, 2);
 
@@ -1005,7 +1005,7 @@ mod tests {
         // the earliest timeout, and a new timeout is added with an instant
         // corresponding to this new early time, then this would make the earliest
         // timeout the LAST timeout in the vec.
-        timeouts.push(now.clone(), 0);
+        timeouts.push(now, 0);
 
         let now_after_time_travel = now + Duration::from_millis(10);
         let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
@@ -1034,7 +1034,7 @@ mod tests {
         // the earliest timeout, and a new timeout is added with an instant
         // corresponding to this new "early" time, then this would make the earliest
         // timeout the LAST timeout in the vec.
-        timeouts.push(now.clone(), 0);
+        timeouts.push(now, 0);
 
         // And then more timeouts are added, in chronological order, starting
         // with an instant later than the "early" time referenced above
