@@ -452,6 +452,8 @@ where
 
         for era_id in self.iter_past(self.current_era, self.bonded_eras().saturating_mul(2)) {
             let newly_slashed;
+            let slashed;
+            let inactive;
             let validators;
             let start_height;
             let era_start_time;
@@ -467,6 +469,8 @@ where
                 // The validator set was read from the global state: there's no key block for era 0.
                 validators = activation_era_validators.clone();
                 start_height = 0;
+                slashed = Default::default();
+                inactive = Default::default();
                 era_start_time = self
                     .protocol_config
                     .genesis_timestamp
@@ -479,19 +483,28 @@ where
                 era_start_time = key_block.timestamp();
                 seed = Self::era_seed(*booking_block_hash, key_block.accumulated_seed());
                 if era_id == self.protocol_config.last_activation_point {
-                    // After an upgrade or emergency restart, we don't do cross-era slashing.
+                    // After an upgrade or emergency restart, we don't do cross-era fault tracking.
                     newly_slashed = vec![];
+                    slashed = Default::default();
+                    inactive = Default::default();
                     // And we read the validator sets from the global state, because the key block
                     // might have been overwritten by the upgrade/restart.
                     validators = activation_era_validators.clone();
                 } else {
                     // If it's neither genesis nor upgrade nor restart, we use the validators from
                     // the key block and ban validators that were slashed in previous eras.
-                    newly_slashed = key_block
+                    let era_end = key_block
                         .era_end()
-                        .expect("key block must be a switch block")
-                        .equivocators
-                        .clone();
+                        .expect("key block must be a switch block");
+                    newly_slashed = era_end.equivocators.clone();
+                    slashed = self
+                        .iter_past(era_id, self.banning_period())
+                        .filter_map(|old_id| {
+                            key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end())
+                        })
+                        .flat_map(|era_end| era_end.equivocators.clone())
+                        .collect();
+                    inactive = era_end.inactive_validators.iter().cloned().collect();
                     validators = key_block
                         .next_era_validator_weights()
                         .expect("missing validators from key block")
@@ -499,25 +512,13 @@ where
                 }
             }
 
-            let slashed = self
-                .iter_past(era_id, self.banning_period())
-                .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
-                .flat_map(|era_end| era_end.equivocators.clone())
-                .collect();
-
             let results = self.new_era(
                 era_id,
                 Timestamp::now(),
                 validators,
                 newly_slashed,
                 slashed,
-                key_blocks
-                    .get(&era_id)
-                    .and_then(|bhdr| bhdr.era_end())
-                    .into_iter()
-                    .flat_map(|era_end| &era_end.inactive_validators)
-                    .cloned()
-                    .collect(),
+                inactive,
                 seed,
                 era_start_time,
                 start_height,
@@ -843,7 +844,10 @@ where
         effects
     }
 
-    /// Creates a new era.
+    /// Creates a new era due to a newly finalized switch block.
+    ///
+    /// This is never called at genesis or directly after an upgrade, so the new era can always be
+    /// initialized according to the information in the switch block header.
     pub(super) fn handle_create_new_era(
         &mut self,
         switch_block_header: BlockHeader,
