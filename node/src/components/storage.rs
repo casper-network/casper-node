@@ -1487,16 +1487,17 @@ fn initialize_block_body_db(
     let mut txn = env.begin_rw_txn()?;
     let mut cursor = txn.open_rw_cursor(*block_body_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
-        if deleted_block_body_hashes.contains(raw_key) {
+    for (block_body_hash, block_body_bytes) in cursor.iter() {
+        if deleted_block_body_hashes.contains(block_body_hash) {
+            info!(?block_body_hash, "deleting block hash");
             cursor.del(WriteFlags::empty())?;
             continue;
         }
 
         if should_check_integrity {
-            let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+            let body: BlockBody = lmdb_ext::deserialize(block_body_bytes)?;
             assert_eq!(
-                raw_key,
+                block_body_hash,
                 body.hash(Block::HASH_V1_PROTOCOL_VERSION).as_ref(),
                 "found corrupt block body in database"
             );
