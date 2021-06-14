@@ -804,6 +804,8 @@ where
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
     ) -> Effects<Event<P>> {
+        trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
+        self.net_metrics.peers.set(self.peers().len() as i64);
         effect_builder.announce_new_peer(peer_id).ignore()
     }
 
