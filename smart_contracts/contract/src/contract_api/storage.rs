@@ -336,10 +336,10 @@ pub fn disable_contract_version(
     api_error::result_from(result)
 }
 
-/// Creates new [`URef`] that points to a context-local partition of global state.
-/// Optionally you can pass a [`str`] to automatically put this dictionary under named keys.
-pub fn new_dictionary(key_name: &str) -> Result<URef, ApiError> {
-    if key_name.is_empty() || runtime::has_key(key_name) {
+/// Creates new [`URef`] that represents a seed for a dictionary partition of the global state and
+/// puts it under named keys.
+pub fn new_dictionary(dictionary_name: &str) -> Result<URef, ApiError> {
+    if dictionary_name.is_empty() || runtime::has_key(dictionary_name) {
         return Err(ApiError::InvalidArgument);
     }
 
@@ -351,11 +351,11 @@ pub fn new_dictionary(key_name: &str) -> Result<URef, ApiError> {
     };
     let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
     let uref: URef = bytesrepr::deserialize(value_bytes).unwrap_or_revert();
-    runtime::put_key(key_name, Key::from(uref));
+    runtime::put_key(dictionary_name, Key::from(uref));
     Ok(uref)
 }
 
-/// Reads data from dictionary pointed at by [`URef`].
+/// Retrieve value stored under `key` in the dictionary accessed by `dictionary_uref`.
 pub fn dictionary_get<K: ToBytes, V: CLTyped + FromBytes>(
     uref: URef,
     key: K,
@@ -385,9 +385,9 @@ pub fn dictionary_get<K: ToBytes, V: CLTyped + FromBytes>(
     Ok(Some(bytesrepr::deserialize(value_bytes)?))
 }
 
-/// Writes `value` under `key` in the context-local partition of global state.
-pub fn dictionary_put<K: ToBytes, V: CLTyped + ToBytes>(uref: URef, key: K, value: V) {
-    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(uref);
+/// Writes `value` under `key` in the dictionary accessed by `dictionary_uref`.
+pub fn dictionary_put<K: ToBytes, V: CLTyped + ToBytes>(dictionary_uref: URef, key: K, value: V) {
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_uref);
     let (key_ptr, key_size, _bytes2) = contract_api::to_ptr(key);
 
     let cl_value = CLValue::from_t(value).unwrap_or_revert();

@@ -1093,9 +1093,11 @@ where
 
         self.validate_cl_value(&cl_value)?;
 
-        let wrapped_cl_value =
-            DictionaryValue::new(cl_value, key_bytes.to_vec(), uref.addr().to_vec());
-        let wrapped_cl_value = CLValue::from_t(wrapped_cl_value).map_err(Error::from)?;
+        let wrapped_cl_value = {
+            let dictionary_value =
+                DictionaryValue::new(cl_value, key_bytes.to_vec(), uref.addr().to_vec());
+            CLValue::from_t(dictionary_value).map_err(Error::from)?
+        };
 
         let dictionary_key = Key::dictionary(uref, key_bytes);
         self.metered_write_gs_unsafe(dictionary_key, wrapped_cl_value)?;
