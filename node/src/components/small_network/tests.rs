@@ -37,7 +37,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     testing::{
         self, init_logging,
-        network::{Network, NetworkedReactor},
+        network::{Network, NetworkedReactor, Nodes},
         ConditionCheckReactor,
     },
     types::NodeId,
@@ -487,21 +487,17 @@ async fn ensure_peers_metric_is_correct() {
                 .unwrap();
         }
 
-        let blocklist = HashSet::new();
         net.settle_on(
             &mut rng,
-            |nodes| network_is_complete(&blocklist, nodes),
+            |nodes: &Nodes<TestReactor>| {
+                nodes.values().all(|runner| {
+                    runner.reactor().inner().net.net_metrics.peers.get()
+                        == number_of_nodes as i64 - 1
+                })
+            },
             timeout,
         )
         .await;
-
-        // Ensure every reactor reports a number of nodes connected equal to `n-1`.
-        for (_id, runner) in net.nodes() {
-            assert_eq!(
-                runner.reactor().inner().net.net_metrics.peers.get(),
-                number_of_nodes as i64 - 1
-            );
-        }
 
         net.finalize().await;
     }
