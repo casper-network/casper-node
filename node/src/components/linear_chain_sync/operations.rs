@@ -472,12 +472,13 @@ where
     // We keep fetching by height until none of our peers have a block at that height
     let trusted_header_output = *trusted_header.clone();
     let mut most_recent_block_header = *trusted_header;
+    let current_version = chainspec.protocol_config.version;
     loop {
         // If we encounter a block header of a version which is newer than ours we return an error
-        if most_recent_block_header.protocol_version() > chainspec.protocol_config.version {
+        if most_recent_block_header.protocol_version() > current_version {
             return Err(
                 LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                    current_version: chainspec.protocol_config.version,
+                    current_version,
                     block_header_with_future_version: Box::new(most_recent_block_header),
                 },
             );
@@ -500,11 +501,7 @@ where
                 }
             }
             // If we could not fetch, we can stop if the most recent has our protocol version
-            None if most_recent_block_header.protocol_version()
-                == chainspec.protocol_config.version =>
-            {
-                break
-            }
+            None if most_recent_block_header.protocol_version() == current_version => break,
             // Otherwise keep trying to fetch until we get a block with our version
             None => {
                 tokio::time::sleep(TIMEOUT_DURATION).await;
@@ -576,6 +573,17 @@ where
     )
     .await?
     {
+        if block_with_metadata.block.protocol_version() > current_version {
+            return Err(
+                LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                    current_version,
+                    block_header_with_future_version: Box::new(
+                        block_with_metadata.block.take_header(),
+                    ),
+                },
+            );
+        }
+
         for deploy_hash in block_with_metadata.block.deploy_hashes() {
             fetch_and_store_deploy(effect_builder, *deploy_hash).await?;
         }
