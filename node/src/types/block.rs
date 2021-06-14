@@ -1192,7 +1192,7 @@ impl Block {
     /// Version which introduced the first generation hashing function.
     pub const HASH_V1_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 0, 0);
     /// Version that introduced Merkelized hashing functions.
-    pub const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(9999, 0, 0);
+    pub const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 0);
 
     pub(crate) fn new(
         parent_hash: BlockHash,
