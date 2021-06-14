@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use derive_more::Display;
+use itertools::Itertools;
 
 use crate::components::consensus::{
     highway_core::{
@@ -340,17 +341,21 @@ fn transitive_proposal_dependency() {
     ));
     let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert!(maybe_pv.is_none());
-    assert_eq!(2, outcomes.len(), "unexpected outcomes: {:?}", outcomes);
-    assert_targeted_message(
-        &outcomes[0],
-        &peer0,
-        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
-    );
-    assert_targeted_message(
-        &outcomes[1],
-        &peer1,
-        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
-    );
+    match &*outcomes {
+        [ProtocolOutcome::CreatedTargetedMessage(msg0, p0), ProtocolOutcome::CreatedTargetedMessage(msg1, p1)] =>
+        {
+            assert_eq!(
+                vec![&peer0, &peer1],
+                vec![p0, p1].into_iter().sorted().collect_vec()
+            );
+            assert_eq!(msg0, msg1);
+            assert_eq!(
+                HighwayMessage::RequestDependency::<TestContext>(Dependency::Unit(c0)),
+                bincode::deserialize(msg0.as_slice()).expect("deserialization to pass")
+            );
+        }
+        outcomes => panic!("unexpected outcomes: {:?}", outcomes),
+    }
 }
 
 fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
