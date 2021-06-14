@@ -450,7 +450,59 @@ async fn check_varying_size_network_connects() {
             "network did not stay connected after being settled"
         );
 
+        // Now the network should have an appropriate number of peers.
+
         // This test will run multiple times, so ensure we cleanup all ports.
+        net.finalize().await;
+    }
+}
+
+/// Check that a network of varying sizes will connect all nodes properly.
+#[tokio::test]
+async fn ensure_peers_metric_is_correct() {
+    init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Larger networks can potentially become more unreliable, so we try with small sizes only.
+    for &number_of_nodes in &[2u16, 3, 5] {
+        let timeout = Duration::from_secs(3 * number_of_nodes as u64);
+
+        let mut net = Network::new();
+
+        // Pick a random port in the higher ranges that is likely to be unused.
+        let first_node_port = testing::unused_port_on_localhost();
+
+        let _ = net
+            .add_node_with_config(
+                Config::default_local_net_first_node(first_node_port),
+                &mut rng,
+            )
+            .await
+            .unwrap();
+
+        for _ in 1..number_of_nodes {
+            net.add_node_with_config(Config::default_local_net(first_node_port), &mut rng)
+                .await
+                .unwrap();
+        }
+
+        let blocklist = HashSet::new();
+        net.settle_on(
+            &mut rng,
+            |nodes| network_is_complete(&blocklist, nodes),
+            timeout,
+        )
+        .await;
+
+        // Ensure every reactor reports a number of nodes connected equal to `n-1`.
+        for (_id, runner) in net.nodes() {
+            assert_eq!(
+                runner.reactor().inner().net.net_metrics.peers.get(),
+                number_of_nodes as i64 - 1
+            );
+        }
+
         net.finalize().await;
     }
 }
