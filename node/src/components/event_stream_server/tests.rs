@@ -16,7 +16,7 @@ use schemars::schema_for;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
-    task::JoinHandle,
+    task::{self, JoinHandle},
     time,
 };
 use tracing::debug;
@@ -30,6 +30,9 @@ use sse_server::{
 /// The total number of random events each `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.
 const EVENT_COUNT: u32 = 100;
+/// The maximum number of random events each `EventStreamServer` will emit, excluding the initial
+/// `ApiVersion` event.
+const MAX_EVENT_COUNT: u32 = 100_000_000;
 /// The event stream buffer length, set in the server's config.  Set to half of the total event
 /// count to allow for the buffer purging events in the test.
 const BUFFER_LENGTH: u32 = EVENT_COUNT / 2;
@@ -62,28 +65,40 @@ impl ClientSyncBehavior {
     }
 }
 
-/// A helper to allow the synchronization of all clients joining a single SSE server.
+/// A helper defining the behavior of the server.
 #[derive(Clone)]
-struct ServerSyncBehavior {
+struct ServerBehavior {
     /// Whether the server should have a delay between sending events, to allow a client to keep up
     /// and not be disconnected for lagging.
     has_delay_between_events: bool,
+    /// Whether the server should send all events once, or keep repeating the batch up until
+    /// `MAX_EVENT_COUNT` have been sent.
+    repeat_events: bool,
     clients: Vec<ClientSyncBehavior>,
 }
 
-impl ServerSyncBehavior {
-    /// Returns a new `ServerSyncBehavior` with a 1 millisecond delay per event, and no clients.
+impl ServerBehavior {
+    /// Returns a default new `ServerBehavior`.
+    ///
+    /// It has a small delay between events, and sends the collection of random events once.
     fn new() -> Self {
-        ServerSyncBehavior {
+        ServerBehavior {
             has_delay_between_events: true,
+            repeat_events: false,
             clients: Vec::new(),
         }
     }
 
-    /// Removes the delay between events.
-    fn with_no_delay_between_events(mut self) -> Self {
-        self.has_delay_between_events = false;
-        self
+    /// Returns a new `ServerBehavior` suitable for testing lagging clients.
+    ///
+    /// It has no delay between events, and sends the collection of random events repeatedly up to a
+    /// maximum of `MAX_EVENT_COUNT` events.
+    fn new_for_lagging_test() -> Self {
+        ServerBehavior {
+            has_delay_between_events: false,
+            repeat_events: true,
+            clients: Vec::new(),
+        }
     }
 
     /// Adds a client sync behavior, specified for the client to connect to the server just before
@@ -111,6 +126,8 @@ impl ServerSyncBehavior {
     async fn sleep_if_required(&self) {
         if self.has_delay_between_events {
             time::sleep(DELAY_BETWEEN_EVENTS).await;
+        } else {
+            task::yield_now().await;
         }
     }
 }
@@ -203,15 +220,21 @@ impl TestFixture {
     ///
     /// The server runs until `TestFixture::stop_server()` is called, or the `TestFixture` is
     /// dropped.
-    async fn run_server(&mut self, sync_behavior: ServerSyncBehavior) -> SocketAddr {
+    async fn run_server(&mut self, server_behavior: ServerBehavior) -> SocketAddr {
         if self.server_join_handle.is_some() {
             panic!("one `TestFixture` can only run one server at a time");
         }
         self.server_stopper = ServerStopper::new();
 
-        // Set the server to use a channel buffer of half the total events it will emit.
+        // Set the server to use a channel buffer of half the total events it will emit, unless
+        // we're running with no delay between events, in which case set a minimal buffer as we're
+        // trying to cause clients to get ejected for lagging.
         let config = Config {
-            event_stream_buffer_length: BUFFER_LENGTH,
+            event_stream_buffer_length: if server_behavior.has_delay_between_events {
+                BUFFER_LENGTH
+            } else {
+                1
+            },
             ..Default::default()
         };
         let mut server = EventStreamServer::new(
@@ -229,16 +252,21 @@ impl TestFixture {
         let server_stopper = self.server_stopper.clone();
 
         let join_handle = tokio::spawn(async move {
-            for (id, event) in events.into_iter().enumerate() {
+            let event_count = if server_behavior.repeat_events {
+                MAX_EVENT_COUNT
+            } else {
+                EVENT_COUNT
+            };
+            for (id, event) in events.iter().cycle().enumerate().take(event_count as usize) {
                 if server_stopper.should_stop() {
                     debug!("stopping server early");
                     return;
                 }
-                sync_behavior
+                server_behavior
                     .wait_for_clients((id as Id).wrapping_add(first_event_id))
                     .await;
-                let _ = server.broadcast(event);
-                sync_behavior.sleep_if_required().await;
+                let _ = server.broadcast(event.clone());
+                server_behavior.sleep_if_required().await;
             }
 
             // Keep the server running until told to stop.  Clients connecting from now will only
@@ -463,9 +491,9 @@ async fn should_serve_events_with_no_query(filter: EventFilter) {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
-    let mut sync_behavior = ServerSyncBehavior::new();
-    let barrier = sync_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(sync_behavior).await;
+    let mut server_behavior = ServerBehavior::new();
+    let barrier = server_behavior.add_client_sync_before_event(0);
+    let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, None);
     let received_events = subscribe(&url, barrier, "client").await.unwrap();
@@ -498,9 +526,9 @@ async fn should_serve_events_with_query(filter: EventFilter) {
     let connect_at_event_id = BUFFER_LENGTH;
     let start_from_event_id = BUFFER_LENGTH / 2;
 
-    let mut sync_behavior = ServerSyncBehavior::new();
-    let barrier = sync_behavior.add_client_sync_before_event(connect_at_event_id);
-    let server_address = fixture.run_server(sync_behavior).await;
+    let mut server_behavior = ServerBehavior::new();
+    let barrier = server_behavior.add_client_sync_before_event(connect_at_event_id);
+    let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, Some(start_from_event_id));
     let received_events = subscribe(&url, barrier, "client").await.unwrap();
@@ -534,9 +562,9 @@ async fn should_serve_remaining_events_with_query(filter: EventFilter) {
     let connect_at_event_id = BUFFER_LENGTH * 3 / 2;
     let start_from_event_id = 0;
 
-    let mut sync_behavior = ServerSyncBehavior::new();
-    let barrier = sync_behavior.add_client_sync_before_event(connect_at_event_id);
-    let server_address = fixture.run_server(sync_behavior).await;
+    let mut server_behavior = ServerBehavior::new();
+    let barrier = server_behavior.add_client_sync_before_event(connect_at_event_id);
+    let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, Some(start_from_event_id));
     let received_events = subscribe(&url, barrier, "client").await.unwrap();
@@ -568,9 +596,9 @@ async fn should_serve_events_with_query_for_future_event(filter: EventFilter) {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
-    let mut sync_behavior = ServerSyncBehavior::new();
-    let barrier = sync_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(sync_behavior).await;
+    let mut server_behavior = ServerBehavior::new();
+    let barrier = server_behavior.add_client_sync_before_event(0);
+    let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, Some(25));
     let received_events = subscribe(&url, barrier, "client").await.unwrap();
@@ -597,10 +625,10 @@ async fn server_exit_should_gracefully_shut_down_stream() {
     let mut fixture = TestFixture::new(&mut rng);
 
     // Start the server, waiting for two clients to connect.
-    let mut sync_behavior = ServerSyncBehavior::new();
-    let barrier1 = sync_behavior.add_client_sync_before_event(0);
-    let barrier2 = sync_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(sync_behavior).await;
+    let mut server_behavior = ServerBehavior::new();
+    let barrier1 = server_behavior.add_client_sync_before_event(0);
+    let barrier2 = server_behavior.add_client_sync_before_event(0);
+    let server_address = fixture.run_server(server_behavior).await;
 
     let url1 = url(server_address, EventFilter::Main, None);
     let url2 = url(server_address, EventFilter::Signatures, None);
@@ -632,28 +660,62 @@ async fn server_exit_should_gracefully_shut_down_stream() {
 /// by the server.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn lagging_clients_should_be_disconnected() {
+    // Similar to the `subscribe()` function, except this has a long pause at the start and short
+    // pauses after each read.
+    //
+    // The objective is to create backpressure by filling the client's receive buffer, then filling
+    // the server's send buffer, which in turn causes the server's internal broadcast channel to
+    // deem that client as lagging.
+    async fn subscribe_slow(
+        url: &str,
+        barrier: Arc<Barrier>,
+        client_id: &str,
+    ) -> Result<(), reqwest::Error> {
+        barrier.wait().await;
+        let response = reqwest::get(url).await.unwrap();
+        barrier.wait().await;
+
+        time::sleep(Duration::from_secs(5)).await;
+
+        let mut stream = response.bytes_stream();
+        let pause_between_events = Duration::from_secs(100) / MAX_EVENT_COUNT;
+        while let Some(item) = stream.next().await {
+            // The function is expected to exit here with an `UnexpectedEof` error.
+            let bytes = item?;
+            let chunk = str::from_utf8(bytes.as_ref()).unwrap();
+            if chunk.lines().any(|line| line == ":") {
+                debug!("{} received keepalive: exiting", client_id);
+                break;
+            }
+            time::sleep(pause_between_events).await;
+        }
+
+        Ok(())
+    }
+
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
-    // Start the server, waiting for two clients to connect.  Set the server to have no delay
-    // between sending events, meaning the clients will lag.
-    let mut sync_behavior = ServerSyncBehavior::new().with_no_delay_between_events();
-    let barrier1 = sync_behavior.add_client_sync_before_event(0);
-    let barrier2 = sync_behavior.add_client_sync_before_event(0);
-    let server_address = fixture.run_server(sync_behavior).await;
+    // Start the server, setting it to run with no delay between sending each event.  It will send
+    // at most `MAX_EVENT_COUNT` events, but the clients' futures should return before that, having
+    // been disconnected for lagging.
+    let mut server_behavior = ServerBehavior::new_for_lagging_test();
+    let barrier_main = server_behavior.add_client_sync_before_event(0);
+    let barrier_sigs = server_behavior.add_client_sync_before_event(0);
+    let server_address = fixture.run_server(server_behavior).await;
 
-    let url1 = url(server_address, EventFilter::Main, None);
-    let url2 = url(server_address, EventFilter::Signatures, None);
+    let url_main = url(server_address, EventFilter::Main, None);
+    let url_sigs = url(server_address, EventFilter::Signatures, None);
 
-    // Run the two clients, then stop the server.
-    let (result1, result2) = join!(
-        subscribe(&url1, barrier1, "client 1"),
-        subscribe(&url2, barrier2, "client 2"),
+    // Run the two slow clients, then stop the server.
+    let (result_slow_main, result_slow_sigs) = join!(
+        subscribe_slow(&url_main, barrier_main, "client 1"),
+        subscribe_slow(&url_sigs, barrier_sigs, "client 2"),
     );
     fixture.stop_server().await;
 
-    // Ensure both clients' streams terminated with an `UnexpectedEof` error.
-    let check_error = |result: Result<_, reqwest::Error>| {
+    // Ensure both slow clients' streams terminated with an `UnexpectedEof` error.
+    let check_error = |result: Result<(), reqwest::Error>| {
         let kind = result
             .unwrap_err()
             .source()
@@ -667,8 +729,8 @@ async fn lagging_clients_should_be_disconnected() {
             .kind();
         assert!(matches!(kind, io::ErrorKind::UnexpectedEof));
     };
-    check_error(result1);
-    check_error(result2);
+    check_error(result_slow_main);
+    check_error(result_slow_sigs);
 }
 
 /// Checks that clients using the correct <IP:Port> but wrong path get a helpful error response.
@@ -677,7 +739,7 @@ async fn should_handle_bad_url_path() {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
-    let server_address = fixture.run_server(ServerSyncBehavior::new()).await;
+    let server_address = fixture.run_server(ServerBehavior::new()).await;
 
     #[rustfmt::skip]
     let urls = [
@@ -724,7 +786,7 @@ async fn should_handle_bad_url_query() {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
-    let server_address = fixture.run_server(ServerSyncBehavior::new()).await;
+    let server_address = fixture.run_server(ServerBehavior::new()).await;
 
     let main_url = format!(
         "http://{}/{}/{}",
@@ -777,9 +839,9 @@ async fn should_persist_event_ids(filter: EventFilter) {
 
     {
         // Run the first server to emit the 100 events.
-        let mut sync_behavior = ServerSyncBehavior::new();
-        let barrier = sync_behavior.add_client_sync_before_event(0);
-        let server_address = fixture.run_server(sync_behavior).await;
+        let mut server_behavior = ServerBehavior::new();
+        let barrier = server_behavior.add_client_sync_before_event(0);
+        let server_address = fixture.run_server(server_behavior).await;
 
         // Consume these and stop the server.
         let url = url(server_address, filter, None);
@@ -789,9 +851,9 @@ async fn should_persist_event_ids(filter: EventFilter) {
 
     {
         // Start a new server with a client barrier set for just before event ID 100.
-        let mut sync_behavior = ServerSyncBehavior::new();
-        let barrier = sync_behavior.add_client_sync_before_event(EVENT_COUNT);
-        let server_address = fixture.run_server(sync_behavior).await;
+        let mut server_behavior = ServerBehavior::new();
+        let barrier = server_behavior.add_client_sync_before_event(EVENT_COUNT);
+        let server_address = fixture.run_server(server_behavior).await;
 
         // Check the test fixture has set the server's first event ID to 100.
         assert_eq!(fixture.first_event_id, EVENT_COUNT);
@@ -835,11 +897,11 @@ async fn should_handle_wrapping_past_max_event_id(filter: EventFilter) {
 
     // Set up a client which will connect at the start of the stream, and another two for once the
     // IDs have wrapped past the maximum value.
-    let mut sync_behavior = ServerSyncBehavior::new();
-    let barrier1 = sync_behavior.add_client_sync_before_event(start_index);
-    let barrier2 = sync_behavior.add_client_sync_before_event(BUFFER_LENGTH / 2);
-    let barrier3 = sync_behavior.add_client_sync_before_event(BUFFER_LENGTH / 2);
-    let server_address = fixture.run_server(sync_behavior).await;
+    let mut server_behavior = ServerBehavior::new();
+    let barrier1 = server_behavior.add_client_sync_before_event(start_index);
+    let barrier2 = server_behavior.add_client_sync_before_event(BUFFER_LENGTH / 2);
+    let barrier3 = server_behavior.add_client_sync_before_event(BUFFER_LENGTH / 2);
+    let server_address = fixture.run_server(server_behavior).await;
     assert_eq!(fixture.first_event_id, start_index);
 
     // The first client doesn't need a query string, but the second will request to start from an ID

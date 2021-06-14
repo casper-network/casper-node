@@ -63,18 +63,18 @@ impl EventIndexer {
 
 impl Drop for EventIndexer {
     fn drop(&mut self) {
-        if let Err(error) = fs::write(&self.persistent_cache, self.index.to_le_bytes()) {
-            warn!(
+        match fs::write(&self.persistent_cache, self.index.to_le_bytes()) {
+            Err(error) => warn!(
                 file = %self.persistent_cache.display(),
                 %error,
                 "failed to write sse cache file"
-            );
+            ),
+            Ok(_) => debug!(
+                file = %self.persistent_cache.display(),
+                index = %self.index,
+                "cached sse index to file"
+            ),
         }
-        debug!(
-            file = %self.persistent_cache.display(),
-            index = %self.index,
-            "cached sse index to file"
-        );
     }
 }
 
