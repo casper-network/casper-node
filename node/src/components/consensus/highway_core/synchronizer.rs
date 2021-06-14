@@ -60,7 +60,7 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Adds a holder to the vertex that satisfies `dep`.
     fn add_holder(&mut self, dep: &Dependency<C>, sender: I, time_received: Timestamp) {
         if let Some((_, holders)) = self.0.iter_mut().find(|(pvv, _)| pvv.inner().id() == *dep) {
-            holders.insert(sender, time_received);
+            holders.entry(sender).or_insert(time_received);
         }
     }
 
