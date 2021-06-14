@@ -346,7 +346,7 @@ where
                 let BlockWithMetadata {
                     block,
                     finality_signatures,
-                } = *item.clone();
+                } = &*item;
 
                 if *block.hash() != block.header().hash() {
                     warn!(
