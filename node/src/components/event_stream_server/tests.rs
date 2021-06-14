@@ -303,7 +303,9 @@ impl TestFixture {
     /// Returns all the events which would have been received by a client via the `/events/main` URL
     /// or the `/events/sigs` URL depending on `filter`, where the client connected just before
     /// `from` was emitted from the server.  This includes the initial `ApiVersion` event.
-    fn filtered_events(&self, filter: EventFilter, from: Id) -> Vec<ReceivedEvent> {
+    ///
+    /// Also returns the last event's ID,
+    fn filtered_events(&self, filter: EventFilter, from: Id) -> (Vec<ReceivedEvent>, Id) {
         // Convert the IDs to `u128`s to cater for wrapping and add `Id::MAX + 1` to `from` if the
         // buffer wrapped and `from` represents an event from after the wrap.
         let threshold = Id::MAX - EVENT_COUNT;
@@ -328,7 +330,7 @@ impl TestFixture {
             data: serde_json::to_string(&SseData::ApiVersion(self.protocol_version)).unwrap(),
         };
 
-        iter::once(api_version_event)
+        let events: Vec<_> = iter::once(api_version_event)
             .chain(self.events.iter().enumerate().filter_map(|(id, event)| {
                 let id = id as u128 + self.first_event_id as u128;
                 match event {
@@ -348,13 +350,23 @@ impl TestFixture {
                     }
                 }
             }))
-            .collect()
+            .collect();
+
+        let final_id = events
+            .last()
+            .expect("should have events")
+            .id
+            .expect("should have ID");
+
+        (events, final_id)
     }
 
     /// Returns all the events which would have been received by a client connected from server
     /// startup via the `/events/main` URL or the `/events/sigs` URL depending on `filter`,
     /// including the initial `ApiVersion` event.
-    fn all_filtered_events(&self, filter: EventFilter) -> Vec<ReceivedEvent> {
+    ///
+    /// Also returns the last event's ID.
+    fn all_filtered_events(&self, filter: EventFilter) -> (Vec<ReceivedEvent>, Id) {
         self.filtered_events(filter, self.first_event_id)
     }
 }
@@ -386,7 +398,11 @@ struct ReceivedEvent {
     data: String,
 }
 
-/// Runs a client, consuming all SSE events until the server starts emitting keepalive chars `:`.
+/// Runs a client, consuming all SSE events until the server has emitted the event with ID
+/// `final_event_id`.
+///
+/// If the client receives a keepalive (i.e. `:`), it panics, as the server has no further events to
+/// emit.
 ///
 /// The client waits at the barrier before connecting to the server, and then again immediately
 /// after connecting to ensure the server doesn't start sending events before the client is
@@ -394,6 +410,7 @@ struct ReceivedEvent {
 async fn subscribe(
     url: &str,
     barrier: Arc<Barrier>,
+    final_event_id: Id,
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
     debug!("{} waiting before connecting via {}", client_id, url);
@@ -407,14 +424,25 @@ async fn subscribe(
     // single `String` until we receive a keepalive.
     let mut response_text = String::new();
     let mut stream = response.bytes_stream();
+    let final_id_line = format!("id:{}", final_event_id);
+    let keepalive = ":";
     while let Some(item) = stream.next().await {
         // If the server crashes or returns an error in the stream, it is caught here as `item` will
         // be an `Err`.
         let bytes = item?;
         let chunk = str::from_utf8(bytes.as_ref()).unwrap();
         response_text.push_str(chunk);
-        if response_text.lines().rev().any(|line| line == ":") {
-            debug!("{} received keepalive: exiting", client_id);
+        if let Some(line) = response_text
+            .lines()
+            .find(|&line| line == final_id_line || line == keepalive)
+        {
+            if line == keepalive {
+                panic!("{} received keepalive", client_id);
+            }
+            debug!(
+                "{} received final event ID {}: exiting",
+                client_id, final_event_id
+            );
             break;
         }
     }
@@ -496,10 +524,11 @@ async fn should_serve_events_with_no_query(filter: EventFilter) {
     let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, None);
-    let received_events = subscribe(&url, barrier, "client").await.unwrap();
+    let (expected_events, final_id) = fixture.all_filtered_events(filter);
+    let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
 
-    assert_eq!(received_events, fixture.all_filtered_events(filter));
+    assert_eq!(received_events, expected_events);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -531,10 +560,10 @@ async fn should_serve_events_with_query(filter: EventFilter) {
     let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, Some(start_from_event_id));
-    let received_events = subscribe(&url, barrier, "client").await.unwrap();
+    let (expected_events, final_id) = fixture.filtered_events(filter, start_from_event_id);
+    let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
 
-    let expected_events = fixture.filtered_events(filter, start_from_event_id);
     assert_eq!(received_events, expected_events);
 }
 
@@ -567,11 +596,11 @@ async fn should_serve_remaining_events_with_query(filter: EventFilter) {
     let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, Some(start_from_event_id));
-    let received_events = subscribe(&url, barrier, "client").await.unwrap();
+    let expected_first_event = connect_at_event_id - BUFFER_LENGTH;
+    let (expected_events, final_id) = fixture.filtered_events(filter, expected_first_event);
+    let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
 
-    let expected_first_event = connect_at_event_id - BUFFER_LENGTH;
-    let expected_events = fixture.filtered_events(filter, expected_first_event);
     assert_eq!(received_events, expected_events);
 }
 
@@ -601,10 +630,11 @@ async fn should_serve_events_with_query_for_future_event(filter: EventFilter) {
     let server_address = fixture.run_server(server_behavior).await;
 
     let url = url(server_address, filter, Some(25));
-    let received_events = subscribe(&url, barrier, "client").await.unwrap();
+    let (expected_events, final_id) = fixture.all_filtered_events(filter);
+    let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
 
-    assert_eq!(received_events, fixture.all_filtered_events(filter));
+    assert_eq!(received_events, expected_events);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -635,8 +665,8 @@ async fn server_exit_should_gracefully_shut_down_stream() {
 
     // Run the two clients, and stop the server after a short delay.
     let (received_events1, received_events2, _) = join!(
-        subscribe(&url1, barrier1, "client 1"),
-        subscribe(&url2, barrier2, "client 2"),
+        subscribe(&url1, barrier1, EVENT_COUNT, "client 1"),
+        subscribe(&url2, barrier2, EVENT_COUNT, "client 2"),
         async {
             time::sleep(DELAY_BETWEEN_EVENTS * EVENT_COUNT / 2).await;
             fixture.stop_server().await
@@ -652,8 +682,8 @@ async fn server_exit_should_gracefully_shut_down_stream() {
     assert!(!received_events2.is_empty());
 
     // ...but not the full set they would have if the server hadn't stopped early.
-    assert!(received_events1.len() < fixture.all_filtered_events(EventFilter::Main).len());
-    assert!(received_events2.len() < fixture.all_filtered_events(EventFilter::Signatures).len());
+    assert!(received_events1.len() < fixture.all_filtered_events(EventFilter::Main).0.len());
+    assert!(received_events2.len() < fixture.all_filtered_events(EventFilter::Signatures).0.len());
 }
 
 /// Checks that clients which don't consume the events in a timely manner are forcibly disconnected
@@ -837,7 +867,7 @@ async fn should_persist_event_ids(filter: EventFilter) {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
-    {
+    let first_run_final_id = {
         // Run the first server to emit the 100 events.
         let mut server_behavior = ServerBehavior::new();
         let barrier = server_behavior.add_client_sync_before_event(0);
@@ -845,9 +875,15 @@ async fn should_persist_event_ids(filter: EventFilter) {
 
         // Consume these and stop the server.
         let url = url(server_address, filter, None);
-        let _ = subscribe(&url, barrier, "client 1").await.unwrap();
+        let (_expected_events, final_id) = fixture.all_filtered_events(filter);
+        let _ = subscribe(&url, barrier, final_id, "client 1")
+            .await
+            .unwrap();
         fixture.stop_server().await;
-    }
+        final_id
+    };
+
+    assert!(first_run_final_id > 0);
 
     {
         // Start a new server with a client barrier set for just before event ID 100.
@@ -855,19 +891,23 @@ async fn should_persist_event_ids(filter: EventFilter) {
         let barrier = server_behavior.add_client_sync_before_event(EVENT_COUNT);
         let server_address = fixture.run_server(server_behavior).await;
 
-        // Check the test fixture has set the server's first event ID to 100.
-        assert_eq!(fixture.first_event_id, EVENT_COUNT);
+        // Check the test fixture has set the server's first event ID to at least
+        // `first_run_final_id`.
+        assert!(fixture.first_event_id >= first_run_final_id);
 
-        // Consume the events and assert their IDs are all >= 100.
+        // Consume the events and assert their IDs are all >= `first_run_final_id`.
         let url = url(server_address, filter, None);
-        let received_events = subscribe(&url, barrier, "client 2").await.unwrap();
+        let (expected_events, final_id) = fixture.filtered_events(filter, EVENT_COUNT);
+        let received_events = subscribe(&url, barrier, final_id, "client 2")
+            .await
+            .unwrap();
         fixture.stop_server().await;
 
-        assert_eq!(received_events, fixture.all_filtered_events(filter));
+        assert_eq!(received_events, expected_events);
         assert!(received_events
             .iter()
             .skip(1)
-            .all(|event| event.id.unwrap() >= EVENT_COUNT));
+            .all(|event| event.id.unwrap() >= first_run_final_id));
     }
 }
 
@@ -909,25 +949,19 @@ async fn should_handle_wrapping_past_max_event_id(filter: EventFilter) {
     let url1 = url(server_address, filter, None);
     let url2 = url(server_address, filter, Some(start_index + 1));
     let url3 = url(server_address, filter, Some(0));
+    let (expected_events1, final_id1) = fixture.all_filtered_events(filter);
+    let (expected_events2, final_id2) = fixture.filtered_events(filter, start_index + 1);
+    let (expected_events3, final_id3) = fixture.filtered_events(filter, 0);
     let (received_events1, received_events2, received_events3) = join!(
-        subscribe(&url1, barrier1, "client 1"),
-        subscribe(&url2, barrier2, "client 2"),
-        subscribe(&url3, barrier3, "client 3"),
+        subscribe(&url1, barrier1, final_id1, "client 1"),
+        subscribe(&url2, barrier2, final_id2, "client 2"),
+        subscribe(&url3, barrier3, final_id3, "client 3"),
     );
     fixture.stop_server().await;
 
-    assert_eq!(
-        received_events1.unwrap(),
-        fixture.all_filtered_events(filter)
-    );
-    assert_eq!(
-        received_events2.unwrap(),
-        fixture.filtered_events(filter, start_index + 1)
-    );
-    assert_eq!(
-        received_events3.unwrap(),
-        fixture.filtered_events(filter, 0)
-    );
+    assert_eq!(received_events1.unwrap(), expected_events1);
+    assert_eq!(received_events2.unwrap(), expected_events2);
+    assert_eq!(received_events3.unwrap(), expected_events3);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

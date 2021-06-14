@@ -1,6 +1,6 @@
 //! Types and functions used by the http server to manage the event-stream.
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use datasize::DataSize;
 use futures::{future, Stream, StreamExt};
@@ -45,17 +45,6 @@ pub const SSE_API_MAIN_PATH: &str = "main";
 pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
-/// The stream keepalive interval.
-///
-/// Some tests use the first keepalive emitted as a signal that the server has sent all available
-/// events, so for test cfg, we set the keepalive duration small.
-pub const KEEPALIVE_INTERVAL: Duration = {
-    if cfg!(test) {
-        Duration::from_millis(100)
-    } else {
-        Duration::from_secs(15)
-    }
-};
 
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;
@@ -378,15 +367,11 @@ pub(super) fn create_channels_and_filter(
             // Create a channel for the client's handler to receive the stream of ongoing events.
             let ongoing_events_receiver = cloned_broadcaster.subscribe();
 
-            sse::reply(
-                sse::keep_alive()
-                    .interval(KEEPALIVE_INTERVAL)
-                    .stream(stream_to_client(
-                        initial_events_receiver,
-                        ongoing_events_receiver,
-                        event_filter,
-                    )),
-            )
+            sse::reply(sse::keep_alive().stream(stream_to_client(
+                initial_events_receiver,
+                ongoing_events_receiver,
+                event_filter,
+            )))
             .into_response()
         })
         .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
