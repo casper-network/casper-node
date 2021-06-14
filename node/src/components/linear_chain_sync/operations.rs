@@ -359,10 +359,12 @@ where
                     continue;
                 }
 
-                if block.body().hash() != *block.header().body_hash() {
+                if block.body().hash(block.header().protocol_version())
+                    != *block.header().body_hash()
+                {
                     warn!(
                         ?block,
-                        actual_block_body_hash = ?block.body().hash(),
+                        actual_block_body_hash = ?block.body().hash(block.header().protocol_version()),
                         ?peer,
                         "Block from peer did not have correct block body hash.",
                     );
