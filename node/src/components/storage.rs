@@ -1518,10 +1518,15 @@ fn initialize_block_body_merkle_db(
     deploy_hashes_db: &Database,
     transfer_hashes_db: &Database,
     proposer_db: &Database,
-    deleted_block_hashes: &HashSet<&[u8]>,
+    deleted_block_body_hashes: &HashSet<&[u8]>,
     should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing block body (Merkle) database");
+    if deleted_block_body_hashes.is_empty() {
+        info!("No deleted block bodies, nothing to do.");
+        return Ok(());
+    }
+
     let mut txn = env.begin_rw_txn()?;
     let mut cursor = txn.open_rw_cursor(*block_body_merkle_db)?;
 
@@ -1530,7 +1535,7 @@ fn initialize_block_body_merkle_db(
     let mut deleted_proposer_hashes = HashSet::new();
 
     for (raw_key, raw_val) in cursor.iter() {
-        if deleted_block_hashes.contains(raw_key) {
+        if deleted_block_body_hashes.contains(raw_key) {
             let hashes: Vec<Digest> = lmdb_ext::deserialize(raw_val)?;
             let _ = deleted_deploy_hashes.insert(hashes[0]);
             let _ = deleted_transfer_hashes.insert(hashes[1]);
