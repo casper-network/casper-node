@@ -178,6 +178,9 @@ where
     /// The full panorama, corresponding to the complete protocol state.
     /// This points to the latest unit of every honest validator.
     panorama: Panorama<C>,
+    /// A unit with maximal sequence number from each validator. For equivocators, this is one of
+    /// their forks.
+    latest_units: ValidatorMap<Option<C::Hash>>,
     /// All currently endorsed units, by hash: units that have enough endorsements to be cited even
     /// if they naively cite an equivocator.
     #[data_size(with = ds::hashmap_sample)]
@@ -247,6 +250,7 @@ impl<C: Context> State<C> {
         let pings = iter::repeat(params.start_timestamp())
             .take(weights.len())
             .collect();
+        let latest_units = vec![None; weights.len()].into();
         State {
             params,
             weights,
@@ -257,6 +261,7 @@ impl<C: Context> State<C> {
             faults,
             can_propose,
             panorama,
+            latest_units,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
             pings,
@@ -560,9 +565,11 @@ impl<C: Context> State<C> {
         self.add_ping(unit.creator, unit.timestamp);
         self.units.insert(hash, unit);
 
-        // Update the panorama.
         let unit = self.unit(&hash);
         let creator = unit.creator;
+        let seq_number = unit.seq_number;
+
+        // Update the panorama.
         let new_obs = match (self.panorama.get(creator), unit.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(hash),
@@ -581,6 +588,14 @@ impl<C: Context> State<C> {
             }
         };
         self.panorama[creator] = new_obs;
+
+        // Update the map of latest units.
+        if self.latest_units[creator]
+            .filter(|hash| self.unit(hash).seq_number >= seq_number)
+            .is_none()
+        {
+            self.latest_units[creator] = Some(hash);
+        }
     }
 
     /// Adds direct evidence proving a validator to be faulty, unless that validators is already
@@ -1097,6 +1112,7 @@ impl<C: Context> State<C> {
                 *obs = Observation::None;
             }
         }
+        self.latest_units = vec![None; self.validator_count()].into();
         self.endorsements.clear();
         self.incomplete_endorsements.clear();
     }
