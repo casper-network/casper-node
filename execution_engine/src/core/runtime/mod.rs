@@ -1884,46 +1884,6 @@ where
             .system_contracts()
             .contains(&contract_hash)
         {
-            let required_args: BTreeSet<&str> = entry_point
-                .args()
-                .iter()
-                .filter_map(|param| {
-                    if !param.cl_type().is_option() {
-                        Some(param.name())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            let optional_args: BTreeSet<&str> = entry_point
-                .args()
-                .iter()
-                .filter_map(|param| {
-                    if param.cl_type().is_option() {
-                        Some(param.name())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            let passed_args: BTreeSet<&str> = args
-                .named_args()
-                .map(|named_arg| named_arg.name())
-                .collect();
-
-            // Unused args are the ones that are passed, but are not present as required nor
-            // optionals.
-            let unused_args = &(&passed_args - &required_args) - &optional_args;
-
-            if !unused_args.is_empty() {
-                return Err(Error::UnusedArgumentsFound {
-                    required: required_args.len(),
-                    unused: unused_args.len(),
-                });
-            }
-
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
                 .iter()

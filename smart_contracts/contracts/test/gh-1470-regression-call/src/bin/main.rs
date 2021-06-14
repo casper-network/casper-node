@@ -5,9 +5,7 @@ extern crate alloc;
 
 use alloc::string::String;
 use core::str::FromStr;
-use gh_1470_regression_call::{
-    Arg4Type, ARG4, ARG_CONTRACT_HASH, ARG_CONTRACT_PACKAGE_HASH, ARG_TEST_METHOD,
-};
+use gh_1470_regression_call::{ARG_CONTRACT_HASH, ARG_CONTRACT_PACKAGE_HASH, ARG_TEST_METHOD};
 
 use casper_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{runtime_args, ContractHash, ContractPackageHash, RuntimeArgs};
@@ -38,7 +36,7 @@ pub extern "C" fn call() {
     let optional_type_mismatch_runtime_args = runtime_args! {
         gh_1470_regression::ARG1 => gh_1470_regression::Arg1Type::default(),
         gh_1470_regression::ARG2 => gh_1470_regression::Arg2Type::default(),
-        gh_1470_regression::ARG3 => Arg4Type::default(),
+        gh_1470_regression::ARG3 => gh_1470_regression::Arg4Type::default(),
     };
 
     let correct_without_optional_args = runtime_args! {
@@ -50,7 +48,8 @@ pub extern "C" fn call() {
         gh_1470_regression::ARG3 => gh_1470_regression::Arg3Type::default(),
         gh_1470_regression::ARG2 => gh_1470_regression::Arg2Type::default(),
         gh_1470_regression::ARG1 => gh_1470_regression::Arg1Type::default(),
-        ARG4 => Arg4Type::default(),
+        gh_1470_regression::ARG4 => gh_1470_regression::Arg4Type::default(),
+        gh_1470_regression::ARG5 => gh_1470_regression::Arg5Type::default(),
     };
 
     assert_ne!(correct_runtime_args, optional_type_mismatch_runtime_args);
@@ -142,7 +141,7 @@ pub extern "C" fn call() {
 
             runtime::call_contract::<()>(
                 contract_hash,
-                gh_1470_regression::RESTRICTED_DO_NOTHING_ENTRYPOINT,
+                gh_1470_regression::RESTRICTED_WITH_EXTRA_ARG_ENTRYPOINT,
                 extra_runtime_args,
             );
         }
@@ -153,7 +152,7 @@ pub extern "C" fn call() {
             runtime::call_versioned_contract::<()>(
                 contract_package_hash,
                 None,
-                gh_1470_regression::RESTRICTED_DO_NOTHING_ENTRYPOINT,
+                gh_1470_regression::RESTRICTED_WITH_EXTRA_ARG_ENTRYPOINT,
                 extra_runtime_args,
             );
         }

@@ -100,8 +100,6 @@ pub enum Error {
     InvalidContract(ContractHash),
     #[error("Invalid contract WASM: {}", _0)]
     InvalidContractWasm(ContractWasmHash),
-    #[error("Unused arguments found in function call: Required {required} but found {unused} unused arguments")]
-    UnusedArgumentsFound { required: usize, unused: usize },
     #[error("Missing argument: {name}")]
     MissingArgument { name: String },
 }

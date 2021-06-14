@@ -376,18 +376,10 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
             .build()
     };
 
-    builder.exec(call_contract_request).commit();
-
-    let response = builder
-        .get_exec_results()
-        .last()
-        .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    builder
+        .exec(call_contract_request)
+        .expect_success()
+        .commit();
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -398,55 +390,10 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
             .build()
     };
 
-    builder.exec(call_versioned_contract_request).commit();
-
-    let response = builder
-        .get_exec_results()
-        .last()
-        .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
-
-    match (&call_contract_error, &call_versioned_contract_error) {
-        (
-            Error::Exec(execution::Error::UnusedArgumentsFound {
-                required: 2,
-                unused: 1,
-            }),
-            Error::Exec(execution::Error::UnusedArgumentsFound {
-                required: 2,
-                unused: 1,
-            }),
-        ) => (),
-        _ => panic!(
-            "Both variants should raise same error: lhs={:?} rhs={:?}",
-            call_contract_error, call_versioned_contract_error
-        ),
-    }
-
-    assert!(
-        matches!(
-            &call_versioned_contract_error,
-            Error::Exec(execution::Error::UnusedArgumentsFound {
-                required: 2,
-                unused: 1,
-            })
-        ),
-        "{:?}",
-        call_versioned_contract_error
-    );
-    assert!(
-        matches!(
-            &call_contract_error,
-            Error::Exec(execution::Error::UnusedArgumentsFound {
-                required: 2,
-                unused: 1,
-            })
-        ),
-        "{:?}",
-        call_contract_error
-    );
+    builder
+        .exec(call_versioned_contract_request)
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -636,7 +583,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     let call_versioned_contract_error = exec_response.as_error().expect("should have error");
 
     let expected = gh_1470_regression::Arg3Type::cl_type();
-    let found = gh_1470_regression_call::Arg4Type::cl_type();
+    let found = gh_1470_regression::Arg4Type::cl_type();
 
     let expected_type_mismatch =
         TypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));

@@ -41,9 +41,6 @@ pub const METHOD_CALL_VERSIONED_DO_NOTHING_NO_OPTIONALS: &str =
 pub const METHOD_CALL_DO_NOTHING_EXTRA: &str = "call_do_nothing_extra";
 pub const METHOD_CALL_VERSIONED_DO_NOTHING_EXTRA: &str = "call_versioned_do_nothing_extra";
 
-pub const ARG4: &str = "arg4";
-pub type Arg4Type = Option<bool>;
-
 pub enum TestMethod {
     CallDoNothing,
     CallVersionedDoNothing,
