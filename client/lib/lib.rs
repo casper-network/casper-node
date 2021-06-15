@@ -484,9 +484,10 @@ pub fn get_account_info(
     node_address: &str,
     verbosity_level: u64,
     public_key: &str,
-    block_id: &str,
+    maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_account_info(public_key, block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_account_info(public_key, maybe_block_id)
 }
 
 /// Retrieves information and examples for all currently supported RPCs.

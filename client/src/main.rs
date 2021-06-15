@@ -49,13 +49,13 @@ enum DisplayOrder {
     GetStateRootHash,
     QueryState,
     GetBalance,
+    GetAccountInfo,
     GetEraInfo,
     GetAuctionInfo,
     Keygen,
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
-    GetAccountInfo,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -75,6 +75,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListDeploys::build(DisplayOrder::ListDeploys as usize))
         .subcommand(GetBalance::build(DisplayOrder::GetBalance as usize))
+        .subcommand(GetAccountInfo::build(DisplayOrder::GetAccountInfo as usize))
         .subcommand(GetStateRootHash::build(
             DisplayOrder::GetStateRootHash as usize,
         ))
@@ -89,7 +90,6 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
-        .subcommand(GetAccountInfo::build(DisplayOrder::GetAccountInfo as usize))
 }
 
 #[tokio::main]
@@ -107,6 +107,7 @@ async fn main() {
         (GetBlockTransfers::NAME, Some(matches)) => (GetBlockTransfers::run(matches), matches),
         (ListDeploys::NAME, Some(matches)) => (ListDeploys::run(matches), matches),
         (GetBalance::NAME, Some(matches)) => (GetBalance::run(matches), matches),
+        (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches), matches),
         (GetStateRootHash::NAME, Some(matches)) => (GetStateRootHash::run(matches), matches),
         (QueryState::NAME, Some(matches)) => (QueryState::run(matches), matches),
         (GetEraInfoBySwitchBlock::NAME, Some(matches)) => {
@@ -117,7 +118,6 @@ async fn main() {
         (GenerateCompletion::NAME, Some(matches)) => (GenerateCompletion::run(matches), matches),
         (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches), matches),
         (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches), matches),
-        (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches), matches),
         _ => {
             let _ = cli().print_long_help();
             println!();

@@ -451,9 +451,9 @@ pub struct GetAccountInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
-    /// The Account
+    /// The account.
     pub account: Account,
-    /// THe merkle proof.
+    /// The merkle proof.
     pub merkle_proof: String,
 }
 
@@ -499,8 +499,11 @@ impl RpcWithParamsExt for GetAccountInfo {
 
                 match maybe_block {
                     None => {
-                        let error_msg =
-                            "get-account-info failed to get specified block".to_string();
+                        let error_msg = if maybe_id.is_none() {
+                            "get-account-info failed to get last added block".to_string()
+                        } else {
+                            "get-account-info failed to get specified block".to_string()
+                        };
                         info!("{}", error_msg);
                         return Ok(response_builder.error(warp_json_rpc::Error::custom(
                             ErrorCode::NoSuchBlock as i64,
@@ -511,7 +514,6 @@ impl RpcWithParamsExt for GetAccountInfo {
                 }
             };
 
-            // retrieve the global state hash of the block.
             let state_root_hash = *block.header().state_root_hash();
 
             let query_result = effect_builder
@@ -538,9 +540,9 @@ impl RpcWithParamsExt for GetAccountInfo {
             let account = if let StoredValue::Account(account) = stored_value {
                 account
             } else {
-                let error_msg = "state_get_account could not retrieve an Account".to_string();
+                let error_msg = "get-account-info failed to get specified account".to_string();
                 return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                    ErrorCode::GetAccountFailed as i64,
+                    ErrorCode::NoSuchAccount as i64,
                     error_msg,
                 ))?);
             };

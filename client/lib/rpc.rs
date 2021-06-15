@@ -243,13 +243,17 @@ impl RpcCall {
         Ok(response)
     }
 
-    pub(crate) fn get_account_info(self, public_key: &str, block_id: &str) -> Result<JsonRpc> {
+    pub(crate) fn get_account_info(
+        self,
+        public_key: &str,
+        maybe_block_identifier: &str,
+    ) -> Result<JsonRpc> {
         let key = if let Ok(public_key) = PublicKey::from_hex(public_key) {
             public_key
         } else {
             return Err(Error::FailedToParseKey);
         };
-        let block_identifier = Self::block_identifier(block_id)?;
+        let block_identifier = Self::block_identifier(maybe_block_identifier)?;
         let params = GetAccountInfoParams {
             public_key: key,
             block_identifier,
