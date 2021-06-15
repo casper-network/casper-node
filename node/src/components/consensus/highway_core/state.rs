@@ -872,6 +872,8 @@ impl<C: Context> State<C> {
     ) -> Result<(), UnitError> {
         let wunit = swunit.wire_unit();
         let creator = wunit.creator;
+
+        // Check that the unit's creator exists and isn't banned, and …
         if creator.0 as usize >= self.validator_count() {
             error!("Nonexistent validator should be rejected in Highway::pre_validate_unit.");
             return Err(UnitError::Creator); // Should be unreachable.
@@ -879,12 +881,16 @@ impl<C: Context> State<C> {
         if Some(&Fault::Banned) == self.faults.get(&creator) {
             return Err(UnitError::Banned);
         }
+
+        // …that the round length is valid.
         if wunit.round_exp < self.params.min_round_exp() {
             return Err(UnitError::RoundLengthExpLessThanMinimum);
         }
         if wunit.round_exp > self.params.max_round_exp() {
             return Err(UnitError::RoundLengthExpGreaterThanMaximum);
         }
+
+        // A unit that does not cite any other unit must propose a value.
         if wunit.value.is_none()
             && !wunit
                 .seq_num_panorama
@@ -893,24 +899,35 @@ impl<C: Context> State<C> {
         {
             return Err(UnitError::MissingBlock);
         }
+
+        // The panorama must have exactly one entry for each validator.
         if wunit.seq_num_panorama.len() != self.validator_count() {
             return Err(UnitError::PanoramaLength(wunit.seq_num_panorama.len()));
         }
+
+        // The unit's sequence number and predecessor hash must match the panorama.
         match (wunit.seq_num_panorama.get(creator), wunit.previous) {
+            // You can't cite yourself as faulty.
             (ObservationSeqNum::Faulty, _) => return Err(UnitError::FaultyCreator),
+            // If there is a previous unit it should also show up in the panorama, and vice versa.
             (ObservationSeqNum::None, Some(_)) | (ObservationSeqNum::Correct(_), None) => {
                 return Err(UnitError::PreviousUnit);
             }
+            // This unit's sequence number must be exactly one more than its predecessor's.
             (ObservationSeqNum::Correct(seq_num), Some(_)) => {
                 if seq_num.checked_add(1) != Some(wunit.seq_number) {
                     return Err(UnitError::SequenceNumber);
                 }
             }
+            // If it is its creator's first unit, it must have sequence number zero.
             (ObservationSeqNum::None, None) if wunit.seq_number != 0 => {
                 return Err(UnitError::SequenceNumber);
             }
             _ => {}
         }
+
+        // If we have the hash-based panorama, it must match the predecessor hash and the
+        // sequence number-based panorama.
         if let Some(panorama) = maybe_panorama {
             if panorama.len() != self.validator_count() {
                 return Err(UnitError::PanoramaLength(panorama.len()));
