@@ -9,14 +9,14 @@ use super::{event::DeployInfo, BlockHeight, FinalizationQueue};
 use crate::types::{DeployHash, DeployHeader, Timestamp};
 
 /// Stores the internal state of the BlockProposer.
-#[derive(Clone, DataSize, Debug)]
+#[derive(Clone, DataSize, Debug, Default)]
 pub(super) struct BlockProposerDeploySets {
-    /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
-    /// received them.
-    pub(super) pending_deploys: HashMap<DeployHash, (DeployInfo, Timestamp)>,
-    /// The collection of transfers pending for inclusion in a block, with a timestamp of when we
-    /// received them.
-    pub(super) pending_transfers: HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    /// The collection of deploys pending for inclusion in a block, each added when the gossiper
+    /// announces it has finished gossiping it.
+    pub(super) pending_deploys: HashMap<DeployHash, DeployInfo>,
+    /// The collection of transfers pending for inclusion in a block, each added when the gossiper
+    /// announces it has finished gossiping it.
+    pub(super) pending_transfers: HashMap<DeployHash, DeployInfo>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -29,23 +29,6 @@ pub(super) struct BlockProposerDeploySets {
     pub(super) finalization_queue: FinalizationQueue,
 }
 
-impl Default for BlockProposerDeploySets {
-    fn default() -> Self {
-        let pending_deploys = HashMap::new();
-        let pending_transfers = HashMap::new();
-        let finalized_deploys = Default::default();
-        let next_finalized = Default::default();
-        let finalization_queue = Default::default();
-        BlockProposerDeploySets {
-            pending_deploys,
-            pending_transfers,
-            finalized_deploys,
-            next_finalized,
-            finalization_queue,
-        }
-    }
-}
-
 impl BlockProposerDeploySets {
     /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys.
     pub(super) fn from_finalized(
@@ -53,11 +36,9 @@ impl BlockProposerDeploySets {
         next_finalized_height: u64,
     ) -> BlockProposerDeploySets {
         BlockProposerDeploySets {
-            pending_deploys: HashMap::new(),
-            pending_transfers: HashMap::new(),
             finalized_deploys: finalized_deploys.into_iter().collect(),
             next_finalized: next_finalized_height,
-            finalization_queue: Default::default(),
+            ..Default::default()
         }
     }
 }
@@ -98,10 +79,10 @@ pub(super) fn prune_deploys(
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// total deploys pruned
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    deploys: &mut HashMap<DeployHash, DeployInfo>,
     current_instant: Timestamp,
 ) -> usize {
     let initial_len = deploys.len();
-    deploys.retain(|_hash, (deploy_info, _)| !deploy_info.header.expired(current_instant));
+    deploys.retain(|_hash, deploy_info| !deploy_info.header.expired(current_instant));
     initial_len - deploys.len()
 }

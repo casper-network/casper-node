@@ -290,12 +290,18 @@ impl Display for ContractRuntimeAnnouncement {
 pub enum GossiperAnnouncement<T: Item> {
     /// A new item has been received, where the item's ID is the complete item.
     NewCompleteItem(T::Id),
+
+    /// Finished gossiping about the indicated item.
+    FinishedGossiping(T::Id),
 }
 
 impl<T: Item> Display for GossiperAnnouncement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
+            GossiperAnnouncement::FinishedGossiping(item_id) => {
+                write!(f, "finished gossiping {}", item_id)
+            }
         }
     }
 }

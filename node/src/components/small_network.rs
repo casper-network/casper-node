@@ -67,8 +67,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::SymmetricallyFramed;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
@@ -101,7 +100,7 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
-    types::{Block, NodeId},
+    types::NodeId,
     utils::{self, WithDir},
     NodeRng,
 };
@@ -135,7 +134,7 @@ const SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 #[derive(Clone, DataSize, Debug)]
 pub struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    sender: UnboundedSender<Message<P>>,
+    sender: UnboundedSender<Arc<Message<P>>>,
     peer_addr: SocketAddr,
 }
 
@@ -208,6 +207,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
+        initial_era: Option<EraId>,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -320,7 +320,13 @@ where
             .into_iter()
             .filter_map(|addr| component.outgoing_manager.learn_addr(addr, true, now))
             .collect();
-        let mut effects = component.process_dial_requests(dial_requests);
+
+        // Initialize the known validator set with the active era, if given.
+        let mut effects = initial_era
+            .map(|era_id| component.handle_active_era_change(effect_builder, era_id))
+            .unwrap_or_default();
+
+        effects.extend(component.process_dial_requests(dial_requests));
 
         // Start broadcasting our public listening address.
         effects.extend(
@@ -340,7 +346,7 @@ where
     }
 
     /// Queues a message to be sent to all nodes.
-    fn broadcast_message(&self, msg: Message<P>) {
+    fn broadcast_message(&self, msg: Arc<Message<P>>) {
         for peer_id in self.outgoing_manager.connected_peers() {
             self.send_message(peer_id, msg.clone());
         }
@@ -350,7 +356,7 @@ where
     fn gossip_message(
         &self,
         rng: &mut NodeRng,
-        msg: Message<P>,
+        msg: Arc<Message<P>>,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
@@ -380,7 +386,7 @@ where
     }
 
     /// Queues a message to be sent to a specific node.
-    fn send_message(&self, dest: NodeId, msg: Message<P>) {
+    fn send_message(&self, dest: NodeId, msg: Arc<Message<P>>) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             if let Err(msg) = connection.sender.send(msg) {
@@ -741,7 +747,7 @@ where
     fn handle_active_era_change(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block: Box<Block>,
+        era_id: EraId,
     ) -> Effects<Event<P>>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
@@ -752,16 +758,6 @@ where
         // `next`: Era that will begin shortly.
         // `upcoming`: Era after `next`.
 
-        let era_id = block.header().era_id();
-        let next: HashSet<PublicKey> = block
-            .header()
-            .next_era_validator_weights()
-            .map(|validators| validators.keys().map(Clone::clone).collect())
-            .unwrap_or_else(|| {
-                error!("did not expect switch block to not contain validators");
-                Default::default()
-            });
-
         async move {
             let current: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id)
@@ -771,12 +767,20 @@ where
                     warn!("could not determine current era validators");
                     Default::default()
                 });
+            let next: HashSet<PublicKey> = effect_builder
+                .get_era_validators(era_id.successor())
+                .await
+                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
+                .unwrap_or_else(|| {
+                    warn!("could not determine next era validators");
+                    Default::default()
+                });
             let upcoming_validators: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id.successor().successor())
                 .await
                 .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
                 .unwrap_or_else(|| {
-                    warn!("could not determine upcoming (current+2) era validators");
+                    debug!("could not determine upcoming (current+2) era validators");
                     Default::default()
                 });
 
@@ -800,6 +804,8 @@ where
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
     ) -> Effects<Event<P>> {
+        trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
+        self.net_metrics.peers.set(self.peers().len() as i64);
         effect_builder.announce_new_peer(peer_id).ignore()
     }
 
@@ -910,13 +916,13 @@ where
                     } => {
                         // We're given a message to send out.
                         self.net_metrics.direct_message_requests.inc();
-                        self.send_message(*dest, Message::Payload(*payload));
+                        self.send_message(*dest, Arc::new(Message::Payload(*payload)));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.
                         self.net_metrics.broadcast_requests.inc();
-                        self.broadcast_message(Message::Payload(*payload));
+                        self.broadcast_message(Arc::new(Message::Payload(*payload)));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Gossip {
@@ -926,8 +932,12 @@ where
                         responder,
                     } => {
                         // We're given a message to gossip.
-                        let sent_to =
-                            self.gossip_message(rng, Message::Payload(*payload), count, exclude);
+                        let sent_to = self.gossip_message(
+                            rng,
+                            Arc::new(Message::Payload(*payload)),
+                            count,
+                            exclude,
+                        );
                         responder.respond(sent_to).ignore()
                     }
                 }
@@ -1002,7 +1012,7 @@ where
 
                     if era_id > self.highest_era_seen {
                         self.highest_era_seen = era_id;
-                        self.handle_active_era_change(effect_builder, block)
+                        self.handle_active_era_change(effect_builder, era_id)
                     } else {
                         debug!(highest_era_seen=%self.highest_era_seen, %era_id,
                                "ignoring era, as it is not the highest seen");
@@ -1081,9 +1091,10 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub type FramedTransport<P> = SymmetricallyFramed<
-    Framed<Transport, LengthDelimitedCodec>,
+pub type FramedTransport<P> = tokio_serde::Framed<
+    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
+    Arc<Message<P>>,
     CountingFormat<MessagePackFormat>,
 >;
 
@@ -1099,14 +1110,14 @@ where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let length_delimited = Framed::new(
+    let length_delimited = tokio_util::codec::Framed::new(
         stream,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
     );
 
-    SymmetricallyFramed::new(
+    tokio_serde::Framed::new(
         length_delimited,
         CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )

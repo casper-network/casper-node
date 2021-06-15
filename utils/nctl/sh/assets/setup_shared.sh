@@ -441,7 +441,7 @@ function setup_asset_node_config_workaround_1()
     local HAS_HIGHWAY
     local SCRIPT
 
-    HAS_HIGHWAY=$(grep -R "consensus.highway" "$PATH_TO_CONFIG_FILE")
+    HAS_HIGHWAY=$(grep -R "consensus.highway" "$PATH_TO_CONFIG_FILE" || true)
     if [ "$HAS_HIGHWAY" != "" ]; then
         SCRIPT=(
             "import toml;"

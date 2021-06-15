@@ -159,7 +159,9 @@ impl Display for MessageKind {
 ///
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
-pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
+pub trait Payload:
+    Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + 'static
+{
     /// Classifies the payload based on its contents.
     fn classify(&self) -> MessageKind;
 }

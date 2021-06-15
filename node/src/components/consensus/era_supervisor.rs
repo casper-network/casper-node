@@ -886,8 +886,8 @@ where
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
             newly_slashed,
-            era_end.inactive_validators.iter().cloned().collect(),
             slashed,
+            era_end.inactive_validators.iter().cloned().collect(),
             seed,
             switch_block_header.timestamp(),
             switch_block_header.height() + 1,
