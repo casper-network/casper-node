@@ -88,7 +88,7 @@ fn purge_vertices() {
         .collect();
     let expected_deps: BTreeSet<_> = vec![
         (Dependency::Unit(c0), peer0),
-        (Dependency::UnitBySeqNum(0, CAROL, c2), peer0),
+        (Dependency::UnitBySeqNum(0, CAROL), peer0),
     ]
     .into_iter()
     .collect();

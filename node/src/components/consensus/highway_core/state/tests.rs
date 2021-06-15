@@ -324,7 +324,7 @@ fn compute_panorama() -> Result<(), AddUnitError<TestContext>> {
     // First it should request all of the creator's — Alice's — own units.
     let a2_swunit = state.wire_unit(&a2, TEST_INSTANCE_ID).unwrap();
     let res = new_state.compute_panorama(&a2_swunit);
-    assert_eq!(Err(Dependency::UnitBySeqNum(0, ALICE, a2)), res);
+    assert_eq!(Err(Dependency::UnitBySeqNum(0, ALICE)), res);
     let a0_swunit = state.wire_unit(&a0, TEST_INSTANCE_ID).unwrap();
     let a0_panorama = new_state.compute_panorama(&a0_swunit).unwrap();
     new_state.add_unit(a0_swunit, a0_panorama)?;
@@ -340,17 +340,17 @@ fn compute_panorama() -> Result<(), AddUnitError<TestContext>> {
     // With a1 it can start going through its sequence number-based panorama and find b1 missing.
     // Since it doesn't even have a unit number 0 from Bob, it requests first b0, then b1.
     let res = new_state.compute_panorama(&a2_swunit);
-    assert_eq!(Err(Dependency::UnitBySeqNum(0, BOB, a2)), res);
+    assert_eq!(Err(Dependency::UnitBySeqNum(0, BOB)), res);
     let b0_swunit = state.wire_unit(&b0, TEST_INSTANCE_ID).unwrap();
     let b0_panorama = new_state.compute_panorama(&b0_swunit).unwrap();
     new_state.add_unit(b0_swunit, b0_panorama)?;
     let res = new_state.compute_panorama(&a2_swunit);
-    assert_eq!(Err(Dependency::UnitBySeqNum(1, BOB, a2)), res);
+    assert_eq!(Err(Dependency::UnitBySeqNum(1, BOB)), res);
     let b1_swunit = state.wire_unit(&b1, TEST_INSTANCE_ID).unwrap();
 
     // Bob's b1 depends on c0. That should be all we need: Now we can add c0, then b1, then a2.
     let res = new_state.compute_panorama(&b1_swunit);
-    assert_eq!(Err(Dependency::UnitBySeqNum(0, CAROL, b1)), res);
+    assert_eq!(Err(Dependency::UnitBySeqNum(0, CAROL)), res);
 
     // But not so fast! Carol equivocated and we have the wrong unit number 0.
     let c0_prime_swunit = state.wire_unit(&c0_prime, TEST_INSTANCE_ID).unwrap();

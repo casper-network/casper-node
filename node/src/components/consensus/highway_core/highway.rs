@@ -381,16 +381,12 @@ impl<C: Context> Highway<C> {
             Dependency::Unit(hash) | Dependency::UnitWithPanorama(hash) => {
                 Some(self.state.has_unit(hash))
             }
-            Dependency::UnitBySeqNum(seq_num, vidx, hash) => {
+            Dependency::UnitBySeqNum(seq_num, vidx) => {
                 if self.validators.id(*vidx).is_none() {
                     return Some(false);
                 }
-                if let Some(unit) = self.state.maybe_unit(hash) {
-                    let result = unit.panorama[*vidx]
-                        .correct()
-                        .and_then(|hash| self.state.find_in_swimlane(hash, *seq_num))
-                        .is_some();
-                    return Some(result);
+                if let Some(hash) = self.state.maybe_latest_unit(*vidx) {
+                    return Some(self.state.unit(hash).seq_number >= *seq_num);
                 }
                 match self.state.panorama()[*vidx] {
                     Observation::Faulty => None,
@@ -428,11 +424,9 @@ impl<C: Context> Highway<C> {
                     let panorama = self.state.unit(hash).panorama.clone();
                     GetDepOutcome::Vertex(Vertex::UnitWithPanorama(swunit, panorama))
                 }),
-            Dependency::UnitBySeqNum(seq_num, vidx, hash) => self
-                .validators
-                .id(*vidx)
-                .and_then(|_| self.state.maybe_unit(hash))
-                .and_then(|unit| unit.panorama[*vidx].correct())
+            Dependency::UnitBySeqNum(seq_num, vidx) => self
+                .state
+                .maybe_latest_unit(*vidx)
                 .and_then(|hash| self.state.find_in_swimlane(hash, *seq_num))
                 .and_then(|hash| self.state.wire_unit(hash, self.instance_id))
                 .map_or(GetDepOutcome::None, |wunit| {
@@ -954,7 +948,7 @@ pub(crate) mod tests {
             .unwrap();
 
         assert_eq!(
-            Some(Dependency::UnitBySeqNum(0, ALICE, b)), // Requesting `a` by sequence number.
+            Some(Dependency::UnitBySeqNum(0, ALICE)), // Requesting `a` by sequence number.
             highway.missing_dependency(&pvv_b)
         );
         assert_eq!(

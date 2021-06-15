@@ -30,9 +30,8 @@ where
     Unit(C::Hash),
     /// The unit with its full panorama.
     UnitWithPanorama(C::Hash),
-    /// A unit specified by sequence number and validator index, as seen by another unit, given by
-    /// hash.
-    UnitBySeqNum(u64, ValidatorIndex, C::Hash),
+    /// A unit specified by sequence number and validator index.
+    UnitBySeqNum(u64, ValidatorIndex),
     Evidence(ValidatorIndex),
     Endorsement(C::Hash),
     Ping(ValidatorIndex, Timestamp),

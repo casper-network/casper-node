@@ -386,7 +386,7 @@ impl<C: Context> State<C> {
                     .filter(|sn| sn.saturating_add(1) < wunit.seq_number)
                     .map_or_else(
                         || Dependency::Unit(*previous),
-                        |seq_num| Dependency::UnitBySeqNum(seq_num, wunit.creator, swunit.hash()),
+                        |seq_num| Dependency::UnitBySeqNum(seq_num, wunit.creator),
                     );
                 return Err(dep);
             }
@@ -421,13 +421,13 @@ impl<C: Context> State<C> {
                     .find_in_swimlane(hash, *seq_num)
                     .ok_or_else(|| {
                         let next_seq_num = self.unit(hash).seq_number.saturating_add(1);
-                        Dependency::UnitBySeqNum(next_seq_num, idx, swunit.hash())
+                        Dependency::UnitBySeqNum(next_seq_num, idx)
                     })
                     .map(|hash| Observation::Correct(*hash)),
                 // It cites them as correct but we don't have any unit from them yet. We request
                 // the cited validator's first unit.
                 (ObservationSeqNum::Correct(_), Observation::None) => {
-                    Err(Dependency::UnitBySeqNum(0, idx, swunit.hash()))
+                    Err(Dependency::UnitBySeqNum(0, idx))
                 }
             })
             .collect::<Result<Panorama<C>, Dependency<C>>>()?;
@@ -477,6 +477,14 @@ impl<C: Context> State<C> {
     /// Returns the unit with the given hash, if present.
     pub(crate) fn maybe_unit(&self, hash: &C::Hash) -> Option<&Unit<C>> {
         self.units.get(hash)
+    }
+
+    /// Returns the hash of a unit with maximal sequence number by the given validator.
+    pub(crate) fn maybe_latest_unit(&self, vidx: ValidatorIndex) -> Option<&C::Hash> {
+        self.latest_units
+            .has(vidx)
+            .then(|| self.latest_units.get(vidx).as_ref())
+            .flatten()
     }
 
     /// Returns whether the unit with the given hash is known.
