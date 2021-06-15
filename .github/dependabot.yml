@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Keep npm dependencies up to date
+  - package-ecosystem: "npm"
+    directory: "/smart_contracts/contract_as/"
+    schedule:
+      interval: "daily"
+    # Raise all npm pull requests with custom labels
+    labels:
+      - "npm dependencies"
+    target-branch: "dev"
+  # Keep rust dependencies up to date
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    # Raise all cargo pull requests with custom labels
+    labels:
+      - "rust dependencies"
+    target-branch: "dev"
