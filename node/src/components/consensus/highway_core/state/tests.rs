@@ -223,11 +223,6 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         .err()
         .map(unit_err);
     assert_eq!(Some(UnitError::PanoramaLength(4)), maybe_err);
-    let maybe_err = state
-        .add_unit(unit.clone(), panorama!(a0, b1, c0))
-        .err()
-        .map(unit_err);
-    assert_eq!(Some(UnitError::PanoramaMismatch(ALICE)), maybe_err);
 
     // Your previous unit must match the panorama.
     let maybe_err = state
@@ -260,12 +255,6 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         .err()
         .map(unit_err);
     assert_eq!(Some(UnitError::MissingBlock), maybe_err);
-
-    // The panorama length must be the number of validators.
-    let maybe_err = add_unit!(state, CAROL, 0, 4u8, 0xC; N, N, N, N)
-        .err()
-        .map(unit_err);
-    assert_eq!(Some(UnitError::PanoramaLength(4)), maybe_err);
 
     // You can't cite yourself as faulty.
     let maybe_err = add_unit!(state, CAROL, 0, 4u8, 0xC; N, N, F)
