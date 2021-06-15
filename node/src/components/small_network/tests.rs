@@ -37,7 +37,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     testing::{
         self, init_logging,
-        network::{Network, NetworkedReactor},
+        network::{Network, NetworkedReactor, Nodes},
         ConditionCheckReactor,
     },
     types::NodeId,
@@ -165,6 +165,7 @@ impl Reactor for TestReactor {
             registry,
             small_network_identity,
             ChainInfo::create_for_testing(),
+            None,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =
@@ -225,11 +226,16 @@ impl Reactor for TestReactor {
                 // We do not care about the announcement of new peers in this test.
                 Effects::new()
             }
-            Event::AddressGossiperAnnouncement(ann) => {
-                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
                 let reactor_event =
                     Event::SmallNet(SmallNetworkEvent::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We do not care about the announcement of gossiping finished in this test.
+                Effects::new()
             }
         }
     }
@@ -444,7 +450,55 @@ async fn check_varying_size_network_connects() {
             "network did not stay connected after being settled"
         );
 
+        // Now the network should have an appropriate number of peers.
+
         // This test will run multiple times, so ensure we cleanup all ports.
+        net.finalize().await;
+    }
+}
+
+/// Check that a network of varying sizes will connect all nodes properly.
+#[tokio::test]
+async fn ensure_peers_metric_is_correct() {
+    init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Larger networks can potentially become more unreliable, so we try with small sizes only.
+    for &number_of_nodes in &[2u16, 3, 5] {
+        let timeout = Duration::from_secs(3 * number_of_nodes as u64);
+
+        let mut net = Network::new();
+
+        // Pick a random port in the higher ranges that is likely to be unused.
+        let first_node_port = testing::unused_port_on_localhost();
+
+        let _ = net
+            .add_node_with_config(
+                Config::default_local_net_first_node(first_node_port),
+                &mut rng,
+            )
+            .await
+            .unwrap();
+
+        for _ in 1..number_of_nodes {
+            net.add_node_with_config(Config::default_local_net(first_node_port), &mut rng)
+                .await
+                .unwrap();
+        }
+
+        net.settle_on(
+            &mut rng,
+            |nodes: &Nodes<TestReactor>| {
+                nodes.values().all(|runner| {
+                    runner.reactor().inner().net.net_metrics.peers.get()
+                        == number_of_nodes as i64 - 1
+                })
+            },
+            timeout,
+        )
+        .await;
+
         net.finalize().await;
     }
 }

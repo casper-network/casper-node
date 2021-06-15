@@ -13,7 +13,7 @@ use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey,
 use crate::{
     components::{consensus, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    reactor::{initializer, joiner, validator, ReactorExit, Runner},
+    reactor::{initializer, joiner, participating, ReactorExit, Runner},
     testing::{self, network::Network, TestRng},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
@@ -30,7 +30,7 @@ struct TestChain {
     chainspec: Arc<Chainspec>,
 }
 
-type Nodes = crate::testing::network::Nodes<validator::Reactor>;
+type Nodes = crate::testing::network::Nodes<participating::Reactor>;
 
 impl TestChain {
     /// Instantiates a new test chain configuration.
@@ -97,9 +97,9 @@ impl TestChain {
     }
 
     /// Creates an initializer/validator configuration for the `idx`th validator.
-    fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> validator::Config {
+    fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> participating::Config {
         // Set the network configuration.
-        let mut cfg = validator::Config {
+        let mut cfg = participating::Config {
             network: if idx == 0 {
                 small_network::Config::default_local_net_first_node(first_node_port)
             } else {
@@ -124,10 +124,10 @@ impl TestChain {
     async fn create_initialized_network(
         &mut self,
         rng: &mut NodeRng,
-    ) -> anyhow::Result<Network<validator::Reactor>> {
+    ) -> anyhow::Result<Network<participating::Reactor>> {
         let root = RESOURCES_PATH.join("local");
 
-        let mut network: Network<validator::Reactor> = Network::new();
+        let mut network: Network<participating::Reactor> = Network::new();
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
@@ -145,13 +145,17 @@ impl TestChain {
             }
 
             // Now we can construct the actual node.
-            let initializer = initializer_runner.into_inner();
+            let initializer = initializer_runner.drain_into_inner().await;
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;
             let _ = joiner_runner.run(rng).await;
 
-            let config = joiner_runner.into_inner().into_validator_config().await?;
+            let config = joiner_runner
+                .drain_into_inner()
+                .await
+                .into_participating_config()
+                .await?;
 
             network
                 .add_node_with_config(config, rng)
@@ -173,7 +177,7 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
 }
 
 #[tokio::test]
-async fn run_validator_network() {
+async fn run_participating_network() {
     testing::init_logging();
 
     let mut rng = crate::new_rng();

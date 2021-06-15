@@ -289,12 +289,18 @@ function get_running_node_count {
 # Check that a certain node has produced blocks.
 function assert_node_proposed() {
     local NODE_ID=${1}
-    local NODE_PATH=$(get_path_to_node $NODE_ID)
-    local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
-    log_step "Waiting for node-$NODE_ID to produce a block..."
-    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
-    log "node-$NODE_ID created a block!"
-    log "$OUTPUT"
+    local NODE_PATH=$(get_path_to_node "$NODE_ID")
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex "$NODE_ID")
+    local TIMEOUT=${2:-300}
+    log_step "Waiting for a node-$NODE_ID to produce a block..."
+    local OUTPUT=$(timeout "$TIMEOUT" tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    if ( echo "$OUTPUT" | grep -q "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)" ); then
+        log "Node-$NODE_ID created a block!"
+        log "$OUTPUT"
+    else
+        log "ERROR: Node-$NODE_ID didn't create a block within timeout=$TIMEOUT"
+        exit 1
+    fi
 }
 
 # Checks logs for nodes 1-10 for equivocators

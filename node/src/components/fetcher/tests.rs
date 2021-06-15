@@ -76,6 +76,7 @@ reactor!(Reactor {
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
             chainspec_loader.hard_reset_to_start_of_era(),
             ProtocolVersion::from_parts(1, 0, 0),
+            false,
         );
         deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);

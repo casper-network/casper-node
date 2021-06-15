@@ -270,6 +270,22 @@ steps:
     event:
       - push
 
+- name: nctl-upgrade-test
+  image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+    - "python3 -m pip install supervisor toml"
+    - "apt update && apt install lsof -y"
+    - "bash -i ./ci/nctl_upgrade.sh"
+  when:
+    branch:
+      - trying
+      - staging
+
 depends_on:
   - pre-checks
 

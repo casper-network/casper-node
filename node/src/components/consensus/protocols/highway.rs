@@ -16,7 +16,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, U512};
 
@@ -474,6 +474,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return vec![]; // Era has ended. No further progress is expected.
         }
         if self.last_panorama == *self.highway.state().panorama() {
+            info!(
+                instance_id = ?self.highway.instance_id(),
+                "no progress in the last {}, creating latest state request",
+                self.standstill_timeout,
+            );
             // We haven't made any progress. Request latest panorama from peers and schedule
             // standstill alert. If we still won't progress by the time
             // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
@@ -485,6 +490,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return outcomes;
         }
 
+        debug!(
+            instance_id = ?self.highway.instance_id(),
+            "progress detected; scheduling next standstill check in {}",
+            self.standstill_timeout,
+        );
         // Record the current panorama and schedule the next standstill check.
         self.last_panorama = self.highway.state().panorama().clone();
         vec![ProtocolOutcome::ScheduleTimer(
@@ -499,8 +509,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return vec![]; // Era has ended. No further progress is expected.
         }
         if self.last_panorama == *self.highway.state().panorama() {
+            info!(
+                instance_id = ?self.highway.instance_id(),
+                "no progress in the last {}, raising standstill alert",
+                self.standstill_timeout,
+            );
             return vec![ProtocolOutcome::StandstillAlert]; // No progress within the timeout.
         }
+        debug!(
+            instance_id = ?self.highway.instance_id(),
+            "progress detected; scheduling next standstill check in {}",
+            self.standstill_timeout,
+        );
         // Record the current panorama and schedule the next standstill check.
         self.last_panorama = self.highway.state().panorama().clone();
         vec![ProtocolOutcome::ScheduleTimer(
@@ -549,7 +569,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Creates a message to be gossiped that sends the validator's panorama.
     fn latest_panorama_request(&self) -> ProtocolOutcomes<I, C> {
-        trace!(instance_id=?self.highway.instance_id(), "creating latest state request");
         let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
         vec![ProtocolOutcome::CreatedGossipMessage(
             (&request).serialize(),

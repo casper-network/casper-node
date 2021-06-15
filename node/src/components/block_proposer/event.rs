@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
+    types::{Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::shared::motes::Motes;
 
@@ -33,12 +33,12 @@ pub enum Event {
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
     },
-    /// A new deploy should be buffered.
-    BufferDeploy {
-        hash: DeployOrTransferHash,
-        deploy_info: Box<DeployInfo>,
-    },
-    /// The block proposer has been asked to prune stale deploys
+    /// A new deploy has been received by this node and gossiped: it should be retrieved from
+    /// storage and buffered here.
+    BufferDeploy(DeployHash),
+    /// The given deploy has been gossiped and can now be included in a block.
+    GotFromStorage(Box<Deploy>),
+    /// The block proposer has been asked to prune stale deploys.
     Prune,
     /// A block has been finalized. We should never propose its deploys again.
     FinalizedBlock(Box<FinalizedBlock>),
@@ -56,7 +56,10 @@ impl Display for Event {
                 "loaded block-proposer finalized deploys; expected next finalized block: {}",
                 next_finalized_block
             ),
-            Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
+            Event::BufferDeploy(hash) => write!(f, "block-proposer add {}", hash),
+            Event::GotFromStorage(deploy) => {
+                write!(f, "block-proposer got from storage {}", deploy.id())
+            }
             Event::Prune => write!(f, "block-proposer prune"),
             Event::FinalizedBlock(block) => {
                 write!(f, "block-proposer finalized block {}", block)
