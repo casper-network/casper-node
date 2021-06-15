@@ -118,9 +118,10 @@ function do_await_era_change() {
 }
 
 function check_current_era {
+    local NODE_ID=${1:-$(get_node_for_dispatch)}
     local ERA="null"
     while true; do
-        ERA=$(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
+        ERA="$(get_chain_era $NODE_ID | awk '{print $NF}')"
         if [ "$ERA" = "null" ] || [ "$ERA" = "N/A" ]; then
             sleep 1
         else
@@ -360,10 +361,24 @@ function do_submit_auction_bids()
             node="$NODE_ID" \
             amount="$BID_AMOUNT" \
             rate="$BID_DELEGATION_RATE" \
-            quiet="TRUE"
+            quiet="FALSE"
 
     log "node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
 
     log "awaiting 10 seconds for auction bid deploys to finalise"
     sleep 10.0
+}
+
+function assert_same_era() {
+    local ERA=${1}
+    local NODE_ID=${2}
+    log_step "Checking if within same era..."
+    if [ "$ERA" = "$(check_current_era $NODE_ID)" ]; then
+        log "Still within the era! [expected]"
+        log "... ERA = $ERA : CURRENT_ERA = $(check_current_era $NODE_ID)"
+    else
+        log "Error: Era progressed! Exiting..."
+        log "... ERA = $ERA : CURRENT_ERA = $(check_current_era $NODE_ID)"
+        exit 1
+    fi
 }

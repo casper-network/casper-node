@@ -27,20 +27,25 @@ function main() {
     do_stop_node '5'
     # 4. Wait until N+1
     do_await_era_change '1'
+    get_switch_block '1' '100'
     # Wait 1 extra block to avoid potential overlap.
     await_n_blocks '1' 'true'
     # Gather Block Hash after stopping node for walkback later
     local RESTART_HASH=$(do_read_lfb_hash '1')
     # 5. Wait until N+2
     do_await_era_change '1'
+    get_switch_block '1' '100'
     # 6. Assert node is marked as inactive
     assert_inactive '5'
 
     # 7. Re-bid & restart node 5
     # CASE 1: Comment out and uncomment CASE 2 for comparison
-    do_start_node '5' "$RESTART_HASH"
+    do_start_node '5' "$(get_chain_first_block_hash)"
+    assert_joined_in_era_4 '5'
 
     # 8. Assert eviction of node
+    do_await_era_change '1'
+    get_switch_block '1' '100'
     assert_eviction '5'
     # 9. Assert node didn't propose since being shutdown
     assert_no_proposal_walkback '5' "$RESTART_HASH"
@@ -51,14 +56,32 @@ function main() {
     #do_start_node '5' "$RESTART_HASH"
 
     # 11. wait auction_delay + 1 + 1 more for partial era protection
-    do_await_era_change '5'
+    # NOTE: auction_delay = 1 for this test.
+    do_await_era_change '3'
     # 12. Assert that restarted validator is producing blocks.
-    assert_node_proposed '5' '180'
+    assert_node_proposed '5' '300'
     # 13. Check for equivocators
     assert_no_equivocators_logs
     log "------------------------------------------------------------"
     log "Scenario itst13 complete"
     log "------------------------------------------------------------"
+}
+
+function assert_joined_in_era_4() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node "$NODE_ID")
+    local TIMEOUT=${2:-300}
+    log_step "Waiting for a node-$NODE_ID to join..."
+    local OUTPUT=$(timeout "$TIMEOUT" tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "finished joining")
+    if ( echo "$OUTPUT" | grep -q "finished joining" ); then
+        log "Node-$NODE_ID joined!"
+        log "$OUTPUT"
+    else
+        log "ERROR: Node-$NODE_ID didn't join within timeout=$TIMEOUT"
+        exit 1
+    fi
+
+    assert_same_era '4' '1'
 }
 
 # Checks that a validator gets marked as inactive
