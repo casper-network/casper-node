@@ -57,7 +57,7 @@ use crate::{
         self,
         event_queue_metrics::EventQueueMetrics,
         initializer,
-        validator::{self, Error, ValidatorInitConfig},
+        participating::{self, Error, ParticipatingInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
@@ -320,7 +320,7 @@ pub struct Reactor {
     network: Network<Event, Message>,
     small_network: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
-    config: validator::Config,
+    config: participating::Config,
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -395,6 +395,7 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
+            None,
         )?;
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
@@ -796,12 +797,17 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::AddressGossiperAnnouncement(ann) => {
-                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
                 let reactor_event = Event::SmallNetwork(small_network::Event::PeerAddressReceived(
                     gossiped_address,
                 ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We don't care about completion of gossiping an address.
+                Effects::new()
             }
 
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
@@ -904,7 +910,7 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+    pub async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
         let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
         // Clean the state of the linear_chain_sync before shutting it down.
         #[cfg(not(feature = "fast-sync"))]
@@ -912,7 +918,7 @@ impl Reactor {
             &self.storage,
             self.chainspec_loader.chainspec(),
         )?;
-        let config = ValidatorInitConfig {
+        let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,

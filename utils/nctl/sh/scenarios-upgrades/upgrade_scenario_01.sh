@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # ----------------------------------------------------------------
 # Synopsis.
 # ----------------------------------------------------------------
@@ -49,7 +50,7 @@ function _step_01()
 {
     local STAGE_ID=${1}
 
-    log_step 1 "starting network from stage ($STAGE_ID)"
+    log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
@@ -58,7 +59,7 @@ function _step_01()
 # Step 02: Await era-id >= 1.
 function _step_02()
 {
-    log_step 2 "awaiting genesis era completion"
+    log_step_upgrades 2 "awaiting genesis era completion"
 
     sleep 60.0
     await_until_era_n 1
@@ -67,7 +68,7 @@ function _step_02()
 # Step 03: Populate global state -> native + wasm transfers.
 function _step_03()
 {
-    log_step 3 "dispatching deploys to populate global state"
+    log_step_upgrades 3 "dispatching deploys to populate global state"
 
     log "... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
@@ -81,7 +82,7 @@ function _step_03()
 # Step 04: Await era-id += 1.
 function _step_04()
 {
-    log_step 4 "awaiting next era"
+    log_step_upgrades 4 "awaiting next era"
 
     await_n_eras 1
 }
@@ -91,7 +92,7 @@ function _step_05()
 {
     local STAGE_ID=${1}
 
-    log_step 5 "upgrading network from stage ($STAGE_ID)"
+    log_step_upgrades 5 "upgrading network from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
@@ -109,7 +110,7 @@ function _step_06()
     local HEIGHT_2
     local NODE_ID
 
-    log_step 6 "asserting node upgrades"
+    log_step_upgrades 6 "asserting node upgrades"
 
     # Assert no nodes have stopped.
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
@@ -157,7 +158,7 @@ function _step_07()
     local NODE_ID
     local TRUSTED_HASH
 
-    log_step 7 "joining passive nodes"
+    log_step_upgrades 7 "joining passive nodes"
 
     log "... submitting auction bids"
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
@@ -200,8 +201,9 @@ function _step_08()
     local N1_STATE_ROOT_HASH
     local NX_PROTOCOL_VERSION
     local NX_STATE_ROOT_HASH
+    local RETRY_COUNT
 
-    log_step 8 "asserting joined nodes are running upgrade"
+    log_step_upgrades 8 "asserting joined nodes are running upgrade"
 
     # Assert all nodes are live.
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
@@ -240,10 +242,28 @@ function _step_08()
     N1_STATE_ROOT_HASH=$(get_state_root_hash 1 "$N1_BLOCK_HASH")
     for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
     do
-        NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
+        # Retry command to address: https://github.com/casper-network/casper-node/issues/1499
+        unset NX_STATE_ROOT_HASH
+        unset RETRY_COUNT
+        RETRY_COUNT=1
+        while [ -z "$NX_STATE_ROOT_HASH" ] || [ "$NX_STATE_ROOT_HASH" = 'null' ]; do
+            if [ "$RETRY_COUNT" -gt 10 ]; then
+                log "ERROR :: NODE-$NODE_ID RETRY :: Failed to get state root hash within 10 retries"
+                exit 1
+            else
+                NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
+                sleep 1
+                ((RETRY_COUNT=RETRY_COUNT+1))
+            fi
+        done
+
         if [ "$NX_STATE_ROOT_HASH" != "$N1_STATE_ROOT_HASH" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
+            log "ERROR :: BLOCK HASH = $N1_BLOCK_HASH"
+            log "ERROR :: $NODE_ID  :: ROOT HASH = $NX_STATE_ROOT_HASH :: N1 ROOT HASH = $N1_STATE_ROOT_HASH"
             exit 1
+        else
+            log "HASH MATCH :: $NODE_ID  :: HASH = $NX_STATE_ROOT_HASH :: N1 HASH = $N1_STATE_ROOT_HASH"
         fi
     done
 }
@@ -251,7 +271,7 @@ function _step_08()
 # Step 09: Terminate.
 function _step_09()
 {
-    log_step 7 "test successful - tidying up"
+    log_step_upgrades 7 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

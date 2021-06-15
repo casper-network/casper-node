@@ -27,8 +27,8 @@
 mod event_queue_metrics;
 pub mod initializer;
 pub mod joiner;
+pub mod participating;
 mod queue_kind;
-pub mod validator;
 
 #[cfg(test)]
 use std::sync::Arc;
@@ -750,9 +750,13 @@ where
         &mut self.reactor
     }
 
-    /// Deconstructs the runner to return the reactor.
+    /// Shuts down a reactor, sealing and draining the entire queue before returning it.
     #[inline]
-    pub fn into_inner(self) -> R {
+    pub async fn drain_into_inner(self) -> R {
+        self.scheduler.seal();
+        for event in self.scheduler.drain_queues().await {
+            debug!(event=%event, "drained event");
+        }
         self.reactor
     }
 }

@@ -43,7 +43,7 @@ pub fn to_string<C: Serialize>(cfg: &C) -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use casper_node::reactor::validator::Config;
+    use casper_node::reactor::participating::Config;
 
     #[test]
     fn example_config_should_parse() {

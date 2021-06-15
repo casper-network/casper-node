@@ -1,11 +1,14 @@
 //! Types and functions used by the http server to manage the event-stream.
 
+use std::{collections::HashMap, time::Duration};
+
 use datasize::DataSize;
-use futures::{Stream, StreamExt};
-use http::status::StatusCode;
+use futures::{future, Stream, StreamExt};
+use http::StatusCode;
 use hyper::Body;
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
     broadcast::{self, error::RecvError},
@@ -40,12 +43,25 @@ pub const SSE_API_ROOT_PATH: &str = "events";
 pub const SSE_API_MAIN_PATH: &str = "main";
 /// The URL path part to subscribe to only `FinalitySignature` events.
 pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
+/// The URL query string field name.
+pub const QUERY_FIELD: &str = "start_from";
+/// The stream keepalive interval.
+///
+/// Some tests use the first keepalive emitted as a signal that the server has sent all available
+/// events, so for test cfg, we set the keepalive duration small.
+pub const KEEPALIVE_INTERVAL: Duration = {
+    if cfg!(test) {
+        Duration::from_millis(100)
+    } else {
+        Duration::from_secs(15)
+    }
+};
 
 /// The "id" field of the events sent on the event stream to clients.
-type Id = u32;
+pub type Id = u32;
 
 /// The "data" field of the events sent on the event stream to clients.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, JsonSchema)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
@@ -85,7 +101,7 @@ pub enum SseData {
 #[cfg(test)]
 impl SseData {
     /// Returns a random `SseData::ApiVersion`.
-    fn random_api_version(rng: &mut TestRng) -> Self {
+    pub(super) fn random_api_version(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(
             rng.gen_range(0..10),
             rng.gen::<u8>() as u32,
@@ -95,7 +111,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::BlockAdded`.
-    fn random_block_added(rng: &mut TestRng) -> Self {
+    pub(super) fn random_block_added(rng: &mut TestRng) -> Self {
         let block = Block::random(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
@@ -104,7 +120,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::DeployProcessed`.
-    fn random_deploy_processed(rng: &mut TestRng) -> Self {
+    pub(super) fn random_deploy_processed(rng: &mut TestRng) -> Self {
         let deploy = Deploy::random(rng);
         SseData::DeployProcessed {
             deploy_hash: Box::new(*deploy.id()),
@@ -118,7 +134,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::Fault`.
-    fn random_fault(rng: &mut TestRng) -> Self {
+    pub(super) fn random_fault(rng: &mut TestRng) -> Self {
         SseData::Fault {
             era_id: EraId::new(rng.gen()),
             public_key: PublicKey::random(rng),
@@ -127,7 +143,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::FinalitySignature`.
-    fn random_finality_signature(rng: &mut TestRng) -> Self {
+    pub(super) fn random_finality_signature(rng: &mut TestRng) -> Self {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
@@ -135,7 +151,7 @@ impl SseData {
     }
 
     /// Returns a random `SseData::Step`.
-    fn random_step(rng: &mut TestRng) -> Self {
+    pub(super) fn random_step(rng: &mut TestRng) -> Self {
         let execution_effect = match rng.gen::<ExecutionResult>() {
             ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
                 effect
@@ -224,15 +240,9 @@ pub(super) struct NewSubscriberInfo {
     pub(super) initial_events_sender: mpsc::UnboundedSender<ServerSentEvent>,
 }
 
-/// The endpoint's query string, e.g. `http://localhost:22777/events?start_from=999`
-#[derive(Deserialize, Debug)]
-struct Query {
-    start_from: Option<Id>,
-}
-
 /// A filter for event types a client has subscribed to receive.
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum EventFilter {
+pub(super) enum EventFilter {
     /// All events other than `FinalitySignature`s.
     Main,
     /// The initial `ApiVersion` event and then only `FinalitySignature` events.
@@ -270,6 +280,28 @@ fn filter_map_server_sent_event(
     }
 }
 
+/// Extracts the starting event ID from the provided query, or `None` if `query` is empty.
+///
+/// If `query` is not empty, returns a 422 response if `query` doesn't have exactly one entry,
+/// "starts_from" mapped to a value representing an event ID.
+fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
+    if query.is_empty() {
+        return Ok(None);
+    }
+
+    if query.len() > 1 {
+        return Err(create_422());
+    }
+
+    match query
+        .get(QUERY_FIELD)
+        .and_then(|id_str| id_str.parse::<Id>().ok())
+    {
+        Some(id) => Ok(Some(id)),
+        None => Err(create_422()),
+    }
+}
+
 /// Creates a 404 response with a useful error message in the body.
 fn create_404() -> Response {
     let mut response = Response::new(Body::from(format!(
@@ -279,6 +311,17 @@ fn create_404() -> Response {
         sigs = SSE_API_SIGNATURES_PATH
     )));
     *response.status_mut() = StatusCode::NOT_FOUND;
+    response
+}
+
+/// Creates a 422 response with a useful error message in the body for use in case of a bad query
+/// string.
+fn create_422() -> Response {
+    let mut response = Response::new(Body::from(format!(
+        "invalid query: expected single field '{}=<EVENT ID>'\n",
+        QUERY_FIELD
+    )));
+    *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
     response
 }
 
@@ -304,11 +347,16 @@ pub(super) fn create_channels_and_filter(
         .and(path::param::<String>())
         .and(path::end())
         .and(warp::query())
-        .map(move |path_param: String, query: Query| {
+        .map(move |path_param: String, query: HashMap<String, String>| {
             // If `path_param` is not a valid string, return a 404.
             let event_filter = match EventFilter::new(&path_param) {
                 Some(filter) => filter,
                 None => return create_404(),
+            };
+
+            let start_from = match parse_query(query) {
+                Ok(maybe_id) => maybe_id,
+                Err(error_response) => return error_response,
             };
 
             // Create a channel for the client's handler to receive the stream of initial events.
@@ -317,7 +365,7 @@ pub(super) fn create_channels_and_filter(
             // Supply the server with the sender part of the channel along with the client's
             // requested starting point.
             let new_subscriber_info = NewSubscriberInfo {
-                start_from: query.start_from,
+                start_from,
                 initial_events_sender,
             };
             if new_subscriber_info_sender
@@ -330,11 +378,15 @@ pub(super) fn create_channels_and_filter(
             // Create a channel for the client's handler to receive the stream of ongoing events.
             let ongoing_events_receiver = cloned_broadcaster.subscribe();
 
-            sse::reply(sse::keep_alive().stream(stream_to_client(
-                initial_events_receiver,
-                ongoing_events_receiver,
-                event_filter,
-            )))
+            sse::reply(
+                sse::keep_alive()
+                    .interval(KEEPALIVE_INTERVAL)
+                    .stream(stream_to_client(
+                        initial_events_receiver,
+                        ongoing_events_receiver,
+                        event_filter,
+                    )),
+            )
             .into_response()
         })
         .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
@@ -381,6 +433,7 @@ fn stream_to_client(
                 }
             }
         })
+        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))))
 }
 
 #[cfg(test)]
