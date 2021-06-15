@@ -18,7 +18,7 @@ use crate::{
         highway_core::{
             active_validator::{ActiveValidator, Effect},
             evidence::EvidenceError,
-            state::{Fault, Observation, Panorama, State, UnitError, Weight},
+            state::{Fault, Panorama, State, UnitError, Weight},
             validators::{Validator, Validators},
         },
         traits::Context,
@@ -294,16 +294,28 @@ impl<C: Context> Highway<C> {
         &self,
         pvv: PreValidatedVertex<C>,
     ) -> Result<ValidVertex<C>, (PreValidatedVertex<C>, VertexError)> {
-        match self.do_validate_vertex(pvv.inner()) {
-            Err(err) => Err((pvv, err)),
-            Ok(Some(panorama)) => match pvv.0 {
-                Vertex::Unit(swunit) => Ok(ValidVertex(Vertex::UnitWithPanorama(swunit, panorama))),
-                vertex => {
-                    error!(?vertex, "unexpected computed panorama for vertex");
-                    Ok(ValidVertex(vertex))
+        match pvv.0 {
+            Vertex::Unit(swunit) => {
+                // TODO: Merge validate_vertex and missing_dependency. Make ValidVertex a separate
+                // enum with only a UnitWithPanorama variant, and none without panorama.
+                let panorama = self
+                    .state
+                    .compute_panorama(&swunit)
+                    .expect("called validate_vertex with missing dependencies");
+                match self.state.validate_unit(&swunit, &panorama) {
+                    Err(err) => Err((PreValidatedVertex(Vertex::Unit(swunit)), err.into())),
+                    Ok(()) => Ok(ValidVertex(Vertex::UnitWithPanorama(swunit, panorama))),
                 }
-            },
-            Ok(None) => Ok(ValidVertex(pvv.0)),
+            }
+            Vertex::UnitWithPanorama(swunit, panorama) => {
+                let result = self.state.validate_unit(&swunit, &panorama);
+                let vertex = Vertex::UnitWithPanorama(swunit, panorama);
+                match result {
+                    Err(err) => Err((PreValidatedVertex(vertex), err.into())),
+                    Ok(()) => Ok(ValidVertex(vertex)),
+                }
+            }
+            vertex => Ok(ValidVertex(vertex)),
         }
     }
 
@@ -374,8 +386,8 @@ impl<C: Context> Highway<C> {
 
     /// Returns whether we have a vertex that satisfies the dependency.
     ///
-    /// If it's ambiguous, i.e. the dependency is specified by sequence number and we don't have
-    /// the citing unit, `None` is returned.
+    /// If the dependency is specified by sequence number and we have a matching unit, `None` is
+    /// returned: In that case we cannot be sure whether it is the correct one.
     pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> Option<bool> {
         match dependency {
             Dependency::Unit(hash) | Dependency::UnitWithPanorama(hash) => {
@@ -386,19 +398,11 @@ impl<C: Context> Highway<C> {
                     return Some(false);
                 }
                 if let Some(hash) = self.state.maybe_latest_unit(*vidx) {
-                    return Some(self.state.unit(hash).seq_number >= *seq_num);
-                }
-                match self.state.panorama()[*vidx] {
-                    Observation::Faulty => None,
-                    Observation::None => Some(false),
-                    Observation::Correct(hash) => {
-                        if self.state.find_in_swimlane(&hash, *seq_num).is_none() {
-                            Some(false)
-                        } else {
-                            None
-                        }
+                    if self.state.unit(hash).seq_number >= *seq_num {
+                        return None;
                     }
                 }
+                Some(false)
             }
             Dependency::Evidence(idx) => Some(self.state.is_faulty(*idx)),
             Dependency::Endorsement(hash) => Some(self.state.is_endorsed(hash)),
@@ -641,26 +645,6 @@ impl<C: Context> Highway<C> {
             }
             Vertex::Ping(ping) => ping.validate(&self.validators, &self.instance_id),
         }
-    }
-
-    /// Validates `vertex` and returns an error if it is invalid.
-    /// This requires all dependencies to be present.
-    fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<Option<Panorama<C>>, VertexError> {
-        match vertex {
-            Vertex::Unit(unit) => {
-                // TODO: Merge validate_vertex and missing_dependency. Make ValidVertex a separate
-                // enum with only a UnitWithPanorama variant, and none without panorama.
-                let panorama = self
-                    .state
-                    .compute_panorama(unit)
-                    .expect("called do_validate_vertex with missing dependencies");
-                self.state.validate_unit(unit, &panorama)?;
-                return Ok(Some(panorama));
-            }
-            Vertex::UnitWithPanorama(unit, panorama) => self.state.validate_unit(unit, panorama)?,
-            Vertex::Evidence(_) | Vertex::Endorsements(_) | Vertex::Ping(_) => {}
-        }
-        Ok(None)
     }
 
     /// Adds evidence to the protocol state.
