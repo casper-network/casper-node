@@ -2,14 +2,16 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{system::auction::EraInfo, AsymmetricType, EraId, PublicKey};
+use casper_types::{
+    system::auction::{EraInfo, SeigniorageAllocation},
+    AsymmetricType, EraId, PublicKey, U512,
+};
 
 use crate::{
     crypto::hash::Digest,
     rpcs::{common::MERKLE_PROOF, docs::DocExample},
     types::{json_compatibility::StoredValue, Block, BlockHash, Item},
 };
-use casper_types::{system::auction::SeigniorageAllocation, U512};
 
 pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let delegator_amount = U512::from(1000);
