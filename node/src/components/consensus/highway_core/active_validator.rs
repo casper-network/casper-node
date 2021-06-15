@@ -195,14 +195,16 @@ impl<C: Context> ActiveValidator<C> {
                 return effects;
             } else if timestamp == r_id + self.witness_offset(r_len) {
                 let panorama = self.panorama_at(state, timestamp);
-                if let Some(vv) = self.new_unit(panorama, timestamp, None, state, instance_id) {
+                if let Some(witness_vv) =
+                    self.new_unit(panorama, timestamp, None, state, instance_id)
+                {
                     if self
                         .latest_unit(state)
                         .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
                     {
                         info!(round_id = %r_id, "sending witness in round with no proposal");
                     }
-                    effects.push(Effect::NewVertex(vv));
+                    effects.push(Effect::NewVertex(witness_vv));
                     return effects;
                 }
             }
@@ -252,8 +254,10 @@ impl<C: Context> ActiveValidator<C> {
         if self.should_send_confirmation(uhash, now, state) {
             let panorama = state.confirmation_panorama(self.vidx, uhash);
             if panorama.has_correct() {
-                if let Some(vv) = self.new_unit(panorama, now, None, state, instance_id) {
-                    effects.push(Effect::NewVertex(vv));
+                if let Some(confirmation_vv) =
+                    self.new_unit(panorama, now, None, state, instance_id)
+                {
+                    effects.push(Effect::NewVertex(confirmation_vv));
                 }
             }
         };
