@@ -51,6 +51,7 @@ use crate::{
 };
 
 use super::{Item, Tag, Timestamp};
+use itertools::Itertools;
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -607,8 +608,22 @@ impl EraEnd {
             next_era_validator_weights,
             era_report,
         } = self;
-        let hashed_next_era_validator_weights = hash::hash_btree_map(next_era_validator_weights)
-            .expect("Could not hash next era validator weights");
+        // Sort next era validator weights by descending weight. Assuming the top validators are
+        // online, a client can get away with just a few (plus a Merkle proof of the rest)
+        // to check finality signatures.
+        let descending_validator_weight_hashed_pairs: Vec<Digest> = next_era_validator_weights
+            .iter()
+            .sorted_by_key(|(_, weight)| **weight)
+            .rev()
+            .map(|(validator_id, weight)| {
+                let validator_hash =
+                    hash::hash(validator_id.to_bytes().expect("Could not hash validator"));
+                let weight_hash = hash::hash(weight.to_bytes().expect("Could not hash weight"));
+                hash::hash_pair(&validator_hash, &weight_hash)
+            })
+            .collect();
+        let hashed_next_era_validator_weights =
+            hash::hash_slice_rfold(&descending_validator_weight_hashed_pairs);
         let hashed_era_report: Digest = era_report.hash();
         hash::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
     }
