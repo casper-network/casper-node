@@ -181,7 +181,7 @@ pub const SENTINEL1: Digest = Digest([1u8; 32]);
 /// Sentinel hash to be used by [hash_vec_merkle_tree] in the case of [
 pub const SENTINEL2: Digest = Digest([2u8; 32]);
 
-/// Hashes a pair of [Digest]s.
+/// Hashes a pair of [`Digest`]s.
 pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
     let mut to_hash = [0; Digest::LENGTH * 2];
     to_hash[..Digest::LENGTH].copy_from_slice(&(hash1.to_array())[..]);
@@ -189,8 +189,8 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
     hash(&to_hash)
 }
 
-/// Hashes a [Vec<Digest>] into a single [Digest] by constructing a [Merkle tree][1].
-/// Reduces pairs of elements in the [Vec<Digest>] by repeatedly calling [hash_pair].
+/// Hashes a [`Vec`] of [`Digest`]s into a single [`Digest`] by constructing a [Merkle tree][1].
+/// Reduces pairs of elements in the [`Vec`] by repeatedly calling [hash_pair].
 /// This hash procedure is suited to hashing [BTree]s.
 ///
 /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
@@ -241,7 +241,7 @@ where
 /// Unlike Merkle trees, this is suited to hashing heterogeneous lists we may wish to extend in the
 /// future (ie, hashes of data structures that may undergo revision).
 ///
-/// Returns [SENTINEL1] when given an empty [Vec] as input.
+/// Returns [`SENTINEL1`] when given an empty [`Vec`] as input.
 ///
 /// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
 pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
