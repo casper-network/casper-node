@@ -425,12 +425,6 @@ where
         self.active_eras.get(&era_id).map_or(false, has_validator)
     }
 
-    /// Returns the most recent active era.
-    #[cfg(test)]
-    pub(crate) fn current_era(&self) -> EraId {
-        self.current_era
-    }
-
     pub(crate) fn stop_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
     }
@@ -577,6 +571,24 @@ where
             instance_id,
             self.public_signing_key.to_hex()
         ))
+    }
+}
+
+#[cfg(test)]
+impl<I> EraSupervisor<I>
+where
+    I: NodeIdT,
+{
+    /// Returns the most recent active era.
+    pub(crate) fn current_era(&self) -> EraId {
+        self.current_era
+    }
+
+    /// Returns the list of validators who equivocated in this era.
+    pub(crate) fn validators_with_evidence(&self, era_id: EraId) -> Vec<&PublicKey> {
+        self.active_eras[&era_id]
+            .consensus
+            .validators_with_evidence()
     }
 }
 

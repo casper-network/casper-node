@@ -207,6 +207,7 @@ async fn run_equivocator_network() {
     let mut rng = crate::new_rng();
 
     let alice_sk = Arc::new(SecretKey::random(&mut rng));
+    let alice_pk = PublicKey::from(&*alice_sk);
     let size: usize = 2;
     let mut keys: Vec<Arc<SecretKey>> = (1..size)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
@@ -227,27 +228,73 @@ async fn run_equivocator_network() {
         .await
         .expect("network initialization failed");
 
-    info!("Waiting for Era 0 to end");
-    net.settle_on(
-        &mut rng,
-        is_in_era(EraId::from(1)),
-        Duration::from_secs(600),
-    )
-    .await;
-
-    let last_era_number = 5;
     let timeout = Duration::from_secs(90);
 
-    for era_number in 2..last_era_number {
-        info!("Waiting for Era {} to end", era_number);
-        net.settle_on(&mut rng, is_in_era(EraId::from(era_number)), timeout)
-            .await;
+    let mut switch_blocks = Vec::new();
+    for era_number in 1.. {
+        let era_id = EraId::from(era_number);
+        info!("Waiting for Era {} to begin", era_number);
+        net.settle_on(&mut rng, is_in_era(era_id), timeout).await;
+
+        // Collect new switch block headers.
+        for runner in net.nodes().values() {
+            let storage = runner.reactor().inner().storage();
+            let header = storage
+                .transactional_get_switch_block_by_era_id(era_number - 1)
+                .expect("missing switch block")
+                .take_header();
+            assert_eq!(era_number - 1, header.era_id().value());
+            if let Some(other_header) = switch_blocks.get(era_number as usize - 1) {
+                assert_eq!(other_header, &header);
+            } else {
+                switch_blocks.push(header);
+            }
+        }
+
+        // Make sure we waited long enough for this test to include unbonding and dropping eras.
+        let oldest_bonded_era_id = consensus::oldest_bonded_era(&protocol_config, era_id);
+        let oldest_evidence_era_id =
+            consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
+        if oldest_evidence_era_id.is_genesis() || era_number < 3 {
+            continue;
+        }
+
+        // Wait at least two more eras after the equivocation has been detected.
+        let era_end = switch_blocks[era_number as usize - 3]
+            .era_end()
+            .expect("missing era end");
+        if *era_end.inactive_validators == [alice_pk.clone()] {
+            break;
+        }
     }
 
-    // Make sure we waited long enough for this test to include unbonding and dropping eras.
-    let oldest_bonded_era_id =
-        consensus::oldest_bonded_era(&protocol_config, EraId::from(last_era_number));
-    let oldest_evidence_era_id =
-        consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
-    assert!(!oldest_evidence_era_id.is_genesis());
+    // The auction delay is 1, so if Alice's equivocation was detected before the switch block in
+    // era N, the switch block of era N should list her as faulty. Starting with the switch block
+    // in era N + 1, she should be removed from the validator set, because she gets evicted in era
+    // N + 2.
+    // No era after N should have direct evidence against her: she got marked as faulty when era
+    // N + 1 was initialized, so no other validator will cite her or process her units.
+    loop {
+        let header = switch_blocks.pop().expect("missing switch block");
+        let validators = header
+            .next_era_validator_weights()
+            .expect("missing validator weights");
+        if validators.contains_key(&alice_pk) {
+            // We've found era N: This is the last switch block that still lists Alice as a
+            // validator.
+            let era_end = header.era_end().expect("missing era end");
+            assert_eq!(*era_end.inactive_validators, [alice_pk.clone()]);
+            return;
+        } else {
+            // We are in era N + 1 or later. There should be no direct evidence; that would mean
+            // Alice equivocated twice.
+            for runner in net.nodes().values() {
+                let consensus = runner.reactor().inner().consensus();
+                assert_eq!(
+                    consensus.validators_with_evidence(header.era_id()),
+                    Vec::<&PublicKey>::new()
+                );
+            }
+        }
+    }
 }

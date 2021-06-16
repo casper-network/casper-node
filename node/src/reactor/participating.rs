@@ -367,6 +367,7 @@ impl Reactor {
     pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
     }
+
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
