@@ -990,7 +990,7 @@ mod tests {
     }
 
     #[test]
-    fn timeouts_purge_in_order_2() {
+    fn timeouts_may_under_drain_if_system_time_changed() {
         let mut timeouts = Timeouts::new();
         let now = Instant::now();
         let later_100 = now + Duration::from_millis(100);
