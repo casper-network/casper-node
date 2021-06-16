@@ -1532,7 +1532,7 @@ fn initialize_block_body_v1_db(
 
     for (raw_key, _raw_val) in cursor.iter() {
         if deleted_block_body_hashes_raw.contains(raw_key) {
-            info!(?raw_key, "deleting block hash");
+            info!(?raw_key, "deleting block body");
             cursor.del(WriteFlags::empty())?;
             continue;
         }
