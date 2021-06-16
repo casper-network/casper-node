@@ -348,25 +348,11 @@ where
                     finality_signatures,
                 } = &*item;
 
-                if *block.hash() != block.header().hash() {
+                if let Err(error) = block.verify() {
                     warn!(
-                        ?block,
-                        actual_block_header_hash = ?block.header().hash(),
+                        ?error,
                         ?peer,
-                        "Block from peer did not have correct block header hash.",
-                    );
-                    // TODO: ban peer
-                    continue;
-                }
-
-                if block.body().hash(block.header().protocol_version())
-                    != *block.header().body_hash()
-                {
-                    warn!(
-                        ?block,
-                        actual_block_body_hash = ?block.body().hash(block.header().protocol_version()),
-                        ?peer,
-                        "Block from peer did not have correct block body hash.",
+                        "Error validating finality signatures from peer.",
                     );
                     // TODO: ban peer
                     continue;

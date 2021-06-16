@@ -1,25 +1,12 @@
 //! Common types used across multiple components.
 
-pub(crate) mod appendable_block;
-mod block;
-pub mod chainspec;
-mod deploy;
-mod exit_code;
-mod item;
-pub mod json_compatibility;
-mod node_config;
-mod node_id;
-mod peers_map;
-mod status_feed;
-mod timestamp;
-
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
 
 pub use block::{
     json_compatibility::JsonBlock, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
-    BlockValidationError, FinalitySignature,
+    FinalitySignature, HashingAlgorithmVersion,
 };
 pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;
@@ -35,6 +22,20 @@ pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
+
+pub(crate) mod appendable_block;
+mod block;
+pub mod chainspec;
+mod deploy;
+pub mod error;
+mod exit_code;
+mod item;
+pub mod json_compatibility;
+mod node_config;
+mod node_id;
+mod peers_map;
+mod status_feed;
+mod timestamp;
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.
 pub trait CryptoRngCore: CryptoRng + RngCore {}

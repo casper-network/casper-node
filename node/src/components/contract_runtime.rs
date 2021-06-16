@@ -49,9 +49,10 @@ use crate::{
         requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
+    fatal,
     types::{
-        Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployHeader, FinalizedBlock,
-        NodeId,
+        error::BlockCreationError, Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
+        DeployHeader, FinalizedBlock, NodeId,
     },
     utils::WithDir,
     NodeRng, StorageConfig,
@@ -107,6 +108,7 @@ pub trait ReactorEventT:
     + From<ContractRuntimeRequest>
     + From<ContractRuntimeAnnouncement>
     + From<ConsensusRequest>
+    + From<ControlAnnouncement>
     + Send
 {
 }
@@ -118,6 +120,7 @@ impl<REv> ReactorEventT for REv where
         + From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<ConsensusRequest>
+        + From<ControlAnnouncement>
         + Send
 {
 }
@@ -750,11 +753,16 @@ impl ContractRuntime {
         self.metrics
             .chain_height
             .set(state.finalized_block.height() as i64);
-        let block = self.create_block(
+        let block = match self.create_block(
             state.finalized_block,
             state.state_root_hash,
             next_era_validator_weights,
-        );
+        ) {
+            Ok(block) => block,
+            Err(error) => {
+                return fatal!(effect_builder, "Could not create block: {}", error).ignore();
+            }
+        };
 
         let mut effects = effect_builder
             .announce_linear_chain_block(block, state.execution_results)
@@ -962,7 +970,7 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         state_root_hash: Digest,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
-    ) -> Block {
+    ) -> Result<Block, BlockCreationError> {
         let (parent_summary_hash, parent_seed) = if self.is_initial_block_child(&finalized_block) {
             // The first block after the initial one: get initial block summary if we have one, or
             // if not, this should be the genesis child and so we take the default values.
@@ -994,14 +1002,14 @@ impl ContractRuntime {
             finalized_block,
             next_era_validator_weights,
             self.protocol_version,
-        );
+        )?;
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
             state_root_hash,
             accumulated_seed: block.header().accumulated_seed(),
         };
         let _ = self.parent_map.insert(block_height, summary);
-        block
+        Ok(block)
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {

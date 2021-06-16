@@ -14,7 +14,6 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::HexList;
@@ -32,7 +31,6 @@ use casper_types::{
     EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 
-use super::{Item, Tag, Timestamp};
 #[cfg(test)]
 use crate::crypto::generate_ed25519_keypair;
 #[cfg(test)]
@@ -45,9 +43,14 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
+    types::{
+        error::{BlockCreationError, BlockValidationError},
+        Deploy, DeployHash, DeployOrTransferHash, JsonBlock,
+    },
     utils::DisplayIter,
 };
+
+use super::{Item, Tag, Timestamp};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -148,6 +151,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         next_era_validator_weights,
         protocol_version,
     )
+    .expect("could not construct block")
 });
 static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let block = Block::doc_example().clone();
@@ -663,6 +667,12 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
+    /// The [`HashingAlgorithmVersion`] used for the header (as well for as its corresponding block
+    /// body).
+    pub fn hashing_algorithm_version(&self) -> HashingAlgorithmVersion {
+        HashingAlgorithmVersion::from_protocol_version(&self.protocol_version)
+    }
+
     /// The parent block's hash.
     pub fn parent_hash(&self) -> &BlockHash {
         &self.parent_hash
@@ -744,10 +754,9 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
-        if self.protocol_version >= Block::HASH_V2_PROTOCOL_VERSION {
-            self.hash_v2()
-        } else {
-            self.hash_v1()
+        match HashingAlgorithmVersion::from_protocol_version(&self.protocol_version) {
+            HashingAlgorithmVersion::V1 => self.hash_v1(),
+            HashingAlgorithmVersion::V2 => self.hash_v2(),
         }
     }
 
@@ -946,15 +955,6 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
-    /// Computes the body hash.
-    pub(crate) fn hash(&self, protocol_version: ProtocolVersion) -> Digest {
-        if protocol_version >= Block::HASH_V2_PROTOCOL_VERSION {
-            self.hash_v2()
-        } else {
-            self.hash_v1()
-        }
-    }
-
     /// Computes the body hash by hashing the serialized bytes.
     fn hash_v1(&self) -> Digest {
         let serialized_body = self
@@ -1085,41 +1085,6 @@ impl FromBytes for BlockBody {
     }
 }
 
-/// An error that can arise when validating a block's cryptographic integrity using its hashes
-#[derive(Debug)]
-pub enum BlockValidationError {
-    /// Problem serializing some of a block's data into bytes
-    SerializationError(bytesrepr::Error),
-
-    /// The body hash in the header is not the same as the hash of the body of the block
-    UnexpectedBodyHash {
-        /// The block body hash specified in the header that is apparently incorrect
-        expected_by_block_header: Digest,
-        /// The actual hash of the block's body
-        actual: Digest,
-    },
-
-    /// The block's hash is not the same as the header's hash
-    UnexpectedBlockHash {
-        /// The hash specified by the block
-        expected_by_block: BlockHash,
-        /// The actual hash of the block
-        actual: BlockHash,
-    },
-}
-
-impl Display for BlockValidationError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{:?}", self)
-    }
-}
-
-impl From<bytesrepr::Error> for BlockValidationError {
-    fn from(err: bytesrepr::Error) -> Self {
-        BlockValidationError::SerializationError(err)
-    }
-}
-
 /// A storage representation of finality signatures with the associated block hash.
 #[derive(Clone, Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Eq, PartialEq)]
 pub struct BlockSignatures {
@@ -1188,11 +1153,33 @@ pub struct Block {
     body: BlockBody,
 }
 
+/// The hashing algorithm used for the header and the block body of a block
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum HashingAlgorithmVersion {
+    /// Version 1
+    V1,
+    /// Version 1
+    V2,
+}
+
+impl HashingAlgorithmVersion {
+    const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 0);
+    fn from_protocol_version(protocol_version: &ProtocolVersion) -> Self {
+        if *protocol_version < Self::HASH_V2_PROTOCOL_VERSION {
+            HashingAlgorithmVersion::V1
+        } else {
+            HashingAlgorithmVersion::V2
+        }
+    }
+}
+
 impl Block {
-    /// Version which introduced the first generation hashing function.
-    pub const HASH_V1_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 0, 0);
-    /// Version that introduced Merkelized hashing functions.
-    pub const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 0);
+    fn hash_block_body(protocol_version: &ProtocolVersion, block_body: &BlockBody) -> Digest {
+        match HashingAlgorithmVersion::from_protocol_version(&protocol_version) {
+            HashingAlgorithmVersion::V1 => block_body.hash_v1(),
+            HashingAlgorithmVersion::V2 => block_body.hash_v2(),
+        }
+    }
 
     pub(crate) fn new(
         parent_hash: BlockHash,
@@ -1201,27 +1188,31 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
-    ) -> Self {
+    ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
             finalized_block.proposer.clone(),
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
         );
 
-        let body_hash = if protocol_version >= Block::HASH_V2_PROTOCOL_VERSION {
-            body.hash_v2()
-        } else {
-            body.hash_v1()
-        };
+        let body_hash = Self::hash_block_body(&protocol_version, &body);
 
-        let era_end = match finalized_block.era_report {
-            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
-            None => None,
+        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
+            (None, None) => None,
+            (Some(era_report), Some(next_era_validator_weights)) => {
+                Some(EraEnd::new(era_report, next_era_validator_weights))
+            }
+            (maybe_era_report, maybe_next_era_validator_weights) => {
+                return Err(BlockCreationError::CouldNotCreateEraEnd {
+                    maybe_era_report,
+                    maybe_next_era_validator_weights,
+                })
+            }
         };
 
         let mut accumulated_seed = [0; Digest::LENGTH];
 
-        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
+        let mut hasher = VarBlake2b::new(Digest::LENGTH)?;
         hasher.update(parent_seed);
         hasher.update([finalized_block.random_bit as u8]);
         hasher.finalize_variable(|slice| {
@@ -1241,12 +1232,21 @@ impl Block {
             protocol_version,
         };
 
-        Self::new_from_header_and_body(header, body)
+        Ok(Block {
+            hash: header.hash(),
+            header,
+            body,
+        })
     }
 
-    pub(crate) fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
+    pub(crate) fn new_from_header_and_body(
+        header: BlockHeader,
+        body: BlockBody,
+    ) -> Result<Self, BlockValidationError> {
         let hash = header.hash();
-        Block { hash, header, body }
+        let block = Block { hash, header, body };
+        block.verify()?;
+        Ok(block)
     }
 
     pub(crate) fn header(&self) -> &BlockHeader {
@@ -1308,24 +1308,23 @@ impl Block {
 
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_body_hash = if self.header.protocol_version >= Block::HASH_V2_PROTOCOL_VERSION {
-            self.body.hash_v2()
-        } else {
-            self.body.hash_v1()
-        };
-        if self.header.body_hash != actual_body_hash {
-            return Err(BlockValidationError::UnexpectedBodyHash {
-                expected_by_block_header: self.header.body_hash,
-                actual: actual_body_hash,
-            });
-        }
-        let actual_header_hash = self.header.hash();
-        if self.hash != actual_header_hash {
+        let actual_block_header_hash = self.header().hash();
+        if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
-                expected_by_block: self.hash,
-                actual: actual_header_hash,
+                block: Box::new(self.to_owned()),
+                actual_block_header_hash,
             });
         }
+
+        let actual_block_body_hash =
+            Self::hash_block_body(&self.header.protocol_version, &self.body);
+        if self.header.body_hash != actual_block_body_hash {
+            return Err(BlockValidationError::UnexpectedBodyHash {
+                block: Box::new(self.to_owned()),
+                actual_block_body_hash,
+            });
+        }
+
         Ok(())
     }
 
@@ -1373,6 +1372,7 @@ impl Block {
             next_era_validator_weights,
             protocol_version,
         )
+        .expect("Could not create random block with specifics")
     }
 }
 
@@ -1795,11 +1795,13 @@ impl Display for FinalitySignature {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use casper_types::bytesrepr;
 
-    use super::*;
     use crate::testing::TestRng;
-    use std::rc::Rc;
+
+    use super::*;
 
     #[test]
     fn json_block_roundtrip() {
@@ -1876,19 +1878,9 @@ mod tests {
         let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_hash;
 
-        let actual_body_hash = if block.header.protocol_version >= Block::HASH_V2_PROTOCOL_VERSION {
-            block.body.hash_v2()
-        } else {
-            block.body.hash_v1()
-        };
-
         // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
-            Err(BlockValidationError::UnexpectedBodyHash {
-                expected_by_block_header,
-                actual,
-            }) if expected_by_block_header == bogus_block_hash && actual == actual_body_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
+        if block.verify().is_ok() {
+            panic!("Block has bogus body hash: {:?}", block)
         }
     }
 
@@ -1900,14 +1892,13 @@ mod tests {
         let bogus_block_hash: BlockHash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
         block.hash = bogus_block_hash;
 
-        let actual_block_hash = block.header.hash();
-
         // No Eq trait for BlockValidationError, so pattern match
         match block.verify() {
             Err(BlockValidationError::UnexpectedBlockHash {
-                expected_by_block,
-                actual,
-            }) if expected_by_block == bogus_block_hash && actual == actual_block_hash => {}
+                block,
+                actual_block_header_hash,
+            }) if block.hash == bogus_block_hash
+                && block.header.hash() == actual_block_header_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }
