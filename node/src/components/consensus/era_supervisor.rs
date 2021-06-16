@@ -358,7 +358,7 @@ where
             ))
         }
 
-        let era = Era::new(
+        let mut era = Era::new(
             consensus,
             start_time,
             start_height,
@@ -366,6 +366,23 @@ where
             faulty,
             validators,
         );
+
+        // Mark validators as faulty for which we have evidence in a recent era.
+        for e_id in self.iter_past_other(era_id, self.bonded_eras()) {
+            if let Some(old_era) = self.active_eras.get_mut(&e_id) {
+                for pub_key in old_era.consensus.validators_with_evidence() {
+                    let proposed_blocks = era.resolve_evidence(&pub_key);
+                    if !proposed_blocks.is_empty() {
+                        error!(
+                            ?proposed_blocks,
+                            era = e_id.value(),
+                            "unexpected block in new era"
+                        );
+                    }
+                }
+            }
+        }
+
         let _ = self.active_eras.insert(era_id, era);
         let oldest_bonded_era_id = oldest_bonded_era(&self.protocol_config, era_id);
         // Clear the obsolete data from the era whose validators are unbonded now. We only retain
