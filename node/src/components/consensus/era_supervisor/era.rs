@@ -55,12 +55,12 @@ pub struct Era<I> {
     pub(crate) start_height: u64,
     /// Pending blocks, waiting for validation and dependencies.
     validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
-    /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
+    /// Validators banned in this and the next BONDED_ERAS eras, because they were faulty in the
     /// previous switch block.
-    pub(crate) newly_slashed: Vec<PublicKey>,
-    /// Validators that have been slashed in any of the recent BONDED_ERAS switch blocks. This
-    /// includes `newly_slashed`.
-    pub(crate) slashed: HashSet<PublicKey>,
+    pub(crate) new_faulty: Vec<PublicKey>,
+    /// Validators that have been faulty in any of the recent BONDED_ERAS switch blocks. This
+    /// includes `new_faulty`.
+    pub(crate) faulty: HashSet<PublicKey>,
     /// Accusations collected in this era so far.
     accusations: HashSet<PublicKey>,
     /// The validator weights.
@@ -72,8 +72,8 @@ impl<I> Era<I> {
         consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
         start_time: Timestamp,
         start_height: u64,
-        newly_slashed: Vec<PublicKey>,
-        slashed: HashSet<PublicKey>,
+        new_faulty: Vec<PublicKey>,
+        faulty: HashSet<PublicKey>,
         validators: BTreeMap<PublicKey, U512>,
     ) -> Self {
         Era {
@@ -81,8 +81,8 @@ impl<I> Era<I> {
             start_time,
             start_height,
             validation_states: HashMap::new(),
-            newly_slashed,
-            slashed,
+            new_faulty,
+            faulty,
             accusations: HashSet::new(),
             validators,
         }
@@ -141,7 +141,7 @@ impl<I> Era<I> {
     /// Adds new accusations from a finalized block.
     pub(crate) fn add_accusations(&mut self, accusations: &[PublicKey]) {
         for pub_key in accusations {
-            if !self.slashed.contains(pub_key) {
+            if !self.faulty.contains(pub_key) {
                 self.accusations.insert(pub_key.clone());
             }
         }
@@ -179,8 +179,8 @@ where
             start_time,
             start_height,
             validation_states,
-            newly_slashed,
-            slashed,
+            new_faulty,
+            faulty,
             accusations,
             validators,
         } = self;
@@ -215,8 +215,8 @@ where
             .saturating_add(start_time.estimate_heap_size())
             .saturating_add(start_height.estimate_heap_size())
             .saturating_add(validation_states.estimate_heap_size())
-            .saturating_add(newly_slashed.estimate_heap_size())
-            .saturating_add(slashed.estimate_heap_size())
+            .saturating_add(new_faulty.estimate_heap_size())
+            .saturating_add(faulty.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())
             .saturating_add(validators.estimate_heap_size())
     }
