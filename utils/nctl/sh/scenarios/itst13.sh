@@ -27,43 +27,44 @@ function main() {
     do_stop_node '5'
     # 4. Wait until N+1
     do_await_era_change '1'
+    # 4a. Wait 1 block to avoid missing latest switch block
     await_n_blocks '1' 'true'
+    # 4b. Get concluded era's switch block
     get_switch_block '1' '100'
     # Wait 1 extra block to avoid potential overlap.
-    await_n_blocks '1' 'true'
+    #await_n_blocks '1' 'true'
     # Gather Block Hash after stopping node for walkback later
     local RESTART_HASH=$(do_read_lfb_hash '1')
     # 5. Wait until N+2
     do_await_era_change '1'
+    # 5a. Wait 1 block to avoid missing latest switch block
     await_n_blocks '1' 'true'
+    # 5b. Get concluded era's switch block
     get_switch_block '1' '100'
     # 6. Assert node is marked as inactive
     assert_inactive '5'
-
-    # 7. Re-bid & restart node 5
-    # CASE 1: Comment out and uncomment CASE 2 for comparison
+    # 7. Restart node 5
     do_start_node '5' "$(get_chain_first_block_hash)"
+    # 8-9. Assert joined within expected era
     assert_joined_in_era_4 '5'
-
-    # 8. Assert eviction of node
+    # 10. Assert eviction of node
     do_await_era_change '1'
+    # 10a. Wait 1 block to avoid missing latest switch block
     await_n_blocks '1' 'true'
+    # 10b. Get concluded era's switch block
     get_switch_block '1' '100'
+    # 11. Assert node 5 was evicted
     assert_eviction '5'
-    # 9. Assert node didn't propose since being shutdown
+    # 12. Assert node didn't propose since being shutdown
     assert_no_proposal_walkback '5' "$RESTART_HASH"
-    # 10. Re-bid shutdown node
+    # 13. Re-bid shutdown node
     do_submit_auction_bids '5'
-
-    # CASE 2: Comment out and uncomment CASE 1 for comparison
-    #do_start_node '5' "$RESTART_HASH"
-
-    # 11. wait auction_delay + 1 + 1 more for partial era protection
+    # 14. wait auction_delay + 1 + 1 more for partial era protection
     # NOTE: auction_delay = 1 for this test.
     do_await_era_change '3'
-    # 12. Assert that restarted validator is producing blocks.
+    # 15. Assert that restarted validator is producing blocks.
     assert_node_proposed '5' '300'
-    # 13. Check for equivocators
+    # 16. Check for equivocators
     assert_no_equivocators_logs
     log "------------------------------------------------------------"
     log "Scenario itst13 complete"
