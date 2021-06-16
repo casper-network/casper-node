@@ -1526,13 +1526,13 @@ fn initialize_block_body_v1_db(
     deleted_block_body_hashes_raw: &HashSet<&[u8]>,
     should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
-    info!("initializing block body database");
+    info!("initializing v1 block body database");
     let mut txn = env.begin_rw_txn()?;
     let mut cursor = txn.open_rw_cursor(*block_body_v1_db)?;
 
     for (raw_key, _raw_val) in cursor.iter() {
         if deleted_block_body_hashes_raw.contains(raw_key) {
-            info!(?raw_key, "deleting block body");
+            info!(?raw_key, "deleting v1 block body");
             cursor.del(WriteFlags::empty())?;
             continue;
         }
@@ -1555,6 +1555,7 @@ fn initialize_block_body_v1_db(
                         actual_hashing_algorithm_version,
                     });
                 }
+                // Use smart constructor for block and propagate validation error accordingly
                 Block::new_from_header_and_body(block_header.to_owned(), block_body)?;
             } else {
                 return Err(LmdbExtError::NoBlockHeaderForBlockBody {
@@ -1581,7 +1582,7 @@ fn initialize_block_body_v2_db(
     deleted_block_body_hashes: &HashSet<&[u8]>,
     should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
-    info!("initializing block body (Merkle) database");
+    info!("initializing v2 block body database");
     if deleted_block_body_hashes.is_empty() {
         info!("No deleted block bodies, nothing to do.");
         return Ok(());
@@ -1595,7 +1596,7 @@ fn initialize_block_body_v2_db(
     let mut deleted_proposer_hashes = HashSet::new();
 
     for (raw_key, raw_val) in cursor.iter() {
-        info!(?raw_key, "deleting block hash");
+        info!(?raw_key, "deleting v2 block");
         if deleted_block_body_hashes.contains(raw_key) {
             let hashes: Vec<Digest> = lmdb_ext::deserialize(raw_val)?;
             let _ = deleted_deploy_hashes.insert(hashes[0]);
@@ -1610,7 +1611,7 @@ fn initialize_block_body_v2_db(
             assert_eq!(
                 *raw_key,
                 hash::hash_slice_rfold(&hashes).to_vec(),
-                "found corrupt Merklized block body in database"
+                "found corrupt v2 block body in database"
             );
         }
     }
