@@ -27,6 +27,7 @@ function main() {
     do_stop_node '5'
     # 4. Wait until N+1
     do_await_era_change '1'
+    await_n_blocks '1' 'true'
     get_switch_block '1' '100'
     # Wait 1 extra block to avoid potential overlap.
     await_n_blocks '1' 'true'
@@ -34,6 +35,7 @@ function main() {
     local RESTART_HASH=$(do_read_lfb_hash '1')
     # 5. Wait until N+2
     do_await_era_change '1'
+    await_n_blocks '1' 'true'
     get_switch_block '1' '100'
     # 6. Assert node is marked as inactive
     assert_inactive '5'
@@ -45,6 +47,7 @@ function main() {
 
     # 8. Assert eviction of node
     do_await_era_change '1'
+    await_n_blocks '1' 'true'
     get_switch_block '1' '100'
     assert_eviction '5'
     # 9. Assert node didn't propose since being shutdown
