@@ -88,6 +88,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
         account_hash_arb().prop_map(Key::Bid),
         account_hash_arb().prop_map(Key::Withdraw),
+        u8_slice_32().prop_map(Key::Dictionary),
     ]
 }
 
@@ -97,6 +98,7 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
         u2_slice_32().prop_map(Key::Hash),
         u2_slice_32().prop_map(|bytes| Key::URef(URef::new(bytes, AccessRights::NONE))),
         u2_slice_32().prop_map(|bytes| Key::Transfer(TransferAddr::new(bytes))),
+        u2_slice_32().prop_map(Key::Dictionary),
     ]
 }
 

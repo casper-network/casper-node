@@ -50,6 +50,9 @@ pub enum FunctionIndex {
     Blake2b,
     RecordTransfer,
     RecordEraInfo,
+    NewDictionaryFuncIndex,
+    DictionaryGetFuncIndex,
+    DictionaryPutFuncIndex,
 }
 
 impl Into<usize> for FunctionIndex {

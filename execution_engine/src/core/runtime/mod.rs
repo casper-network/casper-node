@@ -99,6 +99,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
+        Key::Dictionary(_) => None,
     }
 }
 
@@ -2266,7 +2267,7 @@ where
         let addr = self.context.new_hash_address()?;
         let (contract_package, access_key) = self.create_contract_package(lock_status)?;
         self.context
-            .metered_write_gs_unsafe(addr, contract_package)?;
+            .metered_write_gs_unsafe(Key::Hash(addr), contract_package)?;
         Ok((addr, access_key.addr()))
     }
 
@@ -2397,9 +2398,9 @@ where
             contract_package.insert_contract_version(major, contract_hash.into());
 
         self.context
-            .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
+            .metered_write_gs_unsafe(Key::Hash(contract_wasm_hash), contract_wasm)?;
         self.context
-            .metered_write_gs_unsafe(contract_hash, contract)?;
+            .metered_write_gs_unsafe(Key::Hash(contract_hash), contract)?;
         self.context
             .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
@@ -3344,6 +3345,85 @@ where
         let cost = host_function.calculate_gas_cost(weights);
         self.gas(cost)?;
         Ok(())
+    }
+
+    /// Creates a dictionary
+    fn new_dictionary(&mut self, output_size_ptr: u32) -> Result<Result<(), ApiError>, Error> {
+        // check we can write to the host buffer
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
+        }
+
+        // Create new URef
+        let new_uref = self.context.new_unit_uref()?;
+
+        // create CLValue for return value
+        let new_uref_value = CLValue::from_t(new_uref)?;
+        let value_size = new_uref_value.inner_bytes().len();
+        // write return value to buffer
+        if let Err(err) = self.write_host_buffer(new_uref_value) {
+            return Ok(Err(err));
+        }
+        // Write return value size to output location
+        let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
+        if let Err(error) = self.memory.set(output_size_ptr, &output_size_bytes) {
+            return Err(Error::Interpreter(error.into()));
+        }
+
+        Ok(Ok(()))
+    }
+
+    /// Reads the `value` under a `key` in a dictionary
+    fn dictionary_get(
+        &mut self,
+        uref_ptr: u32,
+        uref_size: u32,
+        key_bytes_ptr: u32,
+        key_bytes_size: u32,
+        output_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        // check we can write to the host buffer
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
+        }
+
+        let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
+        let key_bytes = self.bytes_from_mem(key_bytes_ptr, key_bytes_size as usize)?;
+
+        let cl_value = match self.context.dictionary_get(uref, &key_bytes)? {
+            Some(cl_value) => cl_value,
+            None => return Ok(Err(ApiError::ValueNotFound)),
+        };
+
+        let value_size = cl_value.inner_bytes().len() as u32;
+        if let Err(error) = self.write_host_buffer(cl_value) {
+            return Ok(Err(error));
+        }
+
+        let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
+        if let Err(error) = self.memory.set(output_size_ptr, &value_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+    /// Writes a `key`, `value` pair in a dictionary
+    fn dictionary_put(
+        &mut self,
+        uref_ptr: u32,
+        uref_size: u32,
+        key_ptr: u32,
+        key_size: u32,
+        value_ptr: u32,
+        value_size: u32,
+    ) -> Result<(), Trap> {
+        let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
+        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
+        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
+        self.context
+            .dictionary_put(uref, &key_bytes, cl_value)
+            .map_err(Into::into)
     }
 }
 
