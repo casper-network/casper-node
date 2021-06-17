@@ -67,7 +67,7 @@ use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer,
 
 use super::Component;
 use crate::{
-    crypto::{hash, hash::Digest},
+    crypto::hash::Digest,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -388,7 +388,6 @@ impl Storage {
             &transfer_hashes_db,
             &proposer_db,
             &deleted_block_body_hashes_raw,
-            should_check_integrity,
         )?;
         initialize_block_metadata_db(
             &env,
@@ -1627,11 +1626,11 @@ fn initialize_block_body_v2_db(
     let deleted_proposer_hashes_raw: HashSet<_> =
         deleted_proposer_hashes.iter().map(Digest::as_ref).collect();
 
-    info!(&deleted_deploy_hashes_raw, "Removing deleted deploy keys");
+    info!(?deleted_deploy_hashes_raw, "Removing deleted deploy keys");
     remove_keys_from_db(&mut txn, deploy_hashes_db, &deleted_deploy_hashes_raw)?;
-    info!(&deleted_deploy_hashes_raw, "Removing deleted transfer keys");
+    info!(?deleted_deploy_hashes_raw, "Removing deleted transfer keys");
     remove_keys_from_db(&mut txn, transfer_hashes_db, &deleted_transfer_hashes_raw)?;
-    info!(&deleted_deploy_hashes_raw, "Removing deleted proposer keys");
+    info!(?deleted_deploy_hashes_raw, "Removing deleted proposer keys");
     remove_keys_from_db(&mut txn, proposer_db, &deleted_proposer_hashes_raw)?;
 
     txn.commit()?;
@@ -1651,7 +1650,7 @@ fn remove_keys_from_db(
 
     for (raw_key, _raw_val) in cursor.iter() {
         if deleted_hashes.contains(raw_key) {
-            info!(&raw_key, "Removing raw key");
+            info!(?raw_key, "Removing raw key");
             cursor.del(WriteFlags::empty())?;
         }
     }
