@@ -13,6 +13,8 @@ mod peers_map;
 mod status_feed;
 mod timestamp;
 
+use std::ops::Deref;
+
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
@@ -48,3 +50,38 @@ pub type NodeRng = ChaCha20Rng;
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
 pub type NodeRng = crate::testing::TestRng;
+
+/// An in-memory object that can possibly be shared with user parts of the system.
+///
+/// In general, this should only be used for immutable, content-addressed objects.
+#[derive(Debug)]
+enum LoadedObject<T> {
+    /// An owned copy of the object.
+    Owned(Box<T>),
+}
+
+impl<T> Deref for LoadedObject<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            LoadedObject::Owned(obj) => &*obj,
+        }
+    }
+}
+
+impl<T> LoadedObject<T> {
+    /// Creates a new owned instance of the object.
+    #[inline]
+    fn new_owned(inner: Box<T>) -> Self {
+        LoadedObject::Owned(inner)
+    }
+
+    // /// Converts an owned object instance into a shared one.
+    // #[inline]
+    // fn into_shared(self) -> Self {
+    //     match self {
+    //         LoadedObject::Owned(inner) => LoadedObject::Shared(Arc::new(inner)),
+    //     }
+    // }
+}
