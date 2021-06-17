@@ -13,12 +13,11 @@ use alloc::{
 };
 #[cfg(debug_assertions)]
 use core::any;
-use core::{mem, ptr::NonNull};
-use num_traits::ToPrimitive;
-use std::marker::PhantomData;
+use core::{marker::PhantomData, mem, ptr::NonNull};
 
 use num_integer::Integer;
 use num_rational::Ratio;
+use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
