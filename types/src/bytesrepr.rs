@@ -1215,6 +1215,9 @@ pub fn serialized_struct_fields_length(fields: &[usize]) -> usize {
 }
 
 /// Reader of a serialized structs with [`StructWriter`]
+/// NOTE: This reader implementation does not try to be re-entrant. It means that once
+/// [`StructReader::read_key`] or [`StructReader::read_value`] errors, then you should not attempt
+/// to read from the same reader again.
 pub struct StructReader<'a> {
     buf: &'a [u8],
     length_prefix: Option<u32>,
@@ -1233,14 +1236,12 @@ impl<'a> StructReader<'a> {
     fn read_length_prefix(&mut self) -> Result<u32, Error> {
         match self.length_prefix {
             Some(value) => Ok(value),
-            None => match FromBytes::from_bytes(self.buf) {
-                Ok((length_prefix, rem)) => {
-                    self.length_prefix = Some(length_prefix);
-                    self.buf = rem;
-                    Ok(length_prefix)
-                }
-                Err(error) => Err(error),
-            },
+            None => {
+                let (length_prefix, rem) = FromBytes::from_bytes(self.buf)?;
+                self.buf = rem;
+                self.length_prefix = Some(length_prefix);
+                Ok(length_prefix)
+            }
         }
     }
 
@@ -1267,10 +1268,23 @@ impl<'a> StructReader<'a> {
         Ok(v)
     }
 
-    fn read_value_raw(&mut self) -> Result<Vec<u8>, Error> {
-        let length_prefix = self.read_length_prefix()?;
-        let (value_bytes, rem): (Bytes, _) = FromBytes::from_bytes(self.buf)?;
+    /// Reads next element by trying to deserialize it, and moves the internal buffer forward once
+    /// it succeed
+    fn advance<T>(&mut self) -> Result<T, Error>
+    where
+        T: FromBytes,
+    {
+        let (value, rem) = FromBytes::from_bytes(self.buf)?;
         self.buf = rem;
+        Ok(value)
+    }
+
+    fn read_value_raw(&mut self) -> Result<Vec<u8>, Error> {
+        let length_prefix = self.length_prefix.ok_or(Error::Formatting)?;
+        if length_prefix == 0 {
+            return Err(Error::Formatting);
+        }
+        let value_bytes: Bytes = self.advance()?;
         self.length_prefix = Some(length_prefix - 1);
         Ok(value_bytes.into())
     }
@@ -1445,6 +1459,14 @@ mod tests {
         assert_eq!(foo_v1.attr3, foo_v2.attr3);
         assert_eq!(foo_v1.attr4.to_string(), foo_v2.attr4);
         assert_eq!(foo_v2.new_field, U512::MAX);
+    }
+
+    #[test]
+    fn should_not_panic_when_used_incorrectly() {
+        // 1 element in struct, first elements' key is 0, there should be a value but there is none
+        let buffer_1 = (0u32, 0u64).to_bytes().unwrap();
+        let mut reader_1 = StructReader::new(&buffer_1);
+        assert_eq!(reader_1.read_value::<()>().unwrap_err(), Error::Formatting);
     }
 }
 
