@@ -67,35 +67,10 @@ where
     C: Context,
 {
     Unit(SignedWireUnit<C>),
-    #[serde(with = "serde_unit_with_panorama")]
     UnitWithPanorama(SignedWireUnit<C>, Panorama<C>),
     Evidence(Evidence<C>),
     Endorsements(Endorsements<C>),
     Ping(Ping<C>),
-}
-
-/// Serialization and deserialization for a unit with its panorama. This fails to deserialize if
-/// the panorama's hash doesn't match the one in the unit.
-mod serde_unit_with_panorama {
-    use super::*;
-
-    pub(super) fn serialize<S: Serializer, C: Context>(
-        swunit: &SignedWireUnit<C>,
-        panorama: &Panorama<C>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        (swunit, panorama).serialize(serializer)
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>, C: Context>(
-        deserializer: D,
-    ) -> Result<(SignedWireUnit<C>, Panorama<C>), D::Error> {
-        let (swunit, panorama) = <(SignedWireUnit<C>, Panorama<C>)>::deserialize(deserializer)?;
-        if panorama.hash() != swunit.wire_unit().panorama_hash {
-            return Err(serde::de::Error::custom("wrong panorama hash"));
-        }
-        Ok((swunit, panorama))
-    }
 }
 
 impl<C: Context> Vertex<C> {

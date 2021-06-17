@@ -69,6 +69,8 @@ pub(crate) enum UnitError {
     PreviousUnit,
     #[error("The panorama has a unit from {:?} in the slot for {:?}.", _0, _1)]
     PanoramaIndex(ValidatorIndex, ValidatorIndex),
+    #[error("The panorama hash does not match.")]
+    PanoramaHash,
     #[error("The panorama is missing units indirectly cited via {:?}.", _0)]
     InconsistentPanorama(ValidatorIndex),
     #[error("Hash-based and sequence number-based panoramas disagree in {:?}.", _0)]
@@ -942,6 +944,9 @@ impl<C: Context> State<C> {
                     | (Observation::Faulty, ObservationSeqNum::Faulty) => {}
                     (_, _) => return Err(UnitError::PanoramaMismatch(vidx)),
                 }
+            }
+            if panorama.hash() != wunit.panorama_hash {
+                return Err(UnitError::PanoramaHash);
             }
         }
         Ok(())
