@@ -63,7 +63,7 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
 
 use super::Component;
 use crate::{
@@ -75,9 +75,9 @@ use crate::{
     fatal,
     reactor::ReactorEvent,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        HashingAlgorithmVersion, TimeDiff,
+        error::BlockValidationError, Block, BlockBody, BlockBodyHashedParts, BlockHash,
+        BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, HashingAlgorithmVersion, TimeDiff,
     },
     utils::WithDir,
     NodeRng,
@@ -167,6 +167,9 @@ pub enum Error {
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
+    /// Error when validating a block.
+    #[error(transparent)]
+    BlockValidationError(#[from] BlockValidationError),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -495,6 +498,8 @@ impl Storage {
         // average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
+                // Validate the block prior to inserting it into the database
+                block.verify()?;
                 let mut txn = self.env.begin_rw_txn()?;
 
                 {
@@ -505,7 +510,7 @@ impl Storage {
                             self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
                         }
                         HashingAlgorithmVersion::V2 => {
-                            self.put_single_block_body_v2(&mut txn, block_body)?
+                            self.put_single_block_body_v2(&mut txn, block_body_hash, block_body)?
                         }
                     };
                     if !success {
@@ -1077,34 +1082,31 @@ impl Storage {
         tx: &mut Tx,
         block_body_hash: &Digest,
     ) -> Result<Option<BlockBody>, LmdbExtError> {
-        let parts_hashes: Vec<Digest> =
+        let [hashed_deploy_hashes, hashed_transfer_hashes, hashed_proposer]: [Digest;
+            BlockBodyHashedParts::NUMBER_OF_HASHES] =
             match tx.get_value(self.block_body_v2_db, block_body_hash)? {
                 Some(parts_hashes) => parts_hashes,
                 None => return Ok(None),
             };
 
-        let mut hashable_parts = vec![];
+        let deploy_hashes: Vec<DeployHash> =
+            match tx.get_value(self.deploy_hashes_db, &hashed_deploy_hashes)? {
+                Some(deploy_hashes) => deploy_hashes,
+                None => return Ok(None),
+            };
 
-        let deploy_hashes = match tx.get_value(self.deploy_hashes_db, &parts_hashes[0])? {
-            Some(deploy_hashes) => deploy_hashes,
-            None => return Ok(None),
-        };
-        hashable_parts.push(deploy_hashes);
+        let transfer_hashes: Vec<DeployHash> =
+            match tx.get_value(self.transfer_hashes_db, &hashed_transfer_hashes)? {
+                Some(transfer_hashes) => transfer_hashes,
+                None => return Ok(None),
+            };
 
-        let transfer_hashes = match tx.get_value(self.transfer_hashes_db, &parts_hashes[1])? {
-            Some(transfer_hashes) => transfer_hashes,
-            None => return Ok(None),
-        };
-        hashable_parts.push(transfer_hashes);
-
-        let proposer = match tx.get_value(self.proposer_db, &parts_hashes[2])? {
+        let proposer: PublicKey = match tx.get_value(self.proposer_db, &hashed_proposer)? {
             Some(proposer) => proposer,
             None => return Ok(None),
         };
-        hashable_parts.push(proposer);
 
-        let block_body = BlockBody::from_hashable_parts(hashable_parts)
-            .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
+        let block_body = BlockBody::new(proposer, deploy_hashes, transfer_hashes);
 
         Ok(Some(block_body))
     }
@@ -1123,44 +1125,53 @@ impl Storage {
     fn put_single_block_body_v2(
         &self,
         tx: &mut RwTransaction,
+        block_body_hash: &Digest,
         block_body: &BlockBody,
     ) -> Result<bool, LmdbExtError> {
-        let hashable_parts = block_body.hashable_parts();
-        let hashes: Vec<Digest> = hashable_parts.iter().map(|(hash, _)| *hash).collect();
+        let hashable_parts = block_body.hashed_parts();
+        let BlockBodyHashedParts {
+            hashed_proposer,
+            hashed_deploy_hashes,
+            hashed_transfer_hashes,
+        } = &hashable_parts;
 
         // Insert parts and the vec of hashes to new dbs
         if !tx.put_value(
             self.deploy_hashes_db,
-            &hashable_parts[0].0,
-            &hashable_parts[0].1,
+            hashed_proposer,
+            block_body.proposer(),
             true,
         )? {
             return Ok(false);
         }
+
         if !tx.put_value(
             self.transfer_hashes_db,
-            &hashable_parts[1].0,
-            &hashable_parts[1].1,
+            hashed_deploy_hashes,
+            block_body.deploy_hashes(),
             true,
         )? {
             return Ok(false);
         }
         if !tx.put_value(
             self.proposer_db,
-            &hashable_parts[2].0,
-            &hashable_parts[2].1,
+            hashed_transfer_hashes,
+            block_body.transfer_hashes(),
             true,
         )? {
             return Ok(false);
         }
 
-        tx.put_value(
+        if !tx.put_value(
             self.block_body_v2_db,
-            &hash::hash_slice_rfold(&hashes),
-            &hashes,
+            &block_body_hash,
+            &hashable_parts.as_slice(),
             true,
-        )
-        .map_err(Into::into)
+        )? {
+            return Ok(false);
+        }
+
+        Ok(true)
     }
 
     // Retrieves a block header to handle a network request.
@@ -1580,7 +1591,7 @@ fn initialize_block_body_v2_db(
     transfer_hashes_db: &Database,
     proposer_db: &Database,
     deleted_block_body_hashes: &HashSet<&[u8]>,
-    should_check_integrity: bool,
+    // should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing v2 block body database");
     if deleted_block_body_hashes.is_empty() {
@@ -1605,15 +1616,6 @@ fn initialize_block_body_v2_db(
             cursor.del(WriteFlags::empty())?;
             continue;
         }
-
-        if should_check_integrity {
-            let hashes: Vec<Digest> = lmdb_ext::deserialize(raw_val)?;
-            assert_eq!(
-                *raw_key,
-                hash::hash_slice_rfold(&hashes).to_vec(),
-                "found corrupt v2 block body in database"
-            );
-        }
     }
 
     drop(cursor);
@@ -1625,13 +1627,18 @@ fn initialize_block_body_v2_db(
     let deleted_proposer_hashes_raw: HashSet<_> =
         deleted_proposer_hashes.iter().map(Digest::as_ref).collect();
 
+    info!(&deleted_deploy_hashes_raw, "Removing deleted deploy keys");
     remove_keys_from_db(&mut txn, deploy_hashes_db, &deleted_deploy_hashes_raw)?;
+    info!(&deleted_deploy_hashes_raw, "Removing deleted transfer keys");
     remove_keys_from_db(&mut txn, transfer_hashes_db, &deleted_transfer_hashes_raw)?;
+    info!(&deleted_deploy_hashes_raw, "Removing deleted proposer keys");
     remove_keys_from_db(&mut txn, proposer_db, &deleted_proposer_hashes_raw)?;
 
     txn.commit()?;
 
-    info!("block body (Merkle) database initialized");
+    // TODO: Should check integrity
+
+    info!("v2 block body database initialized");
     Ok(())
 }
 
@@ -1644,6 +1651,7 @@ fn remove_keys_from_db(
 
     for (raw_key, _raw_val) in cursor.iter() {
         if deleted_hashes.contains(raw_key) {
+            info!(&raw_key, "Removing raw key");
             cursor.del(WriteFlags::empty())?;
         }
     }
