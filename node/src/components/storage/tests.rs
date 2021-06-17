@@ -20,7 +20,7 @@ use crate::{
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployMetadata,
-        FinalitySignature,
+        FinalitySignature, LoadedObject,
     },
     utils::WithDir,
 };
@@ -167,7 +167,7 @@ fn get_deploys(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hashes: Multiple<DeployHash>,
-) -> Vec<Option<Deploy>> {
+) -> Vec<Option<LoadedObject<Deploy>>> {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetDeploys {
             deploy_hashes: deploy_hashes.to_vec(),
@@ -638,7 +638,10 @@ fn can_retrieve_store_and_load_deploys() {
 
     // Retrieve the stored deploy.
     let response = get_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
-    assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
+    assert_eq!(
+        response,
+        vec![Some(LoadedObject::owned_new(deploy.as_ref().clone()))]
+    );
 
     // Also ensure we can retrieve just the header.
     let response = harness.send_request(&mut storage, |responder| {
@@ -708,7 +711,7 @@ fn store_execution_results_for_two_blocks() {
     // Ensure deploy exists.
     assert_eq!(
         get_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]),
-        vec![Some(deploy.clone())]
+        vec![Some(LoadedObject::owned_new(deploy.clone()))]
     );
 
     // Put first execution result.
@@ -1020,7 +1023,10 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     assert_eq!(actual_block, *block);
 
     let actual_deploys = get_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
-    assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
+    assert_eq!(
+        actual_deploys,
+        vec![Some(LoadedObject::owned_new(deploy.clone()))]
+    );
 
     let (_, deploy_metadata) = get_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
         .expect("missing deploy we stored earlier");

@@ -155,8 +155,8 @@ fn should_add_and_take_deploys() {
     assert!(block.transfer_hashes().is_empty());
 
     // add two deploys
-    proposer.add_deploy(block_time2, Box::new(deploy1.clone()));
-    proposer.add_deploy(block_time2, Box::new(deploy2.clone()));
+    proposer.add_deploy(block_time2, LoadedObject::owned_new(deploy1.clone()));
+    proposer.add_deploy(block_time2, LoadedObject::owned_new(deploy2.clone()));
 
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
     // deploys
@@ -217,8 +217,8 @@ fn should_add_and_take_deploys() {
     proposer.finalized_deploys(deploy_hashes.iter().copied());
 
     // add more deploys
-    proposer.add_deploy(block_time2, Box::new(deploy3.clone()));
-    proposer.add_deploy(block_time2, Box::new(deploy4.clone()));
+    proposer.add_deploy(block_time2, LoadedObject::owned_new(deploy3.clone()));
+    proposer.add_deploy(block_time2, LoadedObject::owned_new(deploy4.clone()));
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
@@ -277,10 +277,10 @@ fn should_successfully_prune() {
     let mut proposer = BlockProposerReady::default();
 
     // pending
-    proposer.add_deploy(creation_time, Box::new(deploy1.clone()));
-    proposer.add_deploy(creation_time, Box::new(deploy2));
-    proposer.add_deploy(creation_time, Box::new(deploy3));
-    proposer.add_deploy(creation_time, Box::new(deploy4));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy1.clone()));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy2));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy3));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy4));
 
     // pending => finalized
     proposer.finalized_deploys(vec![deploy1.deploy_or_transfer_hash()]);
@@ -330,7 +330,7 @@ fn should_keep_track_of_unhandled_deploys() {
     let mut proposer = BlockProposerReady::default();
 
     // We do NOT add deploy2...
-    proposer.add_deploy(creation_time, Box::new(deploy1.clone()));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy1.clone()));
     // But we DO mark it as finalized, by it's hash
     proposer.finalized_deploys(vec![
         deploy1.deploy_or_transfer_hash(),
@@ -362,7 +362,7 @@ fn should_keep_track_of_unhandled_deploys() {
     );
 
     // Now we add Deploy2
-    proposer.add_deploy(creation_time, Box::new(deploy2.clone()));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy2.clone()));
     assert!(
         proposer.sets.finalized_deploys.contains_key(deploy2.id()),
         "deploy2 should now be in finalized_deploys"
@@ -557,11 +557,11 @@ fn test_proposer_with(
             payment_amount,
             DEFAULT_TEST_GAS_PRICE,
         );
-        proposer.add_deploy(creation_time, Box::new(deploy));
+        proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy));
     }
     for _ in 0..transfer_count {
         let transfer = generate_transfer(&mut rng, creation_time, ttl, vec![], payment_amount);
-        proposer.add_deploy(creation_time, Box::new(transfer));
+        proposer.add_deploy(creation_time, LoadedObject::owned_new(transfer));
     }
 
     let block =
@@ -613,7 +613,7 @@ fn should_return_deploy_dependencies() {
     let mut proposer = BlockProposerReady::default();
 
     // add deploy2
-    proposer.add_deploy(creation_time, Box::new(deploy2.clone()));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy2.clone()));
 
     // deploy2 has an unsatisfied dependency
     let block = proposer.propose_block_payload(
@@ -626,7 +626,7 @@ fn should_return_deploy_dependencies() {
     assert!(block.transfer_hashes().is_empty());
 
     // add deploy1
-    proposer.add_deploy(creation_time, Box::new(deploy1.clone()));
+    proposer.add_deploy(creation_time, LoadedObject::owned_new(deploy1.clone()));
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),

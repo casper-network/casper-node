@@ -13,8 +13,9 @@ mod peers_map;
 mod status_feed;
 mod timestamp;
 
-use std::ops::Deref;
+use std::{fmt::Display, ops::Deref};
 
+use datasize::DataSize;
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
@@ -54,8 +55,11 @@ pub type NodeRng = crate::testing::TestRng;
 /// An in-memory object that can possibly be shared with user parts of the system.
 ///
 /// In general, this should only be used for immutable, content-addressed objects.
-#[derive(Debug)]
-enum LoadedObject<T> {
+///
+/// This type exists solely to switch between `Box` and `Arc` based behavior, future updates should
+/// deprecate this in favor of using `Arc`s directly or turn `LoadedObject` into a newtype.
+#[derive(DataSize, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum LoadedObject<T> {
     /// An owned copy of the object.
     Owned(Box<T>),
 }
@@ -73,8 +77,8 @@ impl<T> Deref for LoadedObject<T> {
 impl<T> LoadedObject<T> {
     /// Creates a new owned instance of the object.
     #[inline]
-    fn new_owned(inner: Box<T>) -> Self {
-        LoadedObject::Owned(inner)
+    pub(crate) fn owned_new(inner: T) -> Self {
+        LoadedObject::Owned(Box::new(inner))
     }
 
     // /// Converts an owned object instance into a shared one.
@@ -84,4 +88,37 @@ impl<T> LoadedObject<T> {
     //         LoadedObject::Owned(inner) => LoadedObject::Shared(Arc::new(inner)),
     //     }
     // }
+
+    /// Converts a loaded object into a boxed instance of `T`.
+    ///
+    /// May clone the object as a result. This method should not be used in new code, it exists
+    /// solely to bridge old interfaces with the `LoadedObject`.
+    #[inline]
+    pub(crate) fn into_boxed(self) -> Box<T> {
+        match self {
+            LoadedObject::Owned(inner) => inner,
+        }
+    }
+
+    /// Converts a loaded object into an instance of `T`.
+    ///
+    /// May clone the object as a result. This method should not be used in new code, it exists
+    /// solely to bridge old interfaces with the `LoadedObject`.
+    #[inline]
+    pub(crate) fn into_inner(self) -> T {
+        match self {
+            LoadedObject::Owned(inner) => *inner,
+        }
+    }
+}
+
+impl<T> Display for LoadedObject<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadedObject::Owned(inner) => inner.fmt(f),
+        }
+    }
 }

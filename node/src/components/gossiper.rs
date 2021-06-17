@@ -25,7 +25,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message as NodeMessage,
-    types::{Deploy, DeployHash, Item, NodeId},
+    types::{Deploy, DeployHash, Item, LoadedObject, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -81,6 +81,7 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
                     .pop()
                     .unwrap()
                     .ok_or_else(|| String::from("failed to get deploy from storage"))
+                    .map(LoadedObject::into_inner)
             } else {
                 Err(String::from("expected a single result"))
             };

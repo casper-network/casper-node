@@ -23,7 +23,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockByHeight, BlockHash, Deploy, DeployHash, Item, NodeId},
+    types::{Block, BlockByHeight, BlockHash, Deploy, DeployHash, Item, LoadedObject, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -218,7 +218,12 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
             .event(move |mut results| Event::GetFromStorageResult {
                 id,
                 peer,
-                maybe_item: Box::new(results.pop().expect("can only contain one result")),
+                maybe_item: Box::new(
+                    results
+                        .pop()
+                        .expect("can only contain one result")
+                        .map(LoadedObject::into_inner),
+                ),
             })
     }
 }

@@ -36,7 +36,8 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        BlockPayload, Chainspec, Deploy, DeployHash, DeployHeader, DeployOrTransferHash, Timestamp,
+        BlockPayload, Chainspec, Deploy, DeployHash, DeployHeader, DeployOrTransferHash,
+        LoadedObject, Timestamp,
     },
     NodeRng,
 };
@@ -259,7 +260,7 @@ impl BlockProposerReady {
                                 error!(%hash, "failed to retrieve deploy from storage");
                                 None
                             }
-                            Some(deploy) => Some(Event::GotFromStorage(Box::new(deploy))),
+                            Some(deploy) => Some(Event::GotFromStorage(deploy)),
                         })
                 }),
             Event::GotFromStorage(deploy) => {
@@ -312,7 +313,7 @@ impl BlockProposerReady {
     }
 
     /// Adds a deploy or a transfer to the block proposer.
-    fn add_deploy(&mut self, current_instant: Timestamp, deploy: Box<Deploy>) {
+    fn add_deploy(&mut self, current_instant: Timestamp, deploy: LoadedObject<Deploy>) {
         let hash = deploy.deploy_or_transfer_hash();
         if deploy.header().expired(current_instant) {
             trace!(%hash, "expired deploy rejected from the buffer");
@@ -322,7 +323,7 @@ impl BlockProposerReady {
             info!(%hash, "deploy was previously marked as finalized, storing header");
             self.sets
                 .finalized_deploys
-                .insert(*deploy.id(), deploy.take_header());
+                .insert(*deploy.id(), deploy.into_inner().take_header());
             return;
         }
         // only add the deploy if it isn't contained in a finalized block

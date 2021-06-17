@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{Deploy, DeployHash, DeployHeader, FinalizedBlock},
+    types::{Deploy, DeployHash, DeployHeader, FinalizedBlock, LoadedObject},
 };
 use casper_execution_engine::shared::motes::Motes;
 
@@ -37,7 +37,7 @@ pub enum Event {
     /// storage and buffered here.
     BufferDeploy(DeployHash),
     /// The given deploy has been gossiped and can now be included in a block.
-    GotFromStorage(Box<Deploy>),
+    GotFromStorage(LoadedObject<Deploy>),
     /// The block proposer has been asked to prune stale deploys.
     Prune,
     /// A block has been finalized. We should never propose its deploys again.
