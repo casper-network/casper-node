@@ -13,7 +13,7 @@ mod peers_map;
 mod status_feed;
 mod timestamp;
 
-use std::ops::Deref;
+use std::{fmt::Display, ops::Deref};
 
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
@@ -26,6 +26,7 @@ pub use block::{
 pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
+pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployOrTransferHash,
     DeployValidationFailure, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
@@ -78,8 +79,8 @@ impl<T> Deref for LoadedObject<T> {
 impl<T> LoadedObject<T> {
     /// Creates a new owned instance of the object.
     #[inline]
-    fn new_owned(inner: Box<T>) -> Self {
-        LoadedObject::Owned(inner)
+    fn owned_new(inner: T) -> Self {
+        LoadedObject::Owned(Box::new(inner))
     }
 
     /// Converts a loaded object into an instance of `T`.

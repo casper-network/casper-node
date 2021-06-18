@@ -76,7 +76,7 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, LoadedObject, TimeDiff,
+        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
     },
     utils::WithDir,
     NodeRng,
@@ -1020,13 +1020,10 @@ impl Storage {
         &self,
         tx: &mut Tx,
         deploy_hashes: &[DeployHash],
-    ) -> Result<Vec<Option<LoadedObject<Deploy>>>, LmdbExtError> {
+    ) -> Result<Vec<Option<Deploy>>, LmdbExtError> {
         deploy_hashes
             .iter()
-            .map(|deploy_hash| {
-                tx.get_value(self.deploy_db, deploy_hash)
-                    .map(|opt| opt.map(LoadedObject::owned_new))
-            })
+            .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
             .collect()
     }
 
