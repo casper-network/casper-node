@@ -25,10 +25,10 @@ pub enum Error {
     /// Destination purse not found.
     #[cfg_attr(feature = "std", error("Destination not found"))]
     DestNotFound = 2,
-    /// See [`PurseError::InvalidURef`].
+    /// See `PurseError::InvalidURef`.
     #[cfg_attr(feature = "std", error("Invalid URef"))]
     InvalidURef = 3,
-    /// See [`PurseError::InvalidAccessRights`].
+    /// See `PurseError::InvalidAccessRights`.
     #[cfg_attr(feature = "std", error("Invalid AccessRights"))]
     InvalidAccessRights = 4,
     /// Tried to create a new purse with a non-zero initial balance.

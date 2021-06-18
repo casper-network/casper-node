@@ -345,7 +345,7 @@ impl Key {
         }
     }
 
-    /// Returns a reference to the inner [`DictionaryAddr`] if `self` is of type
+    /// Returns a reference to the inner `DictionaryAddr` if `self` is of type
     /// [`Key::Dictionary`], otherwise returns `None`.
     pub fn as_dictionary(&self) -> Option<&DictionaryAddr> {
         match self {

@@ -717,7 +717,7 @@ extern "C" {
     /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
     /// will be used together with the current context’s seed to form a dictionary.
     /// The value at that dictionary is read from the global state, serialized and
-    /// buffered in the runtime. This result can be obtained via the [`read_host_buffer`]
+    /// buffered in the runtime. This result can be obtained via the \[`read_host_buffer`]\
     /// function.
     ///
     /// # Arguments
