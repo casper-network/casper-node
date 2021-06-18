@@ -5,6 +5,7 @@
 use std::iter;
 use std::{
     array::TryFromSliceError,
+    cmp::Reverse,
     collections::BTreeMap,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
@@ -17,6 +18,7 @@ use blake2::{
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::HexList;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
@@ -51,7 +53,6 @@ use crate::{
 };
 
 use super::{Item, Tag, Timestamp};
-use itertools::Itertools;
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -613,8 +614,7 @@ impl EraEnd {
         // to check finality signatures.
         let descending_validator_weight_hashed_pairs: Vec<Digest> = next_era_validator_weights
             .iter()
-            .sorted_by_key(|(_, weight)| **weight)
-            .rev()
+            .sorted_by_key(|(_, weight)| Reverse(**weight))
             .map(|(validator_id, weight)| {
                 let validator_hash =
                     hash::hash(validator_id.to_bytes().expect("Could not hash validator"));
