@@ -512,7 +512,7 @@ impl Storage {
                         }
                     };
                     if !success {
-                        error!("Could not insert block body for block: {}", block);
+                        error!("Could not insert body for: {}", block);
                         txn.abort();
                         return Ok(responder.respond(false).ignore());
                     }
