@@ -1160,7 +1160,7 @@ pub struct Block {
 pub enum HashingAlgorithmVersion {
     /// Version 1
     V1,
-    /// Version 1
+    /// Version 2
     V2,
 }
 
