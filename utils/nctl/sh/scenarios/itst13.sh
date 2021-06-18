@@ -31,8 +31,6 @@ function main() {
     await_n_blocks '1' 'true'
     # 4b. Get concluded era's switch block
     get_switch_block '1' '100'
-    # Wait 1 extra block to avoid potential overlap.
-    #await_n_blocks '1' 'true'
     # Gather Block Hash after stopping node for walkback later
     local RESTART_HASH=$(do_read_lfb_hash '1')
     # 5. Wait until N+2
@@ -75,7 +73,7 @@ function assert_joined_in_era_4() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node "$NODE_ID")
     local TIMEOUT=${2:-300}
-    log_step "Waiting for a node-$NODE_ID to join..."
+    log_step "Waiting for node-$NODE_ID to join..."
     local OUTPUT=$(timeout "$TIMEOUT" tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "finished joining")
     if ( echo "$OUTPUT" | grep -q "finished joining" ); then
         log "Node-$NODE_ID joined!"
@@ -141,7 +139,7 @@ function assert_eviction() {
     local NODE_ID=${1}
     log_step "Checking for evicted node-$NODE_ID..."
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        if ( ! is_trusted_validator "$NODE_ID" ); then # && ( check_inactive "$NODE_ID" ); then
+        if ( ! is_trusted_validator "$NODE_ID" ); then
             log "validator node-$NODE_ID was ejected! [expected]"
             break
         fi
