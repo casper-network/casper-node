@@ -100,7 +100,7 @@ impl<I> Era<I> {
 
     /// Marks the dependencies of blocks on evidence against validator `pub_key` as resolved and
     /// returns all valid blocks that have no missing dependencies left.
-    pub(crate) fn resolve_evidence(
+    pub(crate) fn resolve_evidence_and_mark_faulty(
         &mut self,
         pub_key: &PublicKey,
     ) -> Vec<ProposedBlock<ClContext>> {

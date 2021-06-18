@@ -371,7 +371,7 @@ where
         for e_id in self.iter_past_other(era_id, self.bonded_eras()) {
             if let Some(old_era) = self.active_eras.get_mut(&e_id) {
                 for pub_key in old_era.consensus.validators_with_evidence() {
-                    let proposed_blocks = era.resolve_evidence(&pub_key);
+                    let proposed_blocks = era.resolve_evidence_and_mark_faulty(&pub_key);
                     if !proposed_blocks.is_empty() {
                         error!(
                             ?proposed_blocks,
@@ -1190,7 +1190,7 @@ where
                 {
                     let proposed_blocks =
                         if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
-                            era.resolve_evidence(&pub_key)
+                            era.resolve_evidence_and_mark_faulty(&pub_key)
                         } else {
                             continue;
                         };
