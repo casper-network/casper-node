@@ -623,7 +623,7 @@ impl EraEnd {
             })
             .collect();
         let hashed_next_era_validator_weights =
-            hash::hash_slice_rfold(&descending_validator_weight_hashed_pairs);
+            hash::hash_vec_merkle_tree(descending_validator_weight_hashed_pairs);
         let hashed_era_report: Digest = era_report.hash();
         hash::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
     }
