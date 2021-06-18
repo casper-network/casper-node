@@ -358,8 +358,7 @@ impl Storage {
                 .expect("non-existent block body referred to by header");
 
             if should_check_integrity {
-                Block::new_from_header_and_body(block_header.clone(), block_body.clone())
-                    .expect("Could not construct valid block.");
+                Block::new_from_header_and_body(block_header.clone(), block_body.clone())?;
             }
 
             insert_to_deploy_index(&mut deploy_hash_index, block_header.hash(), &block_body)?;
