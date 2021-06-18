@@ -36,6 +36,7 @@ pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
+use serde::{Deserialize, Serialize};
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 
@@ -67,6 +68,7 @@ pub enum LoadedObject<T> {
 impl<T> Deref for LoadedObject<T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         match self {
             LoadedObject::Owned(obj) => &*obj,
@@ -97,9 +99,38 @@ impl<T> Display for LoadedObject<T>
 where
     T: Display,
 {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LoadedObject::Owned(inner) => inner.fmt(f),
         }
+    }
+}
+
+impl<T> Serialize for LoadedObject<T>
+where
+    T: Serialize,
+{
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            LoadedObject::Owned(inner) => inner.serialize(serializer),
+        }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for LoadedObject<T>
+where
+    T: Deserialize<'de>,
+{
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(LoadedObject::owned_new)
     }
 }
