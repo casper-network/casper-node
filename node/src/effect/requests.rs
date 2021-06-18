@@ -49,7 +49,7 @@ use crate::{
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
         Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
-        Item, LoadedObject, NodeId, StatusFeed, TimeDiff,
+        Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -292,7 +292,7 @@ pub enum StorageRequest {
         /// Hashes of deploys to be retrieved.
         deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
-        responder: Responder<Vec<Option<LoadedObject<Deploy>>>>,
+        responder: Responder<Vec<Option<Deploy>>>,
     },
     /// Retrieve deploy headers with given hashes.
     GetDeployHeaders {

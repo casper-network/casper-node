@@ -116,7 +116,7 @@ use crate::{
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, LoadedObject, TimeDiff, Timestamp,
+        FinalizedBlock, Item, TimeDiff, Timestamp,
     },
     utils::Source,
 };
@@ -1004,7 +1004,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploys_from_storage(
         self,
         deploy_hashes: Multiple<DeployHash>,
-    ) -> Vec<Option<LoadedObject<Deploy>>>
+    ) -> Vec<Option<Deploy>>
     where
         REv: From<StorageRequest>,
     {

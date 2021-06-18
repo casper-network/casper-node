@@ -13,9 +13,8 @@ mod peers_map;
 mod status_feed;
 mod timestamp;
 
-use std::{fmt::Display, ops::Deref};
+use std::ops::Deref;
 
-use datasize::DataSize;
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
@@ -79,8 +78,8 @@ impl<T> Deref for LoadedObject<T> {
 impl<T> LoadedObject<T> {
     /// Creates a new owned instance of the object.
     #[inline]
-    pub(crate) fn owned_new(inner: T) -> Self {
-        LoadedObject::Owned(Box::new(inner))
+    fn new_owned(inner: Box<T>) -> Self {
+        LoadedObject::Owned(inner)
     }
 
     /// Converts a loaded object into an instance of `T`.
