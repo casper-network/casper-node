@@ -178,7 +178,7 @@ impl From<Blake2bHash> for Digest {
 pub const SENTINEL0: Digest = Digest([0u8; 32]);
 /// Sentinel hash to be used by [hash_slice_rfold]. Terminates the fold.
 pub const SENTINEL1: Digest = Digest([1u8; 32]);
-/// Sentinel hash to be used by [hash_vec_merkle_tree] in the case of [
+/// Sentinel hash to be used by [hash_vec_merkle_tree] in the case of an empty list.
 pub const SENTINEL2: Digest = Digest([2u8; 32]);
 
 /// Hashes a pair of [`Digest`]s.
