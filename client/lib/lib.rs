@@ -786,6 +786,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
             session_args_complex,
             session_version,
             session_entry_point,
+            session_transfer,
         } = self;
 
         parsing::parse_session_info(
@@ -798,6 +799,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
             session_args_complex,
             session_version,
             session_entry_point,
+            session_transfer,
         )
     }
 }
@@ -833,6 +835,7 @@ pub struct SessionStrParams<'a> {
     session_args_complex: &'a str,
     session_version: &'a str,
     session_entry_point: &'a str,
+    session_transfer: bool,
 }
 
 impl<'a> SessionStrParams<'a> {
@@ -946,6 +949,15 @@ impl<'a> SessionStrParams<'a> {
             session_package_hash,
             session_version,
             session_entry_point,
+            session_args_simple,
+            session_args_complex,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_transfer(session_args_simple: Vec<&'a str>, session_args_complex: &'a str) -> Self {
+        Self {
+            session_transfer: true,
             session_args_simple,
             session_args_complex,
             ..Default::default()

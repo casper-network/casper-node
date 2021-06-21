@@ -785,6 +785,7 @@ pub struct casper_session_params_t {
     session_args_complex: *const c_char,
     session_version: *const c_char,
     session_entry_point: *const c_char,
+    session_transfer: bool,
 }
 
 impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
@@ -832,6 +833,7 @@ impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
             session_args_complex,
             session_version,
             session_entry_point,
+            session_transfer: self.session_transfer,
         })
     }
 }
