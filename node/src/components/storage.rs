@@ -1554,7 +1554,7 @@ fn initialize_block_body_v1_db(
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V1;
         let block_body_hash_to_header_map =
             construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
-        for (raw_key, raw_val) in txn.open_ro_cursor(*block_body_db)?.iter() {
+        for (raw_key, raw_val) in txn.open_ro_cursor(*block_body_v1_db)?.iter() {
             let block_body_hash: Digest = lmdb_ext::deserialize(raw_key)?;
             let block_body: BlockBody = lmdb_ext::deserialize(raw_val)?;
             if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
