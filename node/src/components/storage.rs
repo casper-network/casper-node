@@ -1135,7 +1135,7 @@ impl Storage {
 
         // Insert parts and the vec of hashes to new dbs
         if !tx.put_value(
-            self.deploy_hashes_db,
+            self.proposer_db,
             hashed_proposer,
             block_body.proposer(),
             true,
@@ -1144,15 +1144,16 @@ impl Storage {
         }
 
         if !tx.put_value(
-            self.transfer_hashes_db,
+            self.deploy_hashes_db,
             hashed_deploy_hashes,
             block_body.deploy_hashes(),
             true,
         )? {
             return Ok(false);
         }
+
         if !tx.put_value(
-            self.proposer_db,
+            self.transfer_hashes_db,
             hashed_transfer_hashes,
             block_body.transfer_hashes(),
             true,
