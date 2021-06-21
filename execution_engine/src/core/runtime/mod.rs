@@ -30,7 +30,7 @@ use casper_types::{
         handle_payment::{self, HandlePayment},
         mint::{self, Mint},
         standard_payment::{self, StandardPayment},
-        SystemContractType,
+        CallStackElement, SystemContractType,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, Phase,
@@ -64,6 +64,7 @@ pub struct Runtime<'a, R> {
     module: Module,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
+    call_stack: Vec<CallStackElement>,
 }
 
 pub fn instance_and_memory(
@@ -973,6 +974,7 @@ where
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
+        call_stack: Vec<CallStackElement>,
     ) -> Self {
         Runtime {
             config,
@@ -981,6 +983,7 @@ where
             module,
             host_buffer: None,
             context,
+            call_stack,
         }
     }
 
@@ -1017,6 +1020,10 @@ where
         T: Into<Gas>,
     {
         self.context.charge_system_contract_call(amount)
+    }
+
+    pub fn call_stack(&self) -> &Vec<CallStackElement> {
+        &self.call_stack
     }
 
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
@@ -1208,6 +1215,49 @@ where
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
 
+    /// Load the uref known by the given name into the Wasm memory
+    fn load_call_stack(
+        &mut self,
+        // (Output) Pointer to number of elements in the call stack.
+        call_stack_len_ptr: u32,
+        // (Output) Pointer to size in bytes of the serialized call stack.
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+        let call_stack = self.call_stack();
+        let call_stack_len = call_stack.len() as u32;
+        let call_stack_len_bytes = call_stack_len.to_le_bytes();
+
+        if let Err(error) = self.memory.set(call_stack_len_ptr, &call_stack_len_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        if call_stack_len == 0 {
+            return Ok(Ok(()));
+        }
+
+        let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
+
+        let call_stack_cl_value_bytes_len = call_stack_cl_value.inner_bytes().len() as u32;
+        if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
+            return Ok(Err(error));
+        }
+
+        let call_stack_cl_value_bytes_len_bytes = call_stack_cl_value_bytes_len.to_le_bytes();
+
+        if let Err(error) = self
+            .memory
+            .set(result_size_ptr, &call_stack_cl_value_bytes_len_bytes)
+        {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
     /// Return some bytes from the memory and terminate the current `sub_call`. Note that the return
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
     fn ret(
@@ -1304,6 +1354,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
+        call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1356,6 +1407,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             mint_context,
+            call_stack,
         );
 
         let system_config = protocol_data.system_config();
@@ -1449,6 +1501,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
+        call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1501,6 +1554,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
+            call_stack,
         );
 
         let system_config = protocol_data.system_config();
@@ -1576,6 +1630,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
+        call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1628,6 +1683,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
+            call_stack,
         );
 
         let system_config = protocol_data.system_config();
@@ -1796,19 +1852,21 @@ where
             None => return Err(Error::KeyNotFound(key)),
         };
 
-        let entry_point = contract
+        let contract_entry_point = contract
             .entry_point(entry_point_name)
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
-        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
+        let context_key =
+            self.get_context_key_for_contract_call(contract_hash, &contract_entry_point)?;
 
         self.execute_contract(
             key,
             context_key,
+            contract_hash,
             contract,
             args,
-            entry_point,
+            contract_entry_point,
             self.context.protocol_version(),
         )
     }
@@ -1864,14 +1922,14 @@ where
             None => return Err(Error::KeyNotFound(key)),
         };
 
-        let entry_point = contract
+        let contract_entry_point = contract
             .entry_point(&entry_point_name)
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
-        self.validate_entry_point_access(&contract_package, entry_point.access())?;
+        self.validate_entry_point_access(&contract_package, contract_entry_point.access())?;
 
-        for (expected, found) in entry_point
+        for (expected, found) in contract_entry_point
             .args()
             .iter()
             .map(|a| a.cl_type())
@@ -1883,14 +1941,16 @@ where
             }
         }
 
-        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
+        let context_key =
+            self.get_context_key_for_contract_call(contract_hash, &contract_entry_point)?;
 
         self.execute_contract(
             context_key,
             context_key,
+            contract_hash,
             contract,
             args,
-            entry_point,
+            contract_entry_point,
             self.context.protocol_version(),
         )
     }
@@ -1916,10 +1976,12 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_contract(
         &mut self,
         key: Key,
         base_key: Key,
+        contract_hash: ContractHash,
         contract: Contract,
         args: RuntimeArgs,
         entry_point: EntryPoint,
@@ -1960,28 +2022,52 @@ where
             }
 
             if self.is_mint(key) {
+                let mut call_stack = self.call_stack.to_owned();
+                let call_stack_element = CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                );
+                call_stack.push(call_stack_element);
+
                 return self.call_host_mint(
                     self.context.protocol_version(),
                     entry_point.name(),
                     &mut named_keys,
                     &args,
                     &extra_keys,
+                    call_stack,
                 );
             } else if self.is_handle_payment(key) {
+                let mut call_stack = self.call_stack.to_owned();
+                let call_stack_element = CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                );
+                call_stack.push(call_stack_element);
+
                 return self.call_host_handle_payment(
                     self.context.protocol_version(),
                     entry_point.name(),
                     &mut named_keys,
                     &args,
                     &extra_keys,
+                    call_stack,
                 );
             } else if self.is_auction(key) {
+                let mut call_stack = self.call_stack.to_owned();
+                let call_stack_element = CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                );
+                call_stack.push(call_stack_element);
+
                 return self.call_host_auction(
                     self.context.protocol_version(),
                     entry_point.name(),
                     &mut named_keys,
                     &args,
                     &extra_keys,
+                    call_stack,
                 );
             }
 
@@ -2055,6 +2141,21 @@ where
             self.context.transfers().to_owned(),
         );
 
+        let mut call_stack = self.call_stack.to_owned();
+
+        let call_stack_element = match entry_point.entry_point_type() {
+            EntryPointType::Session => CallStackElement::stored_session(
+                self.context.account().account_hash(),
+                contract.contract_package_hash(),
+                contract_hash,
+            ),
+            EntryPointType::Contract => {
+                CallStackElement::stored_contract(contract.contract_package_hash(), contract_hash)
+            }
+        };
+
+        call_stack.push(call_stack_element);
+
         let mut runtime = Runtime {
             system_contract_cache,
             config,
@@ -2062,6 +2163,7 @@ where
             module,
             host_buffer,
             context,
+            call_stack,
         };
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);

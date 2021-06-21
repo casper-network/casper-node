@@ -1034,6 +1034,13 @@ where
                 )?;
                 Ok(None)
             }
+            FunctionIndex::LoadCallStack => {
+                // args(0) (Output) Pointer to number of elements in the call stack.
+                // args(1) (Output) Pointer to size in bytes of the serialized call stack.
+                let (call_stack_len_ptr, result_size_ptr) = Args::parse(args)?;
+                let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
         }
     }
 }

@@ -1,11 +1,11 @@
 [package]
-name = "ee-1217-regression"
+name = "get-call-stack-call-recursive-subcall"
 version = "0.1.0"
 authors = ["Daniel Werner <dan@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "ee_1217_regression"
+name = "get_call_stack_call_recursive_subcall"
 path = "src/main.rs"
 bench = false
 doctest = false
@@ -17,3 +17,4 @@ std = ["casper-contract/std", "casper-types/std"]
 [dependencies]
 casper-contract = { path = "../../../contract", features = ["test-support"] }
 casper-types = { path = "../../../../types" }
+get-call-stack-recursive-subcall = { path = "../get-call-stack-recursive-subcall" }

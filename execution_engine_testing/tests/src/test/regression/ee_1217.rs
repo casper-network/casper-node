@@ -36,7 +36,7 @@ fn should_fail_to_call_auction_as_non_session_code() {
     )
     .build();
 
-    let call_auction_request = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
+    let call_auction_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         PACKAGE_NAME,
         None,

@@ -735,6 +735,7 @@ dependencies = [
  "dictionary",
  "dictionary-call",
  "env_logger",
+ "get-call-stack-recursive-subcall",
  "log 0.4.14",
  "num-rational 0.4.0",
  "num-traits",
@@ -2251,6 +2252,23 @@ dependencies = [
 
 [[package]]
 name = "get-blocktime"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "get-call-stack-call-recursive-subcall"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+ "get-call-stack-recursive-subcall",
+]
+
+[[package]]
+name = "get-call-stack-recursive-subcall"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

@@ -2,6 +2,7 @@
 #![no_main]
 
 extern crate alloc;
+
 use alloc::{string::ToString, vec};
 
 // casper_contract is required for it's [global_alloc] as well as handlers (such as panic_handler)
