@@ -59,28 +59,39 @@ pub type NodeRng = crate::testing::TestRng;
 ///
 /// This type exists solely to switch between `Box` and `Arc` based behavior, future updates should
 /// deprecate this in favor of using `Arc`s directly or turning `LoadedItem` into a newtype.
-#[derive(DataSize, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum LoadedItem<T> {
+#[derive(Clone, DataSize, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum SharedObject<T> {
     /// An owned copy of the object.
     Owned(Box<T>),
 }
 
-impl<T> Deref for LoadedItem<T> {
+impl<T> Deref for SharedObject<T> {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
         match self {
-            LoadedItem::Owned(obj) => &*obj,
+            SharedObject::Owned(obj) => &*obj,
         }
     }
 }
 
-impl<T> LoadedItem<T> {
+impl<T> AsRef<[u8]> for SharedObject<T>
+where
+    T: AsRef<[u8]>,
+{
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            SharedObject::Owned(obj) => <T as AsRef<[u8]>>::as_ref(obj),
+        }
+    }
+}
+
+impl<T> SharedObject<T> {
     /// Creates a new owned instance of the object.
     #[inline]
-    fn owned_new(inner: T) -> Self {
-        LoadedItem::Owned(Box::new(inner))
+    pub fn owned(inner: T) -> Self {
+        SharedObject::Owned(Box::new(inner))
     }
 
     /// Converts a loaded object into an instance of `T`.
@@ -90,24 +101,24 @@ impl<T> LoadedItem<T> {
     #[inline]
     pub(crate) fn into_inner(self) -> T {
         match self {
-            LoadedItem::Owned(inner) => *inner,
+            SharedObject::Owned(inner) => *inner,
         }
     }
 }
 
-impl<T> Display for LoadedItem<T>
+impl<T> Display for SharedObject<T>
 where
     T: Display,
 {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoadedItem::Owned(inner) => inner.fmt(f),
+            SharedObject::Owned(inner) => inner.fmt(f),
         }
     }
 }
 
-impl<T> Serialize for LoadedItem<T>
+impl<T> Serialize for SharedObject<T>
 where
     T: Serialize,
 {
@@ -117,12 +128,12 @@ where
         S: serde::Serializer,
     {
         match self {
-            LoadedItem::Owned(inner) => inner.serialize(serializer),
+            SharedObject::Owned(inner) => inner.serialize(serializer),
         }
     }
 }
 
-impl<'de, T> Deserialize<'de> for LoadedItem<T>
+impl<'de, T> Deserialize<'de> for SharedObject<T>
 where
     T: Deserialize<'de>,
 {
@@ -131,7 +142,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        T::deserialize(deserializer).map(LoadedItem::owned_new)
+        T::deserialize(deserializer).map(SharedObject::owned)
     }
 }
 
@@ -141,7 +152,7 @@ mod tests {
 
     use serde::{de::DeserializeOwned, Serialize};
 
-    use super::{Deploy, LoadedItem};
+    use super::{Deploy, SharedObject};
 
     // TODO: Import fixed serialization settings from `small_network::message_pack_format` as soon
     //       as merged, instead of using these `rmp_serde` helper functions.
@@ -163,7 +174,7 @@ mod tests {
         let payload = bincode::serialize(&deploy).expect("could not serialize deploy");
 
         // Realistic payload inside a `GetRequest`.
-        let loaded_item_owned = LoadedItem::owned_new(payload.clone());
+        let loaded_item_owned = SharedObject::owned(payload.clone());
         // TODO: Shared variant.
 
         // Check all serialize the same.
@@ -171,7 +182,7 @@ mod tests {
         assert_eq!(serialized, serialize(&loaded_item_owned));
 
         // Ensure we can deserialize a loaded item payload.
-        let deserialized: LoadedItem<Vec<u8>> = deserialize(&serialized);
+        let deserialized: SharedObject<Vec<u8>> = deserialize(&serialized);
 
         assert_eq!(payload, deserialized.into_inner());
     }

@@ -76,9 +76,9 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
+        DeployHash, DeployHeader, DeployMetadata, Item, TimeDiff,
     },
-    utils::WithDir,
+    utils::{blob_cache::BlobCache, WithDir},
     NodeRng,
 };
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
@@ -211,8 +211,8 @@ pub struct Storage {
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
-    /// How many loads before memory duplication checks for dead references.
-    mem_pool_gc_interval: u16,
+    /// Pool of loaded items.
+    pub deploy_cache: BlobCache<<Deploy as Item>::Id>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -381,7 +381,7 @@ impl Storage {
             switch_block_era_id_index,
             deploy_hash_index,
             enable_mem_deduplication: config.enable_mem_deduplication,
-            mem_pool_gc_interval: config.mem_pool_gc_interval,
+            deploy_cache: BlobCache::new(config.mem_pool_gc_interval),
         })
     }
 
@@ -1254,12 +1254,6 @@ impl Storage {
     #[inline]
     pub fn mem_duplication_enabled(&self) -> bool {
         self.enable_mem_deduplication
-    }
-
-    /// Whether or not memory deduplication is enabled.
-    #[inline]
-    pub fn mem_pool_gc_interval(&self) -> u16 {
-        self.mem_pool_gc_interval
     }
 }
 

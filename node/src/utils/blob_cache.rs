@@ -6,13 +6,16 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use datasize::DataSize;
+
 /// A cache of serialized items.
 ///
 /// Maintains a collection of weak references and automatically purges them in configurable
 /// intervals.
-#[derive(Debug)]
-struct BlobCache<I> {
+#[derive(DataSize, Debug)]
+pub struct BlobCache<I> {
     /// The actual blob cache.
+    #[data_size(skip)]
     items: HashMap<I, Weak<Vec<u8>>>,
     /// Interval for garbage collection, will remove dead references on every n-th access.
     garbage_collect_interval: u16,
@@ -22,7 +25,7 @@ struct BlobCache<I> {
 
 impl<I> BlobCache<I> {
     /// Creates a new cache.
-    fn new(garbage_collect_interval: u16) -> Self {
+    pub fn new(garbage_collect_interval: u16) -> Self {
         Self {
             items: HashMap::new(),
             garbage_collect_interval,
@@ -61,11 +64,15 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use crate::types::{Deploy, Item};
+    use datasize::DataSize;
 
     use super::BlobCache;
+    use crate::types::{Deploy, Item};
 
-    impl<I> BlobCache<I> {
+    impl<I> BlobCache<I>
+    where
+        I: DataSize,
+    {
         fn num_entries(&self) -> usize {
             self.items.len()
         }

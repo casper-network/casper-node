@@ -12,7 +12,7 @@ use crate::{
         consensus, gossiper,
         small_network::{GossipedAddress, MessageKind, Payload},
     },
-    types::{Deploy, FinalitySignature, Item, Tag},
+    types::{Deploy, FinalitySignature, Item, SharedObject, Tag},
 };
 
 /// Reactor message.
@@ -39,7 +39,7 @@ pub enum Message {
         /// The type tag of the contained item.
         tag: Tag,
         /// The serialized item.
-        serialized_item: Vec<u8>,
+        serialized_item: SharedObject<Vec<u8>>,
     },
     /// Finality signature.
     #[from]
@@ -80,14 +80,16 @@ impl Message {
     pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: bincode::serialize(item)?,
+            serialized_item: SharedObject::owned(bincode::serialize(item)?),
         })
     }
 
-    pub(crate) fn new_get_response_raw_unchecked<T: Item>(serialized_item: Vec<u8>) -> Self {
+    pub(crate) fn new_get_response_raw_unchecked<T: Item>(
+        serialized_item: SharedObject<Vec<u8>>,
+    ) -> Self {
         Message::GetResponse {
             tag: T::TAG,
-            serialized_item: serialized_item,
+            serialized_item,
         }
     }
 }
