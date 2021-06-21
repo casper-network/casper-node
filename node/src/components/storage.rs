@@ -209,6 +209,10 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// Whether or not memory deduplication is enabled.
+    enable_mem_deduplication: bool,
+    /// How many loads before memory duplication checks for dead references.
+    mem_pool_gc_interval: u16,
 }
 
 impl<REv> Component<REv> for Storage
@@ -376,6 +380,8 @@ impl Storage {
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
+            enable_mem_deduplication: config.enable_mem_deduplication,
+            mem_pool_gc_interval: config.mem_pool_gc_interval,
         })
     }
 
@@ -1177,6 +1183,10 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_state_store_size: usize,
+    /// Whether or not memory deduplication is enabled.
+    enable_mem_deduplication: bool,
+    /// How many loads before memory duplication checks for dead references.
+    mem_pool_gc_interval: u16,
 }
 
 impl Default for Config {
@@ -1188,6 +1198,8 @@ impl Default for Config {
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
             max_deploy_metadata_store_size: DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE,
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
+            enable_mem_deduplication: false,
+            mem_pool_gc_interval: 1024,
         }
     }
 }
@@ -1225,7 +1237,7 @@ impl Display for Event {
 // ON OR BUILD UPON THIS CODE.
 
 impl Storage {
-    // Retrieves a deploy from the deploy store to handle a legacy network request.
+    /// Retrieves a deploy from the deploy store to handle a legacy network request.
     pub fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
         // directly. This caused a dependency of the storage component on networking functionality,
@@ -1236,6 +1248,18 @@ impl Storage {
             .map_err(Into::into)
             .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
             .expect("legacy direct deploy request failed")
+    }
+
+    /// Whether or not memory deduplication is enabled.
+    #[inline]
+    pub fn mem_duplication_enabled(&self) -> bool {
+        self.enable_mem_deduplication
+    }
+
+    /// Whether or not memory deduplication is enabled.
+    #[inline]
+    pub fn mem_pool_gc_interval(&self) -> u16 {
+        self.mem_pool_gc_interval
     }
 }
 

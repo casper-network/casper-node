@@ -83,6 +83,13 @@ impl Message {
             serialized_item: bincode::serialize(item)?,
         })
     }
+
+    pub(crate) fn new_get_response_raw_unchecked<T: Item>(serialized_item: Vec<u8>) -> Self {
+        Message::GetResponse {
+            tag: T::TAG,
+            serialized_item: serialized_item,
+        }
+    }
 }
 
 impl Debug for Message {
