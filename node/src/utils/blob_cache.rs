@@ -85,8 +85,8 @@ mod tests {
 
         let d1 = Deploy::random(&mut rng);
         let d2 = Deploy::random(&mut rng);
-        let d1_id = d1.id().clone();
-        let d2_id = d2.id().clone();
+        let d1_id = *d1.id();
+        let d2_id = *d2.id();
         let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
         let d2_serialized = bincode::serialize(&d2).expect("could not serialize second deploy");
 
@@ -120,7 +120,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let d1 = Deploy::random(&mut rng);
-        let d1_id = d1.id().clone();
+        let d1_id = *d1.id();
         let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
 
         let d1_shared = Arc::new(d1_serialized);
@@ -146,7 +146,7 @@ mod tests {
 
         for i in 0..5 {
             let deploy = Deploy::random(&mut rng);
-            let id = deploy.id().clone();
+            let id = *deploy.id();
             let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
             let shared = Arc::new(serialized);
             cache.put(id, Arc::downgrade(&shared));
@@ -156,7 +156,7 @@ mod tests {
         }
 
         let deploy = Deploy::random(&mut rng);
-        let id = deploy.id().clone();
+        let id = *deploy.id();
         let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
         let shared = Arc::new(serialized);
         cache.put(id, Arc::downgrade(&shared));
