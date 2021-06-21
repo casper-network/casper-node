@@ -1608,12 +1608,12 @@ fn initialize_block_body_v2_db(
     for (raw_key, raw_val) in cursor.iter() {
         info!(?raw_key, "deleting v2 block");
         if deleted_block_body_hashes.contains(raw_key) {
-            let hashes: Vec<Digest> = lmdb_ext::deserialize(raw_val)?;
-            let _ = deleted_deploy_hashes.insert(hashes[0]);
-            let _ = deleted_transfer_hashes.insert(hashes[1]);
-            let _ = deleted_proposer_hashes.insert(hashes[2]);
+            let [hashed_deploy_hashes, hashed_transfer_hashes, hashed_proposer]: [Digest;
+                BlockBodyHashedParts::NUMBER_OF_HASHES] = lmdb_ext::deserialize(raw_val)?;
+            let _ = deleted_deploy_hashes.insert(hashed_deploy_hashes);
+            let _ = deleted_transfer_hashes.insert(hashed_transfer_hashes);
+            let _ = deleted_proposer_hashes.insert(hashed_proposer);
             cursor.del(WriteFlags::empty())?;
-            continue;
         }
     }
 
