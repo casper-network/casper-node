@@ -692,7 +692,17 @@ impl reactor::Reactor for Reactor {
                                                 .handle_legacy_direct_deploy_request(deploy_hash)
                                                 .as_ref()
                                                 .map(bincode::serialize)
-                                                .map(|result| result.map(Arc::new))
+                                                .map(|result| {
+                                                    result.map(|deploy| {
+                                                        let arc = Arc::new(deploy);
+                                                        // We found a deploy, ensure it gets added
+                                                        // to the cache.
+                                                        self.storage
+                                                            .deploy_cache
+                                                            .put(deploy_hash, Arc::downgrade(&arc));
+                                                        arc
+                                                    })
+                                                })
                                         },
                                     );
 
