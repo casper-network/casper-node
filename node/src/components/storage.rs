@@ -523,7 +523,6 @@ impl Storage {
                     txn.abort();
                     return Ok(responder.respond(false).ignore());
                 }
-                txn.commit()?;
                 insert_to_block_header_indices(
                     &mut self.block_height_index,
                     &mut self.switch_block_era_id_index,
@@ -534,6 +533,7 @@ impl Storage {
                     block.header().hash(),
                     block.body(),
                 )?;
+                txn.commit()?;
                 responder.respond(true).ignore()
             }
             StorageRequest::GetBlock {
