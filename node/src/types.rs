@@ -134,3 +134,45 @@ where
         T::deserialize(deserializer).map(LoadedItem::owned_new)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use serde::{de::DeserializeOwned, Serialize};
+
+    use super::{Deploy, LoadedItem};
+
+    // TODO: Import fixed serialization settings from `small_network::message_pack_format` as soon
+    //       as merged, instead of using these `rmp_serde` helper functions.
+    #[inline]
+    fn serialize<T: Serialize>(value: &T) -> Vec<u8> {
+        rmp_serde::to_vec(value).expect("could not serialize value")
+    }
+
+    #[inline]
+    fn deserialize<T: DeserializeOwned>(raw: &[u8]) -> T {
+        rmp_serde::from_read(Cursor::new(raw)).expect("could not deserialize value")
+    }
+
+    #[test]
+    fn loaded_item_for_bytes_deserializes_like_bytevec() {
+        // Construct an example payload that is reasonably realistic.
+        let mut rng = crate::new_rng();
+        let deploy = Deploy::random(&mut rng);
+        let payload = bincode::serialize(&deploy).expect("could not serialize deploy");
+
+        // Realistic payload inside a `GetRequest`.
+        let loaded_item_owned = LoadedItem::owned_new(payload.clone());
+        // TODO: Shared variant.
+
+        // Check all serialize the same.
+        let serialized = serialize(&payload);
+        assert_eq!(serialized, serialize(&loaded_item_owned));
+
+        // Ensure we can deserialize a loaded item payload.
+        let deserialized: LoadedItem<Vec<u8>> = deserialize(&serialized);
+
+        assert_eq!(payload, deserialized.into_inner());
+    }
+}
