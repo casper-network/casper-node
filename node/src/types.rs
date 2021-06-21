@@ -13,7 +13,7 @@ mod peers_map;
 mod status_feed;
 mod timestamp;
 
-use std::{fmt::Display, ops::Deref};
+use std::{fmt::Display, ops::Deref, sync::Arc};
 
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
@@ -63,6 +63,8 @@ pub type NodeRng = crate::testing::TestRng;
 pub enum SharedObject<T> {
     /// An owned copy of the object.
     Owned(Box<T>),
+    /// A shared copy of the object.
+    Shared(Arc<T>),
 }
 
 impl<T> Deref for SharedObject<T> {
@@ -72,6 +74,7 @@ impl<T> Deref for SharedObject<T> {
     fn deref(&self) -> &Self::Target {
         match self {
             SharedObject::Owned(obj) => &*obj,
+            SharedObject::Shared(shared) => &*shared,
         }
     }
 }
@@ -83,6 +86,7 @@ where
     fn as_ref(&self) -> &[u8] {
         match self {
             SharedObject::Owned(obj) => <T as AsRef<[u8]>>::as_ref(obj),
+            SharedObject::Shared(shared) => <T as AsRef<[u8]>>::as_ref(shared),
         }
     }
 }
@@ -94,15 +98,9 @@ impl<T> SharedObject<T> {
         SharedObject::Owned(Box::new(inner))
     }
 
-    /// Converts a loaded object into an instance of `T`.
-    ///
-    /// May clone the object as a result. This method should not be used in new code, it exists
-    /// solely to bridge old interfaces with the `LoadedItem`.
-    #[inline]
-    pub(crate) fn into_inner(self) -> T {
-        match self {
-            SharedObject::Owned(inner) => *inner,
-        }
+    /// Creates a new shared instance of the object.
+    pub fn shared(inner: Arc<T>) -> Self {
+        SharedObject::Shared(inner)
     }
 }
 
@@ -114,6 +112,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SharedObject::Owned(inner) => inner.fmt(f),
+            SharedObject::Shared(inner) => inner.fmt(f),
         }
     }
 }
@@ -129,6 +128,7 @@ where
     {
         match self {
             SharedObject::Owned(inner) => inner.serialize(serializer),
+            SharedObject::Shared(shared) => shared.serialize(serializer),
         }
     }
 }
@@ -148,11 +148,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::{io::Cursor, sync::Arc};
 
     use serde::{de::DeserializeOwned, Serialize};
 
     use super::{Deploy, SharedObject};
+
+    impl<T> SharedObject<T>
+    where
+        T: Clone,
+    {
+        pub(crate) fn into_inner(self) -> T {
+            match self {
+                SharedObject::Owned(inner) => *inner,
+                SharedObject::Shared(shared) => (*shared).clone(),
+            }
+        }
+    }
 
     // TODO: Import fixed serialization settings from `small_network::message_pack_format` as soon
     //       as merged, instead of using these `rmp_serde` helper functions.
@@ -175,11 +187,12 @@ mod tests {
 
         // Realistic payload inside a `GetRequest`.
         let loaded_item_owned = SharedObject::owned(payload.clone());
-        // TODO: Shared variant.
+        let loaded_item_shared = SharedObject::shared(Arc::new(payload.clone()));
 
         // Check all serialize the same.
         let serialized = serialize(&payload);
         assert_eq!(serialized, serialize(&loaded_item_owned));
+        assert_eq!(serialized, serialize(&loaded_item_shared));
 
         // Ensure we can deserialize a loaded item payload.
         let deserialized: SharedObject<Vec<u8>> = deserialize(&serialized);
