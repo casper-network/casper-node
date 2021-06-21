@@ -1075,7 +1075,7 @@ impl Storage {
     }
 
     /// Retrieves a single Merklized block body in a separate transaction from storage.
-    fn get_single_v2_block_body<Tx: Transaction>(
+    fn get_single_block_body_v2<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_body_hash: &Digest,
@@ -1198,7 +1198,7 @@ impl Storage {
                 self.get_single_v1_block_body(tx, block_header.body_hash())?
             }
             HashingAlgorithmVersion::V2 => {
-                self.get_single_v2_block_body(tx, block_header.body_hash())?
+                self.get_single_block_body_v2(tx, block_header.body_hash())?
             }
         };
         let block_body = match maybe_block_body {
