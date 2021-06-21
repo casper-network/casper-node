@@ -58,56 +58,56 @@ pub type NodeRng = crate::testing::TestRng;
 /// In general, this should only be used for immutable, content-addressed objects.
 ///
 /// This type exists solely to switch between `Box` and `Arc` based behavior, future updates should
-/// deprecate this in favor of using `Arc`s directly or turning `LoadedObject` into a newtype.
+/// deprecate this in favor of using `Arc`s directly or turning `LoadedItem` into a newtype.
 #[derive(DataSize, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum LoadedObject<T> {
+pub enum LoadedItem<T> {
     /// An owned copy of the object.
     Owned(Box<T>),
 }
 
-impl<T> Deref for LoadedObject<T> {
+impl<T> Deref for LoadedItem<T> {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
         match self {
-            LoadedObject::Owned(obj) => &*obj,
+            LoadedItem::Owned(obj) => &*obj,
         }
     }
 }
 
-impl<T> LoadedObject<T> {
+impl<T> LoadedItem<T> {
     /// Creates a new owned instance of the object.
     #[inline]
     fn owned_new(inner: T) -> Self {
-        LoadedObject::Owned(Box::new(inner))
+        LoadedItem::Owned(Box::new(inner))
     }
 
     /// Converts a loaded object into an instance of `T`.
     ///
     /// May clone the object as a result. This method should not be used in new code, it exists
-    /// solely to bridge old interfaces with the `LoadedObject`.
+    /// solely to bridge old interfaces with the `LoadedItem`.
     #[inline]
     pub(crate) fn into_inner(self) -> T {
         match self {
-            LoadedObject::Owned(inner) => *inner,
+            LoadedItem::Owned(inner) => *inner,
         }
     }
 }
 
-impl<T> Display for LoadedObject<T>
+impl<T> Display for LoadedItem<T>
 where
     T: Display,
 {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoadedObject::Owned(inner) => inner.fmt(f),
+            LoadedItem::Owned(inner) => inner.fmt(f),
         }
     }
 }
 
-impl<T> Serialize for LoadedObject<T>
+impl<T> Serialize for LoadedItem<T>
 where
     T: Serialize,
 {
@@ -117,12 +117,12 @@ where
         S: serde::Serializer,
     {
         match self {
-            LoadedObject::Owned(inner) => inner.serialize(serializer),
+            LoadedItem::Owned(inner) => inner.serialize(serializer),
         }
     }
 }
 
-impl<'de, T> Deserialize<'de> for LoadedObject<T>
+impl<'de, T> Deserialize<'de> for LoadedItem<T>
 where
     T: Deserialize<'de>,
 {
@@ -131,6 +131,6 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        T::deserialize(deserializer).map(LoadedObject::owned_new)
+        T::deserialize(deserializer).map(LoadedItem::owned_new)
     }
 }
