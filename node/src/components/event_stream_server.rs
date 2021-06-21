@@ -49,7 +49,8 @@ use crate::{
 pub use config::Config;
 pub(crate) use event::Event;
 use event_indexer::{EventIndex, EventIndexer};
-pub use sse_server::SseData;
+use sse_server::ChannelsAndFilter;
+pub(crate) use sse_server::{set_participating_effect_builder, SseData};
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -99,8 +100,11 @@ impl EventStreamServer {
         let broadcast_channel_size = config.event_stream_buffer_length
             * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
             / 100;
-        let (broadcaster, new_subscriber_info_receiver, sse_filter) =
-            sse_server::create_channels_and_filter(broadcast_channel_size as usize);
+        let ChannelsAndFilter {
+            event_broadcaster,
+            new_subscriber_info_receiver,
+            sse_filter,
+        } = ChannelsAndFilter::new(broadcast_channel_size as usize);
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
@@ -120,7 +124,7 @@ impl EventStreamServer {
             server_with_shutdown,
             shutdown_sender,
             sse_data_receiver,
-            broadcaster,
+            event_broadcaster,
             new_subscriber_info_receiver,
         ));
 
@@ -157,6 +161,7 @@ where
                 block_hash: *block.hash(),
                 block: Box::new(JsonBlock::new(*block, None)),
             }),
+            Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
             Event::DeployProcessed {
                 deploy_hash,
                 deploy_header,

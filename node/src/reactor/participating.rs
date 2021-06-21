@@ -505,6 +505,8 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
+        event_stream_server::set_participating_effect_builder(effect_builder);
+
         Ok((
             Reactor {
                 metrics,
@@ -908,6 +910,13 @@ impl reactor::Reactor for Reactor {
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event));
+
+                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::EventStreamServer(event),
+                ));
 
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
