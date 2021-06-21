@@ -1606,8 +1606,8 @@ fn initialize_block_body_v2_db(
     let mut deleted_proposer_hashes = HashSet::new();
 
     for (raw_key, raw_val) in cursor.iter() {
-        info!(?raw_key, "deleting v2 block");
         if deleted_block_body_hashes.contains(raw_key) {
+            info!(?raw_key, "deleting v2 block");
             let [hashed_deploy_hashes, hashed_transfer_hashes, hashed_proposer]: [Digest;
                 BlockBodyHashedParts::NUMBER_OF_HASHES] = lmdb_ext::deserialize(raw_val)?;
             let _ = deleted_deploy_hashes.insert(hashed_deploy_hashes);
