@@ -1,6 +1,7 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
+pub mod blob_cache;
 mod counting_channel;
 pub mod ds;
 mod external;
