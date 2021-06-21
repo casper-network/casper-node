@@ -77,6 +77,33 @@ pub enum LmdbExtError {
     },
     #[error(transparent)]
     BlockValidationError(#[from] BlockValidationError),
+    #[error(
+        "Could not find deploy hashes for block body. \
+         Block body hash: {block_body_hash}, \
+         Hashed deploy hashes: {hashed_deploy_hashes}"
+    )]
+    BlockBodyDidNotHaveDeployHashes {
+        block_body_hash: Digest,
+        hashed_deploy_hashes: Digest,
+    },
+    #[error(
+        "Could not find deploy hashes for block body. \
+         Block body hash: {block_body_hash}, \
+         Hashed transfer hashes: {hashed_transfer_hashes}"
+    )]
+    BlockBodyDidNotHaveTransferHashes {
+        block_body_hash: Digest,
+        hashed_transfer_hashes: Digest,
+    },
+    #[error(
+        "Could not find a proposer for block body. \
+         Block body hash: {block_body_hash}, \
+         Proposer hash: {hashed_proposer}"
+    )]
+    BlockBodyDidNotHaveProposerHash {
+        block_body_hash: Digest,
+        hashed_proposer: Digest,
+    },
 }
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a

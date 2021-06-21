@@ -1090,18 +1090,33 @@ impl Storage {
         let deploy_hashes: Vec<DeployHash> =
             match tx.get_value(self.deploy_hashes_db, &hashed_deploy_hashes)? {
                 Some(deploy_hashes) => deploy_hashes,
-                None => return Ok(None),
+                None => {
+                    return Err(LmdbExtError::BlockBodyDidNotHaveDeployHashes {
+                        block_body_hash: *block_body_hash,
+                        hashed_deploy_hashes,
+                    })
+                }
             };
 
         let transfer_hashes: Vec<DeployHash> =
             match tx.get_value(self.transfer_hashes_db, &hashed_transfer_hashes)? {
                 Some(transfer_hashes) => transfer_hashes,
-                None => return Ok(None),
+                None => {
+                    return Err(LmdbExtError::BlockBodyDidNotHaveTransferHashes {
+                        block_body_hash: *block_body_hash,
+                        hashed_transfer_hashes,
+                    })
+                }
             };
 
         let proposer: PublicKey = match tx.get_value(self.proposer_db, &hashed_proposer)? {
             Some(proposer) => proposer,
-            None => return Ok(None),
+            None => {
+                return Err(LmdbExtError::BlockBodyDidNotHaveProposerHash {
+                    block_body_hash: *block_body_hash,
+                    hashed_proposer,
+                })
+            }
         };
 
         let block_body = BlockBody::new(proposer, deploy_hashes, transfer_hashes);
