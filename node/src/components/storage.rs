@@ -1581,7 +1581,7 @@ fn initialize_block_body_v1_db(
     Ok(())
 }
 
-/// Purges stale entries from the (merkelized) block body database, and checks the integrity of the
+/// Purges stale entries from the (Merklized) block body database, and checks the integrity of the
 /// remainder if `should_check_integrity` is true.
 fn initialize_block_body_v2_db(
     env: &Environment,
