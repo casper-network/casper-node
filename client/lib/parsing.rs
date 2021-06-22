@@ -368,10 +368,10 @@ pub(super) fn parse_session_info(
     session_args_complex: &str,
     session_version: &str,
     session_entry_point: &str,
-    session_transfer: bool,
+    is_session_transfer: bool,
 ) -> Result<ExecutableDeployItem> {
     // This is to make sure that we're using &str consistently in the macro call below.
-    let session_transfer_str = if session_transfer { "true" } else { "" };
+    let session_transfer = if is_session_transfer { "true" } else { "" };
 
     check_exactly_one_not_empty!(
         context: "parse_session_info",
@@ -385,7 +385,7 @@ pub(super) fn parse_session_info(
             requires[session_entry_point] requires_empty[],
         (session_path)
             requires[] requires_empty[session_entry_point, session_version],
-        (session_transfer_str)
+        (session_transfer)
             requires[] requires_empty[session_entry_point, session_version]
     );
     if !session_args.is_empty() && !session_args_complex.is_empty() {
@@ -399,7 +399,7 @@ pub(super) fn parse_session_info(
         arg_simple::session::parse(session_args)?,
         args_complex::session::parse(session_args_complex).ok(),
     );
-    if session_transfer {
+    if is_session_transfer {
         if session_args.is_empty() {
             return Err(Error::InvalidArgument(
                 "session_transfer",
