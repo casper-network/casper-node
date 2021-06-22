@@ -403,7 +403,7 @@ pub(super) fn parse_session_info(
         if session_args.is_empty() {
             return Err(Error::InvalidArgument(
                 "session_transfer",
-                format!("requires --session-arg to be present"),
+                "requires --session-arg to be present".to_string(),
             ));
         }
         return Ok(ExecutableDeployItem::Transfer { args: session_args });
@@ -1200,6 +1200,7 @@ mod tests {
                 // package_name
                 // package_name + session_version is optional and allowed
                 test[session_package_name => happy::PACKAGE_NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_package_hash]
+                test[session_package_name => happy::VERSION, conflict: session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_transfer]
                 // package_name <-> hash is already checked
                 // package_name <-> name is already checked
                 // package_name <-> path is already checked

@@ -955,6 +955,9 @@ impl<'a> SessionStrParams<'a> {
         }
     }
 
+    /// Constructs a `SessionStrParams` with its `session_transfer` field set to `true`.
+    /// * See the struct docs for a description of [`session_args_simple`](#session_args_simple) and
+    ///   [`session_args_complex`](#session_args_complex).
     pub fn with_transfer(session_args_simple: Vec<&'a str>, session_args_complex: &'a str) -> Self {
         Self {
             session_transfer: true,

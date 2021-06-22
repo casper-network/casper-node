@@ -718,7 +718,7 @@ pub(super) mod session_transfer {
             .display_order(DisplayOrder::SessionTransfer as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> bool {
+    pub fn get(matches: &ArgMatches) -> bool {
         matches.is_present(ARG_NAME)
     }
 }
