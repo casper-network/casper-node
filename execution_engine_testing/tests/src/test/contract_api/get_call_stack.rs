@@ -1,4 +1,3 @@
-use get_call_stack_recursive_subcall::{Call, ContractAddress};
 use num_traits::One;
 
 use casper_engine_test_support::{
@@ -17,17 +16,19 @@ use casper_types::{
     EntryPointType, HashAddr, Key, RuntimeArgs,
 };
 
+use get_call_stack_recursive_subcall::{
+    Call, ContractAddress, ARG_CALLS, ARG_CURRENT_DEPTH, METHOD_FORWARDER_CONTRACT_NAME,
+    METHOD_FORWARDER_SESSION_NAME,
+};
+
 const CONTRACT_RECURSIVE_SUBCALL: &str = "get_call_stack_recursive_subcall.wasm";
 const CONTRACT_CALL_RECURSIVE_SUBCALL: &str = "get_call_stack_call_recursive_subcall.wasm";
 
 const CONTRACT_PACKAGE_NAME: &str = "forwarder";
 const CONTRACT_NAME: &str = "our_contract_name";
 
-const CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT: &str = "forwarder_contract";
-const CONTRACT_FORWARDER_ENTRYPOINT_SESSION: &str = "forwarder_session";
-
-const ARG_CALLS: &str = "calls";
-const ARG_CURRENT_DEPTH: &str = "current_depth";
+const CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT: &str = METHOD_FORWARDER_CONTRACT_NAME;
+const CONTRACT_FORWARDER_ENTRYPOINT_SESSION: &str = METHOD_FORWARDER_SESSION_NAME;
 
 fn stored_session(contract_hash: ContractHash) -> Call {
     Call {

@@ -7,6 +7,8 @@ pub mod standard_payment;
 use alloc::vec::Vec;
 
 use bytesrepr::U8_SERIALIZED_LENGTH;
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 
 use crate::{
     account::AccountHash,
@@ -206,6 +208,7 @@ mod system_contract_type {
 }
 
 /// Tag representing variants of CallStackElement for purposes of serialization.
+#[derive(FromPrimitive, ToPrimitive)]
 #[repr(u8)]
 pub enum CallStackElementTag {
     /// Session tag.
@@ -215,6 +218,7 @@ pub enum CallStackElementTag {
     /// StoredContract tag.
     StoredContract,
 }
+
 /// Represents the origin of a sub-call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CallStackElement {
@@ -336,12 +340,13 @@ impl ToBytes for CallStackElement {
 impl FromBytes for CallStackElement {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let tag = CallStackElementTag::from_u8(tag).ok_or(bytesrepr::Error::Formatting)?;
         match tag {
-            tag if tag == CallStackElementTag::Session as u8 => {
+            CallStackElementTag::Session => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((CallStackElement::Session { account_hash }, remainder))
             }
-            tag if tag == CallStackElementTag::StoredSession as u8 => {
+            CallStackElementTag::StoredSession => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 let (contract_package_hash, remainder) =
                     ContractPackageHash::from_bytes(remainder)?;
@@ -355,7 +360,7 @@ impl FromBytes for CallStackElement {
                     remainder,
                 ))
             }
-            tag if tag == CallStackElementTag::StoredContract as u8 => {
+            CallStackElementTag::StoredContract => {
                 let (contract_package_hash, remainder) =
                     ContractPackageHash::from_bytes(remainder)?;
                 let (contract_hash, remainder) = ContractHash::from_bytes(remainder)?;
@@ -367,7 +372,6 @@ impl FromBytes for CallStackElement {
                     remainder,
                 ))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }

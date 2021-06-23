@@ -154,7 +154,7 @@ where
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
         let call_stack = self.call_stack();
         let mut call_stack_iter = call_stack.iter().rev();
-        call_stack_iter.next();
+        call_stack_iter.next()?;
         call_stack_iter.next()
     }
 

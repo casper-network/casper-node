@@ -15,10 +15,17 @@ use casper_types::{
     Key, Phase, RuntimeArgs, Tagged, URef, U512,
 };
 
-const DEFAULT_PAYMENT: u64 = 1_500_000_000_000;
+pub const CONTRACT_PACKAGE_NAME: &str = "forwarder";
+pub const PACKAGE_ACCESS_KEY_NAME: &str = "forwarder_access";
+pub const CONTRACT_NAME: &str = "our_contract_name";
 
-const ARG_CALLS: &str = "calls";
-const ARG_CURRENT_DEPTH: &str = "current_depth";
+pub const METHOD_FORWARDER_CONTRACT_NAME: &str = "forwarder_contract";
+pub const METHOD_FORWARDER_SESSION_NAME: &str = "forwarder_session";
+
+pub const ARG_CALLS: &str = "calls";
+pub const ARG_CURRENT_DEPTH: &str = "current_depth";
+
+const DEFAULT_PAYMENT: u64 = 1_500_000_000_000;
 
 #[repr(u8)]
 enum ContractAddressTag {

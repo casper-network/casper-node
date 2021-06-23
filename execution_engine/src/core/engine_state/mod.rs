@@ -24,7 +24,6 @@ use std::{
     rc::Rc,
 };
 
-use executable_deploy_item::DeployKind;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
@@ -67,8 +66,8 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
-            execution_result::ExecutionResultBuilder, genesis::GenesisInstaller,
-            upgrade::SystemUpgrader,
+            executable_deploy_item::DeployKind, execution_result::ExecutionResultBuilder,
+            genesis::GenesisInstaller, upgrade::SystemUpgrader,
         },
         execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
