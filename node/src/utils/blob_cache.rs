@@ -17,7 +17,7 @@ pub struct BlobCache<I> {
     /// The actual blob cache.
     #[data_size(skip)]
     items: HashMap<I, Weak<Vec<u8>>>,
-    /// Interval for garbage collection, will remove dead references on every n-th access.
+    /// Interval for garbage collection, will remove dead references on every n-th `put()`.
     garbage_collect_interval: u16,
     /// Counts how many items have been added since the last garbage collect interval.
     put_count: u16,
@@ -38,7 +38,7 @@ impl<I> BlobCache<I>
 where
     I: Hash + Eq,
 {
-    /// Stores an serialized item (blob) in the cache.
+    /// Stores a serialized item (blob) in the cache.
     ///
     /// At configurable intervals (see `garbage_collect_interval`), the entire cache will be checked
     /// and dead references pruned.
