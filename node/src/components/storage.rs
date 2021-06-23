@@ -36,7 +36,9 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
+mod blob_cache;
 mod lmdb_ext;
+
 #[cfg(test)]
 mod tests;
 
@@ -47,6 +49,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -76,11 +79,12 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
+        DeployHash, DeployHeader, DeployMetadata, Item, SharedObject, TimeDiff,
     },
-    utils::WithDir,
+    utils::{display_error, WithDir},
     NodeRng,
 };
+use blob_cache::BlobCache;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -209,6 +213,10 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// Whether or not memory deduplication is enabled.
+    enable_mem_deduplication: bool,
+    /// Pool of loaded items.
+    deploy_cache: BlobCache<<Deploy as Item>::Id>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -376,6 +384,8 @@ impl Storage {
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
+            enable_mem_deduplication: config.enable_mem_deduplication,
+            deploy_cache: BlobCache::new(config.mem_pool_prune_interval),
         })
     }
 
@@ -1177,6 +1187,10 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_state_store_size: usize,
+    /// Whether or not memory deduplication is enabled.
+    enable_mem_deduplication: bool,
+    /// How many loads before memory duplication checks for dead references.
+    mem_pool_prune_interval: u16,
 }
 
 impl Default for Config {
@@ -1188,6 +1202,8 @@ impl Default for Config {
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
             max_deploy_metadata_store_size: DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE,
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
+            enable_mem_deduplication: false,
+            mem_pool_prune_interval: 1024,
         }
     }
 }
@@ -1225,8 +1241,8 @@ impl Display for Event {
 // ON OR BUILD UPON THIS CODE.
 
 impl Storage {
-    // Retrieves a deploy from the deploy store to handle a legacy network request.
-    pub fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
+    /// Retrieves a deploy from the deploy store to handle a legacy network request.
+    fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
         // directly. This caused a dependency of the storage component on networking functionality,
         // which is highly problematic. For this reason, the code to send a reply has been moved to
@@ -1236,6 +1252,44 @@ impl Storage {
             .map_err(Into::into)
             .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
             .expect("legacy direct deploy request failed")
+    }
+
+    /// Retrieves a potentially deduplicated deploy from the deploy store or cache, depending on
+    /// runtime configuration.
+    pub fn handle_deduplicated_legacy_direct_deploy_request(
+        &mut self,
+        deploy_hash: DeployHash,
+    ) -> Option<SharedObject<Vec<u8>>> {
+        if self.enable_mem_deduplication {
+            // On a cache hit, return directly from the cache.
+            if let Some(serialized) = self.deploy_cache.get(&deploy_hash) {
+                return Some(SharedObject::shared(serialized));
+            }
+        }
+
+        let deploy = self.handle_legacy_direct_deploy_request(deploy_hash)?;
+
+        match bincode::serialize(&deploy) {
+            Ok(serialized) => {
+                if self.enable_mem_deduplication {
+                    // We found a deploy, ensure it gets added to the cache.
+                    let arc = Arc::new(serialized);
+                    self.deploy_cache.put(deploy_hash, Arc::downgrade(&arc));
+                    Some(SharedObject::shared(arc))
+                } else {
+                    Some(SharedObject::owned(serialized))
+                }
+            }
+            Err(err) => {
+                // We failed to serialize a stored deploy, which is a serious issue. There is no
+                // good recovery from this, so we just pretend we don't have it, logging an error.
+                error!(
+                    err = display_error(&err),
+                    "failed to create (shared) get-response"
+                );
+                None
+            }
+        }
     }
 }
 
