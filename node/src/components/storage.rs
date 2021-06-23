@@ -36,7 +36,7 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
-pub(crate) mod blob_cache;
+mod blob_cache;
 mod lmdb_ext;
 
 #[cfg(test)]
@@ -67,8 +67,6 @@ use tracing::{debug, error, info};
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, Transfer, Transform};
 
-use self::blob_cache::BlobCache;
-
 use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
@@ -86,6 +84,7 @@ use crate::{
     utils::{display_error, WithDir},
     NodeRng,
 };
+use blob_cache::BlobCache;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -217,7 +216,7 @@ pub struct Storage {
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// Pool of loaded items.
-    pub(crate) deploy_cache: BlobCache<<Deploy as Item>::Id>,
+    deploy_cache: BlobCache<<Deploy as Item>::Id>,
 }
 
 impl<REv> Component<REv> for Storage
