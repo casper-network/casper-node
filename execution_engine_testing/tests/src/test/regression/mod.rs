@@ -25,6 +25,7 @@ mod ee_550;
 mod ee_572;
 mod ee_584;
 mod ee_597;
+mod ee_598;
 mod ee_599;
 mod ee_601;
 mod ee_771;
