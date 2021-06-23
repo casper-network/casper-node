@@ -13,7 +13,7 @@ use datasize::DataSize;
 /// Maintains a collection of weak references and automatically purges them in configurable
 /// intervals.
 #[derive(DataSize, Debug)]
-pub struct BlobCache<I> {
+pub(crate) struct BlobCache<I> {
     /// The actual blob cache.
     #[data_size(skip)]
     items: HashMap<I, Weak<Vec<u8>>>,
@@ -25,7 +25,7 @@ pub struct BlobCache<I> {
 
 impl<I> BlobCache<I> {
     /// Creates a new cache.
-    pub fn new(garbage_collect_interval: u16) -> Self {
+    pub(crate) fn new(garbage_collect_interval: u16) -> Self {
         Self {
             items: HashMap::new(),
             garbage_collect_interval,
@@ -42,7 +42,7 @@ where
     ///
     /// At configurable intervals (see `garbage_collect_interval`), the entire cache will be checked
     /// and dead references pruned.
-    pub fn put(&mut self, id: I, item: Weak<Vec<u8>>) {
+    pub(crate) fn put(&mut self, id: I, item: Weak<Vec<u8>>) {
         self.items.insert(id, item);
 
         if self.put_count >= self.garbage_collect_interval {
@@ -55,7 +55,7 @@ where
     }
 
     /// Retrieves a blob from the cache, if present.
-    pub fn get(&self, id: &I) -> Option<Arc<Vec<u8>>> {
+    pub(crate) fn get(&self, id: &I) -> Option<Arc<Vec<u8>>> {
         self.items.get(&id).and_then(Weak::upgrade)
     }
 }
