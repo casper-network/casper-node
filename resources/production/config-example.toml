@@ -231,7 +231,7 @@ enable_mem_deduplication = false
 # Memory duplication garbage collection.
 #
 # Sets the frequency how often the memory pool cache is swept for free references.
-mem_pool_gc_interval = 1024
+mem_pool_prune_interval = 1024
 
 
 # ===================================

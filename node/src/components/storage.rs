@@ -381,7 +381,7 @@ impl Storage {
             switch_block_era_id_index,
             deploy_hash_index,
             enable_mem_deduplication: config.enable_mem_deduplication,
-            deploy_cache: BlobCache::new(config.mem_pool_gc_interval),
+            deploy_cache: BlobCache::new(config.mem_pool_prune_interval),
         })
     }
 
@@ -1186,7 +1186,7 @@ pub struct Config {
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
-    mem_pool_gc_interval: u16,
+    mem_pool_prune_interval: u16,
 }
 
 impl Default for Config {
@@ -1199,7 +1199,7 @@ impl Default for Config {
             max_deploy_metadata_store_size: DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE,
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
             enable_mem_deduplication: false,
-            mem_pool_gc_interval: 1024,
+            mem_pool_prune_interval: 1024,
         }
     }
 }
