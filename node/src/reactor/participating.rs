@@ -738,10 +738,6 @@ impl reactor::Reactor for Reactor {
                                     Some(deploy) => {
                                         match Message::new_get_response(&deploy) {
                                             Ok(message) => {
-                                                if self.storage.mem_duplication_enabled() {
-                                                    todo!("update cache if enabled")
-                                                }
-
                                                 return effect_builder
                                                     .send_message(sender, message)
                                                     .ignore();
