@@ -37,7 +37,7 @@ use super::{
     bandwidth_limiter::BandwidthLimiterHandle,
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
-    error::{display_error, ConnectionError, IoError},
+    error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
     framed,
     message::ConsensusKeyPair,
@@ -48,6 +48,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
+    utils::display_error,
 };
 
 // TODO: Constants need to be made configurable.

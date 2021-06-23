@@ -82,7 +82,6 @@ use self::{
     tasks::NetworkContext,
 };
 pub(crate) use self::{
-    error::display_error,
     event::Event,
     gossiped_address::GossipedAddress,
     message::{Message, MessageKind, Payload},
@@ -101,7 +100,7 @@ use crate::{
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{self, WithDir},
+    utils::{self, display_error, WithDir},
     NodeRng,
 };
 use chain_info::ChainInfo;

@@ -73,7 +73,6 @@ use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
 use crate::{
-    components::small_network::display_error,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -84,7 +83,7 @@ use crate::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
         DeployHash, DeployHeader, DeployMetadata, Item, SharedObject, TimeDiff,
     },
-    utils::WithDir,
+    utils::{display_error, WithDir},
     NodeRng,
 };
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
