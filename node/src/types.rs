@@ -35,7 +35,7 @@ pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
-pub use shared_object::SharedObject;
+pub(crate) use shared_object::SharedObject;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 

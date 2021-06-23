@@ -46,12 +46,12 @@ where
 impl<T> SharedObject<T> {
     /// Creates a new owned instance of the object.
     #[inline]
-    pub fn owned(inner: T) -> Self {
+    pub(crate) fn owned(inner: T) -> Self {
         SharedObject::Owned(Box::new(inner))
     }
 
     /// Creates a new shared instance of the object.
-    pub fn shared(inner: Arc<T>) -> Self {
+    pub(crate) fn shared(inner: Arc<T>) -> Self {
         SharedObject::Shared(inner)
     }
 }
