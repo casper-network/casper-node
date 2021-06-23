@@ -41,7 +41,7 @@ use crate::{
         network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
-        small_network::{self, display_error, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
+        small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
         Component,
     },
@@ -62,7 +62,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, SharedObject, Tag},
+    types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -682,76 +682,20 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
 
-                            // Depending on the runtime configuration, fetch as a shared or owned
-                            // object.
-                            if self.storage.mem_duplication_enabled() {
-                                let outcome =
-                                    self.storage.deploy_cache.get(&deploy_hash).map(Ok).or_else(
-                                        || {
-                                            self.storage
-                                                .handle_legacy_direct_deploy_request(deploy_hash)
-                                                .as_ref()
-                                                .map(bincode::serialize)
-                                                .map(|result| {
-                                                    result.map(|deploy| {
-                                                        let arc = Arc::new(deploy);
-                                                        // We found a deploy, ensure it gets added
-                                                        // to the cache.
-                                                        self.storage
-                                                            .deploy_cache
-                                                            .put(deploy_hash, Arc::downgrade(&arc));
-                                                        arc
-                                                    })
-                                                })
-                                        },
+                            match self
+                                .storage
+                                .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
+                            {
+                                Some(serialized_item) => {
+                                    let message = Message::new_get_response_raw_unchecked::<Deploy>(
+                                        serialized_item,
                                     );
-
-                                match outcome {
-                                    Some(Ok(serialized)) => {
-                                        let message =
-                                            Message::new_get_response_raw_unchecked::<Deploy>(
-                                                SharedObject::shared(serialized),
-                                            );
-                                        return effect_builder
-                                            .send_message(sender, message)
-                                            .ignore();
-                                    }
-                                    Some(Err(err)) => {
-                                        error!(
-                                            err = display_error(&err),
-                                            "failed to create (shared) get-response"
-                                        );
-                                        return Effects::new();
-                                    }
-                                    None => {
-                                        debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
-                                        return Effects::new();
-                                    }
+                                    return effect_builder.send_message(sender, message).ignore();
                                 }
-                            } else {
-                                match self
-                                    .storage
-                                    .handle_legacy_direct_deploy_request(deploy_hash)
-                                {
-                                    // This functionality was moved out of the storage component and
-                                    // should be refactored ASAP.
-                                    Some(deploy) => {
-                                        match Message::new_get_response(&deploy) {
-                                            Ok(message) => {
-                                                return effect_builder
-                                                    .send_message(sender, message)
-                                                    .ignore();
-                                            }
-                                            Err(error) => {
-                                                error!("failed to create get-response: {}", error);
-                                                return Effects::new();
-                                            }
-                                        };
-                                    }
-                                    None => {
-                                        debug!("failed to get {} for {}", deploy_hash, sender);
-                                        return Effects::new();
-                                    }
+
+                                None => {
+                                    debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
+                                    return Effects::new();
                                 }
                             }
                         }

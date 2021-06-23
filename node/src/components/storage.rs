@@ -49,6 +49,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -72,6 +73,7 @@ use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
 use crate::{
+    components::small_network::display_error,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -80,7 +82,7 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, Item, TimeDiff,
+        DeployHash, DeployHeader, DeployMetadata, Item, SharedObject, TimeDiff,
     },
     utils::WithDir,
     NodeRng,
@@ -1242,7 +1244,7 @@ impl Display for Event {
 
 impl Storage {
     /// Retrieves a deploy from the deploy store to handle a legacy network request.
-    pub fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
+    fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
         // directly. This caused a dependency of the storage component on networking functionality,
         // which is highly problematic. For this reason, the code to send a reply has been moved to
@@ -1254,10 +1256,42 @@ impl Storage {
             .expect("legacy direct deploy request failed")
     }
 
-    /// Whether or not memory deduplication is enabled.
-    #[inline]
-    pub fn mem_duplication_enabled(&self) -> bool {
-        self.enable_mem_deduplication
+    /// Retrieves a potentially deduplicated deploy from the deploy store or cache, depending on
+    /// runtime configuration.
+    pub fn handle_deduplicated_legacy_direct_deploy_request(
+        &mut self,
+        deploy_hash: DeployHash,
+    ) -> Option<SharedObject<Vec<u8>>> {
+        if self.enable_mem_deduplication {
+            // On a cache hit, return directly from the cache.
+            if let Some(serialized) = self.deploy_cache.get(&deploy_hash) {
+                return Some(SharedObject::shared(serialized));
+            }
+        }
+
+        let deploy = self.handle_legacy_direct_deploy_request(deploy_hash)?;
+
+        match bincode::serialize(&deploy) {
+            Ok(serialized) => {
+                if self.enable_mem_deduplication {
+                    // We found a deploy, ensure it gets added to the cache.
+                    let arc = Arc::new(serialized);
+                    self.deploy_cache.put(deploy_hash, Arc::downgrade(&arc));
+                    Some(SharedObject::shared(arc))
+                } else {
+                    Some(SharedObject::owned(serialized))
+                }
+            }
+            Err(err) => {
+                // We failed to serialize a stored deploy, which is a serious issue. There is no
+                // good recovery from this, so we just pretend we don't have it, logging an error.
+                error!(
+                    err = display_error(&err),
+                    "failed to create (shared) get-response"
+                );
+                None
+            }
+        }
     }
 }
 
