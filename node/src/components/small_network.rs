@@ -242,7 +242,13 @@ where
             ))
         };
 
-        let incoming_limiter: Box<dyn Limiter> = Box::new(limiter::Unlimited);
+        let incoming_limiter: Box<dyn Limiter> = if cfg.max_non_validating_peer_request_rate == 0 {
+            Box::new(limiter::Unlimited)
+        } else {
+            Box::new(limiter::ClassBasedLimiter::new(
+                cfg.max_non_validating_peer_request_rate,
+            ))
+        };
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
             retry_attempts: RECONNECTION_ATTEMPTS,
@@ -1040,7 +1046,11 @@ where
                 active_validators,
                 upcoming_validators,
             } => {
-                self.upstream_limiter
+                self.upstream_limiter.update_validators(
+                    (*active_validators).clone(),
+                    (*upcoming_validators).clone(),
+                );
+                self.incoming_limiter
                     .update_validators(*active_validators, *upcoming_validators);
                 Effects::new()
             }

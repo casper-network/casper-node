@@ -125,6 +125,11 @@ max_addr_pending_time = '1min'
 # A value of `0` means unlimited.
 max_non_validating_peer_bps = 0
 
+# The maximum amount of requests from validating peers per second answered.
+# A value of `0` means unlimited.
+max_non_validating_peer_request_rate = 0
+
+
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================
