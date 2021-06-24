@@ -570,6 +570,14 @@ steps:
   - name: nctl-temp-dir
     path: /tmp/nctl_upgrade_stage
 
+- name: update-default-branch
+  image: casperlabs/node-build-u1804
+  environment:
+    GITHUB_TOKEN:
+      from_secret: github_token
+  commands:
+    - "./ci/change_default_branch.py"
+
 volumes:
 - name: nctl-temp-dir
   temp: {}
