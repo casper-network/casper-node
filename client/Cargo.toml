@@ -69,3 +69,12 @@ Package for Casper Client to connect to Casper Node.
 
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
+
+[package.metadata.rpm]
+package = "casper-client"
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]
+
+[package.metadata.rpm.targets]
+casper-client = { path = "/usr/bin/casper-client" }
