@@ -23,13 +23,13 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
-mod bandwidth_limiter;
 mod chain_info;
 mod config;
 mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod limiter;
 mod message;
 mod message_pack_format;
 mod outgoing;
@@ -71,10 +71,10 @@ use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
-    bandwidth_limiter::BandwidthLimiter,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
+    limiter::Limiter,
     message::ConsensusKeyPair,
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
@@ -184,7 +184,7 @@ where
 
     /// The active bandwidth limiter.
     #[data_size(skip)]
-    limiter: Box<dyn BandwidthLimiter>,
+    limiter: Box<dyn Limiter>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -228,10 +228,10 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
-        let limiter: Box<dyn BandwidthLimiter> = if cfg.max_non_validating_peer_bps == 0 {
-            Box::new(bandwidth_limiter::Unlimited)
+        let limiter: Box<dyn Limiter> = if cfg.max_non_validating_peer_bps == 0 {
+            Box::new(limiter::Unlimited)
         } else {
-            Box::new(bandwidth_limiter::ClassBasedLimiter::new(
+            Box::new(limiter::ClassBasedLimiter::new(
                 cfg.max_non_validating_peer_bps,
             ))
         };

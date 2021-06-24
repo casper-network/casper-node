@@ -34,12 +34,12 @@ use tracing::{
 };
 
 use super::{
-    bandwidth_limiter::BandwidthLimiterHandle,
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
     error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
     framed,
+    limiter::LimiterHandle,
     message::ConsensusKeyPair,
     Event, FramedTransport, Message, Payload, Transport,
 };
@@ -500,7 +500,7 @@ where
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Arc<Message<P>>>,
     mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
-    limiter: Box<dyn BandwidthLimiterHandle>,
+    limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where
     P: Payload,

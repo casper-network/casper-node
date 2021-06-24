@@ -1,7 +1,7 @@
-//! Bandwidth limiters
+//! Resource limiters
 //!
-//! Bandwidth limiters restrict the usable amount of bandwidth through slowing down the sending of
-//! message by making each sender request an allowance for sending first.
+//! Resource limiters restrict the usable amount of a resource through slowing down the request rate
+//! by making each user request an allowance first.
 
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
@@ -15,20 +15,20 @@ use tracing::{debug, info, warn};
 
 use crate::types::NodeId;
 
-/// Amount of allowed bandwidth to buffer in `ClassBasedLimiter`.
+/// Amount of resource allowed to buffer in `ClassBasedLimiter`.
 const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
 
-/// A bandwidth limiter.
+/// A limiter.
 ///
-/// Any sender for a specific connection is expected to call `create_handle` for a connection, and
-/// using that handle to request a bandwidth allowance.
-pub(crate) trait BandwidthLimiter: Send + Sync {
+/// Any resource consumer of a specific resource is expected to call `create_handle` for every peer
+/// and use the returned handle to request a access to a resource.
+pub(crate) trait Limiter: Send + Sync {
     /// Create a handle for a connection using the given peer and optional validator id.
     fn create_handle(
         &self,
         peer_id: NodeId,
         validator_id: Option<PublicKey>,
-    ) -> Box<dyn BandwidthLimiterHandle>;
+    ) -> Box<dyn LimiterHandle>;
 
     /// Update the validator sets.
     fn update_validators(
@@ -38,28 +38,28 @@ pub(crate) trait BandwidthLimiter: Send + Sync {
     );
 }
 
-/// A handle for connections that are bandwidth limited.
+/// A per-peer handle for a limiter.
 #[async_trait]
-pub(crate) trait BandwidthLimiterHandle: Send + Sync {
-    /// Waits until the sender is clear to send `num_bytes` additional bytes.
-    async fn request_allowance(&self, num_bytes: u32);
+pub(crate) trait LimiterHandle: Send + Sync {
+    /// Waits until the requestor is allocated `amount` additional resources.
+    async fn request_allowance(&self, amount: u32);
 }
 
-/// An unlimited bandwidth "limiter".
+/// An unlimited "limiter".
 ///
-/// Does not restrict outgoing bandwidth in any way (`create_handle` returns immediately).
+/// Does not restrict resources in any way (`request_allowance` returns immediately).
 #[derive(Debug)]
 pub(super) struct Unlimited;
 
 /// Handle for `Unlimited`.
 struct UnlimitedHandle;
 
-impl BandwidthLimiter for Unlimited {
+impl Limiter for Unlimited {
     fn create_handle(
         &self,
         _peer_id: NodeId,
         _validator_id: Option<PublicKey>,
-    ) -> Box<dyn BandwidthLimiterHandle> {
+    ) -> Box<dyn LimiterHandle> {
         Box::new(UnlimitedHandle)
     }
 
@@ -72,28 +72,28 @@ impl BandwidthLimiter for Unlimited {
 }
 
 #[async_trait]
-impl BandwidthLimiterHandle for UnlimitedHandle {
-    async fn request_allowance(&self, _num_bytes: u32) {
+impl LimiterHandle for UnlimitedHandle {
+    async fn request_allowance(&self, _amount: u32) {
         // No limit.
     }
 }
 
-/// A Bandwidth limiter dividing traffic into multiple classes based on their validator status.
+/// A limiter dividing resources into multiple classes based on their validator status.
 ///
-/// Imposes a limit on non-validator traffic while not limiting active validator traffic at all.
+/// Imposes a limit on non-validator resources while not limiting active validator resources at all.
 #[derive(Debug)]
 pub(super) struct ClassBasedLimiter {
     /// Sender for commands to the limiter.
     sender: mpsc::UnboundedSender<ClassBasedCommand>,
 }
 
-/// Bandwidth class for the `ClassBasedLimiter`.
-enum BandwidthClass {
-    /// Preferred traffic serving active validators.
+/// Peer class for the `ClassBasedLimiter`.
+enum PeerClass {
+    /// Active validators.
     ActiveValidator,
-    /// Traffic for upcoming validators that are not active yet.
+    /// Upcoming validators that are not active yet.
     UpcomingValidator,
-    /// Unclassified/low-priority traffic.
+    /// Unclassified/low-priority peers.
     Bulk,
 }
 
@@ -106,12 +106,12 @@ enum ClassBasedCommand {
         /// The new set of validators in future eras.
         upcoming_validators: HashSet<PublicKey>,
     },
-    /// Requests a certain amount of bandwidth.
-    RequestBandwidth {
-        /// Number of bytes requested.
-        num_bytes: u32,
+    /// Requests a certain amount of a resource.
+    RequestResource {
+        /// Amount of resource requested.
+        amount: u32,
         /// Id of the requesting sender.
-        id: Arc<BandwidthConsumerId>,
+        id: Arc<ConsumerId>,
         /// Response channel.
         responder: oneshot::Sender<()>,
     },
@@ -125,13 +125,13 @@ struct ClassBasedHandle {
     /// Sender for commands.
     sender: mpsc::UnboundedSender<ClassBasedCommand>,
     /// Consumer ID for the sender holding this handle.
-    consumer_id: Arc<BandwidthConsumerId>,
+    consumer_id: Arc<ConsumerId>,
 }
 
-/// An identity for a bandwidth consumer.
+/// An identity for a consumer.
 #[derive(Debug)]
-struct BandwidthConsumerId {
-    /// The node ID data is sent to/from.
+struct ConsumerId {
+    /// The peer's ID.
     peer_id: NodeId,
     /// The remote node's `validator_id`.
     validator_id: Option<PublicKey>,
@@ -141,28 +141,28 @@ impl ClassBasedLimiter {
     /// Creates a new class based limiter.
     ///
     /// Starts the background worker task as well.
-    pub(crate) fn new(bytes_per_second: u32) -> Self {
+    pub(crate) fn new(resources_per_second: u32) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
 
         tokio::spawn(worker(
             receiver,
-            bytes_per_second,
-            ((bytes_per_second as f64) * STORED_BUFFER_SECS.as_secs_f64()) as u32,
+            resources_per_second,
+            ((resources_per_second as f64) * STORED_BUFFER_SECS.as_secs_f64()) as u32,
         ));
 
         ClassBasedLimiter { sender }
     }
 }
 
-impl BandwidthLimiter for ClassBasedLimiter {
+impl Limiter for ClassBasedLimiter {
     fn create_handle(
         &self,
         peer_id: NodeId,
         validator_id: Option<PublicKey>,
-    ) -> Box<dyn BandwidthLimiterHandle> {
+    ) -> Box<dyn LimiterHandle> {
         Box::new(ClassBasedHandle {
             sender: self.sender.clone(),
-            consumer_id: Arc::new(BandwidthConsumerId {
+            consumer_id: Arc::new(ConsumerId {
                 peer_id,
                 validator_id,
             }),
@@ -188,20 +188,20 @@ impl BandwidthLimiter for ClassBasedLimiter {
 }
 
 #[async_trait]
-impl BandwidthLimiterHandle for ClassBasedHandle {
+impl LimiterHandle for ClassBasedHandle {
     async fn request_allowance(&self, num_bytes: u32) {
         let (responder, waiter) = oneshot::channel();
 
         // Send a request to the limiter and await a response. If we do not receive one due to
-        // errors, simply ignore it and do not restrict bandwidth.
+        // errors, simply ignore it and do not restrict resources.
         //
         // While ignoring it is suboptimal, it is likely that we can continue operation normally in
         // many circumstances, thus the message is downgraded from what would be a `warn!` to
         // `debug!`.
         if self
             .sender
-            .send(ClassBasedCommand::RequestBandwidth {
-                num_bytes,
+            .send(ClassBasedCommand::RequestResource {
+                amount: num_bytes,
                 id: self.consumer_id.clone(),
                 responder,
             })
@@ -209,7 +209,7 @@ impl BandwidthLimiterHandle for ClassBasedHandle {
         {
             debug!("worker was shutdown, sending is unlimited");
         } else if waiter.await.is_err() {
-            debug!("failed to await bandwidth allowance, sending unlimited");
+            debug!("failed to await resource allowance, unlimited");
         }
     }
 }
@@ -224,20 +224,20 @@ impl Drop for ClassBasedLimiter {
 
 /// Background worker for the limiter.
 ///
-/// Will permit any amount of current/future validator traffic, while restricting non-validators to
-/// `bytes_per_second`, although with unlimited single-message burst. The latter guarantees that any
-/// size message can be sent.
+/// Will permit any amount of current/future validator resource requests, while restricting
+/// non-validators to `resources_per_second`, although with unlimited one-time burst. The latter
+/// guarantees that any size request can be satisfied (e.g. a message larger than the burst limit).
 ///
-/// Stores up to `max_stored_bytes` during idle times to smooth this process.
+/// Stores up to `max_stored_resources` during idle times to smooth this process.
 async fn worker(
     mut receiver: mpsc::UnboundedReceiver<ClassBasedCommand>,
-    bytes_per_second: u32,
-    max_stored_bytes: u32,
+    resources_per_second: u32,
+    max_stored_resource: u32,
 ) {
     let mut active_validators = HashSet::new();
     let mut upcoming_validators = HashSet::new();
 
-    let mut bytes_available: i64 = 0;
+    let mut resources_available: i64 = 0;
     let mut last_refill: Instant = Instant::now();
 
     // Whether or not we emitted a warning that the limiter is currently implicitly disabled.
@@ -254,70 +254,72 @@ async fn worker(
                 debug!(
                     ?active_validators,
                     ?upcoming_validators,
-                    "bandwidth classes updated"
+                    "resource classes updated"
                 );
             }
-            ClassBasedCommand::RequestBandwidth {
-                num_bytes,
+            ClassBasedCommand::RequestResource {
+                amount,
                 id,
                 responder,
             } => {
                 if active_validators.is_empty() && upcoming_validators.is_empty() {
                     // It is likely that we have not been initialized, thus no node is getting the
-                    // reserved bandwidth. In this case, do not limit at all.
+                    // reserved resources. In this case, do not limit at all.
                     if !logged_uninitialized {
                         logged_uninitialized = true;
-                        info!("empty set of validators, not limiting bandwidth at all");
+                        info!("empty set of validators, not limiting resources at all");
                     }
                     continue;
                 }
 
-                let bandwidth_class = if let Some(ref validator_id) = id.validator_id {
+                let peer_class = if let Some(ref validator_id) = id.validator_id {
                     if active_validators.contains(validator_id) {
-                        BandwidthClass::ActiveValidator
+                        PeerClass::ActiveValidator
                     } else if upcoming_validators.contains(validator_id) {
-                        BandwidthClass::UpcomingValidator
+                        PeerClass::UpcomingValidator
                     } else {
-                        BandwidthClass::Bulk
+                        PeerClass::Bulk
                     }
                 } else {
-                    BandwidthClass::Bulk
+                    PeerClass::Bulk
                 };
 
-                match bandwidth_class {
-                    BandwidthClass::ActiveValidator | BandwidthClass::UpcomingValidator => {
+                match peer_class {
+                    PeerClass::ActiveValidator | PeerClass::UpcomingValidator => {
                         // No limit imposed on validators.
                     }
-                    BandwidthClass::Bulk => {
-                        while bytes_available < 0 {
+                    PeerClass::Bulk => {
+                        while resources_available < 0 {
                             // Determine time delta since last refill.
                             let now = Instant::now();
                             let elapsed = Instant::now() - last_refill;
                             last_refill = now;
 
-                            // Add the appropriate amount of bytes, capped at `max_stored_bytes`.
-                            bytes_available += ((elapsed.as_nanos() * bytes_per_second as u128)
-                                / 1_000_000_000)
-                                as i64;
-                            bytes_available = bytes_available.min(max_stored_bytes as i64);
+                            // Add appropriate amount of resources, capped at `max_stored_bytes`.
+                            resources_available +=
+                                ((elapsed.as_nanos() * resources_per_second as u128)
+                                    / 1_000_000_000) as i64;
+                            resources_available =
+                                resources_available.min(max_stored_resource as i64);
 
-                            // If we still do not have enough byte available, sleep until we do.
-                            if bytes_available < 0 {
+                            // If we do not have enough resources available, sleep until we do.
+                            if resources_available < 0 {
                                 let estimated_time_remaining = Duration::from_millis(
-                                    (-bytes_available) as u64 * 1000 / bytes_per_second as u64,
+                                    (-resources_available) as u64 * 1000
+                                        / resources_per_second as u64,
                                 );
 
                                 tokio::time::sleep(estimated_time_remaining).await;
                             }
                         }
 
-                        // Subtract outgoing message.
-                        bytes_available -= num_bytes as i64;
+                        // Subtract requested amount.
+                        resources_available -= amount as i64;
                     }
                 }
 
                 if responder.send(()).is_err() {
-                    debug!("Bandwidth requester disappeared before we could answer.")
+                    debug!("resource requester disappeared before we could answer.")
                 }
             }
             ClassBasedCommand::Shutdown => {
@@ -335,7 +337,7 @@ mod tests {
 
     use tokio::time::Instant;
 
-    use super::{BandwidthLimiter, ClassBasedLimiter, NodeId, PublicKey, Unlimited};
+    use super::{ClassBasedLimiter, Limiter, NodeId, PublicKey, Unlimited};
     use crate::{crypto::AsymmetricKeyExt, testing::init_logging};
 
     /// Something that happens almost immediately, with some allowance for test jitter.
