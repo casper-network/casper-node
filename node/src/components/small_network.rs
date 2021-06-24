@@ -182,9 +182,15 @@ where
     /// era, so we treat the highest era we have seen as the active era.
     highest_era_seen: EraId,
 
-    /// The active bandwidth limiter.
+    /// The outgoing bandwidth limiter.
     #[data_size(skip)]
-    limiter: Box<dyn Limiter>,
+    upstream_limiter: Box<dyn Limiter>,
+
+    /// The limiter for incoming resource usage.
+    ///
+    /// This is not incoming bandwidth but an independent resource estimate.
+    #[data_size(skip)]
+    incoming_limiter: Box<dyn Limiter>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -228,13 +234,15 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
-        let limiter: Box<dyn Limiter> = if cfg.max_non_validating_peer_bps == 0 {
+        let upstream_limiter: Box<dyn Limiter> = if cfg.max_non_validating_peer_bps == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
                 cfg.max_non_validating_peer_bps,
             ))
         };
+
+        let incoming_limiter: Box<dyn Limiter> = Box::new(limiter::Unlimited);
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
             retry_attempts: RECONNECTION_ATTEMPTS,
@@ -308,7 +316,8 @@ where
             server_join_handle: Some(server_join_handle),
             net_metrics,
             highest_era_seen: EraId::new(0),
-            limiter,
+            upstream_limiter,
+            incoming_limiter,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -440,7 +449,7 @@ where
                 peer_addr,
                 public_addr,
                 peer_id,
-                peer_consensus_public_key: _,
+                peer_consensus_public_key,
                 stream,
             } => {
                 info!("new incoming connection established");
@@ -467,6 +476,8 @@ where
                     tasks::message_reader(
                         self.context.clone(),
                         stream,
+                        self.incoming_limiter
+                            .create_handle(peer_id, peer_consensus_public_key),
                         self.shutdown_receiver.clone(),
                         peer_id,
                         span.clone(),
@@ -616,7 +627,7 @@ where
                     tasks::message_sender(
                         receiver,
                         sink,
-                        self.limiter
+                        self.upstream_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
                     )
@@ -1029,7 +1040,7 @@ where
                 active_validators,
                 upcoming_validators,
             } => {
-                self.limiter
+                self.upstream_limiter
                     .update_validators(*active_validators, *upcoming_validators);
                 Effects::new()
             }
