@@ -381,11 +381,15 @@ pub fn get_item(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
-    state_root_hash: &str,
+    maybe_block_identifier: &str,
     key: &str,
     path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_item(state_root_hash, key, path)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_item(
+        maybe_block_identifier,
+        key,
+        path,
+    )
 }
 
 /// Retrieves a purse's balance from the network.

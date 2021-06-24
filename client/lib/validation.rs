@@ -17,6 +17,7 @@ use casper_types::{bytesrepr, Key, U512};
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
 const GET_ITEM_RESULT_MERKLE_PROOF: &str = "merkle_proof";
+const GET_ITEM_RESULT_STATE_ROOT_HASH: &str = "state_root_hash";
 
 /// Error that can be returned when validating a block returned from a JSON-RPC method.
 #[derive(Error, Debug)]
@@ -116,7 +117,6 @@ pub(crate) fn validate_get_era_info_response(
 
 pub(crate) fn validate_query_response(
     response: &JsonRpc,
-    state_root_hash: &Digest,
     key: &Key,
     path: &[String],
 ) -> Result<(), ValidateResponseError> {
@@ -164,14 +164,23 @@ pub(crate) fn validate_query_response(
         }
     }
 
-    core::validate_query_proof(
-        &state_root_hash.to_owned().into(),
-        &proofs,
-        key,
-        path,
-        proof_value,
-    )
-    .map_err(Into::into)
+    let state_root_hash: Digest = {
+        let value = object
+            .get(GET_ITEM_RESULT_STATE_ROOT_HASH)
+            .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
+
+        let value_str = value
+            .as_str()
+            .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
+
+        let value_bytes = hex::decode(value_str)
+            .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
+
+        bytesrepr::deserialize(value_bytes)?
+    };
+
+    core::validate_query_proof(&state_root_hash.into(), &proofs, key, path, proof_value)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_get_balance_response(

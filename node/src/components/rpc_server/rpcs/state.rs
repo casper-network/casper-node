@@ -40,12 +40,13 @@ use crate::{
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
-    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    maybe_block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
     key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
     path: vec!["inner".to_string()],
 });
 static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    state_root_hash: *Block::doc_example().header().state_root_hash(),
     stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
     merkle_proof: MERKLE_PROOF.clone(),
 });
@@ -85,7 +86,7 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
 #[serde(deny_unknown_fields)]
 pub struct GetItemParams {
     /// Hash of the state root.
-    pub state_root_hash: Digest,
+    pub maybe_block_identifier: Option<BlockIdentifier>,
     /// `casper_types::Key` as formatted string.
     pub key: String,
     /// The path components starting from the key as base.
@@ -106,6 +107,8 @@ pub struct GetItemResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
+    /// The state root hash.
+    pub state_root_hash: Digest,
     /// The stored value.
     pub stored_value: StoredValue,
     /// The merkle proof.
@@ -149,11 +152,42 @@ impl RpcWithParamsExt for GetItem {
                 }
             };
 
+            let block: Block = {
+                let maybe_id = params.maybe_block_identifier;
+                let maybe_block = effect_builder
+                    .make_request(
+                        |responder| RpcRequest::GetBlock {
+                            maybe_id,
+                            responder,
+                        },
+                        QueueKind::Api,
+                    )
+                    .await;
+
+                match maybe_block {
+                    None => {
+                        let error_message = if maybe_id.is_none() {
+                            "query-state failed to get latest added block."
+                        } else {
+                            "query-state failed to get specified block."
+                        };
+
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::NoSuchBlock as i64,
+                            error_message,
+                        ))?);
+                    }
+                    Some((block, _)) => block,
+                }
+            };
+
+            let state_root_hash = *block.header().state_root_hash();
+
             // Run the query.
             let query_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::QueryGlobalState {
-                        state_root_hash: params.state_root_hash,
+                        state_root_hash,
                         base_key,
                         path: params.path,
                         responder,
@@ -173,6 +207,7 @@ impl RpcWithParamsExt for GetItem {
 
             let result = Self::ResponseResult {
                 api_version,
+                state_root_hash,
                 stored_value,
                 merkle_proof: hex::encode(proof_bytes),
             };

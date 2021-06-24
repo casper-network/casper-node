@@ -13,7 +13,7 @@ enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
-    StateRootHash,
+    BlockIdentifier,
     Key,
     Path,
 }
@@ -111,8 +111,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::state_root_hash::arg(
-                DisplayOrder::StateRootHash as usize,
+            .arg(common::block_identifier::arg(
+                DisplayOrder::BlockIdentifier as usize,
             ))
             .arg(key::arg())
             .arg(path::arg())
@@ -122,7 +122,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
-        let state_root_hash = common::state_root_hash::get(matches);
+        let maybe_block_identifier = common::block_identifier::get(matches);
         let key = key::get(matches)?;
         let path = path::get(matches);
 
@@ -130,7 +130,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
             maybe_rpc_id,
             node_address,
             verbosity_level,
-            state_root_hash,
+            maybe_block_identifier,
             &key,
             path,
         )

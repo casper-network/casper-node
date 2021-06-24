@@ -90,12 +90,8 @@ impl RpcCall {
         GetDeploy::request_with_map_params(self, params)
     }
 
-    pub(crate) fn get_item(self, state_root_hash: &str, key: &str, path: &str) -> Result<JsonRpc> {
-        let state_root_hash =
-            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
-                context: "state_root_hash",
-                error,
-            })?;
+    pub(crate) fn get_item(self, block_identifier: &str, key: &str, path: &str) -> Result<JsonRpc> {
+        let maybe_block_identifier = Self::block_identifier(block_identifier)?;
 
         let key = {
             if let Ok(key) = Key::from_formatted_str(key) {
@@ -114,12 +110,12 @@ impl RpcCall {
         };
 
         let params = GetItemParams {
-            state_root_hash,
+            maybe_block_identifier,
             key: key.to_formatted_string(),
             path: path.clone(),
         };
         let response = GetItem::request_with_map_params(self, params)?;
-        validation::validate_query_response(&response, &state_root_hash, &key, &path)?;
+        validation::validate_query_response(&response, &key, &path)?;
         Ok(response)
     }
 
