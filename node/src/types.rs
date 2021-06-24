@@ -5,8 +5,9 @@ use rand::{CryptoRng, RngCore};
 use rand_chacha::ChaCha20Rng;
 
 pub use block::{
-    json_compatibility::JsonBlock, Block, BlockBody, BlockBodyHashedParts, BlockHash, BlockHeader,
-    BlockSignatures, FinalitySignature, HashingAlgorithmVersion,
+    json_compatibility::JsonBlock, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
+    FinalitySignature, HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart,
+    MerkleLinkedListNode,
 };
 pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;

@@ -933,39 +933,101 @@ impl Display for BlockHeaderWithMetadata {
     }
 }
 
-/// Hashed parts of a [`BlockBody`].
-pub struct BlockBodyHashedParts {
-    /// Hash corresponding to [`BlockBody::deploy_hashes`]
-    pub hashed_deploy_hashes: Digest,
-    /// Hash corresponding to [`BlockBody::transfer_hashes`]
-    pub hashed_transfer_hashes: Digest,
-    /// Hash corresponding to [`BlockBody::proposer`]
-    pub hashed_proposer: Digest,
+/// A node in a Merkle linked-list used for hashing data structures.
+pub struct MerkleLinkedListNode<T> {
+    value: T,
+    merkle_proof_of_rest: Digest,
 }
 
-impl BlockBodyHashedParts {
-    /// The number of digests contained in a [`BlockBodyHashedParts`]
-    pub const NUMBER_OF_HASHES: usize = 3;
+impl<T> MerkleLinkedListNode<T> {
+    /// Constructs a new [`MerkleLinkedListNode`].
+    pub fn new(value: T, merkle_proof_of_rest: Digest) -> MerkleLinkedListNode<T> {
+        MerkleLinkedListNode {
+            value,
+            merkle_proof_of_rest,
+        }
+    }
 
-    /// Gets a sized slice. This is necessary because it is important to compute hashes in a
-    /// particular order.
-    pub fn as_slice(&self) -> [Digest; Self::NUMBER_OF_HASHES] {
-        let BlockBodyHashedParts {
-            hashed_deploy_hashes,
-            hashed_transfer_hashes,
-            hashed_proposer,
-        } = self;
+    /// Gets the hash of the rest of the linked list.
+    pub fn merkle_proof_of_rest(&self) -> &Digest {
+        &self.merkle_proof_of_rest
+    }
 
+    /// Converts a [`MerkleLinkedListNode`] into its underlying value.
+    pub fn take_value(self) -> T {
+        self.value
+    }
+}
+
+/// A fragment of a Merkle-treeified [`BlockBody`].
+///
+/// Has the following hash structure:
+///
+/// ```text
+/// merkle_linked_list_node_hash
+///     |          \
+/// value_hash      merkle_linked_list_node::merkle_proof_of_rest
+///     |
+/// merkle_linked_list_node::value
+/// ```
+pub struct MerkleBlockBodyPart<'a, T> {
+    value_hash: Digest,
+    merkle_linked_list_node: MerkleLinkedListNode<&'a T>,
+    merkle_linked_list_node_hash: Digest,
+}
+
+impl<'a, T> MerkleBlockBodyPart<'a, T> {
+    fn new(value: &T, value_hash: Digest, merkle_proof_of_rest: Digest) -> MerkleBlockBodyPart<T> {
+        MerkleBlockBodyPart {
+            value_hash,
+            merkle_linked_list_node: MerkleLinkedListNode {
+                value,
+                merkle_proof_of_rest,
+            },
+            merkle_linked_list_node_hash: hash::hash_pair(&value_hash, &merkle_proof_of_rest),
+        }
+    }
+
+    /// The value of the block body part
+    pub fn value(&self) -> &'a T {
+        self.merkle_linked_list_node.value
+    }
+
+    /// The hash of the value and the rest of the linked list as a slice
+    pub fn value_and_rest_hashes_slice(&self) -> [Digest; 2] {
         [
-            *hashed_deploy_hashes,
-            *hashed_transfer_hashes,
-            *hashed_proposer,
+            self.value_hash,
+            self.merkle_linked_list_node.merkle_proof_of_rest,
         ]
     }
 
-    fn hash(&self) -> Digest {
-        hash::hash_slice_rfold(&self.as_slice())
+    /// The hash of the value of the block body part
+    pub fn value_hash(&self) -> &Digest {
+        &self.value_hash
     }
+
+    /// The hash of the linked list node
+    pub fn merkle_linked_list_node_hash(&self) -> &Digest {
+        &self.merkle_linked_list_node_hash
+    }
+}
+
+/// A [`BlockBody`] that has been hashed so its parts may be stored as a Merkle linked-list.
+///
+/// ```text
+///                   body_hash (root)
+///                   /      \__________________
+/// hash(deploy_hashes)      /                  \_____________
+///                   hash(transfer_hashes)     /             \
+///                                         hash(proposer)   SENTINEL
+/// ```
+pub struct MerkleBlockBody<'a> {
+    /// Merklized [`BlockBody::deploy_hashes`].
+    pub deploy_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
+    /// Merklized [`BlockBody::transfer_hashes`].
+    pub transfer_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
+    /// Merklized [`BlockBody::proposer`].
+    pub proposer: MerkleBlockBodyPart<'a, PublicKey>,
 }
 
 /// The body portion of a block.
@@ -1013,21 +1075,8 @@ impl BlockBody {
         hash::hash(&serialized_body)
     }
 
-    /// Computes the body hash by hashing a Merkle tree of the form:
-    ///
-    /// ```text
-    ///                   body_hash
-    ///                   /      \__________________
-    /// hash(deploy_hashes)      /                  \_____________
-    ///                   hash(transfer_hashes)     /             \
-    ///                                         hash(proposer)   SENTINEL
-    /// ```
-    fn hash_v2(&self) -> Digest {
-        self.hashed_parts().hash()
-    }
-
-    /// Returns a `Vec` of serialized fields along with their hashes.
-    pub(crate) fn hashed_parts(&self) -> BlockBodyHashedParts {
+    /// Construct the
+    pub fn merklize(&self) -> MerkleBlockBody {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let BlockBody {
             deploy_hashes,
@@ -1035,18 +1084,35 @@ impl BlockBody {
             proposer,
         } = self;
 
-        let hashed_deploy_hashes =
-            hash::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect());
-        let hashed_transfer_hashes =
-            hash::hash_vec_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from).collect());
-        let hashed_proposer =
-            hash::hash(&proposer.to_bytes().expect("Could not serialize proposer"));
+        let proposer = MerkleBlockBodyPart::new(
+            proposer,
+            hash::hash(&proposer.to_bytes().expect("Could not serialize proposer")),
+            hash::SENTINEL1,
+        );
 
-        BlockBodyHashedParts {
-            hashed_proposer,
-            hashed_deploy_hashes,
-            hashed_transfer_hashes,
+        let transfer_hashes = MerkleBlockBodyPart::new(
+            transfer_hashes,
+            hash::hash_vec_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from).collect()),
+            proposer.merkle_linked_list_node_hash,
+        );
+
+        let deploy_hashes = MerkleBlockBodyPart::new(
+            deploy_hashes,
+            hash::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
+            transfer_hashes.merkle_linked_list_node_hash,
+        );
+
+        MerkleBlockBody {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
         }
+    }
+
+    /// Computes the body hash by taking the root of the Merkle tree representation of the block
+    /// body.
+    fn hash_v2(&self) -> Digest {
+        self.merklize().deploy_hashes.merkle_linked_list_node_hash
     }
 }
 

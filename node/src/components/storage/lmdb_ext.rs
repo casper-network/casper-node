@@ -78,31 +78,20 @@ pub enum LmdbExtError {
     #[error(transparent)]
     BlockValidationError(#[from] BlockValidationError),
     #[error(
-        "Could not find deploy hashes for block body. \
+        "Block body does not have correct Merkle root for its hash. \
          Block body hash: {block_body_hash}, \
-         Hashed deploy hashes: {hashed_deploy_hashes}"
+         Merkle root: {merkle_root}"
     )]
-    BlockBodyDidNotHaveDeployHashes {
+    IncorrectBlockBodyMerkleRoot {
         block_body_hash: Digest,
-        hashed_deploy_hashes: Digest,
+        merkle_root: Digest,
     },
     #[error(
-        "Could not find deploy hashes for block body. \
-         Block body hash: {block_body_hash}, \
-         Hashed transfer hashes: {hashed_transfer_hashes}"
+        "Could not delete block body part with Merkle linked list node hash: \
+         {merkle_linked_list_node_hash:?}"
     )]
-    BlockBodyDidNotHaveTransferHashes {
-        block_body_hash: Digest,
-        hashed_transfer_hashes: Digest,
-    },
-    #[error(
-        "Could not find a proposer for block body. \
-         Block body hash: {block_body_hash}, \
-         Proposer hash: {hashed_proposer}"
-    )]
-    BlockBodyDidNotHaveProposerHash {
-        block_body_hash: Digest,
-        hashed_proposer: Digest,
+    CouldNotDeleteBlockBodyPart {
+        merkle_linked_list_node_hash: Digest,
     },
 }
 
