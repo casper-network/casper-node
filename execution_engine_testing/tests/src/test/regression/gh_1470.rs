@@ -622,7 +622,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
         mint::ARG_ID => Some(1u64),
     };
 
-    let current_protocol_version = lmdb_fixture_state.genesis_request.protocol_version();
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_protocol_data = builder
         .get_engine_state()
@@ -671,7 +671,7 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
         mint::ARG_ID => Some(1u64),
     };
 
-    let current_protocol_version = lmdb_fixture_state.genesis_request.protocol_version();
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_protocol_data = builder
         .get_engine_state()
@@ -717,7 +717,7 @@ fn should_add_bid_after_major_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
 
-    let current_protocol_version = lmdb_fixture_state.genesis_request.protocol_version();
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_protocol_data = builder
         .get_engine_state()
@@ -773,7 +773,7 @@ fn should_add_bid_after_minor_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
 
-    let current_protocol_version = lmdb_fixture_state.genesis_request.protocol_version();
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_protocol_data = builder
         .get_engine_state()
@@ -832,7 +832,7 @@ fn should_wasm_transfer_after_major_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
 
-    let current_protocol_version = lmdb_fixture_state.genesis_request.protocol_version();
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_protocol_data = builder
         .get_engine_state()
@@ -887,7 +887,7 @@ fn should_wasm_transfer_after_minor_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
 
-    let current_protocol_version = lmdb_fixture_state.genesis_request.protocol_version();
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_protocol_data = builder
         .get_engine_state()

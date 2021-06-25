@@ -1,7 +1,7 @@
 {
   "genesis_request": {
     "genesis_config_hash": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
-    "protocol_version": "1.0.0",
+    "protocol_version": "1.2.0",
     "ee_config": {
       "accounts": [
         {
@@ -461,5 +461,5 @@
       "genesis_timestamp_millis": 0
     }
   },
-  "post_state_hash": "e51a48e19ac3554a5e585c32724a807b35ff99baa8e0a8b48533670adaf0f5a7"
+  "post_state_hash": "483aa1dc35286904ac958f38b71080b78d0904465ef9596b364506996dd5f0cc"
 }

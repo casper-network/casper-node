@@ -5,6 +5,7 @@ use std::{
 };
 
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
+use casper_types::ProtocolVersion;
 use fs_extra::dir;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +18,7 @@ use tempfile::TempDir;
 pub const RELEASE_1_2_0: &str = "release_1_2_0";
 const STATE_JSON_FILE: &str = "state.json";
 const FIXTURES_DIRECTORY: &str = "fixtures";
+const GENESIS_PROTOCOL_VERSION_FIELD: &str = "protocol_version";
 
 fn path_to_lmdb_fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURES_DIRECTORY)
@@ -25,12 +27,26 @@ fn path_to_lmdb_fixtures() -> PathBuf {
 /// Contains serialized genesis config.
 #[derive(Serialize, Deserialize)]
 pub struct LmdbFixtureState {
-    pub genesis_request: RunGenesisRequest,
+    /// Serializes as unstructured JSON value because [`RunGenesisRequest`] might change over time
+    /// and likely old fixture might not deserialize cleanly in the future.
+    pub genesis_request: serde_json::Value,
     #[serde(
         serialize_with = "hex::serialize",
         deserialize_with = "hex::deserialize"
     )]
     pub post_state_hash: Blake2bHash,
+}
+
+impl LmdbFixtureState {
+    pub fn genesis_protocol_version(&self) -> ProtocolVersion {
+        serde_json::from_value(
+            self.genesis_request
+                .get(GENESIS_PROTOCOL_VERSION_FIELD)
+                .cloned()
+                .unwrap(),
+        )
+        .expect("should have protocol version field")
+    }
 }
 
 /// Creates a [`LmdbWasmTestBuilder`] from a named fixture directory.
@@ -87,7 +103,7 @@ pub fn generate_fixture(
     let post_state_hash = builder.get_post_state_hash();
 
     let state = LmdbFixtureState {
-        genesis_request,
+        genesis_request: serde_json::to_value(genesis_request)?,
         post_state_hash,
     };
     let serialized_state = serde_json::to_string_pretty(&state)?;
