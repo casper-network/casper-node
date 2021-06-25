@@ -1207,9 +1207,9 @@ impl Storage {
         if !self.put_merkle_block_body_part(tx, self.transfer_hashes_db, transfer_hashes)? {
             return Ok(false);
         };
-        // This might already be present, don't bother checking and early returning.
-        // This behavior might not be correct in the future...
-        self.put_merkle_block_body_part(tx, self.proposer_db, proposer)?;
+        if !self.put_merkle_block_body_part(tx, self.proposer_db, proposer)? {
+            return Ok(false);
+        };
         Ok(true)
     }
 
