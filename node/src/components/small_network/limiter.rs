@@ -20,9 +20,9 @@ const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
 
 /// A limiter.
 ///
-/// Any resource consumer of a specific resource is expected to call `create_handle` for every peer
-/// and use the returned handle to request a access to a resource.
-pub(crate) trait Limiter: Send + Sync {
+/// Any consumer of a specific resource is expected to call `create_handle` for every peer and use
+/// the returned handle to request a access to a resource.
+pub(super) trait Limiter: Send + Sync {
     /// Create a handle for a connection using the given peer and optional validator id.
     fn create_handle(
         &self,
@@ -40,7 +40,7 @@ pub(crate) trait Limiter: Send + Sync {
 
 /// A per-peer handle for a limiter.
 #[async_trait]
-pub(crate) trait LimiterHandle: Send + Sync {
+pub(super) trait LimiterHandle: Send + Sync {
     /// Waits until the requestor is allocated `amount` additional resources.
     async fn request_allowance(&self, amount: u32);
 }
@@ -141,7 +141,7 @@ impl ClassBasedLimiter {
     /// Creates a new class based limiter.
     ///
     /// Starts the background worker task as well.
-    pub(crate) fn new(resources_per_second: u32) -> Self {
+    pub(super) fn new(resources_per_second: u32) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
 
         tokio::spawn(worker(

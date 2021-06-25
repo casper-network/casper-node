@@ -184,7 +184,7 @@ where
 
     /// The outgoing bandwidth limiter.
     #[data_size(skip)]
-    upstream_limiter: Box<dyn Limiter>,
+    outgoing_limiter: Box<dyn Limiter>,
 
     /// The limiter for incoming resource usage.
     ///
@@ -234,7 +234,7 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
-        let upstream_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
+        let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
@@ -242,13 +242,14 @@ where
             ))
         };
 
-        let incoming_limiter: Box<dyn Limiter> = if cfg.max_incoming_message_rate_non_validators == 0 {
-            Box::new(limiter::Unlimited)
-        } else {
-            Box::new(limiter::ClassBasedLimiter::new(
-                cfg.max_incoming_message_rate_non_validators,
-            ))
-        };
+        let incoming_limiter: Box<dyn Limiter> =
+            if cfg.max_incoming_message_rate_non_validators == 0 {
+                Box::new(limiter::Unlimited)
+            } else {
+                Box::new(limiter::ClassBasedLimiter::new(
+                    cfg.max_incoming_message_rate_non_validators,
+                ))
+            };
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
             retry_attempts: RECONNECTION_ATTEMPTS,
@@ -322,7 +323,7 @@ where
             server_join_handle: Some(server_join_handle),
             net_metrics,
             highest_era_seen: EraId::new(0),
-            upstream_limiter,
+            outgoing_limiter,
             incoming_limiter,
         };
 
@@ -633,7 +634,7 @@ where
                     tasks::message_sender(
                         receiver,
                         sink,
-                        self.upstream_limiter
+                        self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
                     )
@@ -1046,7 +1047,7 @@ where
                 active_validators,
                 upcoming_validators,
             } => {
-                self.upstream_limiter.update_validators(
+                self.outgoing_limiter.update_validators(
                     (*active_validators).clone(),
                     (*upcoming_validators).clone(),
                 );
