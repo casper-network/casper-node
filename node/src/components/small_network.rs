@@ -23,13 +23,13 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
-mod bandwidth_limiter;
 mod chain_info;
 mod config;
 mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod limiter;
 mod message;
 mod message_pack_format;
 mod outgoing;
@@ -71,10 +71,10 @@ use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
-    bandwidth_limiter::BandwidthLimiter,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
+    limiter::Limiter,
     message::ConsensusKeyPair,
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
@@ -182,9 +182,15 @@ where
     /// era, so we treat the highest era we have seen as the active era.
     highest_era_seen: EraId,
 
-    /// The active bandwidth limiter.
+    /// The outgoing bandwidth limiter.
     #[data_size(skip)]
-    limiter: Box<dyn BandwidthLimiter>,
+    outgoing_limiter: Box<dyn Limiter>,
+
+    /// The limiter for incoming resource usage.
+    ///
+    /// This is not incoming bandwidth but an independent resource estimate.
+    #[data_size(skip)]
+    incoming_limiter: Box<dyn Limiter>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -228,13 +234,22 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
-        let limiter: Box<dyn BandwidthLimiter> = if cfg.max_non_validating_peer_bps == 0 {
-            Box::new(bandwidth_limiter::Unlimited)
+        let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
+            Box::new(limiter::Unlimited)
         } else {
-            Box::new(bandwidth_limiter::ClassBasedLimiter::new(
-                cfg.max_non_validating_peer_bps,
+            Box::new(limiter::ClassBasedLimiter::new(
+                cfg.max_outgoing_byte_rate_non_validators,
             ))
         };
+
+        let incoming_limiter: Box<dyn Limiter> =
+            if cfg.max_incoming_message_rate_non_validators == 0 {
+                Box::new(limiter::Unlimited)
+            } else {
+                Box::new(limiter::ClassBasedLimiter::new(
+                    cfg.max_incoming_message_rate_non_validators,
+                ))
+            };
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
             retry_attempts: RECONNECTION_ATTEMPTS,
@@ -308,7 +323,8 @@ where
             server_join_handle: Some(server_join_handle),
             net_metrics,
             highest_era_seen: EraId::new(0),
-            limiter,
+            outgoing_limiter,
+            incoming_limiter,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -440,7 +456,7 @@ where
                 peer_addr,
                 public_addr,
                 peer_id,
-                peer_consensus_public_key: _,
+                peer_consensus_public_key,
                 stream,
             } => {
                 info!("new incoming connection established");
@@ -467,6 +483,8 @@ where
                     tasks::message_reader(
                         self.context.clone(),
                         stream,
+                        self.incoming_limiter
+                            .create_handle(peer_id, peer_consensus_public_key),
                         self.shutdown_receiver.clone(),
                         peer_id,
                         span.clone(),
@@ -616,7 +634,7 @@ where
                     tasks::message_sender(
                         receiver,
                         sink,
-                        self.limiter
+                        self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
                     )
@@ -1029,7 +1047,11 @@ where
                 active_validators,
                 upcoming_validators,
             } => {
-                self.limiter
+                self.outgoing_limiter.update_validators(
+                    (*active_validators).clone(),
+                    (*upcoming_validators).clone(),
+                );
+                self.incoming_limiter
                     .update_validators(*active_validators, *upcoming_validators);
                 Effects::new()
             }

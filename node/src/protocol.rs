@@ -67,6 +67,24 @@ impl Payload for Message {
             Message::FinalitySignature(_) => MessageKind::Consensus,
         }
     }
+
+    #[inline]
+    fn incoming_resource_estimate(&self) -> u32 {
+        match self {
+            Message::Consensus(_) => 0,
+            Message::DeployGossiper(_) => 0,
+            Message::AddressGossiper(_) => 0,
+            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
+                Tag::Deploy => 1,
+                Tag::Block => 0,
+                Tag::GossipedAddress => 0,
+                Tag::BlockByHeight => 0,
+                Tag::BlockHeaderByHash => 0,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => 0,
+            },
+            Message::FinalitySignature(_) => 0,
+        }
+    }
 }
 
 impl Message {
