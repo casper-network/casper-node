@@ -189,7 +189,7 @@ impl Limiter for ClassBasedLimiter {
 
 #[async_trait]
 impl LimiterHandle for ClassBasedHandle {
-    async fn request_allowance(&self, num_bytes: u32) {
+    async fn request_allowance(&self, amount: u32) {
         let (responder, waiter) = oneshot::channel();
 
         // Send a request to the limiter and await a response. If we do not receive one due to
@@ -201,7 +201,7 @@ impl LimiterHandle for ClassBasedHandle {
         if self
             .sender
             .send(ClassBasedCommand::RequestResource {
-                amount: num_bytes,
+                amount,
                 id: self.consumer_id.clone(),
                 responder,
             })
