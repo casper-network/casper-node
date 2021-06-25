@@ -292,7 +292,7 @@ async fn worker(
                         while resources_available < 0 {
                             // Determine time delta since last refill.
                             let now = Instant::now();
-                            let elapsed = Instant::now() - last_refill;
+                            let elapsed = now - last_refill;
                             last_refill = now;
 
                             // Add appropriate amount of resources, capped at `max_stored_bytes`.
