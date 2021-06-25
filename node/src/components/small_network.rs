@@ -234,11 +234,11 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
-        let upstream_limiter: Box<dyn Limiter> = if cfg.max_non_validating_peer_bps == 0 {
+        let upstream_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
-                cfg.max_non_validating_peer_bps,
+                cfg.max_outgoing_byte_rate_non_validators,
             ))
         };
 

@@ -31,7 +31,7 @@ impl Default for Config {
             isolation_reconnect_delay: TimeDiff::from_seconds(2),
             initial_gossip_delay: TimeDiff::from_seconds(5),
             max_addr_pending_time: TimeDiff::from_seconds(60),
-            max_non_validating_peer_bps: 0,
+            max_outgoing_byte_rate_non_validators: 0,
             max_non_validating_peer_request_rate: 0,
         }
     }
@@ -60,7 +60,7 @@ pub struct Config {
     /// Maximum allowed time for an address to be kept in the pending set.
     pub max_addr_pending_time: TimeDiff,
     /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
-    pub max_non_validating_peer_bps: u32,
+    pub max_outgoing_byte_rate_non_validators: u32,
     /// Maximum of requests answered from non-validating peers. Unlimited if 0.
     pub max_non_validating_peer_request_rate: u32,
 }
