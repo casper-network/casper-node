@@ -68,7 +68,7 @@ use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer,
 use super::Component;
 use crate::{
     components::storage::lmdb_ext::LmdbExtError::CouldNotDeleteBlockBodyPart,
-    crypto::hash::Digest,
+    crypto::hash::{self, Digest},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -1131,7 +1131,10 @@ impl Storage {
                 self.proposer_db,
                 transfer_hashes_with_proof.merkle_proof_of_rest(),
             )? {
-            Some(proposer_with_proof) => proposer_with_proof,
+            Some(proposer_with_proof) => {
+                debug_assert_eq!(*proposer_with_proof.merkle_proof_of_rest(), hash::SENTINEL1);
+                proposer_with_proof
+            }
             None => return Ok(None),
         };
         let block_body = BlockBody::new(
