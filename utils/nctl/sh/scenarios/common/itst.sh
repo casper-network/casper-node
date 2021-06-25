@@ -73,7 +73,7 @@ function do_start_node() {
         nctl-status
         exit 1
     else
-        log "node-${NODE_ID} is running"
+        log "node-${NODE_ID} is running, started in era: $(check_current_era)"
     fi
 }
 
@@ -118,9 +118,10 @@ function do_await_era_change() {
 }
 
 function check_current_era {
+    local NODE_ID=${1:-$(get_node_for_dispatch)}
     local ERA="null"
     while true; do
-        ERA=$(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
+        ERA="$(get_chain_era $NODE_ID | awk '{print $NF}')"
         if [ "$ERA" = "null" ] || [ "$ERA" = "N/A" ]; then
             sleep 1
         else
@@ -289,12 +290,48 @@ function get_running_node_count {
 # Check that a certain node has produced blocks.
 function assert_node_proposed() {
     local NODE_ID=${1}
-    local NODE_PATH=$(get_path_to_node $NODE_ID)
-    local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
-    log_step "Waiting for node-$NODE_ID to produce a block..."
-    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
-    log "node-$NODE_ID created a block!"
-    log "$OUTPUT"
+    local NODE_PATH=$(get_path_to_node "$NODE_ID")
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex "$NODE_ID")
+    local TIMEOUT=${2:-300}
+    log_step "Waiting for a node-$NODE_ID to produce a block..."
+    local OUTPUT=$(timeout "$TIMEOUT" tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    if ( echo "$OUTPUT" | grep -q "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)" ); then
+        log "Node-$NODE_ID created a block!"
+        log "$OUTPUT"
+    else
+        log "ERROR: Node-$NODE_ID didn't create a block within timeout=$TIMEOUT"
+        exit 1
+    fi
+}
+
+function assert_no_proposal_walkback() {
+    local NODE_ID=${1}
+    local WALKBACK_HASH=${2}
+    local NODE_PATH=$(get_path_to_node "$NODE_ID")
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex_extended "$NODE_ID")
+    local COMPARE_NODE=$(get_node_for_dispatch)
+    local CHECK_HASH=$(do_read_lfb_hash "$COMPARE_NODE")
+    local JSON_OUT
+    local PROPOSER
+
+    log_step "Checking proposers: Walking back to hash $WALKBACK_HASH..."
+
+    while [ "$CHECK_HASH" != "$WALKBACK_HASH" ]; do
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$COMPARE_NODE") -b "$CHECK_HASH")
+        PROPOSER=$(echo "$JSON_OUT" | jq -r '.result.block.body.proposer')
+        if [ "$PROPOSER" = "$PUBLIC_KEY_HEX" ]; then
+            log "ERROR: Node proposal found!"
+            log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
+            log "$JSON_OUT"
+            exit 1
+        else
+            log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
+            unset CHECK_HASH
+            CHECK_HASH=$(echo $JSON_OUT | jq -r '.result.block.header.parent_hash')
+            log "Checking next hash: $CHECK_HASH"
+        fi
+    done
+    log "Node $NODE_ID didn't propose! [expected]"
 }
 
 # Checks logs for nodes 1-10 for equivocators
@@ -324,10 +361,24 @@ function do_submit_auction_bids()
             node="$NODE_ID" \
             amount="$BID_AMOUNT" \
             rate="$BID_DELEGATION_RATE" \
-            quiet="TRUE"
+            quiet="FALSE"
 
     log "node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
 
-    log_step "awaiting 10 seconds for auction bid deploys to finalise"
+    log "awaiting 10 seconds for auction bid deploys to finalise"
     sleep 10.0
+}
+
+function assert_same_era() {
+    local ERA=${1}
+    local NODE_ID=${2}
+    log_step "Checking if within same era..."
+    if [ "$ERA" = "$(check_current_era $NODE_ID)" ]; then
+        log "Still within the era! [expected]"
+        log "... ERA = $ERA : CURRENT_ERA = $(check_current_era $NODE_ID)"
+    else
+        log "Error: Era progressed! Exiting..."
+        log "... ERA = $ERA : CURRENT_ERA = $(check_current_era $NODE_ID)"
+        exit 1
+    fi
 }

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use derive_more::Display;
+use itertools::Itertools;
 
 use crate::components::consensus::{
     highway_core::{
@@ -250,17 +251,16 @@ fn transitive_proposal_dependency() {
     let util_highway =
         Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
 
-    // We use round exponent 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
-    //
-    // time:  0x00 0x0A 0x1A 0x2A 0x3A
-    //
-    // Carol   c0 — c1
-    //                \
-    // Bob             — b0
+    // Alice   a0 — a1
+    //             /  \
+    // Bob        /    b0
+    //           /
+    // Carol   c0
 
-    let c0 = add_unit!(state, CAROL, 0x00, 4u8, 0xA; N, N, N).unwrap();
-    let c1 = add_unit!(state, CAROL, 0x0A, 4u8, None; N, N, c0).unwrap();
-    let b0 = add_unit!(state, BOB, 0x2A, 4u8, None; N, N, c1).unwrap();
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N).unwrap();
+    let c0 = add_unit!(state, CAROL, 0xC; N, N, N).unwrap();
+    let a1 = add_unit!(state, ALICE, None; a0, N, c0).unwrap();
+    let b0 = add_unit!(state, BOB, None; a1, N, c0).unwrap();
 
     // Returns the WireUnit with the specified hash.
     let unit = |hash: u64| Vertex::Unit(state.wire_unit(&hash, TEST_INSTANCE_ID).unwrap());
@@ -270,63 +270,92 @@ fn transitive_proposal_dependency() {
     let peer0 = NodeId(0);
     let peer1 = NodeId(1);
 
-    // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
+    // Create a synchronizer with a 0x200 ms timeout, and a Highway instance.
     let mut sync = Synchronizer::<NodeId, TestContext>::new(
         HighwayConfig {
-            pending_vertex_timeout: 0x20.into(),
+            pending_vertex_timeout: 0x200.into(),
             ..Default::default()
         },
         WEIGHTS.len(),
         TEST_INSTANCE_ID,
     );
 
-    let highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
-    let now = 0x20.into();
+    let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
+    let now = 0x100.into();
 
     assert!(matches!(
-        *sync.schedule_add_vertex(peer0, pvv(c1), now),
+        *sync.schedule_add_vertex(peer0, pvv(a1), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
-    // `c1` can't be added to the protocol state yet b/c it's missing its `c0` dependency.
+    // `a1` can't be added to the protocol state yet b/c it's missing its `a0` dependency.
     let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert!(pv.is_none());
     assert_targeted_message(
         &unwrap_single(outcomes),
         &peer0,
-        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
+        HighwayMessage::RequestDependency(Dependency::Unit(a0)),
     );
-    // "Download" and schedule addition of c0.
-    let c0_outcomes = sync.schedule_add_vertex(peer0, pvv(c0), now);
+
+    // "Download" and schedule addition of a0.
+    let a0_outcomes = sync.schedule_add_vertex(peer0, pvv(a0), now);
     assert!(matches!(
-        *c0_outcomes,
+        *a0_outcomes,
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
-    // `c0` has no dependencies so we can try adding it to the protocol state.
+    // `a0` has no dependencies so we can try adding it to the protocol state.
     let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
-    let pv = maybe_pv.expect("expected c0 vertex");
-    assert_eq!(pv.vertex(), &unit(c0));
+    let pv = maybe_pv.expect("expected a0 vertex");
+    assert_eq!(pv.vertex(), &unit(a0));
     assert!(outcomes.is_empty());
-    // `b0` can't be added either b/c it's relying on `c1` and `c0`.
+
+    // `b0` can't be added either b/c it's relying on `a1` and `c0`.
     assert!(matches!(
         *sync.schedule_add_vertex(peer1, pvv(b0), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
-    let c0_pending_values = {
+    let a0_pending_values = {
         let mut tmp = HashMap::new();
-        let vv = ValidVertex(unit(c0));
+        let vv = ValidVertex(unit(a0));
         let proposed_block = ProposedBlock::new(1u32, BlockContext::new(now, Vec::new()));
         let mut set = HashSet::new();
         set.insert((vv, peer0));
         tmp.insert(proposed_block, set);
         tmp
     };
-    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &c0_pending_values);
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &a0_pending_values);
+    // `peer1` is added as a holder of `a0`'s deploys due to the indirect dependency.
     let pv = maybe_pv.unwrap();
     assert!(pv.sender() == &peer1);
-    assert!(pv.vertex() == &unit(c0));
-    // `b0` depends on `c1` and `c0` transitively but `c0`'s deploys are being downloaded,
+    assert!(pv.vertex() == &unit(a0));
+    // `b0` depends on `a0` transitively but `a0`'s deploys are being downloaded,
     // so we don't re-request it.
-    assert!(outcomes.is_empty())
+    assert!(outcomes.is_empty());
+
+    // If we add `a0` to the protocol state, `a1`'s dependency is satisfied.
+    // `a1`'s other dependency is `c0`. Since both peers have it we request it from both.
+    let vv = highway.validate_vertex(pvv(a0)).expect("a0 is valid");
+    highway.add_valid_vertex(vv, now);
+    assert!(matches!(
+        *sync.remove_satisfied_deps(&highway),
+        [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+    ));
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
+    assert!(maybe_pv.is_none());
+    match &*outcomes {
+        [ProtocolOutcome::CreatedTargetedMessage(msg0, p0), ProtocolOutcome::CreatedTargetedMessage(msg1, p1)] =>
+        {
+            assert_eq!(
+                vec![&peer0, &peer1],
+                vec![p0, p1].into_iter().sorted().collect_vec()
+            );
+            assert_eq!(msg0, msg1);
+            assert_eq!(
+                HighwayMessage::RequestDependency::<TestContext>(Dependency::Unit(c0)),
+                bincode::deserialize(msg0.as_slice()).expect("deserialization to pass")
+            );
+        }
+        outcomes => panic!("unexpected outcomes: {:?}", outcomes),
+    }
 }
 
 fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {

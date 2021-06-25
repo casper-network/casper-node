@@ -15,7 +15,11 @@ use casper_types::{
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
-    shared::{gas::Gas, host_function_costs::Cost, stored_value::StoredValue},
+    shared::{
+        gas::Gas,
+        host_function_costs::{Cost, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
+        stored_value::StoredValue,
+    },
     storage::global_state::StateReader,
 };
 
@@ -185,7 +189,7 @@ where
 
             FunctionIndex::GetCallerIndex => {
                 // args(0) = pointer where a size of serialized bytes will be stored
-                let output_size = Args::parse(args)?;
+                let (output_size,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_caller, [output_size])?;
                 let ret = self.get_caller(output_size)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -193,14 +197,14 @@ where
 
             FunctionIndex::GetBlocktimeIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let dest_ptr = Args::parse(args)?;
+                let (dest_ptr,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_blocktime, [dest_ptr])?;
                 self.get_blocktime(dest_ptr)?;
                 Ok(None)
             }
 
             FunctionIndex::GasFuncIndex => {
-                let gas_arg: u32 = Args::parse(args)?;
+                let (gas_arg,): (u32,) = Args::parse(args)?;
                 // Gas is special cased internal host function and for accounting purposes it isn't
                 // represented in protocol data.
                 self.gas(Gas::new(gas_arg.into()))?;
@@ -222,7 +226,7 @@ where
 
             FunctionIndex::RevertFuncIndex => {
                 // args(0) = status u32
-                let status = Args::parse(args)?;
+                let (status,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.revert, [status])?;
                 Err(self.revert(status))
             }
@@ -482,7 +486,7 @@ where
 
             FunctionIndex::GetPhaseIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let dest_ptr = Args::parse(args)?;
+                let (dest_ptr,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_phase, [dest_ptr])?;
                 self.get_phase(dest_ptr)?;
                 Ok(None)
@@ -503,7 +507,7 @@ where
 
             FunctionIndex::GetMainPurseIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let dest_ptr = Args::parse(args)?;
+                let (dest_ptr,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_main_purse, [dest_ptr])?;
                 self.get_main_purse(dest_ptr)?;
                 Ok(None)
@@ -967,6 +971,68 @@ where
                 let era_info: EraInfo = self.t_from_mem(era_info_ptr, era_info_size)?;
                 self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
+            }
+            FunctionIndex::NewDictionaryFuncIndex => {
+                // args(0) = pointer to output size (output param)
+                let (output_size_ptr,): (u32,) = Args::parse(args)?;
+
+                self.charge_host_function_call(
+                    &DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+                    [output_size_ptr],
+                )?;
+                let ret = self.new_dictionary(output_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::DictionaryGetFuncIndex => {
+                // args(0) = pointer to uref in Wasm memory
+                // args(1) = size of uref in Wasm memory
+                // args(2) = pointer to key bytes pointer in Wasm memory
+                // args(3) = pointer to key bytes size in Wasm memory
+                // args(4) = pointer to output size (output param)
+                let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, output_size_ptr): (
+                    _,
+                    u32,
+                    _,
+                    u32,
+                    _,
+                ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.dictionary_get,
+                    [key_bytes_ptr, key_bytes_size, output_size_ptr],
+                )?;
+                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
+                let ret = self.dictionary_get(
+                    uref_ptr,
+                    uref_size,
+                    key_bytes_ptr,
+                    key_bytes_size,
+                    output_size_ptr,
+                )?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::DictionaryPutFuncIndex => {
+                // args(0) = pointer to uref in Wasm memory
+                // args(1) = size of uref in Wasm memory
+                // args(2) = pointer to key bytes pointer in Wasm memory
+                // args(3) = pointer to key bytes size in Wasm memory
+                // args(4) = pointer to value bytes pointer in Wasm memory
+                // args(5) = pointer to value bytes size in Wasm memory
+                let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.dictionary_put,
+                    [key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size],
+                )?;
+                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
+                scoped_instrumenter.add_property("value_size", value_ptr_size);
+                self.dictionary_put(
+                    uref_ptr,
+                    uref_size,
+                    key_bytes_ptr,
+                    key_bytes_size,
+                    value_ptr,
+                    value_ptr_size,
+                )?;
+                Ok(None)
             }
         }
     }

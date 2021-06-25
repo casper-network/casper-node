@@ -10,7 +10,7 @@ use wheelbuf::WheelBuf;
 use casper_types::ProtocolVersion;
 
 use super::{
-    sse_server::{BroadcastChannelMessage, NewSubscriberInfo, ServerSentEvent},
+    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
     Config, EventIndex, SseData,
 };
 
@@ -57,10 +57,30 @@ pub(super) async fn run(
                         // If the client supplied a "start_from" index, provide the buffered events.
                         // If they requested more than is buffered, just provide the whole buffer.
                         if let Some(start_index) = subscriber.start_from {
-                            for event in buffer
+                            // If the buffer's first event ID is in the range [0, buffer size) or
+                            // (Id::MAX - buffer size, Id::MAX], then the events in the buffer are
+                            // considered to have their IDs wrapping round, or that was recently the
+                            // case.  In this case, we add `buffer.capacity()` to `start_index` and
+                            // the buffered events' IDs when considering which events to include in
+                            // the requested initial events, effectively shifting all the IDs past
+                            // the wrapping transition.
+                            let buffer_size = buffer.capacity() as Id;
+                            let in_wraparound_zone = buffer
                                 .iter()
-                                .skip_while(|event| event.id.unwrap() < start_index)
-                            {
+                                .next()
+                                .map(|event| {
+                                    let id = event.id.unwrap();
+                                    id > Id::MAX - buffer_size || id < buffer_size
+                                })
+                                .unwrap_or_default();
+                            for event in buffer.iter().skip_while(|event| {
+                                if in_wraparound_zone {
+                                    event.id.unwrap().wrapping_add(buffer_size)
+                                        < start_index.wrapping_add(buffer_size)
+                                } else {
+                                    event.id.unwrap() < start_index
+                                }
+                            }) {
                                 // As per sending `SSE_INITIAL_EVENT`, we don't care if this errors.
                                 let _ = subscriber.initial_events_sender.send(event.clone());
                             }

@@ -31,7 +31,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    reactor::{self, validator, EventQueueHandle, ReactorExit},
+    reactor::{self, participating, EventQueueHandle, ReactorExit},
     types::{chainspec, NodeId},
     utils::WithDir,
     NodeRng,
@@ -172,7 +172,7 @@ pub enum Error {
 /// Initializer node reactor.
 #[derive(DataSize, Debug)]
 pub struct Reactor {
-    pub(super) config: WithDir<validator::Config>,
+    pub(super) config: WithDir<participating::Config>,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
@@ -195,6 +195,7 @@ impl Reactor {
             &storage_config,
             hard_reset_to_start_of_era,
             chainspec_loader.chainspec().protocol_config.version,
+            crashed,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -255,7 +256,7 @@ impl Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = (bool, WithDir<validator::Config>);
+    type Config = (bool, WithDir<participating::Config>);
     type Error = Error;
 
     fn new(

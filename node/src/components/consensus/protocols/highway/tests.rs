@@ -58,7 +58,7 @@ const STANDSTILL_TIMEOUT: &str = "1min";
 
 pub(crate) fn new_test_highway_protocol<I1, I2, T>(
     weights: I1,
-    init_slashed: I2,
+    init_faulty: I2,
 ) -> Box<dyn ConsensusProtocol<NodeId, ClContext>>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
@@ -85,7 +85,7 @@ where
     let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
-        &init_slashed.into_iter().collect(),
+        &init_faulty.into_iter().collect(),
         &None.into_iter().collect(),
         &(&chainspec).into(),
         &config,

@@ -37,7 +37,7 @@ use super::{
     bandwidth_limiter::BandwidthLimiterHandle,
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
-    error::{display_error, ConnectionError, IoError},
+    error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
     framed,
     message::ConsensusKeyPair,
@@ -48,6 +48,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
+    utils::display_error,
 };
 
 // TODO: Constants need to be made configurable.
@@ -328,7 +329,7 @@ where
         connection_id,
     );
 
-    io_timeout(HANDSHAKE_TIMEOUT, transport.send(handshake))
+    io_timeout(HANDSHAKE_TIMEOUT, transport.send(Arc::new(handshake)))
         .await
         .map_err(ConnectionError::HandshakeSend)?;
 
@@ -497,12 +498,12 @@ where
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
-    mut queue: UnboundedReceiver<Message<P>>,
-    mut sink: SplitSink<FramedTransport<P>, Message<P>>,
+    mut queue: UnboundedReceiver<Arc<Message<P>>>,
+    mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn BandwidthLimiterHandle>,
     counter: IntGauge,
 ) where
-    P: Serialize + Send + Payload,
+    P: Payload,
 {
     while let Some(message) = queue.recv().await {
         counter.dec();

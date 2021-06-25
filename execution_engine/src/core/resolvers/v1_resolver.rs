@@ -213,6 +213,18 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::PrintIndex.into(),
             ),
+            "casper_dictionary_get" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
+                FunctionIndex::DictionaryGetFuncIndex.into(),
+            ),
+            "casper_dictionary_put" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 6][..], None),
+                FunctionIndex::DictionaryPutFuncIndex.into(),
+            ),
+            "casper_new_dictionary" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 1][..], Some(ValueType::I32)),
+                FunctionIndex::NewDictionaryFuncIndex.into(),
+            ),
             _ => {
                 return Err(InterpreterError::Function(format!(
                     "host module doesn't export function with name {}",

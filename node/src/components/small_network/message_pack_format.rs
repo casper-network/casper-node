@@ -9,6 +9,7 @@
 use std::{
     io::{self, Cursor},
     pin::Pin,
+    sync::Arc,
 };
 
 use bytes::{Bytes, BytesMut};
@@ -22,7 +23,7 @@ use super::Message;
 #[derive(Debug)]
 pub struct MessagePackFormat;
 
-impl<P> Serializer<Message<P>> for MessagePackFormat
+impl<P> Serializer<Arc<Message<P>>> for MessagePackFormat
 where
     Message<P>: Serialize,
 {
@@ -31,7 +32,7 @@ where
     type Error = io::Error;
 
     #[inline]
-    fn serialize(self: Pin<&mut Self>, item: &Message<P>) -> Result<Bytes, Self::Error> {
+    fn serialize(self: Pin<&mut Self>, item: &Arc<Message<P>>) -> Result<Bytes, Self::Error> {
         rmp_serde::to_vec(item)
             .map(Into::into)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))

@@ -57,7 +57,7 @@ use crate::{
         self,
         event_queue_metrics::EventQueueMetrics,
         initializer,
-        validator::{self, Error, ValidatorInitConfig},
+        participating::{self, Error, ParticipatingInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
@@ -320,7 +320,7 @@ pub struct Reactor {
     network: Network<Event, Message>,
     small_network: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
-    config: validator::Config,
+    config: participating::Config,
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -910,7 +910,7 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+    pub async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
         let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
         // Clean the state of the linear_chain_sync before shutting it down.
         #[cfg(not(feature = "fast-sync"))]
@@ -918,7 +918,7 @@ impl Reactor {
             &self.storage,
             self.chainspec_loader.chainspec(),
         )?;
-        let config = ValidatorInitConfig {
+        let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,

@@ -36,7 +36,9 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
+mod blob_cache;
 mod lmdb_ext;
+
 #[cfg(test)]
 mod tests;
 
@@ -47,6 +49,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -76,11 +79,12 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
+        DeployHash, DeployHeader, DeployMetadata, Item, SharedObject, TimeDiff,
     },
-    utils::WithDir,
+    utils::{display_error, WithDir},
     NodeRng,
 };
+use blob_cache::BlobCache;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -209,6 +213,10 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// Whether or not memory deduplication is enabled.
+    enable_mem_deduplication: bool,
+    /// Pool of loaded items.
+    deploy_cache: BlobCache<<Deploy as Item>::Id>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -243,10 +251,15 @@ where
 
 impl Storage {
     /// Creates a new storage component.
+    ///
+    /// If `should_check_integrity` is true, time-consuming integrity checks will be performed
+    /// during this call to `new()`, potentially blocking for several minutes.  This should normally
+    /// only be required if the node is detected to have restarted after a crash.
     pub(crate) fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
+        should_check_integrity: bool,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
@@ -308,12 +321,15 @@ impl Storage {
                     continue;
                 }
             }
-            // We use the opportunity for a small integrity check.
-            assert_eq!(
-                raw_key,
-                block.hash().as_ref(),
-                "found corrupt block in database"
-            );
+
+            if should_check_integrity {
+                assert_eq!(
+                    raw_key,
+                    block.hash().as_ref(),
+                    "found corrupt block in database"
+                );
+            }
+
             insert_to_block_header_indices(
                 &mut block_height_index,
                 &mut switch_block_era_id_index,
@@ -324,12 +340,15 @@ impl Storage {
             let block_body: BlockBody = body_txn
                 .get_value(block_body_db, block.body_hash())?
                 .expect("non-existent block body referred to by header");
-            // We use the opportunity for a small integrity check.
-            assert_eq!(
-                *block.body_hash(),
-                block_body.hash(),
-                "found corrupt block body in database"
-            );
+
+            if should_check_integrity {
+                assert_eq!(
+                    *block.body_hash(),
+                    block_body.hash(),
+                    "found corrupt block body in database"
+                );
+            }
+
             insert_to_deploy_index(&mut deploy_hash_index, block.hash(), &block_body)?;
         }
         info!("block store reindexing complete");
@@ -338,8 +357,18 @@ impl Storage {
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
-        initialize_block_body_db(&env, &block_body_db, &deleted_block_hashes_raw)?;
-        initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
+        initialize_block_body_db(
+            &env,
+            &block_body_db,
+            &deleted_block_hashes_raw,
+            should_check_integrity,
+        )?;
+        initialize_block_metadata_db(
+            &env,
+            &block_metadata_db,
+            &deleted_block_hashes_raw,
+            should_check_integrity,
+        )?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_block_hashes)?;
 
         Ok(Storage {
@@ -355,6 +384,8 @@ impl Storage {
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
+            enable_mem_deduplication: config.enable_mem_deduplication,
+            deploy_cache: BlobCache::new(config.mem_pool_prune_interval),
         })
     }
 
@@ -1156,6 +1187,10 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_state_store_size: usize,
+    /// Whether or not memory deduplication is enabled.
+    enable_mem_deduplication: bool,
+    /// How many loads before memory duplication checks for dead references.
+    mem_pool_prune_interval: u16,
 }
 
 impl Default for Config {
@@ -1167,6 +1202,8 @@ impl Default for Config {
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
             max_deploy_metadata_store_size: DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE,
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
+            enable_mem_deduplication: false,
+            mem_pool_prune_interval: 1024,
         }
     }
 }
@@ -1204,8 +1241,8 @@ impl Display for Event {
 // ON OR BUILD UPON THIS CODE.
 
 impl Storage {
-    // Retrieves a deploy from the deploy store to handle a legacy network request.
-    pub fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
+    /// Retrieves a deploy from the deploy store to handle a legacy network request.
+    fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
         // directly. This caused a dependency of the storage component on networking functionality,
         // which is highly problematic. For this reason, the code to send a reply has been moved to
@@ -1215,6 +1252,44 @@ impl Storage {
             .map_err(Into::into)
             .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
             .expect("legacy direct deploy request failed")
+    }
+
+    /// Retrieves a potentially deduplicated deploy from the deploy store or cache, depending on
+    /// runtime configuration.
+    pub fn handle_deduplicated_legacy_direct_deploy_request(
+        &mut self,
+        deploy_hash: DeployHash,
+    ) -> Option<SharedObject<Vec<u8>>> {
+        if self.enable_mem_deduplication {
+            // On a cache hit, return directly from the cache.
+            if let Some(serialized) = self.deploy_cache.get(&deploy_hash) {
+                return Some(SharedObject::shared(serialized));
+            }
+        }
+
+        let deploy = self.handle_legacy_direct_deploy_request(deploy_hash)?;
+
+        match bincode::serialize(&deploy) {
+            Ok(serialized) => {
+                if self.enable_mem_deduplication {
+                    // We found a deploy, ensure it gets added to the cache.
+                    let arc = Arc::new(serialized);
+                    self.deploy_cache.put(deploy_hash, Arc::downgrade(&arc));
+                    Some(SharedObject::shared(arc))
+                } else {
+                    Some(SharedObject::owned(serialized))
+                }
+            }
+            Err(err) => {
+                // We failed to serialize a stored deploy, which is a serious issue. There is no
+                // good recovery from this, so we just pretend we don't have it, logging an error.
+                error!(
+                    err = display_error(&err),
+                    "failed to create (shared) get-response"
+                );
+                None
+            }
+        }
     }
 }
 
@@ -1285,11 +1360,13 @@ impl Storage {
     }
 }
 
-/// Checks the integrity of the block body database and purges stale entries.
+/// Purges stale entries from the block body database, and checks the integrity of the remainder if
+/// `should_check_integrity` is true.
 fn initialize_block_body_db(
     env: &Environment,
     block_body_db: &Database,
     deleted_block_hashes: &HashSet<&[u8]>,
+    should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing block body database");
     let mut txn = env.begin_rw_txn()?;
@@ -1301,12 +1378,14 @@ fn initialize_block_body_db(
             continue;
         }
 
-        let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
-        assert_eq!(
-            raw_key,
-            body.hash().as_ref(),
-            "found corrupt block body in database"
-        );
+        if should_check_integrity {
+            let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+            assert_eq!(
+                raw_key,
+                body.hash().as_ref(),
+                "found corrupt block body in database"
+            );
+        }
     }
 
     drop(cursor);
@@ -1316,11 +1395,13 @@ fn initialize_block_body_db(
     Ok(())
 }
 
-/// Checks the integrity of the block metadata database and purges stale entries.
+/// Purges stale entries from the block metadata database, and checks the integrity of the remainder
+/// if `should_check_integrity` is true.
 fn initialize_block_metadata_db(
     env: &Environment,
     block_metadata_db: &Database,
     deleted_block_hashes: &HashSet<&[u8]>,
+    should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing block metadata database");
     let mut txn = env.begin_rw_txn()?;
@@ -1332,20 +1413,22 @@ fn initialize_block_metadata_db(
             continue;
         }
 
-        let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+        if should_check_integrity {
+            let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
 
-        // Signature verification could be very slow process
-        // It iterates over every signature and verifies them.
-        match signatures.verify() {
-            Ok(_) => assert_eq!(
-                raw_key,
-                signatures.block_hash.as_ref(),
-                "Corruption in block_metadata_db"
-            ),
-            Err(error) => panic!(
-                "Error: {} in signature verification. Corruption in database",
-                error
-            ),
+            // Signature verification could be very slow process
+            // It iterates over every signature and verifies them.
+            match signatures.verify() {
+                Ok(_) => assert_eq!(
+                    raw_key,
+                    signatures.block_hash.as_ref(),
+                    "Corruption in block_metadata_db"
+                ),
+                Err(error) => panic!(
+                    "Error: {} in signature verification. Corruption in database",
+                    error
+                ),
+            }
         }
     }
 

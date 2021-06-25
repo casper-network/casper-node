@@ -21,6 +21,8 @@ serde = "1"
 hex = { version = "0.4.2", features = ["serde"] }
 tempfile = "3"
 fs_extra = "1.2.0"
+dictionary = { path = "../../smart_contracts/contracts/test/dictionary" }
+dictionary-call = { path = "../../smart_contracts/contracts/test/dictionary-call" }
 
 [dev-dependencies]
 assert_matches = "1.3.0"
