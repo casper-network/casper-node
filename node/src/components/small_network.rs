@@ -242,11 +242,11 @@ where
             ))
         };
 
-        let incoming_limiter: Box<dyn Limiter> = if cfg.max_non_validating_peer_request_rate == 0 {
+        let incoming_limiter: Box<dyn Limiter> = if cfg.max_incoming_message_rate_non_validators == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
-                cfg.max_non_validating_peer_request_rate,
+                cfg.max_incoming_message_rate_non_validators,
             ))
         };
 

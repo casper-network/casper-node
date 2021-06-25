@@ -32,7 +32,7 @@ impl Default for Config {
             initial_gossip_delay: TimeDiff::from_seconds(5),
             max_addr_pending_time: TimeDiff::from_seconds(60),
             max_outgoing_byte_rate_non_validators: 0,
-            max_non_validating_peer_request_rate: 0,
+            max_incoming_message_rate_non_validators: 0,
         }
     }
 }
@@ -62,7 +62,7 @@ pub struct Config {
     /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
     pub max_outgoing_byte_rate_non_validators: u32,
     /// Maximum of requests answered from non-validating peers. Unlimited if 0.
-    pub max_non_validating_peer_request_rate: u32,
+    pub max_incoming_message_rate_non_validators: u32,
 }
 
 #[cfg(test)]
