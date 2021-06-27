@@ -12,6 +12,7 @@ use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use rand::Rng;
+use reqwest::Response;
 use schemars::schema_for;
 use tempfile::TempDir;
 use tokio::{
@@ -74,6 +75,9 @@ struct ServerBehavior {
     /// Whether the server should send all events once, or keep repeating the batch up until
     /// `MAX_EVENT_COUNT` have been sent.
     repeat_events: bool,
+    /// If `Some`, sets the `max_concurrent_subscribers` server config value, otherwise uses the
+    /// config default.
+    max_concurrent_subscribers: Option<u32>,
     clients: Vec<ClientSyncBehavior>,
 }
 
@@ -85,6 +89,7 @@ impl ServerBehavior {
         ServerBehavior {
             has_delay_between_events: true,
             repeat_events: false,
+            max_concurrent_subscribers: None,
             clients: Vec::new(),
         }
     }
@@ -97,6 +102,7 @@ impl ServerBehavior {
         ServerBehavior {
             has_delay_between_events: false,
             repeat_events: true,
+            max_concurrent_subscribers: None,
             clients: Vec::new(),
         }
     }
@@ -107,6 +113,11 @@ impl ServerBehavior {
         let (client_behavior, barrier) = ClientSyncBehavior::new(id);
         self.clients.push(client_behavior);
         barrier
+    }
+
+    /// Sets the `max_concurrent_subscribers` server config value.
+    fn set_max_concurrent_subscribers(&mut self, count: u32) {
+        self.max_concurrent_subscribers = Some(count);
     }
 
     /// Waits for all clients which specified they wanted to join just before the given event ID.
@@ -235,6 +246,9 @@ impl TestFixture {
             } else {
                 1
             },
+            max_concurrent_subscribers: server_behavior
+                .max_concurrent_subscribers
+                .unwrap_or(Config::default().max_concurrent_subscribers),
             ..Default::default()
         };
         let mut server = EventStreamServer::new(
@@ -419,6 +433,38 @@ async fn subscribe(
     debug!("{} waiting after connecting", client_id);
     barrier.wait().await;
     debug!("{} finished waiting", client_id);
+    handle_response(response, final_event_id, client_id).await
+}
+
+/// Runs a client, consuming all SSE events until the server has emitted the event with ID
+/// `final_event_id`.
+///
+/// If the client receives a keepalive (i.e. `:`), it panics, as the server has no further events to
+/// emit.
+///
+/// There is no synchronization between client and server regarding the client joining.  In most
+/// tests such synchronization is required, in which case `subscribe()` should be used.
+async fn subscribe_no_sync(
+    url: &str,
+    final_event_id: Id,
+    client_id: &str,
+) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
+    debug!("{} about to connect via {}", client_id, url);
+    let response = reqwest::get(url).await?;
+    debug!("{} has connected", client_id);
+    handle_response(response, final_event_id, client_id).await
+}
+
+/// Handles a response from the server.
+async fn handle_response(
+    response: Response,
+    final_event_id: Id,
+    client_id: &str,
+) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
+    if response.status() == StatusCode::NO_CONTENT {
+        debug!("{} rejected by server: too many clients", client_id);
+        return Ok(Vec::new());
+    }
 
     // The stream from the server is not always chunked into events, so gather the stream into a
     // single `String` until we receive a keepalive.
@@ -972,6 +1018,71 @@ async fn should_handle_wrapping_past_max_event_id_for_main() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn should_handle_wrapping_past_max_event_id_for_signatures() {
     should_handle_wrapping_past_max_event_id(EventFilter::Signatures).await;
+}
+
+/// Checks that a server rejects new clients with an HTTP 204 when it already has the specified
+/// limit of connected clients.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_limit_concurrent_subscribers() {
+    let mut rng = crate::new_rng();
+    let mut fixture = TestFixture::new(&mut rng);
+
+    // Start the server with `max_concurrent_subscribers == 2`, and set to wait for two clients to
+    // connect at event 0 and another two at event 1.
+    let mut server_behavior = ServerBehavior::new();
+    server_behavior.set_max_concurrent_subscribers(2);
+    let barrier1 = server_behavior.add_client_sync_before_event(0);
+    let barrier2 = server_behavior.add_client_sync_before_event(0);
+    let barrier3 = server_behavior.add_client_sync_before_event(1);
+    let barrier4 = server_behavior.add_client_sync_before_event(1);
+    let server_address = fixture.run_server(server_behavior).await;
+
+    let url_main = url(server_address, EventFilter::Main, None);
+    let url_sigs = url(server_address, EventFilter::Signatures, None);
+
+    let (expected_main_events, final_main_id) = fixture.all_filtered_events(EventFilter::Main);
+    let (expected_sigs_events, final_sigs_id) =
+        fixture.all_filtered_events(EventFilter::Signatures);
+
+    // Run the four clients.
+    let (received_events_main, received_events_sigs, empty_events_main, empty_events_sigs) = join!(
+        subscribe(&url_main, barrier1, final_main_id, "client 1"),
+        subscribe(&url_sigs, barrier2, final_sigs_id, "client 2"),
+        subscribe(&url_main, barrier3, final_main_id, "client 3"),
+        subscribe(&url_sigs, barrier4, final_sigs_id, "client 4"),
+    );
+
+    // Check the first two received all expected events.
+    assert_eq!(received_events_main.unwrap(), expected_main_events);
+    assert_eq!(received_events_sigs.unwrap(), expected_sigs_events);
+
+    // Check the second two received no events.
+    assert!(empty_events_main.unwrap().is_empty());
+    assert!(empty_events_sigs.unwrap().is_empty());
+
+    // Check that now the first clients have all disconnected, two new clients can connect.  Have
+    // them start from event 80 to allow them to actually pull some events off the stream (as the
+    // server has by now stopped creating any new events).
+    let start_id = EVENT_COUNT - 20;
+
+    let url_main = url(server_address, EventFilter::Main, Some(start_id));
+    let url_sigs = url(server_address, EventFilter::Signatures, Some(start_id));
+
+    let (expected_main_events, final_main_id) =
+        fixture.filtered_events(EventFilter::Main, start_id);
+    let (expected_sigs_events, final_sigs_id) =
+        fixture.filtered_events(EventFilter::Signatures, start_id);
+
+    let (received_events_main, received_events_sigs) = join!(
+        subscribe_no_sync(&url_main, final_main_id, "client 5"),
+        subscribe_no_sync(&url_sigs, final_sigs_id, "client 6"),
+    );
+
+    // Check the last two clients' received events are as expected.
+    assert_eq!(received_events_main.unwrap(), expected_main_events);
+    assert_eq!(received_events_sigs.unwrap(), expected_sigs_events);
+
+    fixture.stop_server().await;
 }
 
 /// Rather than being a test proper, this is more a means to easily determine differences between
