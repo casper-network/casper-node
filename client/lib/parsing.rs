@@ -368,10 +368,10 @@ pub(super) fn parse_session_info(
     session_args_complex: &str,
     session_version: &str,
     session_entry_point: &str,
-    is_session_transfer: bool,
+    session_transfer: bool,
 ) -> Result<ExecutableDeployItem> {
     // This is to make sure that we're using &str consistently in the macro call below.
-    let session_transfer = if is_session_transfer { "true" } else { "" };
+    let is_session_transfer = if session_transfer { "true" } else { "" };
 
     check_exactly_one_not_empty!(
         context: "parse_session_info",
@@ -385,7 +385,7 @@ pub(super) fn parse_session_info(
             requires[session_entry_point] requires_empty[],
         (session_path)
             requires[] requires_empty[session_entry_point, session_version],
-        (session_transfer)
+        (is_session_transfer)
             requires[] requires_empty[session_entry_point, session_version]
     );
     if !session_args.is_empty() && !session_args_complex.is_empty() {
@@ -399,10 +399,10 @@ pub(super) fn parse_session_info(
         arg_simple::session::parse(session_args)?,
         args_complex::session::parse(session_args_complex).ok(),
     );
-    if is_session_transfer {
+    if session_transfer {
         if session_args.is_empty() {
             return Err(Error::InvalidArgument(
-                "session_transfer",
+                "is_session_transfer",
                 "requires --session-arg to be present".to_string(),
             ));
         }
@@ -1180,33 +1180,34 @@ mod tests {
                 test[session_path => happy::PATH, conflict: session_name =>         happy::HASH,         requires[], path_conflicts_with_name]
                 test[session_path => happy::PATH, conflict: session_version =>      happy::VERSION,      requires[], path_conflicts_with_version]
                 test[session_path => happy::PATH, conflict: session_entry_point =>  happy::ENTRY_POINT,  requires[], path_conflicts_with_entry_point]
-                test[session_path => happy::PATH, conflict: session_transfer =>     happy::TRANSFER,     requires[], path_conflicts_with_transfer]
+                test[session_path => happy::PATH, conflict: is_session_transfer =>     happy::TRANSFER,     requires[], path_conflicts_with_transfer]
 
                 // name
                 test[session_name => happy::NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_hash]
                 test[session_name => happy::NAME, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_name]
                 test[session_name => happy::NAME, conflict: session_hash =>         happy::HASH,         requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_hash]
                 test[session_name => happy::NAME, conflict: session_version =>      happy::VERSION,      requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_version]
-                test[session_name => happy::NAME, conflict: session_transfer =>     happy::TRANSFER,     requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_transfer]
+                test[session_name => happy::NAME, conflict: is_session_transfer =>     happy::TRANSFER,     requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_transfer]
 
                 // hash
                 test[session_hash => happy::HASH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_hash]
                 test[session_hash => happy::HASH, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_name]
                 test[session_hash => happy::HASH, conflict: session_version =>      happy::VERSION,      requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_version]
-                test[session_hash => happy::HASH, conflict: session_transfer =>     happy::TRANSFER,     requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_transfer]
+                test[session_hash => happy::HASH, conflict: is_session_transfer =>     happy::TRANSFER,     requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_transfer]
                 // name <-> hash is already checked
                 // name <-> path is already checked
 
                 // package_name
                 // package_name + session_version is optional and allowed
                 test[session_package_name => happy::PACKAGE_NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_package_hash]
-                test[session_package_name => happy::VERSION, conflict: session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_transfer]
+                test[session_package_name => happy::VERSION, conflict: is_session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_transfer]
                 // package_name <-> hash is already checked
                 // package_name <-> name is already checked
                 // package_name <-> path is already checked
 
                 // package_hash
                 // package_hash + session_version is optional and allowed
+                test[session_package_hash => happy::PACKAGE_HASH, conflict: is_session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_hash_conflicts_with_transfer]
                 // package_hash <-> package_name is already checked
                 // package_hash <-> hash is already checked
                 // package_hash <-> name is already checked

@@ -82,7 +82,7 @@ pub(super) mod show_arg_examples {
 pub(super) fn session_str_params<'a>(matches: &'a ArgMatches) -> SessionStrParams<'a> {
     let session_args_simple = arg_simple::session::get(matches);
     let session_args_complex = args_complex::session::get(matches);
-    if session_transfer::get(matches) {
+    if is_session_transfer::get(matches) {
         return SessionStrParams::with_transfer(session_args_simple, session_args_complex);
     }
     if let Some(session_path) = session_path::get(matches) {
@@ -544,7 +544,7 @@ pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> A
         .arg(session_path::arg())
         .arg(session_package_hash::arg())
         .arg(session_package_name::arg())
-        .arg(session_transfer::arg())
+        .arg(is_session_transfer::arg())
         .arg(session_hash::arg())
         .arg(session_name::arg())
         .arg(arg_simple::session::arg())
@@ -563,7 +563,7 @@ pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> A
                 .arg(session_path::ARG_NAME)
                 .arg(session_package_hash::ARG_NAME)
                 .arg(session_package_name::ARG_NAME)
-                .arg(session_transfer::ARG_NAME)
+                .arg(is_session_transfer::ARG_NAME)
                 .arg(session_hash::ARG_NAME)
                 .arg(session_name::ARG_NAME)
                 .arg(show_arg_examples::ARG_NAME)
@@ -704,10 +704,10 @@ pub(super) mod session_name {
     }
 }
 
-pub(super) mod session_transfer {
+pub(super) mod is_session_transfer {
     use super::*;
 
-    pub const ARG_NAME: &str = "session-transfer";
+    pub const ARG_NAME: &str = "is-session-transfer";
     const ARG_HELP: &str = "Use this flag if you want to make this a transfer.";
 
     pub fn arg() -> Arg<'static, 'static> {
