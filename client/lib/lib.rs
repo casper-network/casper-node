@@ -22,7 +22,7 @@ mod parsing;
 mod rpc;
 mod validation;
 
-use std::{convert::TryInto, fs, io::Cursor};
+use std::{convert::TryInto, fs, io::Cursor, path::PathBuf};
 
 use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
@@ -93,23 +93,34 @@ pub fn make_deploy(
     deploy_params: DeployStrParams<'_>,
     session_params: SessionStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
+    force: bool,
 ) -> Result<()> {
-    let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
-        Error::IoError {
-            context: format!(
-                "unable to get file or stdout, provided '{:?}'",
-                maybe_output_path
-            ),
-            error,
-        }
+    let path_specified = none_if_empty(maybe_output_path);
+    let path_exists = if let Some(p) = path_specified {
+        PathBuf::from(p).exists()
+    } else {
+        false
+    };
+
+    let output = deploy::output_or_stdout(path_specified).map_err(|error| Error::IoError {
+        context: format!(
+            "unable to get file or stdout, provided '{:?}'",
+            maybe_output_path
+        ),
+        error,
     })?;
 
-    Deploy::with_payment_and_session(
-        deploy_params.try_into()?,
-        payment_params.try_into()?,
-        session_params.try_into()?,
-    )?
-    .write_deploy(output)
+    match (path_exists, force) {
+        (true, false) => Err(Error::FileAlreadyExists(PathBuf::from(
+            path_specified.unwrap(),
+        ))),
+        (true, true) | (false, true) | (false, false) => Deploy::with_payment_and_session(
+            deploy_params.try_into()?,
+            payment_params.try_into()?,
+            session_params.try_into()?,
+        )?
+        .write_deploy(output),
+    }
 }
 
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a

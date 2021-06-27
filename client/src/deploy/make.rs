@@ -18,6 +18,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         let subcommand = SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .arg(creation_common::output::arg())
+            .arg(creation_common::force::arg())
             .display_order(display_order);
         let subcommand = creation_common::apply_common_session_options(subcommand);
         let subcommand = creation_common::apply_common_payment_options(subcommand);
@@ -38,6 +39,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         let payment_str_params = creation_common::payment_str_params(matches);
 
         let maybe_output_path = creation_common::output::get(matches).unwrap_or_default();
+        let force = creation_common::force::get(matches);
 
         casper_client::make_deploy(
             maybe_output_path,
@@ -51,6 +53,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
             },
             session_str_params,
             payment_str_params,
+            force,
         )
         .map(|_| {
             Success::Output(if maybe_output_path.is_empty() {

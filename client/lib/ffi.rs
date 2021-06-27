@@ -295,6 +295,7 @@ pub extern "C" fn casper_make_deploy(
     deploy_params: *const casper_deploy_params_t,
     session_params: *const casper_session_params_t,
     payment_params: *const casper_payment_params_t,
+    force: bool,
 ) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let deploy_params = try_arg_into!(deploy_params);
@@ -305,6 +306,7 @@ pub extern "C" fn casper_make_deploy(
         deploy_params,
         session_params,
         payment_params,
+        force,
     );
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS

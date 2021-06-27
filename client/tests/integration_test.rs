@@ -541,7 +541,8 @@ mod make_deploy {
                 "",
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -558,7 +559,8 @@ mod make_deploy {
                 file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -589,7 +591,8 @@ mod send_deploy {
                 file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -616,7 +619,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -642,7 +646,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -668,7 +673,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
