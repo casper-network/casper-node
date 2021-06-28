@@ -231,7 +231,7 @@ async fn run_equivocator_network() {
     let timeout = Duration::from_secs(90);
 
     let mut switch_blocks = Vec::new();
-    for era_number in 1.. {
+    for era_number in 1..20 {
         let era_id = EraId::from(era_number);
         info!("Waiting for Era {} to begin", era_number);
         net.settle_on(&mut rng, is_in_era(era_id), timeout).await;
@@ -260,10 +260,12 @@ async fn run_equivocator_network() {
         }
 
         // Wait at least two more eras after the equivocation has been detected.
-        let era_end = switch_blocks[era_number as usize - 3]
-            .era_end()
-            .expect("missing era end");
-        if *era_end.inactive_validators == [alice_pk.clone()] {
+        if switch_blocks[..(era_number as usize - 2)]
+            .iter()
+            .any(|header| {
+                header.era_end().expect("missing era end").equivocators == [alice_pk.clone()]
+            })
+        {
             break;
         }
     }
@@ -283,7 +285,7 @@ async fn run_equivocator_network() {
             // We've found era N: This is the last switch block that still lists Alice as a
             // validator.
             let era_end = header.era_end().expect("missing era end");
-            assert_eq!(*era_end.inactive_validators, [alice_pk.clone()]);
+            assert_eq!(*era_end.equivocators, [alice_pk.clone()]);
             return;
         } else {
             // We are in era N + 1 or later. There should be no direct evidence; that would mean

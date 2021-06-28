@@ -25,8 +25,8 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisResult, step::EvictItem, DeployItem, EngineConfig, EngineState,
-        ExecuteRequest, GetEraValidatorsError, GetEraValidatorsRequest, RewardItem, SlashItem,
-        StepRequest, StepResult,
+        ExecuteRequest, GetEraValidatorsError, GetEraValidatorsRequest, RewardItem, StepRequest,
+        StepResult,
     },
     shared::newtypes::{Blake2bHash, CorrelationId},
     storage::{
@@ -867,14 +867,11 @@ impl ContractRuntime {
             .iter()
             .map(|(vid, &value)| RewardItem::new(vid.clone(), value))
             .collect();
-        let slash_items = era_end
-            .equivocators
-            .iter()
-            .map(|vid| SlashItem::new(vid.clone()))
-            .collect();
+        let slash_items = vec![]; // TODO: Remove slashing functions.
         let evict_items = era_end
             .inactive_validators
             .iter()
+            .chain(&era_end.equivocators)
             .map(|vid| EvictItem::new(vid.clone()))
             .collect();
         let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
