@@ -135,6 +135,11 @@ impl RuntimeArgs {
     pub fn to_values(&self) -> Vec<&CLValue> {
         self.0.iter().map(|NamedArg(_name, value)| value).collect()
     }
+
+    /// Returns iterator over all arguments in insertion order.
+    pub fn named_args(&self) -> impl Iterator<Item = &NamedArg> {
+        self.0.iter()
+    }
 }
 
 impl From<Vec<NamedArg>> for RuntimeArgs {

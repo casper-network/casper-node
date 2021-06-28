@@ -417,6 +417,14 @@ fn create_422() -> Response {
     response
 }
 
+/// Creates a 503 response (Service Unavailable) to be returned if the server has too many
+/// subscribers.
+fn create_503() -> Response {
+    let mut response = Response::new(Body::from("server has reached limit of subscribers"));
+    *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+    response
+}
+
 pub(super) struct ChannelsAndFilter {
     pub(super) event_broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     pub(super) new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
@@ -426,7 +434,7 @@ pub(super) struct ChannelsAndFilter {
 impl ChannelsAndFilter {
     /// Creates the message-passing channels required to run the event-stream server and the warp
     /// filter for the event-stream server.
-    pub(super) fn new(broadcast_channel_size: usize) -> Self {
+    pub(super) fn new(broadcast_channel_size: usize, max_concurrent_subscribers: u32,) -> Self {
         // Create a channel to broadcast new events to all subscribed clients' streams.
         let (event_broadcaster, _) = broadcast::channel(broadcast_channel_size);
         let cloned_broadcaster = event_broadcaster.clone();
@@ -441,6 +449,15 @@ impl ChannelsAndFilter {
             .and(path::end())
             .and(warp::query())
             .map(move |path_param: String, query: HashMap<String, String>| {
+                // If we already have the maximum number of subscribers, reject this new one.
+                if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
+                    info!(
+                    %max_concurrent_subscribers,
+                    "event stream server has max subscribers: rejecting new one"
+                );
+                    return create_503();
+                }
+
                 // If `path_param` is not a valid string, return a 404.
                 let event_filter = match get_filter(path_param.as_str()) {
                     Some(filter) => filter,

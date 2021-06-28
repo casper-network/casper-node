@@ -104,7 +104,10 @@ impl EventStreamServer {
             event_broadcaster,
             new_subscriber_info_receiver,
             sse_filter,
-        } = ChannelsAndFilter::new(broadcast_channel_size as usize);
+        } = ChannelsAndFilter::new(
+            broadcast_channel_size as usize,
+            config.max_concurrent_subscribers,
+        );
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
