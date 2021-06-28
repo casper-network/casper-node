@@ -2,6 +2,12 @@
   "name": "casper-contract",
   "version": "1.0.0",
   "description": "Library for developing Casper smart contracts.",
+  "homepage": "https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/casper-network/casper-node.git",
+    "directory": "smart_contracts/contract_as"
+  },
   "main": "index.js",
   "ascMain": "assembly/index.ts",
   "dependencies": {},
