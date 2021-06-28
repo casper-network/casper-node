@@ -461,7 +461,7 @@ async fn handle_response(
     final_event_id: Id,
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
-    if response.status() == StatusCode::NO_CONTENT {
+    if response.status() == StatusCode::SERVICE_UNAVAILABLE {
         debug!("{} rejected by server: too many clients", client_id);
         return Ok(Vec::new());
     }

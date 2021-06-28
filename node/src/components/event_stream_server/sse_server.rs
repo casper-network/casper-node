@@ -314,14 +314,11 @@ fn create_422() -> Response {
     response
 }
 
-/// Creates a 204 response (No Content) to be returned if the server has too many subscribers.
-///
-/// HTTP 204 is mentioned in
-/// https://html.spec.whatwg.org/multipage/server-sent-events.html#server-sent-events-intro as a
-/// suitable way to tell the client to stop reconnecting.
-fn create_204() -> Response {
-    let mut response = Response::new(Body::empty());
-    *response.status_mut() = StatusCode::NO_CONTENT;
+/// Creates a 503 response (Service Unavailable) to be returned if the server has too many
+/// subscribers.
+fn create_503() -> Response {
+    let mut response = Response::new(Body::from("server has reached limit of subscribers"));
+    *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
     response
 }
 
@@ -355,7 +352,7 @@ pub(super) fn create_channels_and_filter(
                     %max_concurrent_subscribers,
                     "event stream server has max subscribers: rejecting new one"
                 );
-                return create_204();
+                return create_503();
             }
 
             // If `path_param` is not a valid string, return a 404.
