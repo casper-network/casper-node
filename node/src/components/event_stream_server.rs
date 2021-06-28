@@ -100,7 +100,10 @@ impl EventStreamServer {
             * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
             / 100;
         let (broadcaster, new_subscriber_info_receiver, sse_filter) =
-            sse_server::create_channels_and_filter(broadcast_channel_size as usize);
+            sse_server::create_channels_and_filter(
+                broadcast_channel_size as usize,
+                config.max_concurrent_subscribers,
+            );
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 

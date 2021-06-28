@@ -314,10 +314,19 @@ fn create_422() -> Response {
     response
 }
 
+/// Creates a 503 response (Service Unavailable) to be returned if the server has too many
+/// subscribers.
+fn create_503() -> Response {
+    let mut response = Response::new(Body::from("server has reached limit of subscribers"));
+    *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+    response
+}
+
 /// Creates the message-passing channels required to run the event-stream server and the warp filter
 /// for the event-stream server.
 pub(super) fn create_channels_and_filter(
     broadcast_channel_size: usize,
+    max_concurrent_subscribers: u32,
 ) -> (
     broadcast::Sender<BroadcastChannelMessage>,
     mpsc::UnboundedReceiver<NewSubscriberInfo>,
@@ -337,6 +346,15 @@ pub(super) fn create_channels_and_filter(
         .and(path::end())
         .and(warp::query())
         .map(move |path_param: String, query: HashMap<String, String>| {
+            // If we already have the maximum number of subscribers, reject this new one.
+            if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
+                info!(
+                    %max_concurrent_subscribers,
+                    "event stream server has max subscribers: rejecting new one"
+                );
+                return create_503();
+            }
+
             // If `path_param` is not a valid string, return a 404.
             let event_filter = match EventFilter::new(&path_param) {
                 Some(filter) => filter,
