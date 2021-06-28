@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{convert::TryFrom, fs::File};
 
 use futures::executor;
 use jsonrpc_lite::{Id, JsonRpc, Params};
@@ -20,7 +20,8 @@ use casper_node::{
         info::{GetDeploy, GetDeployParams},
         state::{
             GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
-            GetBalanceParams, GetItem, GetItemParams,
+            GetBalanceParams, GetItem, GetItemParams, GlobalStateIdentifier, QueryGlobalState,
+            QueryGlobalStateParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -38,6 +39,28 @@ use crate::{
 pub(crate) enum TransferTarget {
     /// Transfer to another account.
     Account(PublicKey),
+}
+
+/// An enum to identify whether the state identifier provided is a block hash or state root hash.
+pub(crate) enum HashMarker {
+    /// The hash value is a block hash.
+    Block,
+    /// The hash provided is a state root hash.
+    StateRoot,
+}
+
+impl TryFrom<&str> for HashMarker {
+    type Error = &'static str;
+
+    fn try_from(marker: &str) -> std::result::Result<Self, Self::Error> {
+        if marker == "block" {
+            Ok(HashMarker::Block)
+        } else if marker == "state" {
+            Ok(HashMarker::StateRoot)
+        } else {
+            Err("Could not identify the marker")
+        }
+    }
 }
 
 /// Struct representing a single JSON-RPC call to the casper node.
@@ -261,6 +284,42 @@ impl RpcCall {
         GetAccountInfo::request_with_map_params(self, params)
     }
 
+    pub(crate) fn query_global_state(
+        self,
+        state_identifier: &str,
+        hash: &str,
+        key: &str,
+        path: &str,
+    ) -> Result<JsonRpc> {
+        let global_state_identifier = Self::state_identifier(state_identifier, hash)?;
+
+        let key = {
+            if let Ok(key) = Key::from_formatted_str(key) {
+                key
+            } else if let Ok(public_key) = PublicKey::from_hex(key) {
+                Key::Account(public_key.to_account_hash())
+            } else {
+                return Err(Error::FailedToParseKey);
+            }
+        };
+
+        let path = if path.is_empty() {
+            vec![]
+        } else {
+            path.split('/').map(ToString::to_string).collect()
+        };
+
+        let params = QueryGlobalStateParams {
+            state_identifier: global_state_identifier.clone(),
+            key: key.to_formatted_string(),
+            path: path.clone(),
+        };
+
+        let response = QueryGlobalState::request_with_map_params(self, params)?;
+        validation::validate_global_state_query(&response, global_state_identifier, &key, &path)?;
+        Ok(response)
+    }
+
     fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {
         if maybe_block_identifier.is_empty() {
             return Ok(None);
@@ -278,6 +337,18 @@ impl RpcCall {
                 .parse()
                 .map_err(|error| Error::FailedToParseInt("block_identifier", error))?;
             Ok(Some(BlockIdentifier::Height(height)))
+        }
+    }
+
+    fn state_identifier(state_identifier: &str, hash: &str) -> Result<GlobalStateIdentifier> {
+        let hash = Digest::from_hex(hash).map_err(|error| Error::CryptoError {
+            context: "state_identifier",
+            error,
+        })?;
+        match HashMarker::try_from(state_identifier) {
+            Ok(HashMarker::Block) => Ok(GlobalStateIdentifier::Block(BlockHash::new(hash))),
+            Ok(HashMarker::StateRoot) => Ok(GlobalStateIdentifier::StateRoot(hash)),
+            Err(_) => Err(Error::FailedToParseStateIdentifier),
         }
     }
 
@@ -389,6 +460,10 @@ impl RpcClient for GetAccountInfo {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for QueryGlobalState {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 pub(crate) trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
@@ -412,3 +487,4 @@ impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}
 impl IntoJsonMap for GetAuctionInfoParams {}
 impl IntoJsonMap for GetAccountInfoParams {}
+impl IntoJsonMap for QueryGlobalStateParams {}
