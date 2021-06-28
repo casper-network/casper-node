@@ -17,7 +17,7 @@ use crate::{
     testing::{self, network::Network, TestRng},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, Chainspec, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, Timestamp,
     },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
@@ -260,11 +260,13 @@ async fn run_equivocator_network() {
         }
 
         // Wait at least two more eras after the equivocation has been detected.
+        let expected = [alice_pk.clone()];
+        let alice_is_equivocator = |header: &BlockHeader| {
+            header.era_end().expect("missing era end").equivocators == expected
+        };
         if switch_blocks[..(era_number as usize - 2)]
             .iter()
-            .any(|header| {
-                header.era_end().expect("missing era end").equivocators == [alice_pk.clone()]
-            })
+            .any(alice_is_equivocator)
         {
             break;
         }
