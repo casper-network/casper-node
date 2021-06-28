@@ -735,12 +735,17 @@ dependencies = [
  "dictionary",
  "dictionary-call",
  "env_logger",
+ "fs_extra",
+ "gh-1470-regression",
+ "gh-1470-regression-call",
+ "hex",
  "log 0.4.14",
  "num-rational 0.4.0",
  "num-traits",
  "once_cell",
  "parity-wasm",
  "rand 0.8.3",
+ "serde",
  "serde_json",
  "tempfile",
 ]
@@ -2309,6 +2314,23 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "wasi 0.10.2+wasi-snapshot-preview1",
+]
+
+[[package]]
+name = "gh-1470-regression"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "gh-1470-regression-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+ "gh-1470-regression",
 ]
 
 [[package]]
