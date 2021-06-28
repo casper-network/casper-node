@@ -463,6 +463,10 @@ async fn handle_response(
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
     if response.status() == StatusCode::SERVICE_UNAVAILABLE {
         debug!("{} rejected by server: too many clients", client_id);
+        assert_eq!(
+            response.text().await.unwrap(),
+            "server has reached limit of subscribers"
+        );
         return Ok(Vec::new());
     }
 
