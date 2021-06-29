@@ -25,7 +25,7 @@ pub enum Error {
     /// Destination purse not found.
     #[cfg_attr(feature = "std", error("Destination not found"))]
     DestNotFound = 2,
-    /// See `PurseError::InvalidURef`.
+    /// Errors relating to validity of source or destination purses.
     #[cfg_attr(feature = "std", error("Invalid URef"))]
     InvalidURef = 3,
     /// See `PurseError::InvalidAccessRights`.

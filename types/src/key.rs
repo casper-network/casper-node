@@ -65,7 +65,7 @@ const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_D
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
-/// A newtype for [`Key`]s dictionary variant.
+/// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
 
 #[allow(missing_docs)]
@@ -345,7 +345,7 @@ impl Key {
         }
     }
 
-    /// Returns a reference to the inner `DictionaryAddr` if `self` is of type
+    /// Returns a reference to the inner [`DictionaryAddr`] if `self` is of type
     /// [`Key::Dictionary`], otherwise returns `None`.
     pub fn as_dictionary(&self) -> Option<&DictionaryAddr> {
         match self {
