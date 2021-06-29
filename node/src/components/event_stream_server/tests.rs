@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     error::Error,
     fs, io, iter, str,
     sync::{
@@ -188,6 +189,7 @@ struct TestFixture {
     storage_dir: TempDir,
     protocol_version: ProtocolVersion,
     events: Vec<SseData>,
+    deploy_getter: DeployGetter,
     first_event_id: Id,
     server_join_handle: Option<JoinHandle<()>>,
     server_stopper: ServerStopper,
@@ -201,10 +203,15 @@ impl TestFixture {
         fs::create_dir_all(&storage_dir).unwrap();
         let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
 
+        let mut deploys = HashMap::new();
         let events = (0..EVENT_COUNT)
             .map(|_| match rng.gen_range(0..10) {
                 0 => SseData::random_block_added(rng),
-                1 => SseData::random_deploy_accepted(rng),
+                1 => {
+                    let (event, deploy) = SseData::random_deploy_accepted(rng);
+                    assert!(deploys.insert(*deploy.id(), deploy).is_none());
+                    event
+                }
                 2 => SseData::random_deploy_processed(rng),
                 3 => SseData::random_fault(rng),
                 4 => SseData::random_step(rng),
@@ -213,10 +220,13 @@ impl TestFixture {
             })
             .collect();
 
+        let deploy_getter = DeployGetter::with_deploys(deploys);
+
         TestFixture {
             storage_dir,
             protocol_version,
             events,
+            deploy_getter,
             first_event_id: 0,
             server_join_handle: None,
             server_stopper: ServerStopper::new(),
@@ -257,6 +267,7 @@ impl TestFixture {
             config,
             self.storage_dir.path().to_path_buf(),
             self.protocol_version,
+            self.deploy_getter.clone(),
         )
         .unwrap();
 
@@ -340,7 +351,7 @@ impl TestFixture {
                 SseData::DeployAccepted {
                     deploy: deploy_hash,
                 } => {
-                    let deploy = sse_server::get_test_deploy(*deploy_hash).unwrap();
+                    let deploy = self.deploy_getter.get_test_deploy(*deploy_hash).unwrap();
                     serde_json::to_string(&deploy).unwrap()
                 }
                 _ => serde_json::to_string(event).unwrap(),

@@ -505,7 +505,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
-        event_stream_server::set_participating_effect_builder(effect_builder);
+        event_stream_server.set_participating_effect_builder(effect_builder);
 
         Ok((
             Reactor {
