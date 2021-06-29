@@ -71,7 +71,10 @@ pub use execution_result::{
 };
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
-pub use key::{HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
+pub use key::{
+    DictionaryAddr, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, KEY_DICTIONARY_LENGTH,
+    KEY_HASH_LENGTH,
+};
 pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
