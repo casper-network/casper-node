@@ -541,7 +541,8 @@ mod make_deploy {
                 "",
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -558,7 +559,8 @@ mod make_deploy {
                 file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -589,7 +591,8 @@ mod send_deploy {
                 file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -616,7 +619,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -626,6 +630,7 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
                 signed_file_path.to_str().unwrap(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -642,7 +647,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -651,7 +657,8 @@ mod sign_deploy {
             casper_client::sign_deploy_file(
                 unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
-                ""
+                "",
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -668,7 +675,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -676,7 +684,8 @@ mod sign_deploy {
         assert!(casper_client::sign_deploy_file(
             unsigned_file_path.to_str().unwrap(),
             "<this is not a path>",
-            ""
+            "",
+            false
         )
         .is_err());
     }

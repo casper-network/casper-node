@@ -46,6 +46,7 @@ pub(super) enum DisplayOrder {
     PaymentPackageName,
     PaymentEntryPoint,
     PaymentVersion,
+    Force,
 }
 
 /// Handles providing the arg for and executing the show-arg-examples option.
@@ -937,5 +938,25 @@ pub(super) mod payment_version {
 
     pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches.value_of(ARG_NAME).unwrap_or_default()
+    }
+}
+
+pub(super) mod force {
+    use super::*;
+
+    pub const ARG_NAME: &str = "force";
+    const ARG_HELP: &str =
+        "Use with commands that accept the 'force' flag to bypass certain restrictions.";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .display_order(DisplayOrder::Force as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> bool {
+        matches.is_present(ARG_NAME)
     }
 }
