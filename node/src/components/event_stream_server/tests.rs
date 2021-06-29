@@ -12,7 +12,6 @@ use std::{
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
-use rand::Rng;
 use reqwest::Response;
 use schemars::schema_for;
 use tempfile::TempDir;
@@ -205,7 +204,7 @@ impl TestFixture {
 
         let mut deploys = HashMap::new();
         let events = (0..EVENT_COUNT)
-            .map(|_| match rng.gen_range(0..10) {
+            .map(|i| match i % 6 {
                 0 => SseData::random_block_added(rng),
                 1 => {
                     let (event, deploy) = SseData::random_deploy_accepted(rng);
@@ -215,7 +214,7 @@ impl TestFixture {
                 2 => SseData::random_deploy_processed(rng),
                 3 => SseData::random_fault(rng),
                 4 => SseData::random_step(rng),
-                5..=9 => SseData::random_finality_signature(rng),
+                5 => SseData::random_finality_signature(rng),
                 _ => unreachable!(),
             })
             .collect();
