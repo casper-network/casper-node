@@ -263,32 +263,43 @@ pub fn make_transfer(
     transfer_id: &str,
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
+    force: bool,
 ) -> Result<()> {
     let amount = U512::from_dec_str(amount)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let source_purse = None;
     let target = parsing::get_transfer_target(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
+    let maybe_output_path = none_if_empty(maybe_output_path);
+    let path_exists = if let Some(p) = maybe_output_path {
+        PathBuf::from(p).exists()
+    } else {
+        false
+    };
 
-    let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
-        Error::IoError {
-            context: format!(
-                "unable to get file or stdout, provided '{:?}'",
-                maybe_output_path
-            ),
-            error,
-        }
+    let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
+        context: format!(
+            "unable to get file or stdout, provided '{:?}'",
+            maybe_output_path
+        ),
+        error,
     })?;
 
-    Deploy::new_transfer(
-        amount,
-        source_purse,
-        target,
-        transfer_id,
-        deploy_params.try_into()?,
-        payment_params.try_into()?,
-    )?
-    .write_deploy(output)
+    match (path_exists, force) {
+        (true, false) => {
+            let pb = PathBuf::from(maybe_output_path.unwrap());
+            Err(Error::FileAlreadyExists(pb))
+        }
+        (true, true) | (false, true) | (false, false) => Deploy::new_transfer(
+            amount,
+            source_purse,
+            target,
+            transfer_id,
+            deploy_params.try_into()?,
+            payment_params.try_into()?,
+        )?
+        .write_deploy(output),
+    }
 }
 
 /// Retrieves a `Deploy` from the network.

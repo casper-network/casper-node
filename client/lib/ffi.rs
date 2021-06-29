@@ -410,6 +410,7 @@ pub extern "C" fn casper_make_transfer(
     transfer_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
+    force: bool,
 ) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let amount = try_unsafe_arg!(amount);
@@ -424,6 +425,7 @@ pub extern "C" fn casper_make_transfer(
         transfer_id,
         deploy_params,
         payment_params,
+        force,
     );
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS

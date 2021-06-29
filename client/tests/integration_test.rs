@@ -708,7 +708,8 @@ mod make_transfer {
                 TARGET_ACCOUNT,
                 TRANSFER_ID,
                 deploy_params::test_data_valid(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -727,7 +728,8 @@ mod make_transfer {
                 TARGET_ACCOUNT,
                 TRANSFER_ID,
                 deploy_params::test_data_valid(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())

@@ -60,6 +60,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
                 chain_name,
             },
             payment_str_params,
+            force,
         )
         .map(|_| {
             Success::Output(if maybe_output_path.is_empty() {
