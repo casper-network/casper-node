@@ -1,4 +1,4 @@
-use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
+use std::{convert::Infallible, fs, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{channel::oneshot, future};
 use hyper::{Body, Response, Server};
@@ -566,6 +566,48 @@ mod make_deploy {
             Ok(())
         );
     }
+
+    #[test]
+    fn should_fail_with_existing_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        fs::write(file_path.clone(), "hi")
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_deploy(
+                file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Err(Error::FileAlreadyExists(file_path).into())
+        );
+    }
+
+    #[test]
+    fn should_succeed_with_existing_file_with_force() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        fs::write(file_path.clone(), "hi")
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_deploy(
+                file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                true
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
 }
 
 mod send_deploy {
@@ -689,6 +731,84 @@ mod sign_deploy {
         )
         .is_err());
     }
+
+    #[test]
+    fn should_fail_with_existing_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let unsigned_file_path = temp_dir.path().join("test_deploy.json");
+        let signed_file_path = temp_dir.path().join("signed_test_deploy.json");
+        assert_eq!(
+            casper_client::make_deploy(
+                unsigned_file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Err(Error::FileAlreadyExists(signed_file_path).into())
+        );
+    }
+
+    #[test]
+    fn should_succeed_with_existing_file_with_force() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let unsigned_file_path = temp_dir.path().join("test_deploy.json");
+        let signed_file_path = temp_dir.path().join("signed_test_deploy.json");
+        assert_eq!(
+            casper_client::make_deploy(
+                unsigned_file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                true
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
 }
 
 mod make_transfer {
@@ -730,6 +850,52 @@ mod make_transfer {
                 deploy_params::test_data_valid(),
                 payment_params::test_data_with_name(),
                 false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_fail_with_existing_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        fs::write(file_path.clone(), "hi")
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_transfer(
+                file_path.to_str().unwrap(),
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Err(Error::FileAlreadyExists(file_path).into())
+        );
+    }
+
+    #[test]
+    fn should_succeed_with_existing_file_with_force() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        fs::write(file_path.clone(), "hi")
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_transfer(
+                file_path.to_str().unwrap(),
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name(),
+                true
             )
             .map_err(ErrWrapper),
             Ok(())
