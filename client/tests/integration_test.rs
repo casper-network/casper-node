@@ -630,6 +630,7 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
                 signed_file_path.to_str().unwrap(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -656,7 +657,8 @@ mod sign_deploy {
             casper_client::sign_deploy_file(
                 unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
-                ""
+                "",
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -682,7 +684,8 @@ mod sign_deploy {
         assert!(casper_client::sign_deploy_file(
             unsigned_file_path.to_str().unwrap(),
             "<this is not a path>",
-            ""
+            "",
+            false
         )
         .is_err());
     }

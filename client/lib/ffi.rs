@@ -321,11 +321,12 @@ pub extern "C" fn casper_sign_deploy_file(
     input_path: *const c_char,
     secret_key: *const c_char,
     maybe_output_path: *const c_char,
+    force: bool,
 ) -> casper_error_t {
     let input_path = try_unsafe_arg!(input_path);
     let secret_key = try_unsafe_arg!(secret_key);
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
-    let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path);
+    let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path, force);
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS
 }

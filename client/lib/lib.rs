@@ -95,14 +95,14 @@ pub fn make_deploy(
     payment_params: PaymentStrParams<'_>,
     force: bool,
 ) -> Result<()> {
-    let path_specified = none_if_empty(maybe_output_path);
-    let path_exists = if let Some(p) = path_specified {
+    let maybe_output_path = none_if_empty(maybe_output_path);
+    let path_exists = if let Some(p) = maybe_output_path {
         PathBuf::from(p).exists()
     } else {
         false
     };
 
-    let output = deploy::output_or_stdout(path_specified).map_err(|error| Error::IoError {
+    let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
         context: format!(
             "unable to get file or stdout, provided '{:?}'",
             maybe_output_path
@@ -111,9 +111,10 @@ pub fn make_deploy(
     })?;
 
     match (path_exists, force) {
-        (true, false) => Err(Error::FileAlreadyExists(PathBuf::from(
-            path_specified.unwrap(),
-        ))),
+        (true, false) => {
+            let pb = PathBuf::from(maybe_output_path.unwrap());
+            Err(Error::FileAlreadyExists(pb))
+        }
         (true, true) | (false, true) | (false, false) => Deploy::with_payment_and_session(
             deploy_params.try_into()?,
             payment_params.try_into()?,
@@ -130,9 +131,19 @@ pub fn make_deploy(
 /// * `secret_key` specifies the path to the secret key with which to sign the `Deploy`.
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
 ///   file already exists, it will be overwritten.
-pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &str) -> Result<()> {
+pub fn sign_deploy_file(
+    input_path: &str,
+    secret_key: &str,
+    maybe_output_path: &str,
+    force: bool,
+) -> Result<()> {
     let secret_key = parsing::secret_key(secret_key)?;
     let maybe_output_path = none_if_empty(maybe_output_path);
+    let path_exists = if let Some(p) = maybe_output_path {
+        PathBuf::from(p).exists()
+    } else {
+        false
+    };
 
     let input = fs::read(input_path).map_err(|error| Error::IoError {
         context: format!("unable to read deploy file at '{}'", input_path),
@@ -147,7 +158,15 @@ pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &
         error,
     })?;
 
-    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
+    match (path_exists, force) {
+        (true, false) => {
+            let pb = PathBuf::from(maybe_output_path.unwrap());
+            Err(Error::FileAlreadyExists(pb))
+        }
+        (true, true) | (false, true) | (false, false) => {
+            Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
+        }
+    }
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
