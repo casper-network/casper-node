@@ -1099,6 +1099,12 @@ impl ContractRuntime {
     fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
         finalized_block.height() == self.initial_state.child_height
     }
+
+    /// Returns the engine state, for testing only.
+    #[cfg(test)]
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+        &self.engine_state
+    }
 }
 
 /// Holds the state of an ongoing execute-commit cycle spawned from a given `Event::Request`.

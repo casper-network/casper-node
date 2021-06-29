@@ -7,8 +7,11 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey, U512};
+use casper_execution_engine::{core::engine_state::query::GetBidsRequest, shared::motes::Motes};
+use casper_types::{
+    system::auction::{Bids, DelegationRate},
+    EraId, PublicKey, SecretKey, U512,
+};
 
 use crate::{
     components::{consensus, gossiper, small_network, storage},
@@ -176,6 +179,19 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     }
 }
 
+/// Returns the bids at the given block.
+fn get_bids(nodes: &Nodes, header: &BlockHeader) -> Bids {
+    let correlation_id = Default::default();
+    let request = GetBidsRequest::new(header.state_root_hash().clone().into());
+
+    let runner = nodes.values().next().expect("missing nodes");
+    let engine_state = runner.reactor().inner().contract_runtime().engine_state();
+    let bids_result = engine_state
+        .get_bids(correlation_id, request)
+        .expect("get_bids failed");
+    bids_result.bids().expect("no bids returned").clone()
+}
+
 #[tokio::test]
 async fn run_participating_network() {
     testing::init_logging();
@@ -219,7 +235,7 @@ async fn run_equivocator_network() {
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
-    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes);
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     let protocol_config = (&*chain.chainspec).into();
 
     let mut net = chain
@@ -250,6 +266,24 @@ async fn run_equivocator_network() {
             }
         }
 
+        let expected = [alice_pk.clone()];
+        // Returns true if alice is listed as an equivocator in that block.
+        let alice_is_equivocator = |header: &BlockHeader| {
+            header.era_end().expect("missing era end").equivocators == expected
+        };
+
+        // Verify that nobody gets slashed, and Alice's bid becomes inactive, but only after she
+        // equivocated.
+        let bids = get_bids(net.nodes(), switch_blocks.last().unwrap());
+        for (pk, stake) in &stakes {
+            assert!(bids[pk].staked_amount() >= stake);
+            assert!(*pk == alice_pk || !bids[pk].inactive());
+        }
+        assert_eq!(
+            bids[&alice_pk].inactive(),
+            switch_blocks.iter().any(alice_is_equivocator)
+        );
+
         // Make sure we waited long enough for this test to include unbonding and dropping eras.
         let oldest_bonded_era_id = consensus::oldest_bonded_era(&protocol_config, era_id);
         let oldest_evidence_era_id =
@@ -259,10 +293,6 @@ async fn run_equivocator_network() {
         }
 
         // Wait at least two more eras after the equivocation has been detected.
-        let expected = [alice_pk.clone()];
-        let alice_is_equivocator = |header: &BlockHeader| {
-            header.era_end().expect("missing era end").equivocators == expected
-        };
         if switch_blocks[..(era_number as usize - 2)]
             .iter()
             .any(alice_is_equivocator)
