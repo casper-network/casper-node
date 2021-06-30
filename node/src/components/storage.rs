@@ -393,6 +393,7 @@ impl Storage {
             &deploy_hashes_db,
             &transfer_hashes_db,
             &proposer_db,
+            should_check_integrity,
         )?;
         initialize_block_metadata_db(
             &env,
@@ -1080,67 +1081,20 @@ impl Storage {
         Ok(Some(block_header))
     }
 
-    fn get_merkle_linked_list_node<Tx, T>(
-        &self,
-        tx: &mut Tx,
-        part_database: Database,
-        key_to_block_body_db: &Digest,
-    ) -> Result<Option<MerkleLinkedListNode<T>>, LmdbExtError>
-    where
-        Tx: Transaction,
-        T: DeserializeOwned,
-    {
-        let [part_to_value_db, merkle_proof_of_rest]: [Digest; 2] =
-            match tx.get_value(self.block_body_v2_db, key_to_block_body_db)? {
-                Some(slice) => slice,
-                None => return Ok(None),
-            };
-        let value = match tx.get_value(part_database, &part_to_value_db)? {
-            Some(value) => value,
-            None => return Ok(None),
-        };
-        Ok(Some(MerkleLinkedListNode::new(value, merkle_proof_of_rest)))
-    }
-
     /// Retrieves a single Merklized block body in a separate transaction from storage.
     fn get_single_block_body_v2<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_body_hash: &Digest,
     ) -> Result<Option<BlockBody>, LmdbExtError> {
-        let deploy_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> =
-            match self.get_merkle_linked_list_node(tx, self.deploy_hashes_db, block_body_hash)? {
-                Some(deploy_hashes_with_proof) => deploy_hashes_with_proof,
-                None => return Ok(None),
-            };
-        let transfer_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> = match self
-            .get_merkle_linked_list_node(
-                tx,
-                self.transfer_hashes_db,
-                deploy_hashes_with_proof.merkle_proof_of_rest(),
-            )? {
-            Some(transfer_hashes_with_proof) => transfer_hashes_with_proof,
-            None => return Ok(None),
-        };
-        let proposer_with_proof: MerkleLinkedListNode<PublicKey> = match self
-            .get_merkle_linked_list_node(
-                tx,
-                self.proposer_db,
-                transfer_hashes_with_proof.merkle_proof_of_rest(),
-            )? {
-            Some(proposer_with_proof) => {
-                debug_assert_eq!(*proposer_with_proof.merkle_proof_of_rest(), hash::SENTINEL1);
-                proposer_with_proof
-            }
-            None => return Ok(None),
-        };
-        let block_body = BlockBody::new(
-            proposer_with_proof.take_value(),
-            deploy_hashes_with_proof.take_value(),
-            transfer_hashes_with_proof.take_value(),
-        );
-
-        Ok(Some(block_body))
+        get_single_block_body_v2(
+            tx,
+            self.block_body_v2_db,
+            self.deploy_hashes_db,
+            self.transfer_hashes_db,
+            self.proposer_db,
+            block_body_hash,
+        )
     }
 
     /// Writes a single block body in a separate transaction to storage.
@@ -1628,6 +1582,74 @@ fn initialize_block_body_v1_db(
     Ok(())
 }
 
+fn get_merkle_linked_list_node<Tx, T>(
+    tx: &mut Tx,
+    block_body_v2_db: Database,
+    part_database: Database,
+    key_to_block_body_db: &Digest,
+) -> Result<Option<MerkleLinkedListNode<T>>, LmdbExtError>
+where
+    Tx: Transaction,
+    T: DeserializeOwned,
+{
+    let [part_to_value_db, merkle_proof_of_rest]: [Digest; 2] =
+        match tx.get_value(block_body_v2_db, key_to_block_body_db)? {
+            Some(slice) => slice,
+            None => return Ok(None),
+        };
+    let value = match tx.get_value(part_database, &part_to_value_db)? {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+    Ok(Some(MerkleLinkedListNode::new(value, merkle_proof_of_rest)))
+}
+
+/// Retrieves a single Merklized block body in a separate transaction from storage.
+fn get_single_block_body_v2<Tx: Transaction>(
+    tx: &mut Tx,
+    block_body_v2_db: Database,
+    deploy_hashes_db: Database,
+    transfer_hashes_db: Database,
+    proposer_db: Database,
+    block_body_hash: &Digest,
+) -> Result<Option<BlockBody>, LmdbExtError> {
+    let deploy_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> =
+        match get_merkle_linked_list_node(tx, block_body_v2_db, deploy_hashes_db, block_body_hash)?
+        {
+            Some(deploy_hashes_with_proof) => deploy_hashes_with_proof,
+            None => return Ok(None),
+        };
+    let transfer_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> =
+        match get_merkle_linked_list_node(
+            tx,
+            block_body_v2_db,
+            transfer_hashes_db,
+            deploy_hashes_with_proof.merkle_proof_of_rest(),
+        )? {
+            Some(transfer_hashes_with_proof) => transfer_hashes_with_proof,
+            None => return Ok(None),
+        };
+    let proposer_with_proof: MerkleLinkedListNode<PublicKey> = match get_merkle_linked_list_node(
+        tx,
+        block_body_v2_db,
+        proposer_db,
+        transfer_hashes_with_proof.merkle_proof_of_rest(),
+    )? {
+        Some(proposer_with_proof) => {
+            debug_assert_eq!(*proposer_with_proof.merkle_proof_of_rest(), hash::SENTINEL1);
+            proposer_with_proof
+        }
+        None => return Ok(None),
+    };
+    let block_body = BlockBody::new(
+        proposer_with_proof.take_value(),
+        deploy_hashes_with_proof.take_value(),
+        transfer_hashes_with_proof.take_value(),
+    );
+
+    Ok(Some(block_body))
+}
+
 /// Purges stale entries from the (Merklized) block body database, and checks the integrity of the
 /// remainder if `should_check_integrity` is true.
 fn initialize_block_body_v2_db(
@@ -1637,7 +1659,7 @@ fn initialize_block_body_v2_db(
     deploy_hashes_db: &Database,
     transfer_hashes_db: &Database,
     proposer_db: &Database,
-    // should_check_integrity: bool,
+    should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing v2 block body database");
 
@@ -1691,9 +1713,51 @@ fn initialize_block_body_v2_db(
         drop(cursor);
     }
 
-    txn.commit()?;
+    if should_check_integrity {
+        let expected_hashing_algorithm_version = HashingAlgorithmVersion::V2;
+        for (raw_key, _raw_val) in txn.open_ro_cursor(*block_body_v2_db)?.iter() {
+            let block_body_hash: Digest = lmdb_ext::deserialize(raw_key)?;
+            if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
+                let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
+                if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
+                    return Err(LmdbExtError::UnexpectedHashingAlgorithmVersion {
+                        expected_hashing_algorithm_version,
+                        actual_hashing_algorithm_version,
+                    });
+                }
+                // txn is unusable because it's used in the cursor - construct a temporary RO
+                // transaction for reading the body
+                let mut txn2 = env.begin_ro_txn()?;
+                match get_single_block_body_v2(
+                    &mut txn2,
+                    *block_body_v2_db,
+                    *deploy_hashes_db,
+                    *transfer_hashes_db,
+                    *proposer_db,
+                    &block_body_hash,
+                )? {
+                    Some(block_body) => {
+                        // Use smart constructor for block and propagate validation error
+                        // accordingly
+                        Block::new_from_header_and_body(block_header.to_owned(), block_body)?;
+                    }
+                    None => {
+                        // get_single_block_body_v2 returning an Ok(None) means we have an
+                        // incomplete block body - this doesn't have to indicate an error, it may
+                        // be caused by fast sync not downloading the whole body, but only a part
+                        // of it - log it and skip the check
+                        info!(?block_body_hash, "incomplete block body found");
+                    }
+                };
+                txn2.commit()?;
+            } else {
+                // This probably means that the key is not the hash of the whole block body, but a
+                // Merkle proof of a part of it - so we ignore this case.
+            }
+        }
+    }
 
-    // TODO: Should check integrity
+    txn.commit()?;
 
     info!("v2 block body database initialized");
     Ok(())
