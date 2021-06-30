@@ -25,10 +25,13 @@ pub enum Error {
     /// Destination purse not found.
     #[cfg_attr(feature = "std", error("Destination not found"))]
     DestNotFound = 2,
-    /// See [`PurseError::InvalidURef`].
+    /// The given [`URef`](crate::URef) does not reference the account holder's purse, or such a
+    /// `URef` does not have the required [`AccessRights`](crate::AccessRights).
     #[cfg_attr(feature = "std", error("Invalid URef"))]
     InvalidURef = 3,
-    /// See [`PurseError::InvalidAccessRights`].
+    /// The source purse is not writeable (see [`URef::is_writeable`](crate::URef::is_writeable)),
+    /// or the destination purse is not addable (see
+    /// [`URef::is_addable`](crate::URef::is_addable)).
     #[cfg_attr(feature = "std", error("Invalid AccessRights"))]
     InvalidAccessRights = 4,
     /// Tried to create a new purse with a non-zero initial balance.

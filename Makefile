@@ -130,7 +130,7 @@ build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
 
 doc-stable/%: CARGO_TOOLCHAIN += +stable
 doc-stable/%:
-	$(CARGO) doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --no-deps
+	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --no-deps
 
 .PHONY: check-rs
 check-rs: \
