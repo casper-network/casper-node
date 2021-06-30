@@ -67,7 +67,7 @@ use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer,
 
 use super::Component;
 use crate::{
-    components::storage::lmdb_ext::LmdbExtError::CouldNotDeleteBlockBodyPart,
+    components::storage::lmdb_ext::LmdbExtError::CouldNotFindBlockBodyPart,
     crypto::hash::{self, Digest},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
@@ -322,7 +322,6 @@ impl Storage {
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
-        let mut deleted_block_body_hashes_v2 = HashSet::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
@@ -338,9 +337,7 @@ impl Storage {
                         HashingAlgorithmVersion::V1 => {
                             let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                         }
-                        HashingAlgorithmVersion::V2 => {
-                            let _ = deleted_block_body_hashes_v2.insert(*block_header.body_hash());
-                        }
+                        HashingAlgorithmVersion::V2 => {}
                     }
                     let _ = deleted_block_hashes.insert(block_header.hash());
                     cursor.del(WriteFlags::empty())?;
@@ -391,11 +388,11 @@ impl Storage {
         )?;
         initialize_block_body_v2_db(
             &env,
+            &block_header_db,
             &block_body_v2_db,
             &deploy_hashes_db,
             &transfer_hashes_db,
             &proposer_db,
-            deleted_block_body_hashes_v2,
         )?;
         initialize_block_metadata_db(
             &env,
@@ -1578,13 +1575,22 @@ fn initialize_block_body_v1_db(
 ) -> Result<(), LmdbExtError> {
     info!("initializing v1 block body database");
     let mut txn = env.begin_rw_txn()?;
+
+    let block_body_hash_to_header_map =
+        construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
+
     let mut cursor = txn.open_rw_cursor(*block_body_v1_db)?;
 
     for (raw_key, _raw_val) in cursor.iter() {
-        if deleted_block_body_hashes_raw.contains(raw_key) {
+        let key = lmdb_ext::deserialize(raw_key)?;
+        if !block_body_hash_to_header_map.contains_key(&key) {
+            if !deleted_block_body_hashes_raw.contains(raw_key) {
+                // This means that the block body isn't referenced by any header, but no header
+                // referencing it was just deleted, either
+                warn!(?raw_key, "orphaned block body detected");
+            }
             info!(?raw_key, "deleting v1 block body");
             cursor.del(WriteFlags::empty())?;
-            continue;
         }
     }
 
@@ -1592,8 +1598,6 @@ fn initialize_block_body_v1_db(
 
     if should_check_integrity {
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V1;
-        let block_body_hash_to_header_map =
-            construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
         for (raw_key, raw_val) in txn.open_ro_cursor(*block_body_v1_db)?.iter() {
             let block_body_hash: Digest = lmdb_ext::deserialize(raw_key)?;
             let block_body: BlockBody = lmdb_ext::deserialize(raw_val)?;
@@ -1608,6 +1612,8 @@ fn initialize_block_body_v1_db(
                 // Use smart constructor for block and propagate validation error accordingly
                 Block::new_from_header_and_body(block_header.to_owned(), block_body)?;
             } else {
+                // Should be unreachable because we just deleted all block bodies that aren't
+                // referenced by any header
                 return Err(LmdbExtError::NoBlockHeaderForBlockBody {
                     block_body_hash,
                     hashing_algorithm_version: expected_hashing_algorithm_version,
@@ -1616,54 +1622,9 @@ fn initialize_block_body_v1_db(
             }
         }
     }
+
     txn.commit()?;
     info!("v1 block body database initialized");
-    Ok(())
-}
-
-fn delete_merkle_block_body_part(
-    tx: &mut RwTransaction,
-    block_body_v2_db: &Database,
-    value_database: &Database,
-    key: Digest,
-) -> Result<Digest, LmdbExtError> {
-    let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
-        match tx.get_value(*block_body_v2_db, &key)? {
-            Some(slice) => slice,
-            None => {
-                return Err(CouldNotDeleteBlockBodyPart {
-                    merkle_linked_list_node_hash: key,
-                })
-            }
-        };
-    tx.del(*value_database, &key_to_part_db, None)?;
-    tx.del(*block_body_v2_db, &key, None)?;
-    Ok(merkle_proof_of_rest)
-}
-
-/// Writes a single merklized block body in a separate transaction to storage.
-fn delete_single_block_body_v2(
-    tx: &mut RwTransaction,
-    block_body_v2_db: &Database,
-    deploy_hashes_db: &Database,
-    transfer_hashes_db: &Database,
-    digest_key_to_delete: Digest,
-) -> Result<(), LmdbExtError> {
-    info!(?digest_key_to_delete, "deleting deploy hashes");
-    let digest_key_to_delete = delete_merkle_block_body_part(
-        tx,
-        block_body_v2_db,
-        deploy_hashes_db,
-        digest_key_to_delete,
-    )?;
-    info!(?digest_key_to_delete, "deleting transfer hashes");
-    delete_merkle_block_body_part(
-        tx,
-        block_body_v2_db,
-        transfer_hashes_db,
-        digest_key_to_delete,
-    )?;
-    // Don't delete proposer since it might be shared
     Ok(())
 }
 
@@ -1671,27 +1632,64 @@ fn delete_single_block_body_v2(
 /// remainder if `should_check_integrity` is true.
 fn initialize_block_body_v2_db(
     env: &Environment,
+    block_header_db: &Database,
     block_body_v2_db: &Database,
     deploy_hashes_db: &Database,
     transfer_hashes_db: &Database,
-    _proposer_db: &Database,
-    deleted_block_body_hashes: HashSet<Digest>,
+    proposer_db: &Database,
     // should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing v2 block body database");
+
     let mut txn = env.begin_rw_txn()?;
-    for digest_key_to_delete in deleted_block_body_hashes {
-        info!(?digest_key_to_delete, "deleting v2 block body");
-        delete_single_block_body_v2(
-            &mut txn,
-            block_body_v2_db,
-            deploy_hashes_db,
-            transfer_hashes_db,
-            digest_key_to_delete,
-        )?;
+
+    let block_body_hash_to_header_map =
+        construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
+
+    // This will store all the keys that are reachable from a block header, in all the parts
+    // databases (we're basically doing a mark-and-sweep below).
+    let mut live_digests = HashSet::new();
+
+    for body_hash in block_body_hash_to_header_map.keys() {
+        let mut current_digest = *body_hash;
+        loop {
+            live_digests.insert(current_digest);
+            let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
+                match txn.get_value(*block_body_v2_db, &current_digest)? {
+                    Some(slice) => slice,
+                    None => {
+                        return Err(CouldNotFindBlockBodyPart {
+                            merkle_linked_list_node_hash: current_digest,
+                        })
+                    }
+                };
+            live_digests.insert(key_to_part_db);
+            current_digest = merkle_proof_of_rest;
+            if current_digest == hash::SENTINEL1 {
+                break;
+            }
+        }
     }
 
-    // TODO: Clean up proposers properly
+    let databases_to_clean = vec![
+        (block_body_v2_db, "deleting v2 block body part"),
+        (deploy_hashes_db, "deleting v2 deploy hashes entry"),
+        (transfer_hashes_db, "deleting v2 transfer hashes entry"),
+        (proposer_db, "deleting v2 proposer entry"),
+    ];
+
+    for (database, info_text) in databases_to_clean {
+        // Clean dead entries from block_body_v2_db
+        let mut cursor = txn.open_rw_cursor(*database)?;
+        for (raw_key, _raw_val) in cursor.iter() {
+            let key = lmdb_ext::deserialize(raw_key)?;
+            if !live_digests.contains(&key) {
+                info!(?raw_key, info_text);
+                cursor.del(WriteFlags::empty())?;
+            }
+        }
+        drop(cursor);
+    }
 
     txn.commit()?;
 
