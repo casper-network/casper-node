@@ -27,6 +27,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
+use smallvec::SmallVec;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
@@ -46,12 +47,13 @@ use crate::{
     },
     crypto::hash::Digest,
     effect::{
-        requests::{BlockValidationRequest, StorageRequest},
+        announcements::ControlAnnouncement,
+        requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, DeployHash, DeployOrTransferHash,
+        ActivationPoint, BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash,
         FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
@@ -1122,7 +1124,8 @@ where
                     effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
                 }
                 // Request execution of the finalized block.
-                effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
+                let effect_builder = self.effect_builder;
+                effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());
                 self.era_supervisor.update_consensus_pause();
                 effects
             }
@@ -1267,6 +1270,39 @@ where
             Some(upgrade_point) => upgrade_point.should_upgrade(&era_id),
         }
     }
+}
+
+async fn execute_finalized_block<REv>(
+    effect_builder: EffectBuilder<REv>,
+    finalized_block: FinalizedBlock,
+) where
+    REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
+{
+    // TODO: We already had all these deploys from when we validated the
+    // ProtoBlock. We should just carry them around instead of doing this.
+
+    // Get the deploy hashes for the finalized block.
+    let deploy_hashes = finalized_block
+        .deploys_and_transfers_iter()
+        .map(DeployHash::from)
+        .collect::<SmallVec<_>>();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
+    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
+        if let Some(deploy) = maybe_deploy {
+            deploys.push(deploy)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
+    effect_builder.execute_block(finalized_block, deploys).await
 }
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.

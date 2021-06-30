@@ -21,17 +21,16 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        genesis::GenesisResult,
+        genesis::GenesisSuccess,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
-        step::{StepRequest, StepResult},
-        upgrade::{UpgradeConfig, UpgradeResult},
+        upgrade::{UpgradeConfig, UpgradeSuccess},
     },
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::{protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    system::auction::{EraValidators, ValidatorWeights},
-    EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    Transfer, URef,
 };
 
 use super::Responder;
@@ -40,7 +39,7 @@ use crate::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
         consensus::{BlockContext, ClContext},
-        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
@@ -716,8 +715,14 @@ impl<I> Display for RestRequest<I> {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
-    /// A request to execute a block.
-    ExecuteBlock(FinalizedBlock),
+    /// A request to execute a [`FinalizedBlock`], which are the blocks produced by the consensus
+    /// component.
+    ExecuteBlock {
+        /// A [`FinalizedBlock`] to execute.
+        finalized_block: FinalizedBlock,
+        /// The deploys for that [`FinalizedBlock`]
+        deploys: Vec<Deploy>,
+    },
 
     /// Get `ProtocolData` by `ProtocolVersion`.
     GetProtocolData {
@@ -731,7 +736,7 @@ pub enum ContractRuntimeRequest {
         /// The chainspec.
         chainspec: Arc<Chainspec>,
         /// Responder to call with the result.
-        responder: Responder<Result<GenesisResult, engine_state::Error>>,
+        responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
     },
     /// A request to run upgrade.
     Upgrade {
@@ -739,7 +744,7 @@ pub enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
-        responder: Responder<Result<UpgradeResult, engine_state::Error>>,
+        responder: Responder<Result<UpgradeSuccess, engine_state::Error>>,
     },
     /// A query request.
     Query {
@@ -765,14 +770,6 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
-    /// Returns validator weights for given era.
-    GetValidatorWeightsByEraId {
-        /// Get validators weights request.
-        #[serde(skip_serializing)]
-        request: ValidatorWeightsByEraIdRequest,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
-    },
     /// Return bids at a given state root hash
     GetBids {
         /// Get bids request.
@@ -780,15 +777,6 @@ pub enum ContractRuntimeRequest {
         get_bids_request: GetBidsRequest,
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
-    },
-    /// Performs a step consisting of calculating rewards, slashing and running the auction at the
-    /// end of an era.
-    Step {
-        /// The step request.
-        #[serde(skip_serializing)]
-        step_request: StepRequest,
-        /// Responder to call with the result.
-        responder: Responder<Result<StepResult, engine_state::Error>>,
     },
     /// Check if validator is bonded in the future era (identified by `era_id`).
     IsBonded {
@@ -829,8 +817,11 @@ pub enum ContractRuntimeRequest {
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
-                write!(formatter, "finalized_block {}", finalized_block)
+            ContractRuntimeRequest::ExecuteBlock {
+                finalized_block,
+                deploys: _,
+            } => {
+                write!(formatter, "finalized_block: {}", finalized_block)
             }
             ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
                 write!(
@@ -856,18 +847,10 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "get era validators: {:?}", request)
             }
 
-            ContractRuntimeRequest::GetValidatorWeightsByEraId { request, .. } => {
-                write!(formatter, "get validator weights: {:?}", request)
-            }
-
             ContractRuntimeRequest::GetBids {
                 get_bids_request, ..
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
-            }
-
-            ContractRuntimeRequest::Step { step_request, .. } => {
-                write!(formatter, "step: {:?}", step_request)
             }
 
             ContractRuntimeRequest::GetProtocolData {
@@ -949,9 +932,6 @@ pub enum LinearChainRequest<I> {
     BlockRequest(BlockHash, I),
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
-    /// Local request for a linear chain block at height.
-    // TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
-    BlockAtHeightLocal(BlockHeight, Responder<Option<Block>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -962,9 +942,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
             }
             LinearChainRequest::BlockAtHeight(height, sender) => {
                 write!(f, "block request for {} from {}", height, sender)
-            }
-            LinearChainRequest::BlockAtHeightLocal(height, _) => {
-                write!(f, "local request for block at height {}", height)
             }
         }
     }

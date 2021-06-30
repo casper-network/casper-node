@@ -44,11 +44,15 @@ use super::{
     Component,
 };
 use crate::{
-    effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
+    effect::{
+        announcements::ControlAnnouncement,
+        requests::{ContractRuntimeRequest, StorageRequest},
+        EffectBuilder, EffectExt, EffectOptionExt, Effects,
+    },
     fatal,
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
-        TimeDiff,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, Deploy,
+        DeployHash, FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
@@ -56,6 +60,7 @@ use event::BlockByHeightResult;
 pub use event::Event;
 pub use metrics::LinearChainSyncMetrics;
 pub use peers::PeersState;
+use smallvec::SmallVec;
 pub use state::State;
 pub use traits::ReactorEventT;
 
@@ -743,7 +748,7 @@ where
                         self.peers.reset(rng);
                         // Execute block
                         let finalized_block: FinalizedBlock = (*block).into();
-                        effect_builder.execute_block(finalized_block).ignore()
+                        execute_finalized_block(effect_builder, finalized_block).ignore()
                     }
                     event::DeploysResult::NotFound(block, peer) => {
                         let block_hash = block.hash();
@@ -951,4 +956,37 @@ pub(crate) fn clean_linear_chain_state(
 ) -> Result<bool, storage::Error> {
     let key = create_state_key(&chainspec);
     storage.del_state_store(key)
+}
+
+async fn execute_finalized_block<REv>(
+    effect_builder: EffectBuilder<REv>,
+    finalized_block: FinalizedBlock,
+) where
+    REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
+{
+    // TODO: We already had all these deploys from when we validated the
+    // ProtoBlock. We should just carry them around instead of doing this.
+
+    // Get the deploy hashes for the finalized block.
+    let deploy_hashes = finalized_block
+        .deploys_and_transfers_iter()
+        .map(DeployHash::from)
+        .collect::<SmallVec<_>>();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
+    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
+        if let Some(deploy) = maybe_deploy {
+            deploys.push(deploy)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
+    effect_builder.execute_block(finalized_block, deploys).await
 }
