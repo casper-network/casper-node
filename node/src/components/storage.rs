@@ -41,9 +41,10 @@ mod lmdb_ext;
 mod tests;
 
 #[cfg(test)]
-use std::{collections::BTreeSet, convert::TryFrom};
+use std::collections::BTreeSet;
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
+    convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
@@ -1536,7 +1537,8 @@ fn initialize_block_body_v1_db(
     let mut cursor = txn.open_rw_cursor(*block_body_v1_db)?;
 
     for (raw_key, _raw_val) in cursor.iter() {
-        let key = lmdb_ext::deserialize(raw_key)?;
+        let key =
+            Digest::try_from(raw_key).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
         if !block_body_hash_to_header_map.contains_key(&key) {
             if !deleted_block_body_hashes_raw.contains(raw_key) {
                 // This means that the block body isn't referenced by any header, but no header
@@ -1553,7 +1555,8 @@ fn initialize_block_body_v1_db(
     if should_check_integrity {
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V1;
         for (raw_key, raw_val) in txn.open_ro_cursor(*block_body_v1_db)?.iter() {
-            let block_body_hash: Digest = lmdb_ext::deserialize(raw_key)?;
+            let block_body_hash = Digest::try_from(raw_key)
+                .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
             let block_body: BlockBody = lmdb_ext::deserialize(raw_val)?;
             if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
                 let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
@@ -1672,7 +1675,11 @@ fn initialize_block_body_v2_db(
     // databases (we're basically doing a mark-and-sweep below).
     let mut live_digests = HashSet::new();
 
-    for body_hash in block_body_hash_to_header_map.keys() {
+    for (body_hash, header) in &block_body_hash_to_header_map {
+        if header.hashing_algorithm_version() != HashingAlgorithmVersion::V2 {
+            // We're only interested in body hashes for V2 blocks here
+            continue;
+        }
         let mut current_digest = *body_hash;
         loop {
             live_digests.insert(current_digest);
@@ -1704,7 +1711,8 @@ fn initialize_block_body_v2_db(
         // Clean dead entries from block_body_v2_db
         let mut cursor = txn.open_rw_cursor(*database)?;
         for (raw_key, _raw_val) in cursor.iter() {
-            let key = lmdb_ext::deserialize(raw_key)?;
+            let key = Digest::try_from(raw_key)
+                .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
             if !live_digests.contains(&key) {
                 info!(?raw_key, info_text);
                 cursor.del(WriteFlags::empty())?;
@@ -1716,7 +1724,8 @@ fn initialize_block_body_v2_db(
     if should_check_integrity {
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V2;
         for (raw_key, _raw_val) in txn.open_ro_cursor(*block_body_v2_db)?.iter() {
-            let block_body_hash: Digest = lmdb_ext::deserialize(raw_key)?;
+            let block_body_hash = Digest::try_from(raw_key)
+                .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
             if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
                 let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
                 if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
