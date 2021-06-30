@@ -572,7 +572,8 @@ mod make_deploy {
         let temp_dir = TempDir::new()
             .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
         let file_path = temp_dir.path().join("test_deploy.json");
-        fs::write(file_path.clone(), "hi")
+        let contents = "contents of test file";
+        fs::write(file_path.clone(), &contents)
             .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
 
         assert_eq!(
@@ -584,8 +585,14 @@ mod make_deploy {
                 false
             )
             .map_err(ErrWrapper),
-            Err(Error::FileAlreadyExists(file_path).into())
+            Err(Error::FileAlreadyExists(file_path.clone()).into())
         );
+
+        let contents_after_fail = fs::read_to_string(file_path).unwrap_or_else(|err| {
+            panic!("Failed to read contents of test file with error: {}", err)
+        });
+
+        assert_eq!(contents, contents_after_fail);
     }
 
     #[test]
@@ -759,6 +766,10 @@ mod sign_deploy {
             .map_err(ErrWrapper),
             Ok(())
         );
+
+        let contents = fs::read_to_string(signed_file_path.clone())
+            .unwrap_or_else(|err| panic!("Failed to read contents of file with error: {}", err));
+
         assert_eq!(
             casper_client::sign_deploy_file(
                 unsigned_file_path.to_str().unwrap(),
@@ -767,8 +778,13 @@ mod sign_deploy {
                 false
             )
             .map_err(ErrWrapper),
-            Err(Error::FileAlreadyExists(signed_file_path).into())
+            Err(Error::FileAlreadyExists(signed_file_path.clone()).into())
         );
+
+        let contents_after_failure = fs::read_to_string(signed_file_path)
+            .unwrap_or_else(|err| panic!("Failed to read contents of file with error: {}", err));
+
+        assert_eq!(contents, contents_after_failure);
     }
 
     #[test]
@@ -861,7 +877,8 @@ mod make_transfer {
         let temp_dir = TempDir::new()
             .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
         let file_path = temp_dir.path().join("test_deploy.json");
-        fs::write(file_path.clone(), "hi")
+        let contents = "contents of test file";
+        fs::write(file_path.clone(), &contents)
             .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
 
         assert_eq!(
@@ -875,8 +892,13 @@ mod make_transfer {
                 false
             )
             .map_err(ErrWrapper),
-            Err(Error::FileAlreadyExists(file_path).into())
+            Err(Error::FileAlreadyExists(file_path.clone()).into())
         );
+
+        let contents_after_fail = fs::read_to_string(file_path)
+            .unwrap_or_else(|err| panic!("Failed to read from temp file with error: {}", err));
+
+        assert_eq!(contents, contents_after_fail);
     }
 
     #[test]

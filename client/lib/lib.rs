@@ -80,14 +80,16 @@ pub fn put_deploy(
 /// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
 /// using [`send_deploy_file()`](fn.send_deploy_file.html).
 ///
-/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
-///   file already exists, it will be overwritten.
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
 /// * `session_params` contains session-related options for this `Deploy`. See
 ///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
+/// * If `force` is true, existing files will be overwritten. If `force` is false and any of the
+/// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
+/// returned and no files are written.
 pub fn make_deploy(
     maybe_output_path: &str,
     deploy_params: DeployStrParams<'_>,
@@ -129,8 +131,10 @@ pub fn make_deploy(
 ///
 /// * `input_path` specifies the path to the previously-saved `Deploy` file.
 /// * `secret_key` specifies the path to the secret key with which to sign the `Deploy`.
-/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
-///   file already exists, it will be overwritten.
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
+/// * If `force` is true, existing files will be overwritten. If `force` is false and any of the
+/// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
+/// returned and no files are written.
 pub fn sign_deploy_file(
     input_path: &str,
     secret_key: &str,
@@ -245,8 +249,7 @@ pub fn transfer(
 /// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
 /// using [`send_deploy_file()`](fn.send_deploy_file.html).
 ///
-/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
-///   file already exists, it will be overwritten.
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
 /// * `target_account` is the account `PublicKey` into which the funds will be transferred,
 ///   formatted as a hex-encoded string. The account's main purse will receive the funds.
@@ -256,6 +259,9 @@ pub fn transfer(
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
+/// * If `force` is true, existing files will be overwritten. If `force` is false and any of the
+/// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
+/// returned and no files are written.
 pub fn make_transfer(
     maybe_output_path: &str,
     amount: &str,
