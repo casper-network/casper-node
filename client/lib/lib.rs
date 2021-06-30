@@ -22,7 +22,7 @@ mod parsing;
 mod rpc;
 mod validation;
 
-use std::{convert::TryInto, fs, io::Cursor, path::PathBuf};
+use std::{convert::TryInto, fs, io::Cursor};
 
 use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
@@ -33,10 +33,9 @@ use casper_types::{UIntParseError, U512};
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
-use deploy::{DeployExt, DeployParams};
+use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
-use parsing::none_if_empty;
 use rpc::{RpcCall, TransferTarget};
 pub use validation::ValidateResponseError;
 
@@ -97,33 +96,18 @@ pub fn make_deploy(
     payment_params: PaymentStrParams<'_>,
     force: bool,
 ) -> Result<()> {
-    let maybe_output_path = none_if_empty(maybe_output_path);
-    let path_exists = if let Some(p) = maybe_output_path {
-        PathBuf::from(p).exists()
+    let output = if maybe_output_path.is_empty() {
+        OutputKind::Stdout.get()?
     } else {
-        false
+        OutputKind::file(maybe_output_path, force).get()?
     };
 
-    let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
-        context: format!(
-            "unable to get file or stdout, provided '{:?}'",
-            maybe_output_path
-        ),
-        error,
-    })?;
-
-    match (path_exists, force) {
-        (true, false) => {
-            let pb = PathBuf::from(maybe_output_path.unwrap());
-            Err(Error::FileAlreadyExists(pb))
-        }
-        (true, true) | (false, true) | (false, false) => Deploy::with_payment_and_session(
-            deploy_params.try_into()?,
-            payment_params.try_into()?,
-            session_params.try_into()?,
-        )?
-        .write_deploy(output),
-    }
+    Deploy::with_payment_and_session(
+        deploy_params.try_into()?,
+        payment_params.try_into()?,
+        session_params.try_into()?,
+    )?
+    .write_deploy(output)
 }
 
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
@@ -142,35 +126,19 @@ pub fn sign_deploy_file(
     force: bool,
 ) -> Result<()> {
     let secret_key = parsing::secret_key(secret_key)?;
-    let maybe_output_path = none_if_empty(maybe_output_path);
-    let path_exists = if let Some(p) = maybe_output_path {
-        PathBuf::from(p).exists()
-    } else {
-        false
-    };
 
     let input = fs::read(input_path).map_err(|error| Error::IoError {
         context: format!("unable to read deploy file at '{}'", input_path),
         error,
     })?;
 
-    let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
-        context: format!(
-            "unable to get file or stdout, provided '{:?}'",
-            maybe_output_path
-        ),
-        error,
-    })?;
+    let output = if maybe_output_path.is_empty() {
+        OutputKind::Stdout.get()?
+    } else {
+        OutputKind::file(maybe_output_path, force).get()?
+    };
 
-    match (path_exists, force) {
-        (true, false) => {
-            let pb = PathBuf::from(maybe_output_path.unwrap());
-            Err(Error::FileAlreadyExists(pb))
-        }
-        (true, true) | (false, true) | (false, false) => {
-            Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
-        }
-    }
+    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
@@ -276,36 +244,22 @@ pub fn make_transfer(
     let source_purse = None;
     let target = parsing::get_transfer_target(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
-    let maybe_output_path = none_if_empty(maybe_output_path);
-    let path_exists = if let Some(p) = maybe_output_path {
-        PathBuf::from(p).exists()
+
+    let output = if maybe_output_path.is_empty() {
+        OutputKind::Stdout.get()?
     } else {
-        false
+        OutputKind::file(maybe_output_path, force).get()?
     };
 
-    let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
-        context: format!(
-            "unable to get file or stdout, provided '{:?}'",
-            maybe_output_path
-        ),
-        error,
-    })?;
-
-    match (path_exists, force) {
-        (true, false) => {
-            let pb = PathBuf::from(maybe_output_path.unwrap());
-            Err(Error::FileAlreadyExists(pb))
-        }
-        (true, true) | (false, true) | (false, false) => Deploy::new_transfer(
-            amount,
-            source_purse,
-            target,
-            transfer_id,
-            deploy_params.try_into()?,
-            payment_params.try_into()?,
-        )?
-        .write_deploy(output),
-    }
+    Deploy::new_transfer(
+        amount,
+        source_purse,
+        target,
+        transfer_id,
+        deploy_params.try_into()?,
+        payment_params.try_into()?,
+    )?
+    .write_deploy(output)
 }
 
 /// Retrieves a `Deploy` from the network.

@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{self, BufReader, Read, Write},
+    path::PathBuf,
 };
 
 use serde::{Deserialize, Serialize};
@@ -72,20 +73,43 @@ impl From<GetBlockResult> for ListDeploysResult {
     }
 }
 
-/// Creates a `Write` trait object respective to the path value passed.  A `File` is returned if
-/// `maybe_path` is `Some`.  If `maybe_path` is `None`, a `Stdout` or `Sink` is returned; `Sink` for
-/// test configuration to avoid cluttering test output.
-pub(super) fn output_or_stdout(maybe_path: Option<&str>) -> io::Result<Box<dyn Write>> {
-    match maybe_path {
-        Some(output_path) => File::create(&output_path).map(|file| {
-            let write: Box<dyn Write> = Box::new(file);
-            write
-        }),
-        None => Ok(if cfg!(test) {
-            Box::new(io::sink())
-        } else {
-            Box::new(io::stdout())
-        }),
+pub(super) enum OutputKind<'a> {
+    File {
+        path: &'a str,
+        overwrite_if_exists: bool,
+    },
+    Stdout,
+}
+
+impl<'a> OutputKind<'a> {
+    pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
+        OutputKind::File {
+            path,
+            overwrite_if_exists,
+        }
+    }
+
+    pub(super) fn get(self) -> Result<Box<dyn Write>> {
+        match self {
+            OutputKind::File {
+                path,
+                overwrite_if_exists,
+            } => {
+                let path = PathBuf::from(path);
+                if path.exists() && !overwrite_if_exists {
+                    return Err(Error::FileAlreadyExists(path));
+                }
+                let file = File::create(&path).map_err(|error| Error::IoError {
+                    context: format!("failed to create {}", path.display()),
+                    error,
+                })?;
+
+                let write: Box<dyn Write> = Box::new(file);
+                Ok(write)
+            }
+            OutputKind::Stdout if cfg!(test) => Ok(Box::new(io::sink())),
+            OutputKind::Stdout => Ok(Box::new(io::stdout())),
+        }
     }
 }
 
