@@ -1194,6 +1194,14 @@ where
         Ok(Ok(()))
     }
 
+    /// Gets the immediate caller of the current execution
+    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+        let call_stack = self.call_stack();
+        let mut call_stack_iter = call_stack.iter().rev();
+        call_stack_iter.next()?;
+        call_stack_iter.next()
+    }
+
     /// Writes runtime context's phase to dest_ptr in the Wasm memory.
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();

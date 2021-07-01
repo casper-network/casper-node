@@ -152,10 +152,7 @@ where
     }
 
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        let call_stack = self.call_stack();
-        let mut call_stack_iter = call_stack.iter().rev();
-        call_stack_iter.next()?;
-        call_stack_iter.next()
+        Runtime::<'a, R>::get_immediate_caller(self)
     }
 
     fn named_keys_get(&self, name: &str) -> Option<Key> {

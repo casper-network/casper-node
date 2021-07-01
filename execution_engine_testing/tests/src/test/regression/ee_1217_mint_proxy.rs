@@ -1,8 +1,10 @@
-use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
+    internal::{
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+        DEFAULT_RUN_GENESIS_REQUEST,
+    },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
@@ -16,12 +18,12 @@ use casper_types::{
     account::AccountHash, runtime_args, ApiError, Key, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
-const CONTRACT_FAUCET_STORED: &str = "faucet_stored.wasm";
-const CONTRACT_FAUCET_ENTRYPOINT: &str = "call_faucet";
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
-
+const CONTRACT_FAUCET_STORED: &str = "faucet_stored.wasm";
+const CONTRACT_FAUCET_ENTRYPOINT: &str = "call_faucet";
 const FAUCET_REQUEST_AMOUNT: u64 = 333_333_333;
+const NEW_ACCOUNT_ADDR: AccountHash = AccountHash::new([99u8; 32]);
 
 static FAUCET: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
@@ -31,13 +33,64 @@ static ALICE: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
-
 static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
 
+fn get_builder() -> InMemoryWasmTestBuilder {
+    let mut builder = InMemoryWasmTestBuilder::default();
+    {
+        // first, store contract
+        let store_request = ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CONTRACT_FAUCET_STORED,
+            runtime_args! {},
+        )
+        .build();
+
+        builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+        builder.exec_commit_finish(store_request);
+    }
+    builder
+}
+
 #[ignore]
 #[test]
-fn faucet_should_create_account() {
+fn should_fail_to_get_funds_from_faucet_stored() {
+    let mut builder = get_builder();
+
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let contract_hash = default_account
+        .named_keys()
+        .get("faucet")
+        .expect("contract_hash should exist")
+        .into_hash()
+        .expect("should be a hash");
+
+    let amount = U512::from(1000);
+
+    // call stored faucet
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash.into(),
+        CONTRACT_FAUCET_ENTRYPOINT,
+        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
+    )
+    .build();
+
+    builder.exec(exec_request).commit();
+
+    match builder.get_error() {
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(20)))) => {}
+        _ => panic!("should be an error"),
+    }
+}
+
+#[ignore]
+#[test]
+fn should_fail_to_create_account() {
     let accounts = {
         let faucet_account = GenesisAccount::account(
             FAUCET.clone(),
@@ -88,47 +141,17 @@ fn faucet_should_create_account() {
     )
     .build();
 
-    builder.exec(faucet_request).commit().expect_success();
-
-    let alice_account = {
-        let tmp = builder.query(None, Key::Account(*ALICE_ADDR), &[]).unwrap();
-        tmp.as_account().cloned().unwrap()
-    };
-
-    let balance = builder.get_purse_balance(alice_account.main_purse());
-
-    assert_eq!(balance, faucet_request_amount);
-
-    let faucet_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *DEFAULT_ACCOUNT_ADDR,
-        faucet_hash.into(),
-        CONTRACT_FAUCET_ENTRYPOINT,
-        runtime_args! {
-            ARG_TARGET => *ALICE_ADDR,
-            ARG_AMOUNT => faucet_request_amount,
-        },
-    )
-    .build();
-
     builder.exec(faucet_request).commit();
 
-    let error = {
-        let response = builder
-            .get_exec_results()
-            .last()
-            .expect("should have last exec result");
-        let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
-    };
-    assert_matches!(
-        error,
-        engine_state::Error::Exec(execution::Error::Revert(ApiError::User(1)))
-    );
+    match builder.get_error() {
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(20)))) => {}
+        _ => panic!("should be an error"),
+    }
 }
 
 #[ignore]
 #[test]
-fn faucet_should_transfer_to_existing_account() {
+fn should_fail_transfer_to_existing_account() {
     let accounts = {
         let faucet_account = GenesisAccount::account(
             FAUCET.clone(),
@@ -185,43 +208,10 @@ fn faucet_should_transfer_to_existing_account() {
     )
     .build();
 
-    builder.exec(faucet_request).commit().expect_success();
-
-    let alice_account = {
-        let tmp = builder.query(None, Key::Account(*ALICE_ADDR), &[]).unwrap();
-        tmp.as_account().cloned().unwrap()
-    };
-
-    let balance = builder.get_purse_balance(alice_account.main_purse());
-
-    assert_eq!(
-        balance,
-        faucet_request_amount + MINIMUM_ACCOUNT_CREATION_BALANCE
-    );
-
-    let faucet_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *FAUCET_ADDR,
-        faucet_hash.into(),
-        CONTRACT_FAUCET_ENTRYPOINT,
-        runtime_args! {
-            ARG_TARGET => *ALICE_ADDR,
-            ARG_AMOUNT => faucet_request_amount,
-        },
-    )
-    .build();
-
     builder.exec(faucet_request).commit();
 
-    let error = {
-        let response = builder
-            .get_exec_results()
-            .last()
-            .expect("should have last exec result");
-        let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
-    };
-    assert_matches!(
-        error,
-        engine_state::Error::Exec(execution::Error::Revert(ApiError::User(1)))
-    );
+    match builder.get_error() {
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(20)))) => {}
+        _ => panic!("should be an error"),
+    }
 }

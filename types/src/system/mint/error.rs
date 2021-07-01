@@ -80,6 +80,10 @@ pub enum Error {
     #[cfg_attr(feature = "std", error("GasLimit"))]
     GasLimit = 19,
 
+    /// Raised when an entry point is called from invalid account context.
+    #[cfg_attr(feature = "std", error("Invalid context"))]
+    InvalidContext = 20,
+
     #[cfg(test)]
     #[doc(hidden)]
     #[cfg_attr(feature = "std", error("Sentinel error"))]
@@ -143,8 +147,9 @@ impl TryFrom<u8> for Error {
             d if d == Error::CLValue as u8 => Ok(Error::CLValue),
             d if d == Error::Serialize as u8 => Ok(Error::Serialize),
             d if d == Error::EqualSourceAndTarget as u8 => Ok(Error::EqualSourceAndTarget),
-            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
+            d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             _ => Err(TryFromU8ForError(())),
         }
     }
