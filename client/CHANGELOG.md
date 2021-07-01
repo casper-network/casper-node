@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Change `account-address` subcommand to output properly formatted string.
+* Change `put-deploy` and `make-deploy` subcommands to support transfers.
 
 
 

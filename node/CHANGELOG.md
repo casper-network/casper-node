@@ -17,7 +17,10 @@ All notable changes to this project will be documented in this file.  The format
 * Add support for providing historical auction information via the addition of an optional block ID in the `state_get_auction_info` JSON-RPC. 
 * Exclude inactive validators from proposing blocks.
 * Add validation of the `[protocol]` configuration on startup, to ensure the contained values make sense.
-* Add an optional outgoing bandwidth limiter to the networking component.
+* Add optional outgoing bandwidth limiter to the networking component, controllable via new `[network][max_outgoing_byte_rate_non_validators]` config option.
+* Add optional incoming message limiter to the networking component, controllable via new `[network][max_incoming_message_rate_non_validators]` config option.
+* Add optional in-memory deduplication of deploys, controllable via new `[storage]` config options `[enable_mem_deduplication]` and `[mem_pool_prune_interval]`.
+* Add a new event stream to SSE server accessed via `<IP:Port>/events/deploys` which emits deploys in full as they are accepted.
 
 ### Changed
 * Major rewrite of the network component, covering connection negotiation and management, periodic housekeeping and logging.
@@ -43,6 +46,7 @@ All notable changes to this project will be documented in this file.  The format
 * Update the list of peers with newly-learned ones in linear chain sync.
 * Drain the joiner reactor queue on exit, to eliminate stale connections whose handshake has completed, but which live on the queue.
 * Shut down SSE event streams gracefully.
+* Limit the maximum number of clients connected to the event stream server via the `[event_stream_server][max_concurrent_subscribers]` config option.
 
 
 

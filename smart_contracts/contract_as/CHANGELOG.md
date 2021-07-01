@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+No changes.
+
 
 
 ## [1.2.0] - 2021-05-27
