@@ -21,7 +21,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
             .arg(creation_common::output::arg())
             .arg(transfer::amount::arg())
             .arg(transfer::target_account::arg())
-            .arg(transfer::transfer_id::arg());
+            .arg(transfer::transfer_id::arg())
+            .arg(common::force::arg(
+                creation_common::DisplayOrder::Force as usize,
+                true,
+            ));
         let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, false)
     }
@@ -43,6 +47,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
         let payment_str_params = creation_common::payment_str_params(matches);
 
         let maybe_output_path = creation_common::output::get(matches).unwrap_or_default();
+        let force = common::force::get(matches);
 
         casper_client::make_transfer(
             maybe_output_path,
@@ -58,6 +63,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
                 chain_name,
             },
             payment_str_params,
+            force,
         )
         .map(|_| {
             Success::Output(if maybe_output_path.is_empty() {
