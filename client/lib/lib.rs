@@ -28,9 +28,10 @@ use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_node::types::Deploy;
+use casper_node::types::{BlockHash, Deploy};
 use casper_types::{UIntParseError, U512};
 
+use casper_node::{crypto::hash::Digest, rpcs::state::GlobalStateIdentifier};
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams};
@@ -523,14 +524,12 @@ pub fn global_state_query(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
-    state_identifier: &str,
-    hash: &str,
+    global_state_str_params: GlobalStateStrParams<'_>,
     key: &str,
     path: &str,
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).query_global_state(
-        state_identifier,
-        hash,
+        global_state_str_params,
         key,
         path,
     )
@@ -1037,6 +1036,33 @@ impl<'a> SessionStrParams<'a> {
             session_args_simple,
             session_args_complex,
             ..Default::default()
+        }
+    }
+}
+
+/// Container for `GlobalStateIdentifier` construction options.
+#[derive(Default, Debug)]
+pub struct GlobalStateStrParams<'a> {
+    /// Identifier to mark the hash as either a Block hash or `state_root_hash`
+    /// When true, the hash provided is a Block hash.
+    pub is_block_hash: bool,
+    /// The hash value.
+    pub hash_value: &'a str,
+}
+
+impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> Result<GlobalStateIdentifier> {
+        let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
+            context: "block_identifier",
+            error,
+        })?;
+
+        if self.is_block_hash {
+            Ok(GlobalStateIdentifier::Block(BlockHash::new(hash)))
+        } else {
+            Ok(GlobalStateIdentifier::StateRoot(hash))
         }
     }
 }

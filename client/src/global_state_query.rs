@@ -1,71 +1,85 @@
 use std::str;
 
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
-use casper_client::Error;
+use casper_client::{Error, GlobalStateStrParams};
 use casper_node::rpcs::state::QueryGlobalState;
 
 use crate::{command::ClientCommand, common, Success};
+
+const ARG_HEX_STRING: &str = "HEX STRING";
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
-    StateIdentifier,
-    Hash,
+    BlockHash,
+    StateRootHash,
     Key,
     Path,
 }
 
-mod state_identifier {
+mod state_root_hash {
     use super::*;
 
-    const ARG_NAME: &str = "identifier";
-    const ARG_VALUE_NAME: &str = "STRING";
-    const ARG_HELP: &str =
-        "Identifies the hash value provided as either a block hash or state root hash. You must provide either a block hash or a state root hash";
-    const BLOCK: &str = "block";
-    const STATE_ROOT: &str = "state";
+    pub(super) const ARG_NAME: &str = "state-root-hash";
+    const ARG_SHORT: &str = "s";
+    const ARG_VALUE_NAME: &str = ARG_HEX_STRING;
+    const ARG_HELP: &str = "Hex-encoded hash of the state root";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
-            .required(true)
-            .possible_value(BLOCK)
-            .possible_value(STATE_ROOT)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(false)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(DisplayOrder::StateIdentifier as usize)
+            .display_order(DisplayOrder::StateRootHash as usize)
     }
 
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-/// Handles providing the arg for and retrieval of either the block hash or state root hash.
-mod hash {
+mod block_hash {
     use super::*;
 
-    const ARG_NAME: &str = "hash";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
-    const ARG_HELP: &str = "Hex-encoded block hash or state root hash";
+    pub(super) const ARG_NAME: &str = "block-hash";
+    const ARG_SHORT: &str = "b";
+    const ARG_VALUE_NAME: &str = ARG_HEX_STRING;
+    const ARG_HELP: &str = "Hex-encoded hash of the block";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
-            .required(true)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(false)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(DisplayOrder::Hash as usize)
+            .display_order(DisplayOrder::BlockHash as usize)
     }
 
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
+}
+
+fn global_state_str_params<'a>(matches: &'a ArgMatches) -> GlobalStateStrParams<'a> {
+    if let Some(state_root_hash) = state_root_hash::get(matches) {
+        return GlobalStateStrParams {
+            is_block_hash: false,
+            hash_value: state_root_hash,
+        };
+    }
+    if let Some(block_hash) = block_hash::get(matches) {
+        return GlobalStateStrParams {
+            is_block_hash: true,
+            hash_value: block_hash,
+        };
+    }
+    unreachable!("clap arg groups and parsing should prevent this")
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
@@ -82,18 +96,23 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(state_identifier::arg())
-            .arg(hash::arg())
             .arg(common::key::arg(DisplayOrder::Key as usize))
             .arg(common::path::arg(DisplayOrder::Path as usize))
+            .arg(block_hash::arg())
+            .arg(state_root_hash::arg())
+            .group(
+                ArgGroup::with_name("state-identifier")
+                    .arg(state_root_hash::ARG_NAME)
+                    .arg(block_hash::ARG_NAME)
+                    .required(true),
+            )
     }
 
     fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
-        let state_identifier = state_identifier::get(matches);
-        let hash = hash::get(matches);
+        let global_state_str_params = global_state_str_params(matches);
         let key = common::key::get(matches)?;
         let path = common::path::get(matches);
 
@@ -101,8 +120,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
             maybe_rpc_id,
             node_address,
             verbosity_level,
-            state_identifier,
-            hash,
+            global_state_str_params,
             &key,
             path,
         )
