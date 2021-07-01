@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{self, BufReader, Read, Write},
     path::PathBuf,
 };
@@ -76,6 +76,7 @@ impl From<GetBlockResult> for ListDeploysResult {
 pub(super) enum OutputKind<'a> {
     File {
         path: &'a str,
+        tmp_path: String,
         overwrite_if_exists: bool,
     },
     Stdout,
@@ -83,24 +84,29 @@ pub(super) enum OutputKind<'a> {
 
 impl<'a> OutputKind<'a> {
     pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
+        let tmp_path = [path.clone(), ".tmp"].join("");
         OutputKind::File {
             path,
+            tmp_path,
             overwrite_if_exists,
         }
     }
 
-    pub(super) fn get(self) -> Result<Box<dyn Write>> {
+    pub(super) fn get(&self) -> Result<Box<dyn Write>> {
         match self {
             OutputKind::File {
                 path,
+                tmp_path,
                 overwrite_if_exists,
+                ..
             } => {
                 let path = PathBuf::from(path);
+                let tmp_path = PathBuf::from(tmp_path);
                 if path.exists() && !overwrite_if_exists {
                     return Err(Error::FileAlreadyExists(path));
                 }
-                let file = File::create(&path).map_err(|error| Error::IoError {
-                    context: format!("failed to create {}", path.display()),
+                let file = File::create(&tmp_path).map_err(|error| Error::IoError {
+                    context: format!("failed to create {}", tmp_path.display()),
                     error,
                 })?;
 
@@ -109,6 +115,22 @@ impl<'a> OutputKind<'a> {
             }
             OutputKind::Stdout if cfg!(test) => Ok(Box::new(io::sink())),
             OutputKind::Stdout => Ok(Box::new(io::stdout())),
+        }
+    }
+
+    pub(super) fn commit(self) -> Result<()> {
+        match self {
+            OutputKind::File { path, tmp_path, .. } => match fs::rename(tmp_path.clone(), path) {
+                Ok(_) => Ok(()),
+                Err(error) => Err(Error::IoError {
+                    context: format!(
+                        "Could not move tmp file {} to destination {}",
+                        tmp_path, path
+                    ),
+                    error,
+                }),
+            },
+            OutputKind::Stdout => Ok(()),
         }
     }
 }
