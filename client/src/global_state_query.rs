@@ -83,7 +83,7 @@ fn global_state_str_params<'a>(matches: &'a ArgMatches) -> GlobalStateStrParams<
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
-    const NAME: &'static str = "global-state-query";
+    const NAME: &'static str = "query-global-state";
     const ABOUT: &'static str =
         "Retrieves a stored value from the network using either the state root hash or block hash";
 
