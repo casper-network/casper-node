@@ -102,7 +102,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
-        slashed: &HashSet<C::ValidatorId>,
+        faulty: &HashSet<C::ValidatorId>,
         inactive: &HashSet<C::ValidatorId>,
         protocol_config: &ProtocolConfig,
         config: &Config,
@@ -126,7 +126,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let mut validators: Validators<C::ValidatorId> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        for vid in slashed {
+        for vid in faulty {
             validators.ban(vid);
         }
         for vid in inactive {
@@ -173,7 +173,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
-        // without getting slashed.
+        // without getting faulty.
         let min_round_len = state::round_len(highway_config.minimum_round_exponent);
         let min_rounds_per_era = protocol_config
             .minimum_era_height
@@ -834,7 +834,7 @@ where
             outcomes.extend(self.detect_finality());
             outcomes
         } else {
-            // TODO: Slash proposer?
+            // TODO: Report proposer as faulty?
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(&proposed_block);
             warn!(?proposed_block, ?dropped_vertices, "proposal is invalid");

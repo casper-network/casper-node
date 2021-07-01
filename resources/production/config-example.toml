@@ -123,7 +123,12 @@ max_addr_pending_time = '1min'
 
 # The maximum amount of upstream bandwidth in bytes per second allocated to non-validating peers.
 # A value of `0` means unlimited.
-max_non_validating_peer_bps = 0
+max_outgoing_byte_rate_non_validators = 0
+
+# The maximum amount of requests from validating peers per second answered.
+# A value of `0` means unlimited.
+max_incoming_message_rate_non_validators = 0
+
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
@@ -177,9 +182,8 @@ address = '0.0.0.0:9999'
 # The number of event stream events to buffer.
 event_stream_buffer_length = 5000
 
-# The global max rate of requests (per second) before they are limited.
-# Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 10
+# The maximum number of subscribers across all event streams the server will permit at any one time.
+max_concurrent_subscribers = 100
 
 
 # ===============================================
@@ -222,6 +226,16 @@ max_deploy_metadata_store_size = 322_122_547_200
 #
 # 10_737_418_240 == 10 GiB.
 max_state_store_size = 10_737_418_240
+
+# Memory deduplication.
+#
+# If enabled, nodes will attempt to share loaded objects if possible.
+enable_mem_deduplication = false
+
+# Memory duplication garbage collection.
+#
+# Sets the frequency how often the memory pool cache is swept for free references.
+mem_pool_prune_interval = 1024
 
 
 # ===================================

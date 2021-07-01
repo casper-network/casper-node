@@ -971,6 +971,91 @@ mod tests {
         assert!(!gossip_table.finished.contains(&data_id));
     }
 
+    #[test]
+    fn timeouts_purge_in_order() {
+        let mut timeouts = Timeouts::new();
+        let now = Instant::now();
+        let later_100 = now + Duration::from_millis(100);
+        let later_200 = now + Duration::from_millis(200);
+
+        // Timeouts are added and purged in chronological order.
+        timeouts.push(now, 0);
+        timeouts.push(later_100, 1);
+        timeouts.push(later_200, 2);
+
+        let now_after_time_travel = now + Duration::from_millis(10);
+        let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
+
+        assert_eq!(purged, vec![0]);
+    }
+
+    #[test]
+    fn timeouts_depends_on_binary_search_by_implementation() {
+        // This test is meant to document the dependency of
+        // Timeouts::purge on https://doc.rust-lang.org/std/vec/struct.Vec.html#method.binary_search_by.
+        // If this test is failing then it's reasonable to believe that the implementation of
+        // binary_search_by has been updated.
+        let mut timeouts = Timeouts::new();
+        let now = Instant::now();
+        let later_100 = now + Duration::from_millis(100);
+        let later_200 = now + Duration::from_millis(200);
+        let later_300 = now + Duration::from_millis(300);
+        let later_400 = now + Duration::from_millis(400);
+        let later_500 = now + Duration::from_millis(500);
+        let later_600 = now + Duration::from_millis(600);
+
+        timeouts.push(later_100, 1);
+        timeouts.push(later_200, 2);
+        timeouts.push(later_300, 3);
+
+        // If a node's system time was changed to a time earlier than
+        // the earliest timeout, and a new timeout is added with an instant
+        // corresponding to this new early time, then this would make the earliest
+        // timeout the LAST timeout in the vec.
+        // [100 < 200 < 300 > 0]
+        timeouts.push(now, 0);
+
+        let now_after_time_travel = now + Duration::from_millis(10);
+        // Intuitively, we would expect [1,2,3,0] to be in the "purged" vec here.
+        // This is not the case because we're using binary_search_by, which (currently)
+        // is implemented with logic that checks if a, b, ... z are in a consistent order.
+        // in this case, the order that we've established is a < b < ... < z for each element in the
+        // vec, but we broke that order by inserting '0' last, and for some reason,
+        // binary_search_by won't find this unless there is a number > n occurring AFTER n
+        // in the vec.
+
+        let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
+        let empty: Vec<i32> = vec![];
+
+        // This isn't a problem and the order will eventually
+        // be restored.
+        assert_eq!(purged, empty);
+
+        timeouts.push(later_400, 4);
+        timeouts.push(later_500, 5);
+        timeouts.push(later_600, 6);
+
+        // Now, we advance time another 10 ms and purge again.
+        // In this scenario, timeouts with a later time are added after our
+        // improperly ordered "now" timeout
+        // [100 < 200 < 300 > 0 < 400 < 500 < 600]
+        let now_after_time_travel = now + Duration::from_millis(20);
+        let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
+        let expected = [1, 2, 3, 0];
+
+        assert_eq!(purged, expected);
+
+        // After the previous purge, an order is restored where a < b for consecutive elements in
+        // the vec. [400 < 500 < 600], so, purging timeouts up to 610 will properly clear
+        // the vec.
+        let now_after_time_travel = now + Duration::from_millis(610);
+        let purged = timeouts.purge(&now_after_time_travel).collect::<Vec<i32>>();
+        let expected = [4, 5, 6];
+
+        assert_eq!(purged, expected);
+        assert_eq!(0, timeouts.values.len());
+    }
+
     #[bench]
     fn benchmark_purging(bencher: &mut Bencher) {
         const ENTRY_COUNT: usize = 10_000;

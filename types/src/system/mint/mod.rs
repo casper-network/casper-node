@@ -1,5 +1,6 @@
 //! Contains implementation of a Mint contract functionality.
 mod constants;
+mod entry_points;
 mod error;
 mod runtime_provider;
 mod storage_provider;
@@ -11,7 +12,7 @@ use num_traits::CheckedMul;
 use crate::{account::AccountHash, system::CallStackElement, Key, Phase, PublicKey, URef, U512};
 
 pub use crate::system::mint::{
-    constants::*, error::Error, runtime_provider::RuntimeProvider,
+    constants::*, entry_points::mint_entry_points, error::Error, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider, system_provider::SystemProvider,
 };
 

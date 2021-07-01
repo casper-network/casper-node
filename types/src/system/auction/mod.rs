@@ -3,6 +3,7 @@ mod bid;
 mod constants;
 mod delegator;
 mod detail;
+mod entry_points;
 mod era_info;
 mod error;
 mod providers;
@@ -19,6 +20,7 @@ use crate::{account::AccountHash, system::CallStackElement, EraId, PublicKey, U5
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
+pub use entry_points::auction_entry_points;
 pub use era_info::*;
 pub use error::Error;
 pub use providers::{

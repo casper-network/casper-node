@@ -46,7 +46,7 @@ use tallies::Tallies;
 
 // TODO: The restart mechanism only persists and loads our own latest unit, so that we don't
 // equivocate after a restart. It doesn't yet persist our latest endorsed units, so we could
-// accidentally endorse conflicting votes. Fix this and enable slashing for conflicting
+// accidentally endorse conflicting votes. Fix this and enable detecting conflicting
 // endorsements again.
 pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 

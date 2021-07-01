@@ -34,12 +34,12 @@ use tracing::{
 };
 
 use super::{
-    bandwidth_limiter::BandwidthLimiterHandle,
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
-    error::{display_error, ConnectionError, IoError},
+    error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
     framed,
+    limiter::LimiterHandle,
     message::ConsensusKeyPair,
     Event, FramedTransport, Message, Payload, Transport,
 };
@@ -48,6 +48,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
+    utils::display_error,
 };
 
 // TODO: Constants need to be made configurable.
@@ -443,6 +444,7 @@ pub(super) async fn server<P, REv>(
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
     mut stream: SplitStream<FramedTransport<P>>,
+    limiter: Box<dyn LimiterHandle>,
     mut shutdown_receiver: watch::Receiver<()>,
     peer_id: NodeId,
     span: Span,
@@ -456,7 +458,12 @@ where
             match msg_result {
                 Ok(msg) => {
                     trace!(%msg, "message received");
-                    // We've received a message, push it to the reactor.
+                    // We've received a message. Ensure we have the proper amount of resources,
+                    // then push it to the reactor.
+
+                    limiter
+                        .request_allowance(msg.payload_incoming_resource_estimate())
+                        .await;
                     context
                         .event_queue
                         .schedule(
@@ -499,7 +506,7 @@ where
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Arc<Message<P>>>,
     mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
-    limiter: Box<dyn BandwidthLimiterHandle>,
+    limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where
     P: Payload,

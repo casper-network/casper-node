@@ -132,6 +132,11 @@ impl CLType {
                 CLType::Tuple3(cl_type_array) => serialized_length_of_cl_tuple_type(cl_type_array),
             }
     }
+
+    /// Returns `true` if the [`CLType`] is [`Option`].
+    pub fn is_option(&self) -> bool {
+        matches!(self, Self::Option(..))
+    }
 }
 
 /// Returns the `CLType` describing a "named key" on the system, i.e. a `(String, Key)`.

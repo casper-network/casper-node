@@ -13,38 +13,26 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::{
-        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
-    },
+    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     runtime_args,
     system::{
         auction::{
-            Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-            SeigniorageRecipientsSnapshot, ValidatorWeights, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR,
-            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS,
-            INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
-            METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
-            METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+            self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
+            SeigniorageRecipients, SeigniorageRecipientsSnapshot, AUCTION_DELAY_KEY,
+            DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+            INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::{
-            self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
-            METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
-        },
+        handle_payment::{self},
         mint::{
-            self, ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE,
-            ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
-            METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY,
+            self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        standard_payment::METHOD_PAY,
+        standard_payment,
     },
-    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Key, Parameter, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, SecretKey, URef, U512,
+    AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 
 use crate::{
@@ -537,7 +525,7 @@ impl Distribution<GenesisConfig> for Standard {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecConfig {
     accounts: Vec<GenesisAccount>,
     wasm_config: WasmConfig,
@@ -835,7 +823,7 @@ where
             named_keys
         };
 
-        let entry_points = self.mint_entry_points();
+        let entry_points = mint::mint_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -862,7 +850,7 @@ where
             named_keys
         };
 
-        let entry_points = self.handle_payment_entry_points();
+        let entry_points = handle_payment::handle_payment_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -1097,7 +1085,7 @@ where
         );
         named_keys.insert(UNBONDING_DELAY_KEY.into(), unbonding_delay_uref.into());
 
-        let entry_points = self.auction_entry_points();
+        let entry_points = auction::auction_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -1112,7 +1100,7 @@ where
     pub(crate) fn create_standard_payment(&self) -> ContractHash {
         let named_keys = NamedKeys::new();
 
-        let entry_points = self.standard_payment_entry_points();
+        let entry_points = standard_payment::standard_payment_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -1284,260 +1272,6 @@ where
         );
 
         (contract_package_hash, contract_hash)
-    }
-
-    fn mint_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let entry_point = EntryPoint::new(
-            METHOD_MINT,
-            vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
-            CLType::Result {
-                ok: Box::new(CLType::URef),
-                err: Box::new(CLType::U8),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_REDUCE_TOTAL_SUPPLY,
-            vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
-            CLType::Result {
-                ok: Box::new(CLType::Unit),
-                err: Box::new(CLType::U8),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_CREATE,
-            Parameters::new(),
-            CLType::URef,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_BALANCE,
-            vec![Parameter::new(ARG_PURSE, CLType::URef)],
-            CLType::Option(Box::new(CLType::U512)),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_TRANSFER,
-            vec![
-                Parameter::new(ARG_SOURCE, CLType::URef),
-                Parameter::new(ARG_TARGET, CLType::URef),
-                Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ID, CLType::Option(Box::new(CLType::U64))),
-            ],
-            CLType::Result {
-                ok: Box::new(CLType::Unit),
-                err: Box::new(CLType::U8),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_READ_BASE_ROUND_REWARD,
-            Parameters::new(),
-            CLType::U512,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        entry_points
-    }
-
-    fn handle_payment_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let get_payment_purse = EntryPoint::new(
-            METHOD_GET_PAYMENT_PURSE,
-            vec![],
-            CLType::URef,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(get_payment_purse);
-
-        let set_refund_purse = EntryPoint::new(
-            METHOD_SET_REFUND_PURSE,
-            vec![Parameter::new(ARG_PURSE, CLType::URef)],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(set_refund_purse);
-
-        let get_refund_purse = EntryPoint::new(
-            METHOD_GET_REFUND_PURSE,
-            vec![],
-            CLType::Option(Box::new(CLType::URef)),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(get_refund_purse);
-
-        let finalize_payment = EntryPoint::new(
-            METHOD_FINALIZE_PAYMENT,
-            vec![
-                Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ACCOUNT, CLType::ByteArray(32)),
-            ],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(finalize_payment);
-
-        entry_points
-    }
-
-    fn auction_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let entry_point = EntryPoint::new(
-            METHOD_GET_ERA_VALIDATORS,
-            vec![],
-            Option::<ValidatorWeights>::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_ADD_BID,
-            vec![
-                Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
-                Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_WITHDRAW_BID,
-            vec![
-                Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_DELEGATE,
-            vec![
-                Parameter::new(ARG_DELEGATOR, PublicKey::cl_type()),
-                Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_UNDELEGATE,
-            vec![
-                Parameter::new(ARG_DELEGATOR, AccountHash::cl_type()),
-                Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_RUN_AUCTION,
-            vec![Parameter::new(ARG_ERA_END_TIMESTAMP_MILLIS, u64::cl_type())],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_SLASH,
-            vec![],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_DISTRIBUTE,
-            vec![Parameter::new(
-                ARG_REWARD_FACTORS,
-                CLType::Map {
-                    key: Box::new(CLType::PublicKey),
-                    value: Box::new(CLType::U64),
-                },
-            )],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_READ_ERA_ID,
-            vec![],
-            CLType::U64,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_ACTIVATE_BID,
-            vec![Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey)],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        entry_points
-    }
-
-    fn standard_payment_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let entry_point = EntryPoint::new(
-            METHOD_PAY.to_string(),
-            vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
-            CLType::Result {
-                ok: Box::new(CLType::Unit),
-                err: Box::new(CLType::U32),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Session,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        entry_points
     }
 }
 

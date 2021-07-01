@@ -1,6 +1,6 @@
 //! Home of the Mint contract's [`Error`] type.
 
-use alloc::{fmt, vec::Vec};
+use alloc::vec::Vec;
 use core::convert::{TryFrom, TryInto};
 
 #[cfg(feature = "std")]
@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    AccessRights, CLType, CLTyped,
+    CLType, CLTyped,
 };
 
 /// Errors which can occur while executing the Mint contract.
@@ -25,10 +25,13 @@ pub enum Error {
     /// Destination purse not found.
     #[cfg_attr(feature = "std", error("Destination not found"))]
     DestNotFound = 2,
-    /// See [`PurseError::InvalidURef`].
+    /// The given [`URef`](crate::URef) does not reference the account holder's purse, or such a
+    /// `URef` does not have the required [`AccessRights`](crate::AccessRights).
     #[cfg_attr(feature = "std", error("Invalid URef"))]
     InvalidURef = 3,
-    /// See [`PurseError::InvalidAccessRights`].
+    /// The source purse is not writeable (see [`URef::is_writeable`](crate::URef::is_writeable)),
+    /// or the destination purse is not addable (see
+    /// [`URef::is_addable`](crate::URef::is_addable)).
     #[cfg_attr(feature = "std", error("Invalid AccessRights"))]
     InvalidAccessRights = 4,
     /// Tried to create a new purse with a non-zero initial balance.
@@ -93,20 +96,6 @@ pub enum Error {
 /// Used for testing; this should be guaranteed to be the maximum valid value of [`Error`] enum.
 #[cfg(test)]
 const MAX_ERROR_VALUE: u8 = Error::Sentinel as u8;
-
-impl From<PurseError> for Error {
-    fn from(purse_error: PurseError) -> Error {
-        match purse_error {
-            PurseError::InvalidURef => Error::InvalidURef,
-            PurseError::InvalidAccessRights(_) => {
-                // This one does not carry state from PurseError to the new Error enum. The reason
-                // is that Error is supposed to be simple in serialization and deserialization, so
-                // extra state is currently discarded.
-                Error::InvalidAccessRights
-            }
-        }
-    }
-}
 
 impl CLTyped for Error {
     fn cl_type() -> CLType {
@@ -175,29 +164,6 @@ impl FromBytes for Error {
             // Error::Formatting as if its unable to be correctly deserialized.
             .map_err(|_| bytesrepr::Error::Formatting)?;
         Ok((error, rem))
-    }
-}
-
-/// Errors relating to validity of source or destination purses.
-#[derive(Debug, Copy, Clone)]
-pub enum PurseError {
-    /// The given [`URef`](crate::URef) does not reference the account holder's purse, or such a
-    /// [`URef`](crate::URef) does not have the required [`AccessRights`].
-    InvalidURef,
-    /// The source purse is not writeable (see [`URef::is_writeable`](crate::URef::is_writeable)),
-    /// or the destination purse is not addable (see
-    /// [`URef::is_addable`](crate::URef::is_addable)).
-    InvalidAccessRights(Option<AccessRights>),
-}
-
-impl fmt::Display for PurseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            PurseError::InvalidURef => write!(f, "invalid uref"),
-            PurseError::InvalidAccessRights(maybe_access_rights) => {
-                write!(f, "invalid access rights: {:?}", maybe_access_rights)
-            }
-        }
     }
 }
 
