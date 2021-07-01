@@ -10,7 +10,7 @@ use crate::{
     CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };
 
-/// Returns entry points for a [`Mint`]
+/// Returns entry points for a [`Mint`](crate::system::mint::Mint)
 pub fn mint_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
