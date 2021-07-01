@@ -47,7 +47,7 @@ pub const KEY_HASH_LENGTH: usize = 32;
 pub const KEY_TRANSFER_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
 pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
-/// The number of bytes in a [`Key::Local`].
+/// The number of bytes in a [`Key::Dictionary`].
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
@@ -65,7 +65,7 @@ const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_D
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
-/// A newtype for [`Key`]s dictionary variant.
+/// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
 
 #[allow(missing_docs)]
