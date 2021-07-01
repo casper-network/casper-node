@@ -86,9 +86,10 @@ pub fn put_deploy(
 ///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
-/// * If `force` is true, existing files will be overwritten. If `force` is false and any of the
-/// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
-/// returned and no files are written.
+/// * If `force` is true, and a file exists at `maybe_output_path`, it will be overwritten. If
+///   `force` is false and a file exists at `maybe_output_path`,
+///   [`Error::FileAlreadyExists`](enum.Error.html#variant.FileAlreadyExists) is returned and a file
+///   will not be written.
 pub fn make_deploy(
     maybe_output_path: &str,
     deploy_params: DeployStrParams<'_>,
@@ -116,9 +117,10 @@ pub fn make_deploy(
 /// * `input_path` specifies the path to the previously-saved `Deploy` file.
 /// * `secret_key` specifies the path to the secret key with which to sign the `Deploy`.
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
-/// * If `force` is true, existing files will be overwritten. If `force` is false and any of the
-/// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
-/// returned and no files are written.
+/// * If `force` is true, and a file exists at `maybe_output_path`, it will be overwritten. If
+///   `force` is false and a file exists at `maybe_output_path`,
+///   [`Error::FileAlreadyExists`](enum.Error.html#variant.FileAlreadyExists) is returned and a file
+///   will not be written.
 pub fn sign_deploy_file(
     input_path: &str,
     secret_key: &str,
@@ -227,9 +229,10 @@ pub fn transfer(
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
-/// * If `force` is true, existing files will be overwritten. If `force` is false and any of the
-/// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
-/// returned and no files are written.
+/// * If `force` is true, and a file exists at `maybe_output_path`, it will be overwritten. If
+///   `force` is false and a file exists at `maybe_output_path`,
+///   [`Error::FileAlreadyExists`](enum.Error.html#variant.FileAlreadyExists) is returned and a file
+///   will not be written.
 pub fn make_transfer(
     maybe_output_path: &str,
     amount: &str,
