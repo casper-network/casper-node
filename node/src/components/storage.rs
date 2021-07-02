@@ -323,6 +323,7 @@ impl Storage {
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
+        let mut any_v2_block_deleted = false;
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
@@ -338,7 +339,9 @@ impl Storage {
                         HashingAlgorithmVersion::V1 => {
                             let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                         }
-                        HashingAlgorithmVersion::V2 => {}
+                        HashingAlgorithmVersion::V2 => {
+                            any_v2_block_deleted = true;
+                        }
                     }
                     let _ = deleted_block_hashes.insert(block_header.hash());
                     cursor.del(WriteFlags::empty())?;
@@ -394,6 +397,7 @@ impl Storage {
             &deploy_hashes_db,
             &transfer_hashes_db,
             &proposer_db,
+            any_v2_block_deleted,
             should_check_integrity,
         )?;
         initialize_block_metadata_db(
@@ -1537,9 +1541,9 @@ fn initialize_block_body_v1_db(
     let mut cursor = txn.open_rw_cursor(*block_body_v1_db)?;
 
     for (raw_key, _raw_val) in cursor.iter() {
-        let key =
+        let block_body_hash =
             Digest::try_from(raw_key).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-        if !block_body_hash_to_header_map.contains_key(&key) {
+        if !block_body_hash_to_header_map.contains_key(&block_body_hash) {
             if !deleted_block_body_hashes_raw.contains(raw_key) {
                 // This means that the block body isn't referenced by any header, but no header
                 // referencing it was just deleted, either
@@ -1653,50 +1657,41 @@ fn get_single_block_body_v2<Tx: Transaction>(
     Ok(Some(block_body))
 }
 
-/// Purges stale entries from the (Merklized) block body database, and checks the integrity of the
-/// remainder if `should_check_integrity` is true.
-fn initialize_block_body_v2_db(
-    env: &Environment,
-    block_header_db: &Database,
+fn garbage_collect_block_body_v2_db(
+    txn: &mut RwTransaction,
     block_body_v2_db: &Database,
     deploy_hashes_db: &Database,
     transfer_hashes_db: &Database,
     proposer_db: &Database,
-    should_check_integrity: bool,
+    block_body_hash_to_header_map: &BTreeMap<Digest, BlockHeader>,
 ) -> Result<(), LmdbExtError> {
-    info!("initializing v2 block body database");
-
-    let mut txn = env.begin_rw_txn()?;
-
-    let block_body_hash_to_header_map =
-        construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
-
     // This will store all the keys that are reachable from a block header, in all the parts
     // databases (we're basically doing a mark-and-sweep below).
     let mut live_digests = HashSet::new();
 
-    for (body_hash, header) in &block_body_hash_to_header_map {
+    for (body_hash, header) in block_body_hash_to_header_map {
         if header.hashing_algorithm_version() != HashingAlgorithmVersion::V2 {
             // We're only interested in body hashes for V2 blocks here
             continue;
         }
         let mut current_digest = *body_hash;
         loop {
+            if current_digest == hash::SENTINEL1 || live_digests.contains(&current_digest) {
+                break;
+            }
             live_digests.insert(current_digest);
             let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
                 match txn.get_value(*block_body_v2_db, &current_digest)? {
                     Some(slice) => slice,
                     None => {
                         return Err(CouldNotFindBlockBodyPart {
+                            block_hash: header.hash(),
                             merkle_linked_list_node_hash: current_digest,
                         })
                     }
                 };
             live_digests.insert(key_to_part_db);
             current_digest = merkle_proof_of_rest;
-            if current_digest == hash::SENTINEL1 {
-                break;
-            }
         }
     }
 
@@ -1707,8 +1702,8 @@ fn initialize_block_body_v2_db(
         (proposer_db, "deleting v2 proposer entry"),
     ];
 
+    // Clean dead entries from all the databases
     for (database, info_text) in databases_to_clean {
-        // Clean dead entries from block_body_v2_db
         let mut cursor = txn.open_rw_cursor(*database)?;
         for (raw_key, _raw_val) in cursor.iter() {
             let key = Digest::try_from(raw_key)
@@ -1721,48 +1716,88 @@ fn initialize_block_body_v2_db(
         drop(cursor);
     }
 
+    Ok(())
+}
+
+/// Purges stale entries from the (Merklized) block body database, and checks the integrity of the
+/// remainder if `should_check_integrity` is true.
+#[allow(clippy::too_many_arguments)]
+fn initialize_block_body_v2_db(
+    env: &Environment,
+    block_header_db: &Database,
+    block_body_v2_db: &Database,
+    deploy_hashes_db: &Database,
+    transfer_hashes_db: &Database,
+    proposer_db: &Database,
+    any_v2_block_deleted: bool,
+    should_check_integrity: bool,
+) -> Result<(), LmdbExtError> {
+    info!("initializing v2 block body database");
+
+    let mut txn = env.begin_rw_txn()?;
+
+    let block_body_hash_to_header_map = if any_v2_block_deleted || should_check_integrity {
+        construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?
+    } else {
+        BTreeMap::new()
+    };
+
+    if any_v2_block_deleted {
+        garbage_collect_block_body_v2_db(
+            &mut txn,
+            block_body_v2_db,
+            deploy_hashes_db,
+            transfer_hashes_db,
+            proposer_db,
+            &block_body_hash_to_header_map,
+        )?;
+    }
+
     if should_check_integrity {
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V2;
         for (raw_key, _raw_val) in txn.open_ro_cursor(*block_body_v2_db)?.iter() {
             let block_body_hash = Digest::try_from(raw_key)
                 .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-            if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
-                let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
-                if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
-                    return Err(LmdbExtError::UnexpectedHashingAlgorithmVersion {
-                        expected_hashing_algorithm_version,
-                        actual_hashing_algorithm_version,
-                    });
+            let block_header = match block_body_hash_to_header_map.get(&block_body_hash) {
+                Some(block_header) => block_header,
+                None => {
+                    // This probably means that the key is not the hash of the whole block body, but
+                    // a Merkle proof of a part of it - so we ignore this case.
+                    continue;
                 }
-                // txn is unusable because it's used in the cursor - construct a temporary RO
-                // transaction for reading the body
-                let mut txn2 = env.begin_ro_txn()?;
-                match get_single_block_body_v2(
-                    &mut txn2,
-                    *block_body_v2_db,
-                    *deploy_hashes_db,
-                    *transfer_hashes_db,
-                    *proposer_db,
-                    &block_body_hash,
-                )? {
-                    Some(block_body) => {
-                        // Use smart constructor for block and propagate validation error
-                        // accordingly
-                        Block::new_from_header_and_body(block_header.to_owned(), block_body)?;
-                    }
-                    None => {
-                        // get_single_block_body_v2 returning an Ok(None) means we have an
-                        // incomplete block body - this doesn't have to indicate an error, it may
-                        // be caused by fast sync not downloading the whole body, but only a part
-                        // of it - log it and skip the check
-                        info!(?block_body_hash, "incomplete block body found");
-                    }
-                };
-                txn2.commit()?;
-            } else {
-                // This probably means that the key is not the hash of the whole block body, but a
-                // Merkle proof of a part of it - so we ignore this case.
+            };
+            let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
+            if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
+                return Err(LmdbExtError::UnexpectedHashingAlgorithmVersion {
+                    expected_hashing_algorithm_version,
+                    actual_hashing_algorithm_version,
+                });
             }
+            // txn is unusable because it's used in the cursor - construct a temporary RO
+            // transaction for reading the body
+            let mut txn2 = env.begin_ro_txn()?;
+            match get_single_block_body_v2(
+                &mut txn2,
+                *block_body_v2_db,
+                *deploy_hashes_db,
+                *transfer_hashes_db,
+                *proposer_db,
+                &block_body_hash,
+            )? {
+                Some(block_body) => {
+                    // Use smart constructor for block and propagate validation error
+                    // accordingly
+                    Block::new_from_header_and_body(block_header.to_owned(), block_body)?;
+                }
+                None => {
+                    // get_single_block_body_v2 returning an Ok(None) means we have an
+                    // incomplete block body - this doesn't have to indicate an error, it may
+                    // be caused by fast sync not downloading the whole body, but only a part
+                    // of it - log it and skip the check
+                    info!(?block_body_hash, "incomplete block body found");
+                }
+            };
+            txn2.commit()?;
         }
     }
 

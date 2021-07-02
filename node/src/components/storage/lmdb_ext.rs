@@ -91,6 +91,7 @@ pub enum LmdbExtError {
          {merkle_linked_list_node_hash:?}"
     )]
     CouldNotFindBlockBodyPart {
+        block_hash: BlockHash,
         merkle_linked_list_node_hash: Digest,
     },
 }
