@@ -17,7 +17,7 @@ use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
     shared::{
         gas::Gas,
-        host_function_costs::{Cost, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
+        host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
         stored_value::StoredValue,
     },
     storage::global_state::StateReader,
@@ -1038,6 +1038,11 @@ where
                 // args(0) (Output) Pointer to number of elements in the call stack.
                 // args(1) (Output) Pointer to size in bytes of the serialized call stack.
                 let (call_stack_len_ptr, result_size_ptr) = Args::parse(args)?;
+                // TODO: add cost table entry once we can upgrade safely
+                self.charge_host_function_call(
+                    &HostFunction::fixed(10_000),
+                    [call_stack_len_ptr, result_size_ptr],
+                )?;
                 let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
