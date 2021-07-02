@@ -84,7 +84,7 @@ pub(super) enum OutputKind<'a> {
 
 impl<'a> OutputKind<'a> {
     pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
-        let tmp_path = [path.clone(), ".tmp"].join("");
+        let tmp_path = Path::new(path).with_extension(".tmp");
         OutputKind::File {
             path,
             tmp_path,
