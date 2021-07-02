@@ -53,6 +53,7 @@ pub enum FunctionIndex {
     NewDictionaryFuncIndex,
     DictionaryGetFuncIndex,
     DictionaryPutFuncIndex,
+    LoadCallStack,
 }
 
 impl Into<usize> for FunctionIndex {

@@ -9,7 +9,7 @@ mod system_provider;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use crate::{account::AccountHash, Key, PublicKey, URef, U512};
+use crate::{account::AccountHash, system::CallStackElement, Key, Phase, PublicKey, URef, U512};
 
 pub use crate::system::mint::{
     constants::*, entry_points::mint_entry_points, error::Error, runtime_provider::RuntimeProvider,
@@ -100,6 +100,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
+        if let (Phase::Session, Some(&CallStackElement::StoredSession { .. })) =
+            (self.get_phase(), self.get_immediate_caller())
+        {
+            // stored session code is not allowed to call this method in the session phase
+            return Err(Error::InvalidContext);
+        }
+
         if !source.is_readable() {
             return Err(Error::InvalidAccessRights);
         }

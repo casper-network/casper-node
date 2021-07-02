@@ -736,6 +736,7 @@ dependencies = [
  "dictionary-call",
  "env_logger",
  "fs_extra",
+ "get-call-stack-recursive-subcall",
  "gh-1470-regression",
  "gh-1470-regression-call",
  "hex",
@@ -1719,6 +1720,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ee-1217-regression"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "ee-221-regression"
 version = "0.1.0"
 dependencies = [
@@ -2248,6 +2257,23 @@ dependencies = [
 
 [[package]]
 name = "get-blocktime"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "get-call-stack-call-recursive-subcall"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+ "get-call-stack-recursive-subcall",
+]
+
+[[package]]
+name = "get-call-stack-recursive-subcall"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
