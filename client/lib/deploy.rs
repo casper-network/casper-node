@@ -1,10 +1,10 @@
+use rand::{self, distributions::Alphanumeric, Rng};
+use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
     io::{self, BufReader, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
-
-use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
@@ -76,7 +76,7 @@ impl From<GetBlockResult> for ListDeploysResult {
 pub(super) enum OutputKind<'a> {
     File {
         path: &'a str,
-        tmp_path: String,
+        tmp_path: PathBuf,
         overwrite_if_exists: bool,
     },
     Stdout,
@@ -84,7 +84,13 @@ pub(super) enum OutputKind<'a> {
 
 impl<'a> OutputKind<'a> {
     pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
-        let tmp_path = Path::new(path).with_extension(".tmp");
+        let collision_resistant_string = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(64)
+            .map(char::from)
+            .collect::<String>();
+        let extension = format!(".{}.tmp", &collision_resistant_string);
+        let tmp_path = Path::new(path).with_extension(extension);
         OutputKind::File {
             path,
             tmp_path,
@@ -101,7 +107,6 @@ impl<'a> OutputKind<'a> {
                 ..
             } => {
                 let path = PathBuf::from(path);
-                let tmp_path = PathBuf::from(tmp_path);
                 if path.exists() && !overwrite_if_exists {
                     return Err(Error::FileAlreadyExists(path));
                 }
