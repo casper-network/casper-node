@@ -73,16 +73,24 @@ impl From<GetBlockResult> for ListDeploysResult {
     }
 }
 
+/// An output abstraction for associating a Write with some metadata.
 pub(super) enum OutputKind<'a> {
     File {
+        /// The path of the output file.
         path: &'a str,
+        /// The path to a temp file in the same directory as the output file, this is used to make
+        /// the write operation transactional. This is used to make sure that the file at `path` is
+        /// not damaged if it exists.
         tmp_path: PathBuf,
+        /// If `overwrite_if_exists` is `true`, then the file at `path` will be overwritten.
         overwrite_if_exists: bool,
     },
     Stdout,
 }
 
 impl<'a> OutputKind<'a> {
+    /// This is a convenience method that acts as a constructor for a new `OutputKind::File` enum
+    /// variant.
     pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
         let collision_resistant_string = rand::thread_rng()
             .sample_iter(&Alphanumeric)
@@ -98,6 +106,7 @@ impl<'a> OutputKind<'a> {
         }
     }
 
+    /// `get()` returns a Result containing a Write trait object.
     pub(super) fn get(&self) -> Result<Box<dyn Write>> {
         match self {
             OutputKind::File {
@@ -123,6 +132,8 @@ impl<'a> OutputKind<'a> {
         }
     }
 
+    /// `commit()` When called on an `OutputKind::File` causes the temp file to be renamed (moved)
+    /// to its `path`. When called on an `OutputKind::Stdout` it acts as a noop function.
     pub(super) fn commit(self) -> Result<()> {
         match self {
             OutputKind::File { path, tmp_path, .. } => {
