@@ -15,7 +15,8 @@ use casper_execution_engine::{
     shared::motes::Motes,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ApiError, Key, PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, RuntimeArgs,
+    SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -83,7 +84,8 @@ fn should_fail_to_get_funds_from_faucet_stored() {
     builder.exec(exec_request).commit();
 
     match builder.get_error() {
-        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(20)))) => {}
+        Some(engine_state::Error::Exec(execution::Error::Revert(api_error)))
+            if api_error == ApiError::from(mint::Error::InvalidContext) => {}
         _ => panic!("should be an error"),
     }
 }
@@ -144,7 +146,8 @@ fn should_fail_to_create_account() {
     builder.exec(faucet_request).commit();
 
     match builder.get_error() {
-        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(20)))) => {}
+        Some(engine_state::Error::Exec(execution::Error::Revert(api_error)))
+            if api_error == ApiError::from(mint::Error::InvalidContext) => {}
         _ => panic!("should be an error"),
     }
 }
@@ -211,7 +214,8 @@ fn should_fail_transfer_to_existing_account() {
     builder.exec(faucet_request).commit();
 
     match builder.get_error() {
-        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(20)))) => {}
+        Some(engine_state::Error::Exec(execution::Error::Revert(api_error)))
+            if api_error == ApiError::from(mint::Error::InvalidContext) => {}
         _ => panic!("should be an error"),
     }
 }
