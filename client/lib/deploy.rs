@@ -120,16 +120,16 @@ impl<'a> OutputKind<'a> {
 
     pub(super) fn commit(self) -> Result<()> {
         match self {
-            OutputKind::File { path, tmp_path, .. } => match fs::rename(tmp_path.clone(), path) {
-                Ok(_) => Ok(()),
-                Err(error) => Err(Error::IoError {
+            OutputKind::File { path, tmp_path, .. } => {
+                fs::rename(&tmp_path, path).map_err(|error| Error::IoError {
                     context: format!(
                         "Could not move tmp file {} to destination {}",
-                        tmp_path, path
+                        tmp_path.display(),
+                        path
                     ),
                     error,
-                }),
-            },
+                })
+            }
             OutputKind::Stdout => Ok(()),
         }
     }
