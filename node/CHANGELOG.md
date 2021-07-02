@@ -47,6 +47,7 @@ All notable changes to this project will be documented in this file.  The format
 * Drain the joiner reactor queue on exit, to eliminate stale connections whose handshake has completed, but which live on the queue.
 * Shut down SSE event streams gracefully.
 * Limit the maximum number of clients connected to the event stream server via the `[event_stream_server][max_concurrent_subscribers]` config option.
+* Avoid emitting duplicate events in the event stream.
 
 
 
