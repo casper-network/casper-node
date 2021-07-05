@@ -1675,10 +1675,7 @@ fn garbage_collect_block_body_v2_db(
             continue;
         }
         let mut current_digest = *body_hash;
-        loop {
-            if current_digest == hash::SENTINEL1 || live_digests.contains(&current_digest) {
-                break;
-            }
+        while current_digest != hash::SENTINEL1 && !live_digests.contains(&current_digest) {
             live_digests.insert(current_digest);
             let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
                 match txn.get_value(*block_body_v2_db, &current_digest)? {
