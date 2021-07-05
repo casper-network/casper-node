@@ -114,6 +114,8 @@ pub struct EraSupervisor<I> {
     next_upgrade_activation_point: Option<ActivationPoint>,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
+    /// The era that was current when this node joined the network.
+    era_where_we_joined: EraId,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -171,6 +173,7 @@ where
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             next_executed_height: next_height,
+            era_where_we_joined: current_era,
         };
 
         let bonded_eras = era_supervisor.bonded_eras();
@@ -1214,10 +1217,15 @@ where
                     .ignore()
             }
             ProtocolOutcome::StandstillAlert => {
-                if era_id == self.era_supervisor.current_era {
+                if era_id == self.era_supervisor.current_era
+                    && era_id == self.era_supervisor.era_where_we_joined
+                {
                     warn!(era = %era_id.value(), "current era is stalled; shutting down");
                     fatal!(self.effect_builder, "current era is stalled; please retry").ignore()
                 } else {
+                    if era_id == self.era_supervisor.current_era {
+                        warn!(era = %era_id.value(), "current era is stalled");
+                    }
                     Effects::new()
                 }
             }
