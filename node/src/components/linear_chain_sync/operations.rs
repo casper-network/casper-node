@@ -26,7 +26,7 @@ use crate::{
     },
     types::{
         BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, Item, TimeDiff, Timestamp,
+        Chainspec, Deploy, DeployHash, Item, Timestamp,
     },
 };
 
@@ -144,7 +144,7 @@ fn get_genesis_validators(chainspec: &Chainspec) -> BTreeMap<PublicKey, U512> {
 }
 
 /// Get trusted switch block; returns `None` if we are still in the first era.
-async fn get_trusted_switch_block<REv, I>(
+async fn maybe_get_trusted_switch_block<REv, I>(
     effect_builder: EffectBuilder<REv>,
     chainspec: &Chainspec,
     trusted_header: &BlockHeader,
@@ -454,7 +454,7 @@ where
     let trusted_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
     let mut maybe_trusted_switch_block =
-        get_trusted_switch_block(effect_builder, &chainspec, &trusted_header).await?;
+        maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_header).await?;
 
     let mut trusted_validator_weights = maybe_trusted_switch_block.as_ref().map_or_else(
         || get_genesis_validators(&chainspec),
@@ -655,7 +655,7 @@ where
         .core_config
         .minimum_era_height
         .saturating_sub(blocks_in_this_era);
-    let min_round_length = TimeDiff::from(1 << chainspec.highway_config.minimum_round_exponent);
+    let min_round_length = chainspec.highway_config.min_round_length();
     let time_since_most_recent_block = now.saturating_diff(most_recent_block.timestamp());
     Ok(time_since_most_recent_block < min_round_length * remaining_blocks_in_this_era)
 }
@@ -731,7 +731,7 @@ mod tests {
             .activation_point
             .genesis_timestamp()
             .expect("test expects genesis timestamp in chainspec");
-        let min_round_length = TimeDiff::from(1 << chainspec.highway_config.minimum_round_exponent);
+        let min_round_length = chainspec.highway_config.min_round_length();
 
         // Configure eras to have at least 10 blocks but to last at least 20 minimum-length rounds.
         let era_duration = min_round_length * 20;
