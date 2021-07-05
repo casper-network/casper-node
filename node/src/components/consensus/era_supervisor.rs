@@ -89,7 +89,7 @@ pub struct EraSupervisor<I> {
     /// current one.
     active_eras: HashMap<EraId, Era<I>>,
     secret_signing_key: Arc<SecretKey>,
-    pub(super) public_signing_key: PublicKey,
+    public_signing_key: PublicKey,
     current_era: EraId,
     protocol_config: ProtocolConfig,
     config: Config,
@@ -114,10 +114,6 @@ pub struct EraSupervisor<I> {
     next_upgrade_activation_point: Option<ActivationPoint>,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
-    /// Set to true when InitializeEras is handled.
-    /// TODO: A temporary field. Shouldn't be needed once the Joiner doesn't have a consensus
-    /// component.
-    is_initialized: bool,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -175,7 +171,6 @@ where
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             next_executed_height: next_height,
-            is_initialized: false,
         };
 
         let bonded_eras = era_supervisor.bonded_eras();
@@ -542,7 +537,6 @@ where
             .entry(self.current_era)
             .or_default()
             .extend(active_era_outcomes);
-        self.is_initialized = true;
         self.next_block_height = self.active_eras[&self.current_era].start_height;
         result_map
     }
