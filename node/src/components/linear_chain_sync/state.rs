@@ -24,8 +24,8 @@ pub enum State {
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
         latest_block: Box<Option<Block>>,
-        /// The block height of the last seen switch block.
-        last_switch_block_height: Option<u64>,
+        /// The header of the last seen switch block.
+        last_switch_block_header: Option<Box<BlockHeader>>,
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
@@ -36,8 +36,8 @@ pub enum State {
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
-        /// The block height of the last seen switch block.
-        last_switch_block_height: Option<u64>,
+        /// The header of the last seen switch block.
+        last_switch_block_header: Option<Box<BlockHeader>>,
     },
     /// Synchronizing done. The single field contains the highest block seen during the
     /// synchronization process.
@@ -84,20 +84,20 @@ impl State {
             highest_block_seen: 0,
             linear_chain: Vec::new(),
             latest_block: Box::new(None),
-            last_switch_block_height: None,
+            last_switch_block_header: None,
         }
     }
 
     pub fn sync_descendants(
         trusted_hash: BlockHash,
         latest_block: Block,
-        last_switch_block_height: Option<u64>,
+        last_switch_block_header: Option<Box<BlockHeader>>,
     ) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
-            last_switch_block_height,
+            last_switch_block_header,
         }
     }
 
@@ -128,19 +128,19 @@ impl State {
         matches!(self, State::None)
     }
 
-    /// Sets the last seen switch block height.
-    pub(crate) fn set_last_switch_block_height(&mut self, height: u64) {
+    /// Sets the last seen switch block header.
+    pub(crate) fn set_last_switch_block_header(&mut self, header: BlockHeader) {
         match self {
             State::None | State::Done(_) => (),
             State::SyncingTrustedHash {
-                last_switch_block_height,
+                last_switch_block_header,
                 ..
             }
             | State::SyncingDescendants {
-                last_switch_block_height,
+                last_switch_block_header,
                 ..
             } => {
-                *last_switch_block_height = Some(height);
+                *last_switch_block_header = Some(Box::new(header));
             }
         }
     }

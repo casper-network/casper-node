@@ -59,7 +59,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
-        Chainspec, Deploy, FinalizedBlock, TimeDiff,
+        Chainspec, Deploy, FinalizedBlock, TimeDiff, Timestamp,
     },
     NodeRng,
 };
@@ -284,7 +284,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
         if block.header().is_switch_block() {
-            self.state.set_last_switch_block_height(block.height());
+            self.state
+                .set_last_switch_block_header(block.header().clone());
         }
         if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
             info!(
@@ -334,7 +335,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
-                last_switch_block_height,
+                last_switch_block_header,
                 ..
             } => {
                 assert_eq!(highest_block_seen, block_height);
@@ -357,12 +358,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block, last_switch_block_height);
+                self.state = State::sync_descendants(trusted_hash, block, last_switch_block_header);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
                 ref latest_block,
-                last_switch_block_height,
+                ref last_switch_block_header,
                 ..
             } => {
                 if latest_block.as_ref() != &block {
@@ -372,41 +373,32 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     );
                     return fatal!(effect_builder, "unexpected block execution result").ignore();
                 }
-                if self.is_currently_active_era(latest_block, last_switch_block_height) {
-                    info!(
-                        hash=?block.hash(),
-                        height=?block.header().height(),
-                        era=block.header().era_id().value(),
-                        "downloaded a block in the current era. finished synchronization"
-                    );
-                    self.mark_done(Some(*latest_block.clone()));
-                    return Effects::new();
+                match operations::is_current_era::<I>(
+                    latest_block.header(),
+                    last_switch_block_header.as_ref().map(Box::as_ref),
+                    &self.chainspec,
+                    Timestamp::now(),
+                ) {
+                    Err(err) => {
+                        fatal!(effect_builder, "failed to compute era duration: {:?}", err).ignore()
+                    }
+                    Ok(true) => {
+                        info!(
+                            hash=?block.hash(),
+                            height=?block.header().height(),
+                            era=block.header().era_id().value(),
+                            "downloaded a block in the current era. finished synchronization"
+                        );
+                        self.mark_done(Some(*latest_block.clone()));
+                        Effects::new()
+                    }
+                    Ok(false) => {
+                        self.state = curr_state;
+                        self.fetch_next_block(effect_builder, rng, &block)
+                    }
                 }
-                self.state = curr_state;
-                self.fetch_next_block(effect_builder, rng, &block)
             }
         }
-    }
-
-    // Returns whether we've just downloaded a block in a currently active era.
-    fn is_currently_active_era(
-        &self,
-        block: &Block,
-        last_switch_block_height: Option<u64>,
-    ) -> bool {
-        let last_switch_block_height = last_switch_block_height.unwrap_or(0);
-        // This is the number of blocks that have we already know of from the era the current block
-        // is in.
-        let past_blocks_in_this_era = block.height().saturating_sub(last_switch_block_height);
-        // `self.shortest_era - self.min_round_length * past_blocks_in_this_era` is the estimated
-        // time left to the end of the era the current block is in; if less time than that has
-        // passed since the current block, this is most likely still the current era and we can
-        // return `true`.
-        // We add `min_round_length * past_blocks_in_this_era` to the left side instead of
-        // subtracting it from the right side to avoid underflows (TimeDiffs can't represent values
-        // less than 0).
-        block.header().timestamp().elapsed() + self.min_round_length * past_blocks_in_this_era
-            < self.shortest_era
     }
 
     /// Returns effects for fetching next block's deploys.

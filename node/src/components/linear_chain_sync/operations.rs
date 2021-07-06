@@ -441,6 +441,8 @@ where
     // Fetch the trusted header
     let trusted_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
+    // TODO: This will get the pre-upgrade switch block even after an emergency restart. Use the
+    // post-upgrade validator set instead.
     let mut maybe_trusted_switch_block =
         maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_header).await?;
 
@@ -602,7 +604,7 @@ where
 }
 
 /// Returns `true` if `most_recent_block` belongs to an era that is still ongoing.
-fn is_current_era<I>(
+pub(crate) fn is_current_era<I>(
     most_recent_block: &BlockHeader,
     maybe_switch_block: Option<&BlockHeader>,
     chainspec: &Chainspec,
