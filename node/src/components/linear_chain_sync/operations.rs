@@ -127,19 +127,9 @@ where
 fn get_genesis_validators(chainspec: &Chainspec) -> BTreeMap<PublicKey, U512> {
     chainspec
         .network_config
-        .accounts_config
-        .accounts()
-        .iter()
-        .filter_map(|account_config| {
-            if account_config.is_genesis_validator() {
-                Some((
-                    account_config.public_key(),
-                    account_config.bonded_amount().value(),
-                ))
-            } else {
-                None
-            }
-        })
+        .chainspec_validator_stakes()
+        .into_iter()
+        .map(|(pub_key, motes)| (pub_key, motes.value()))
         .collect()
 }
 
