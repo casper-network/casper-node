@@ -30,7 +30,20 @@ function main() {
     log "The new node has bonded in."
     # 6. Assert that the new bonded validator is producing blocks.
     assert_node_proposed "6" "180"
-
+    # 7. Unbond node
+    unbond_validator "6"
+    # 8. Wait auction delay + 1
+    do_await_era_change "4"
+    # 9. Assert unbonded
+    assert_eviction "6"
+    # Gather Block Hash after evicted  node for walkback later
+    local AFTER_EVICTION_HASH=$(do_read_lfb_hash '1')
+    # 10. Wait 3 eras to see if the node ends up proposing
+    do_await_era_change "3"
+    # 11. Assert node didn't propose since being shutdown
+    assert_no_proposal_walkback '6' "$AFTER_EVICTION_HASH"
+    # 12. Check for equivocators
+    assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
     log "Scenario bonding complete"
@@ -47,6 +60,20 @@ function assert_new_bonded_validator() {
     fi
 }
 
+function unbond_validator() {
+    local NODE_ID=${1}
+    local WITHDRAWAL_AMOUNT=${2:-"1000000000000000000000000000000"}
+    log_step "submitting auction withdrawals"
+
+    source "$NCTL"/sh/contracts-auction/do_bid_withdraw.sh \
+            node="$NODE_ID" \
+            amount="$WITHDRAWAL_AMOUNT" \
+            quiet="FALSE"
+
+    log "node-$NODE_ID auction bid withdrawn -> $WITHDRAWAL_AMOUNT CSPR"
+    log "awaiting 10 seconds for auction withdrawl deploy to finalize"
+    sleep 10.0
+}
 # ----------------------------------------------------------------
 # ENTRY POINT
 # ----------------------------------------------------------------
