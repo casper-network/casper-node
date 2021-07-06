@@ -162,16 +162,14 @@ where
 
     // Fetch each parent hash one by one until we have the trusted validator weights
     let mut current_header_to_walk_back_from = trusted_header.clone();
-    loop {
-        if current_header_to_walk_back_from.is_switch_block() {
-            return Ok(Some(current_header_to_walk_back_from));
-        }
+    while !current_header_to_walk_back_from.is_switch_block() {
         current_header_to_walk_back_from = *fetch_and_store_block_header(
             effect_builder,
             *current_header_to_walk_back_from.parent_hash(),
         )
         .await?;
     }
+    Ok(Some(current_header_to_walk_back_from))
 }
 
 /// Verifies finality signatures for a block header
