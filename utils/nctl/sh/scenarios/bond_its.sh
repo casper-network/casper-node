@@ -36,11 +36,11 @@ function main() {
     do_await_era_change "4"
     # 9. Assert unbonded
     assert_eviction "6"
-    # Gather Block Hash after evicted  node for walkback later
+    # Gather Block Hash after evicted node for walkback later
     local AFTER_EVICTION_HASH=$(do_read_lfb_hash '1')
     # 10. Wait 3 eras to see if the node ends up proposing
     do_await_era_change "3"
-    # 11. Assert node didn't propose since being shutdown
+    # 11. Assert node didn't propose since being unbonded
     assert_no_proposal_walkback '6' "$AFTER_EVICTION_HASH"
     # 12. Check for equivocators
     assert_no_equivocators_logs
