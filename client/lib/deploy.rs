@@ -1,10 +1,10 @@
-use std::{
-    fs::File,
-    io::{self, BufReader, Read, Write},
-    path::PathBuf,
-};
-
+use rand::{self, distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
+use std::{
+    fs::{self, File},
+    io::{self, BufReader, Read, Write},
+    path::{Path, PathBuf},
+};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
@@ -73,34 +73,54 @@ impl From<GetBlockResult> for ListDeploysResult {
     }
 }
 
+/// An output abstraction for associating a Write with some metadata.
 pub(super) enum OutputKind<'a> {
     File {
+        /// The path of the output file.
         path: &'a str,
+        /// The path to a temp file in the same directory as the output file, this is used to make
+        /// the write operation transactional. This is used to make sure that the file at `path` is
+        /// not damaged if it exists.
+        tmp_path: PathBuf,
+        /// If `overwrite_if_exists` is `true`, then the file at `path` will be overwritten.
         overwrite_if_exists: bool,
     },
     Stdout,
 }
 
 impl<'a> OutputKind<'a> {
+    /// This is a convenience method that acts as a constructor for a new `OutputKind::File` enum
+    /// variant.
     pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
+        let collision_resistant_string = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(5)
+            .map(char::from)
+            .collect::<String>();
+        let extension = format!(".{}.tmp", &collision_resistant_string);
+        let tmp_path = Path::new(path).with_extension(extension);
         OutputKind::File {
             path,
+            tmp_path,
             overwrite_if_exists,
         }
     }
 
-    pub(super) fn get(self) -> Result<Box<dyn Write>> {
+    /// `get()` returns a Result containing a Write trait object.
+    pub(super) fn get(&self) -> Result<Box<dyn Write>> {
         match self {
             OutputKind::File {
                 path,
+                tmp_path,
                 overwrite_if_exists,
+                ..
             } => {
                 let path = PathBuf::from(path);
                 if path.exists() && !overwrite_if_exists {
                     return Err(Error::FileAlreadyExists(path));
                 }
-                let file = File::create(&path).map_err(|error| Error::IoError {
-                    context: format!("failed to create {}", path.display()),
+                let file = File::create(&tmp_path).map_err(|error| Error::IoError {
+                    context: format!("failed to create {}", tmp_path.display()),
                     error,
                 })?;
 
@@ -109,6 +129,24 @@ impl<'a> OutputKind<'a> {
             }
             OutputKind::Stdout if cfg!(test) => Ok(Box::new(io::sink())),
             OutputKind::Stdout => Ok(Box::new(io::stdout())),
+        }
+    }
+
+    /// `commit()` When called on an `OutputKind::File` causes the temp file to be renamed (moved)
+    /// to its `path`. When called on an `OutputKind::Stdout` it acts as a noop function.
+    pub(super) fn commit(self) -> Result<()> {
+        match self {
+            OutputKind::File { path, tmp_path, .. } => {
+                fs::rename(&tmp_path, path).map_err(|error| Error::IoError {
+                    context: format!(
+                        "Could not move tmp file {} to destination {}",
+                        tmp_path.display(),
+                        path
+                    ),
+                    error,
+                })
+            }
+            OutputKind::Stdout => Ok(()),
         }
     }
 }

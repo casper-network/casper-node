@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.  The format
 * Change `account-address` subcommand to output properly formatted string.
 * Change `put-deploy` and `make-deploy` subcommands to support transfers.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to not overwrite files unless `--force` is passed.
+* Change `make-deploy`, `make-transfer` and `sign-deploy` to use transactional file writing for enhanced safety and reliability.
 
 
 
