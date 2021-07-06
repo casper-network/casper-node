@@ -94,7 +94,7 @@ impl<'a> OutputKind<'a> {
     pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
         let collision_resistant_string = rand::thread_rng()
             .sample_iter(&Alphanumeric)
-            .take(64)
+            .take(5)
             .map(char::from)
             .collect::<String>();
         let extension = format!(".{}.tmp", &collision_resistant_string);
