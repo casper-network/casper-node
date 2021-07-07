@@ -666,20 +666,12 @@ pub extern "C" fn casper_keygen(
     output_dir: *const c_char,
     algorithm: *const c_char,
     force: bool,
-    response_buf: *mut c_uchar,
-    response_buf_len: usize,
 ) -> casper_error_t {
-    let mut runtime = RUNTIME.lock().expect("should lock");
-    let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let output_dir = try_unsafe_arg!(output_dir);
     let algorithm = try_unsafe_arg!(algorithm);
-
-    runtime.block_on(async move {
-        let result = super::keygen::generate_files(output_dir, algorithm, force);
-        try_unwrap_result!(result);
-        copy_str_to_buf("", response_buf, response_buf_len);
-        casper_error_t::CASPER_SUCCESS
-    })
+    let result = super::keygen::generate_files(output_dir, algorithm, force);
+    try_unwrap_result!(result);
+    casper_error_t::CASPER_SUCCESS
 }
 
 /// Container for `Deploy` construction options.
