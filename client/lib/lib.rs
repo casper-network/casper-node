@@ -98,9 +98,9 @@ pub fn make_deploy(
     force: bool,
 ) -> Result<()> {
     let output = if maybe_output_path.is_empty() {
-        OutputKind::Stdout.get()?
+        OutputKind::Stdout
     } else {
-        OutputKind::file(maybe_output_path, force).get()?
+        OutputKind::file(maybe_output_path, force)
     };
 
     Deploy::with_payment_and_session(
@@ -108,7 +108,9 @@ pub fn make_deploy(
         payment_params.try_into()?,
         session_params.try_into()?,
     )?
-    .write_deploy(output)
+    .write_deploy(output.get()?)?;
+
+    output.commit()
 }
 
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
@@ -135,12 +137,14 @@ pub fn sign_deploy_file(
     })?;
 
     let output = if maybe_output_path.is_empty() {
-        OutputKind::Stdout.get()?
+        OutputKind::Stdout
     } else {
-        OutputKind::file(maybe_output_path, force).get()?
+        OutputKind::file(maybe_output_path, force)
     };
 
-    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
+    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output.get()?)?;
+
+    output.commit()
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
@@ -249,9 +253,9 @@ pub fn make_transfer(
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
     let output = if maybe_output_path.is_empty() {
-        OutputKind::Stdout.get()?
+        OutputKind::Stdout
     } else {
-        OutputKind::file(maybe_output_path, force).get()?
+        OutputKind::file(maybe_output_path, force)
     };
 
     Deploy::new_transfer(
@@ -262,7 +266,9 @@ pub fn make_transfer(
         deploy_params.try_into()?,
         payment_params.try_into()?,
     )?
-    .write_deploy(output)
+    .write_deploy(output.get()?)?;
+
+    output.commit()
 }
 
 /// Retrieves a `Deploy` from the network.
