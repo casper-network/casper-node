@@ -11,7 +11,7 @@ use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, URef, U512};
+use casper_types::{ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512};
 
 use crate::{
     error::{Error, Result},
@@ -171,6 +171,9 @@ pub struct DeployParams {
 
     /// The name of the chain this `Deploy` will be considered for inclusion in.
     pub chain_name: String,
+
+    /// Optional public key of the account creating the Deploy.
+    pub session_account: Option<PublicKey>,
 }
 
 /// An extension trait that adds some client-specific functionality to `Deploy`.
@@ -222,6 +225,7 @@ impl DeployExt for Deploy {
             dependencies,
             chain_name,
             secret_key,
+            session_account,
         } = params;
 
         let deploy = Deploy::new(
@@ -233,6 +237,7 @@ impl DeployExt for Deploy {
             payment,
             session,
             &secret_key,
+            session_account,
         );
         deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
         Ok(deploy)

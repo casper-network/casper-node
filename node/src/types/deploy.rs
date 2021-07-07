@@ -558,11 +558,17 @@ impl Deploy {
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
         secret_key: &SecretKey,
+        account: Option<PublicKey>,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
 
-        let account = PublicKey::from(secret_key);
+        let account = if let Some(public_key) = account {
+            public_key
+        } else {
+            PublicKey::from(secret_key)
+        };
+
         // Remove duplicates.
         let dependencies = dependencies.into_iter().unique().collect();
         let header = DeployHeader {
@@ -823,6 +829,7 @@ impl Deploy {
             payment,
             session,
             &secret_key,
+            None,
         )
     }
 }
@@ -1049,6 +1056,7 @@ mod tests {
                 args: transfer_args,
             },
             &secret_key,
+            None,
         )
     }
 

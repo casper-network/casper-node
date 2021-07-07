@@ -90,7 +90,7 @@ pub mod rpc_id {
 pub mod secret_key {
     use super::*;
 
-    const ARG_NAME: &str = "secret-key";
+    pub(crate) const ARG_NAME: &str = "secret-key";
     const ARG_SHORT: &str = "k";
     const ARG_VALUE_NAME: &str = super::ARG_PATH;
     const ARG_HELP: &str = "Path to secret key file";
@@ -203,7 +203,6 @@ pub mod public_key {
     use super::*;
 
     const ARG_NAME: &str = "public-key";
-    const ARG_SHORT: &str = "p";
     const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
     const ARG_HELP: &str =
         "This must be a properly formatted public key. The public key may instead be read in from \
@@ -214,7 +213,6 @@ pub mod public_key {
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
-            .short(ARG_SHORT)
             .required(true)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)

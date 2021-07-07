@@ -339,6 +339,7 @@ pub(super) fn parse_deploy_params(
     gas_price: &str,
     dependencies: &[&str],
     chain_name: &str,
+    session_account: String,
 ) -> Result<DeployParams> {
     let secret_key = self::secret_key(secret_key)?;
     let timestamp = self::timestamp(timestamp)?;
@@ -346,6 +347,7 @@ pub(super) fn parse_deploy_params(
     let gas_price = self::gas_price(gas_price)?;
     let dependencies = self::dependencies(dependencies)?;
     let chain_name = chain_name.to_string();
+    let session_account = PublicKey::from_hex(session_account).ok();
 
     Ok(DeployParams {
         timestamp,
@@ -354,6 +356,7 @@ pub(super) fn parse_deploy_params(
         dependencies,
         chain_name,
         secret_key,
+        session_account,
     })
 }
 

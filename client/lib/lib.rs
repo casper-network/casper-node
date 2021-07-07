@@ -546,6 +546,8 @@ pub struct DeployStrParams<'a> {
     /// Name of the chain, to avoid the `Deploy` from being accidentally or maliciously included in
     /// a different chain.
     pub chain_name: &'a str,
+    /// The public key associated with the account which is creating the `Deploy`.
+    pub session_account: String,
 }
 
 impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
@@ -559,6 +561,7 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
             gas_price,
             dependencies,
             chain_name,
+            session_account,
         } = self;
         parsing::parse_deploy_params(
             secret_key,
@@ -567,6 +570,7 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
             gas_price,
             &dependencies,
             chain_name,
+            session_account,
         )
     }
 }
