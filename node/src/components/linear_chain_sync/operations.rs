@@ -6,7 +6,7 @@ use std::{
 };
 
 use num::rational::Ratio;
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
@@ -26,7 +26,7 @@ use crate::{
     },
     types::{
         BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, Item,
+        Chainspec, Deploy, DeployHash, Item, Timestamp,
     },
 };
 
@@ -123,35 +123,29 @@ where
     Ok(deploy)
 }
 
-/// Get trusted block headers; falls back to genesis if none are available
-async fn get_trusted_validator_weights<REv, I>(
+/// Returns the genesis validator weights, by public key.
+fn get_genesis_validators(chainspec: &Chainspec) -> BTreeMap<PublicKey, U512> {
+    chainspec
+        .network_config
+        .chainspec_validator_stakes()
+        .into_iter()
+        .map(|(pub_key, motes)| (pub_key, motes.value()))
+        .collect()
+}
+
+/// Get trusted switch block; returns `None` if we are still in the first era.
+async fn maybe_get_trusted_switch_block<REv, I>(
     effect_builder: EffectBuilder<REv>,
     chainspec: &Chainspec,
     trusted_header: &BlockHeader,
-) -> Result<BTreeMap<PublicKey, U512>, LinearChainSyncError<I>>
+) -> Result<Option<BlockHeader>, LinearChainSyncError<I>>
 where
     REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
 {
-    // If we are right after genesis, use the genesis validators.
-    if trusted_header.era_id() == EraId::new(0) {
-        let genesis_validator_weights: BTreeMap<PublicKey, U512> = chainspec
-            .network_config
-            .accounts_config
-            .accounts()
-            .iter()
-            .filter_map(|account_config| {
-                if account_config.is_genesis_validator() {
-                    Some((
-                        account_config.public_key(),
-                        account_config.bonded_amount().value(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        return Ok(genesis_validator_weights);
+    // If we are still in the first era, there is no switch block.
+    if trusted_header.era_id().is_genesis() {
+        return Ok(None);
     }
 
     // Check that we are not restarting right after an emergency restart, which is too early
@@ -167,19 +161,15 @@ where
     };
 
     // Fetch each parent hash one by one until we have the trusted validator weights
-    let mut current_header_to_walk_back_from = Box::new(trusted_header.clone());
-    loop {
-        if let Some(trusted_validator_weights) =
-            current_header_to_walk_back_from.next_era_validator_weights()
-        {
-            return Ok(trusted_validator_weights.clone());
-        }
-        current_header_to_walk_back_from = fetch_and_store_block_header(
+    let mut current_header_to_walk_back_from = trusted_header.clone();
+    while !current_header_to_walk_back_from.is_switch_block() {
+        current_header_to_walk_back_from = *fetch_and_store_block_header(
             effect_builder,
             *current_header_to_walk_back_from.parent_hash(),
         )
         .await?;
     }
+    Ok(Some(current_header_to_walk_back_from))
 }
 
 /// Verifies finality signatures for a block header
@@ -451,11 +441,19 @@ where
     // Fetch the trusted header
     let trusted_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
-    let mut trusted_validator_weights =
-        get_trusted_validator_weights(effect_builder, &chainspec, &trusted_header).await?;
+    // TODO: This will get the pre-upgrade switch block even after an emergency restart. Use the
+    // post-upgrade validator set instead.
+    let mut maybe_trusted_switch_block =
+        maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_header).await?;
+
+    let mut trusted_validator_weights = maybe_trusted_switch_block.as_ref().map_or_else(
+        || get_genesis_validators(&chainspec),
+        |switch_block| switch_block.next_era_validator_weights().unwrap().clone(),
+    );
 
     // Get the most recent header which has the same version as ours
-    // We keep fetching by height until none of our peers have a block at that height
+    // We keep fetching by height until none of our peers have a block at that height, or we reach
+    // a current era.
     let trusted_header_output = *trusted_header.clone();
     let mut most_recent_block_header = *trusted_header;
     let current_version = chainspec.protocol_config.version;
@@ -484,6 +482,22 @@ where
                     most_recent_block_header.next_era_validator_weights()
                 {
                     trusted_validator_weights = new_trusted_validator_weights.clone();
+                    maybe_trusted_switch_block = Some(most_recent_block_header.clone());
+                }
+
+                if is_current_era(
+                    &most_recent_block_header,
+                    maybe_trusted_switch_block.as_ref(),
+                    &chainspec,
+                    Timestamp::now(),
+                )? {
+                    info!(
+                        era = most_recent_block_header.era_id().value(),
+                        timestamp = %most_recent_block_header.timestamp(),
+                        height = most_recent_block_header.height(),
+                        "Reached a block in the current era",
+                    );
+                    break;
                 }
             }
             // If we could not fetch, we can stop if the most recent has our protocol version
@@ -587,4 +601,180 @@ where
     }
 
     Ok(trusted_header_output)
+}
+
+/// Returns `true` if `most_recent_block` belongs to an era that is still ongoing.
+pub(crate) fn is_current_era<I>(
+    most_recent_block: &BlockHeader,
+    maybe_switch_block: Option<&BlockHeader>,
+    chainspec: &Chainspec,
+    now: Timestamp,
+) -> Result<bool, LinearChainSyncError<I>>
+where
+    I: Eq + Debug,
+{
+    // Compute the start timestamp of the current era, and the number of blocks so far.
+    let (blocks_in_this_era, era_start) = match maybe_switch_block {
+        Some(switch_block) => (
+            most_recent_block.height() - switch_block.height(),
+            switch_block.timestamp(),
+        ),
+        None => (
+            most_recent_block.height() + 1,
+            chainspec
+                .protocol_config
+                .activation_point
+                .genesis_timestamp()
+                .ok_or_else(|| {
+                    error!(
+                        ?most_recent_block,
+                        "no recent switch block and no genesis timestamp"
+                    );
+                    LinearChainSyncError::MissingGenesisTimestamp
+                })?,
+        ),
+    };
+
+    // If the minimum era duration has not yet run out, the era is still current.
+    if now.saturating_diff(era_start) < chainspec.core_config.era_duration {
+        return Ok(true);
+    }
+
+    // Otherwise estimate the earliest possible end of this era based on how many blocks remain.
+    let remaining_blocks_in_this_era = chainspec
+        .core_config
+        .minimum_era_height
+        .saturating_sub(blocks_in_this_era);
+    let min_round_length = chainspec.highway_config.min_round_length();
+    let time_since_most_recent_block = now.saturating_diff(most_recent_block.timestamp());
+    Ok(time_since_most_recent_block < min_round_length * remaining_blocks_in_this_era)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+
+    use super::*;
+
+    use casper_types::{PublicKey, SecretKey};
+
+    use crate::{
+        components::consensus::EraReport,
+        crypto::AsymmetricKeyExt,
+        types::{Block, BlockPayload, FinalizedBlock},
+        utils::Loadable,
+    };
+
+    /// Creates a block for testing, with the given data, and returns its header.
+    ///
+    /// The other fields are filled in with defaults, since they are not used in these tests.
+    fn create_block(
+        timestamp: Timestamp,
+        era_id: EraId,
+        height: u64,
+        switch_block: bool,
+    ) -> BlockHeader {
+        let secret_key = SecretKey::doc_example();
+        let public_key = PublicKey::from(secret_key);
+
+        let maybe_era_report = switch_block.then(|| EraReport {
+            equivocators: Default::default(),
+            rewards: Default::default(),
+            inactive_validators: Default::default(),
+        });
+        let next_era_validator_weights =
+            switch_block.then(|| iter::once((public_key.clone(), 100.into())).collect());
+
+        let block_payload = BlockPayload::new(
+            Default::default(), // deploy hashes
+            Default::default(), // transfer hashes
+            Default::default(), // accusations
+            false,              // random bit
+        );
+
+        let finalized_block = FinalizedBlock::new(
+            block_payload,
+            maybe_era_report,
+            timestamp,
+            era_id,
+            height,
+            public_key,
+        );
+        Block::new(
+            Default::default(), // parent block hash
+            Default::default(), // parent random seed
+            Default::default(), // state root hash
+            finalized_block,
+            next_era_validator_weights,
+            Default::default(), // protocol version
+        )
+        .expect("failed to create block for tests")
+        .take_header()
+    }
+
+    #[test]
+    fn test_is_current_era() {
+        let mut chainspec = Chainspec::from_resources("local");
+
+        let genesis_time = chainspec
+            .protocol_config
+            .activation_point
+            .genesis_timestamp()
+            .expect("test expects genesis timestamp in chainspec");
+        let min_round_length = chainspec.highway_config.min_round_length();
+
+        // Configure eras to have at least 10 blocks but to last at least 20 minimum-length rounds.
+        let era_duration = min_round_length * 20;
+        let minimum_era_height = 10;
+        chainspec.core_config.era_duration = era_duration;
+        chainspec.core_config.minimum_era_height = minimum_era_height;
+
+        // We assume era 6 started after six minimum era durations, at block 100.
+        let era6_start = genesis_time + era_duration * 6;
+        let switch_block5 = create_block(era6_start, EraId::from(5), 100, true);
+
+        // If we are still within the minimum era duration the era is current, even if we have the
+        // required number of blocks (115 - 100 > 10).
+        let block_time = era6_start + era_duration - 10.into();
+        let now = block_time + 5.into();
+        let block = create_block(block_time, EraId::from(6), 115, false);
+        assert!(is_current_era::<()>(&block, Some(&switch_block5), &chainspec, now).unwrap());
+
+        // If the minimum duration has passed but we we know we don't have all blocks yet, it's
+        // also still current. There are still five blocks missing but only four rounds have
+        // passed.
+        let block_time = era6_start + era_duration * 2;
+        let now = block_time + min_round_length * 4;
+        let block = create_block(block_time, EraId::from(6), 105, false);
+        assert!(is_current_era::<()>(&block, Some(&switch_block5), &chainspec, now).unwrap());
+
+        // If both criteria are satisfied, the era could have ended.
+        let block_time = era6_start + era_duration * 2;
+        let now = block_time + min_round_length * 5;
+        let block = create_block(block_time, EraId::from(6), 105, false);
+        assert!(!is_current_era::<()>(&block, Some(&switch_block5), &chainspec, now).unwrap());
+
+        // Now we do the same tests in era 0. In that case, the switch block is None.
+
+        // If we are still within the minimum era duration the era is current, even if we have the
+        // required number of blocks (14 > 10).
+        let block_time = genesis_time + era_duration - 10.into();
+        let now = block_time + 5.into();
+        let block = create_block(block_time, EraId::from(0), 14, false);
+        assert!(is_current_era::<()>(&block, None, &chainspec, now).unwrap());
+
+        // If the minimum duration has passed but we we know we don't have all blocks yet, it's
+        // also still current. There are still five blocks missing but only three rounds have
+        // passed. (Block 4 is the fifth block.)
+        let block_time = genesis_time + era_duration * 2;
+        let now = block_time + min_round_length * 4;
+        let block = create_block(block_time, EraId::from(0), 4, false);
+        assert!(is_current_era::<()>(&block, None, &chainspec, now).unwrap());
+
+        // If both criteria are satisfied, the era could have ended.
+        let block_time = genesis_time + era_duration * 2;
+        let now = block_time + min_round_length * 5;
+        let block = create_block(block_time, EraId::from(0), 4, false);
+        assert!(!is_current_era::<()>(&block, None, &chainspec, now).unwrap());
+    }
 }

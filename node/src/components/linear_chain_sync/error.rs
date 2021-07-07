@@ -104,4 +104,7 @@ where
 
     #[error(transparent)]
     TrieFetcherError(#[from] FetcherError<Trie<Key, StoredValue>, I>),
+
+    #[error("config error: missing genesis timestamp")]
+    MissingGenesisTimestamp,
 }
