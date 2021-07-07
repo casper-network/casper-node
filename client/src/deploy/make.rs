@@ -42,7 +42,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         let payment_str_params = creation_common::payment_str_params(matches);
 
         let maybe_output_path = creation_common::output::get(matches).unwrap_or_default();
-        let session_account = creation_common::session_account::get(matches).unwrap_or_default();
+        let session_account = common::session_account::get(matches).unwrap_or_default();
 
         let force = common::force::get(matches);
 

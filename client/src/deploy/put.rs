@@ -34,7 +34,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         let gas_price = creation_common::gas_price::get(matches);
         let dependencies = creation_common::dependencies::get(matches);
         let chain_name = creation_common::chain_name::get(matches);
-        let session_account = creation_common::session_account::get(matches)?;
+        let session_account = common::session_account::get(matches)?;
 
         let session_str_params = creation_common::session_str_params(matches);
         let payment_str_params = creation_common::payment_str_params(matches);

@@ -1,11 +1,11 @@
 //! This module contains structs and helpers which are used by multiple subcommands related to
 //! creating deploys.
 
-use std::{fs, process};
+use std::process;
 
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 
-use casper_client::{help, Error, PaymentStrParams, SessionStrParams};
+use casper_client::{help, PaymentStrParams, SessionStrParams};
 
 use crate::common;
 
@@ -538,7 +538,10 @@ pub(super) fn apply_common_creation_options<'a, 'b>(
         .arg(gas_price::arg())
         .arg(dependencies::arg())
         .arg(chain_name::arg())
-        .arg(session_account::arg().required_unless(common::secret_key::ARG_NAME));
+        .arg(
+            common::session_account::arg(DisplayOrder::SessionAccount as usize)
+                .required_unless(common::secret_key::ARG_NAME),
+        );
     subcommand
 }
 
@@ -940,55 +943,5 @@ pub(super) mod payment_version {
 
     pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches.value_of(ARG_NAME).unwrap_or_default()
-    }
-}
-
-pub(super) mod session_account {
-    use super::*;
-    use casper_node::crypto::AsymmetricKeyExt;
-    use casper_types::{AsymmetricType, PublicKey};
-
-    pub const ARG_NAME: &str = "session-account";
-    const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
-    const ARG_HELP: &str = "This must be a properly formatted public key. The public key may instead be read in from \
-        a file, in which case enter the path to the file as the --session-account argument. The file \
-        should be one of the two public key files generated via the `keygen` subcommand; \
-        \"public_key_hex\" or \"public_key.pem\"";
-
-    pub fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .required(false)
-            .display_order(DisplayOrder::SessionAccount as usize)
-    }
-
-    pub fn get(matches: &ArgMatches) -> Result<String, Error> {
-        let value = if let Some(value) = matches.value_of(ARG_NAME) {
-            value
-        } else {
-            return Ok(String::default());
-        };
-
-        // Try to read as a PublicKey PEM file first.
-        if let Ok(public_key) = PublicKey::from_file(value) {
-            return Ok(public_key.to_hex());
-        }
-
-        // Try to read as a hex-encoded PublicKey file next.
-        if let Ok(hex_public_key) = fs::read_to_string(value) {
-            let _ = PublicKey::from_hex(&hex_public_key).map_err(|error| {
-                eprintln!(
-                    "Can't parse the contents of {} as a public key: {}",
-                    value, error
-                );
-                Error::FailedToParseKey
-            })?;
-            return Ok(hex_public_key);
-        }
-
-        // Just return the value.
-        Ok(value.to_string())
     }
 }
