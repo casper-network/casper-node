@@ -379,7 +379,6 @@ pub extern "C" fn casper_transfer(
     let node_address = try_unsafe_arg!(node_address);
     let amount = try_unsafe_arg!(amount);
     let maybe_target_account = try_unsafe_arg!(maybe_target_account);
-    // let transfer_id = try_unsafe_arg!(transfer_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
     runtime.block_on(async move {
@@ -415,7 +414,6 @@ pub extern "C" fn casper_make_transfer(
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let amount = try_unsafe_arg!(amount);
     let maybe_target_account = try_unsafe_arg!(maybe_target_account);
-    // let transfer_id = try_unsafe_arg!(transfer_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
     let result = super::make_transfer(
