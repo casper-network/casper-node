@@ -491,8 +491,7 @@ impl reactor::Reactor for Reactor {
         let linear_chain = linear_chain::LinearChainComponent::new(
             &registry,
             *protocol_version,
-            chainspec_loader.chainspec().core_config.auction_delay,
-            chainspec_loader.chainspec().core_config.unbonding_delay,
+            chainspec_loader.chainspec().clone(),
         )?;
 
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
