@@ -114,6 +114,7 @@ tokio = { version = "1", features = ["test-util"] }
 
 [features]
 vendored-openssl = ['openssl/vendored']
+enable-legacy-hashing = []
 
 [[bin]]
 name = "casper-node"
