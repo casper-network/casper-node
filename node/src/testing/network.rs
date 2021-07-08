@@ -216,10 +216,10 @@ where
         time::timeout(within, self.settle_indefinitely(rng, quiet_for))
             .await
             .unwrap_or_else(|_| {
-                panic!(format!(
+                panic!(
                     "network did not settle for {:?} within {:?}",
                     quiet_for, within
-                ))
+                )
             })
     }
 
@@ -253,12 +253,7 @@ where
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
             .await
-            .unwrap_or_else(|_| {
-                panic!(format!(
-                    "network did not settle on condition within {:?}",
-                    within
-                ))
-            })
+            .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
     }
 
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)

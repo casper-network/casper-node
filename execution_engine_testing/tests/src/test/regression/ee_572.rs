@@ -91,5 +91,9 @@ fn should_run_ee_572_regression() {
 
     let error_message = utils::get_error_message(response);
 
-    assert!(error_message.contains("ForgedReference"), error_message);
+    assert!(
+        error_message.contains("ForgedReference"),
+        "{}",
+        error_message
+    );
 }

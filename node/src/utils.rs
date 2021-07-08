@@ -374,7 +374,7 @@ where
         ),
         Err(env::VarError::NotPresent) => None,
         Err(err) => {
-            panic!(err)
+            panic!("{:?}", err)
         }
     }
 }

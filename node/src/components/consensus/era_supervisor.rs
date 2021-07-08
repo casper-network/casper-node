@@ -65,20 +65,21 @@ pub use self::era::Era;
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
 type ConsensusConstructor<I> = dyn Fn(
-    Digest,                                       // the era's unique instance ID
-    BTreeMap<PublicKey, U512>,                    // validator weights
-    &HashSet<PublicKey>,                          // faulty validators that are banned in this era
-    &HashSet<PublicKey>,                          // inactive validators that can't be leaders
-    &ProtocolConfig,                              // the network's chainspec
-    &Config,                                      // The consensus part of the node config.
-    Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
-    Timestamp,                                    // start time for this era
-    u64,                                          // random seed
-    Timestamp,                                    // now timestamp
-) -> (
-    Box<dyn ConsensusProtocol<I, ClContext>>,
-    Vec<ProtocolOutcome<I, ClContext>>,
-) + Send;
+        Digest,                    // the era's unique instance ID
+        BTreeMap<PublicKey, U512>, // validator weights
+        &HashSet<PublicKey>,       /* faulty validators that are banned in
+                                    * this era */
+        &HashSet<PublicKey>, // inactive validators that can't be leaders
+        &ProtocolConfig,     // the network's chainspec
+        &Config,             // The consensus part of the node config.
+        Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
+        Timestamp,           // start time for this era
+        u64,                 // random seed
+        Timestamp,           // now timestamp
+    ) -> (
+        Box<dyn ConsensusProtocol<I, ClContext>>,
+        Vec<ProtocolOutcome<I, ClContext>>,
+    ) + Send;
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
@@ -317,7 +318,7 @@ where
                 "not voting; initializing past era"
             );
             false
-        } else if !validators.contains_key(&our_id) {
+        } else if !validators.contains_key(our_id) {
             info!(era = era_id.value(), %our_id, "not voting; not a validator");
             false
         } else {
@@ -369,7 +370,7 @@ where
         for e_id in self.iter_past_other(era_id, self.bonded_eras()) {
             if let Some(old_era) = self.active_eras.get_mut(&e_id) {
                 for pub_key in old_era.consensus.validators_with_evidence() {
-                    let proposed_blocks = era.resolve_evidence_and_mark_faulty(&pub_key);
+                    let proposed_blocks = era.resolve_evidence_and_mark_faulty(pub_key);
                     if !proposed_blocks.is_empty() {
                         error!(
                             ?proposed_blocks,
@@ -419,7 +420,7 @@ where
 
     /// Returns whether the validator with the given public key is bonded in that era.
     fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
-        let has_validator = |era: &Era<I>| era.validators().contains_key(&pub_key);
+        let has_validator = |era: &Era<I>| era.validators().contains_key(pub_key);
         self.active_eras.get(&era_id).map_or(false, has_validator)
     }
 
@@ -1264,7 +1265,7 @@ where
     pub(super) fn should_upgrade_after(&self, era_id: &EraId) -> bool {
         match self.era_supervisor.next_upgrade_activation_point {
             None => false,
-            Some(upgrade_point) => upgrade_point.should_upgrade(&era_id),
+            Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
 }

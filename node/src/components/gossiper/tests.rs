@@ -197,7 +197,7 @@ impl reactor::Reactor for Reactor {
             ProtocolVersion::from_parts(1, 0, 0),
             storage_withdir,
             &contract_runtime_config,
-            &registry,
+            registry,
         )
         .unwrap();
 
@@ -466,7 +466,7 @@ async fn should_get_from_alternate_source() {
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
         network
-            .process_injected_effect_on(&node_id, announce_deploy_received(deploy.clone(), None))
+            .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone(), None))
             .await;
     }
 
