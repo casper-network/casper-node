@@ -11,6 +11,7 @@ mod get_balance;
 mod get_era_info_by_switch_block;
 mod get_state_hash;
 mod keygen;
+mod query_dictionary;
 mod query_state;
 
 use std::process;
@@ -23,7 +24,7 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetItem as QueryState},
+    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionary, GetItem as QueryState},
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
@@ -56,6 +57,7 @@ enum DisplayOrder {
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
+    GetDictionary,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -90,6 +92,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
+        .subcommand(GetDictionary::build(DisplayOrder::GetDictionary as usize))
 }
 
 #[tokio::main]
@@ -118,6 +121,7 @@ async fn main() {
         (GenerateCompletion::NAME, Some(matches)) => (GenerateCompletion::run(matches), matches),
         (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches), matches),
         (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches), matches),
+        (GetDictionary::NAME, Some(matches)) => (GetDictionary::run(matches), matches),
         _ => {
             let _ = cli().print_long_help();
             println!();

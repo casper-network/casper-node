@@ -516,6 +516,56 @@ pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbosity_level: u64) -
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).list_rpcs()
 }
 
+/// Retrieves a stored value from the network.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+/// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
+/// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
+///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
+///   take one of the following forms:
+/// ```text
+/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c           # PublicKey
+/// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
+/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::Hash
+/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
+/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
+/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
+/// ```
+/// * `path` is comprised of components starting from the `key`, separated by `/`s.
+///  * `purse` is a URef, formatted as e.g.
+/// ```text
+///  uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007
+///  ```
+pub fn get_dictionary(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+    state_root_hash: &str,
+    key: &str,
+    dictionary_uref: &str,
+    dictionary_base: &str,
+    dictionary_name: &str,
+    path: &str,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_dictionary(
+        state_root_hash,
+        key,
+        dictionary_uref,
+        dictionary_base,
+        dictionary_name,
+        path,
+    )
+}
+
 /// Container for `Deploy` construction options.
 #[derive(Default, Debug)]
 pub struct DeployStrParams<'a> {

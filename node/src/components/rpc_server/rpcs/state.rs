@@ -79,6 +79,19 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
     account: Account::doc_example().clone(),
     merkle_proof: MERKLE_PROOF.clone(),
 });
+static GET_DICT_PARAMS: Lazy<GetDictionaryParams> = Lazy::new(|| GetDictionaryParams {
+    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    dictionary_identifier: DictionaryIdentifier::URef(
+        "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007".to_string(),
+    ),
+    dictionary_name: "dictionary".to_string(),
+    path: vec![],
+});
+static GET_DICT_RESULT: Lazy<GetDictionaryResult> = Lazy::new(|| GetDictionaryResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    stored_value: StoredValue::Account(Account::doc_example().clone()),
+    merkle_proof: MERKLE_PROOF.clone(),
+});
 
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -550,6 +563,189 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
+                merkle_proof: hex::encode(proof_bytes),
+            };
+
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+/// An identifier to for queries made to dictionaries
+pub enum DictionaryIdentifier {
+    /// A dictionary query based on either a AccountHash or Contract Hash.
+    NamedKey(String, String),
+    /// A dictionary query based on the URef directly.
+    URef(String),
+}
+
+/// Params for "state_get_dict" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetDictionaryParams {
+    /// Hash of the state root
+    pub state_root_hash: Digest,
+    /// The Dictionary query identifier.
+    pub dictionary_identifier: DictionaryIdentifier,
+    /// The name under which the dictionary is stored.
+    pub dictionary_name: String,
+    /// The path components starting from the key as base
+    #[serde(default)]
+    pub path: Vec<String>,
+}
+
+impl DocExample for GetDictionaryParams {
+    fn doc_example() -> &'static Self {
+        &*GET_DICT_PARAMS
+    }
+}
+
+/// Result for "state_get_dictionary" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetDictionaryResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The stored value.
+    pub stored_value: StoredValue,
+    /// The merkle proof.
+    pub merkle_proof: String,
+}
+
+impl DocExample for GetDictionaryResult {
+    fn doc_example() -> &'static Self {
+        &*GET_DICT_RESULT
+    }
+}
+
+/// "state_get_dictionary" RPC.
+pub struct GetDictionary {}
+
+impl RpcWithParams for GetDictionary {
+    const METHOD: &'static str = "state_get_dictionary";
+    type RequestParams = GetDictionaryParams;
+    type ResponseResult = GetDictionaryResult;
+}
+
+impl RpcWithParamsExt for GetDictionary {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            // First check if URef or Named Key
+            // Get URef based on that
+            // Create dictionary address
+            // Query one last time with new address
+
+            let dictionary_uref = match params.dictionary_identifier.clone() {
+                DictionaryIdentifier::NamedKey(formatted_hash, dictionary_key) => {
+                    let base_key = match Key::from_formatted_str(&formatted_hash)
+                        .map_err(|error| format!("failed to parse key: {}", error))
+                    {
+                        Ok(key) => key,
+                        Err(error_msg) => {
+                            info!("{}", error_msg);
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                ErrorCode::ParseQueryKey as i64,
+                                error_msg,
+                            ))?);
+                        }
+                    };
+
+                    // Run the query.
+                    let query_result = effect_builder
+                        .make_request(
+                            |responder| RpcRequest::QueryGlobalState {
+                                state_root_hash: params.state_root_hash,
+                                base_key,
+                                path: vec![dictionary_key.clone()],
+                                responder,
+                            },
+                            QueueKind::Api,
+                        )
+                        .await;
+
+                    let (stored_value, _) = match common::extract_query_result(query_result) {
+                        Ok(tuple) => tuple,
+                        Err((error_code, error_msg)) => {
+                            info!("{}", error_msg);
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                error_code as i64,
+                                error_msg,
+                            ))?);
+                        }
+                    };
+
+                    let uref = if let StoredValue::CLValue(value) = stored_value {
+                        let uref: URef = match value.into_t() {
+                            Ok(uref) => uref,
+                            Err(_) => {
+                                return Ok(response_builder.error(
+                                    warp_json_rpc::Error::custom(
+                                        ErrorCode::FailedToGetDictURef as i64,
+                                        "Stored value return was not a URef 1",
+                                    ),
+                                )?);
+                            }
+                        };
+                        uref
+                    } else {
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::FailedToGetDictURef as i64,
+                            "Stored value return was not a URef",
+                        ))?);
+                    };
+
+                    uref
+                }
+                DictionaryIdentifier::URef(formatted_uref) => {
+                    let uref = match URef::from_formatted_str(&formatted_uref) {
+                        Ok(uref) => uref,
+                        Err(error_msg) => {
+                            info!("{}", error_msg);
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                ErrorCode::ParseQueryKey as i64,
+                                "Failed to parse URef",
+                            ))?);
+                        }
+                    };
+
+                    uref
+                }
+            };
+
+            let dictionary_addr =
+                Key::dictionary(dictionary_uref, params.dictionary_name.as_bytes());
+
+            let query_result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::QueryGlobalState {
+                        state_root_hash: params.state_root_hash,
+                        base_key: dictionary_addr,
+                        path: params.path,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+                Ok(tuple) => tuple,
+                Err((error_code, error_msg)) => {
+                    info!("{}", error_msg);
+                    return Ok(response_builder
+                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                stored_value,
                 merkle_proof: hex::encode(proof_bytes),
             };
 

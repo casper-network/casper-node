@@ -19,8 +19,9 @@ use casper_node::{
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
         state::{
-            GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
-            GetBalanceParams, GetItem, GetItemParams,
+            DictionaryIdentifier, GetAccountInfo, GetAccountInfoParams, GetAuctionInfo,
+            GetAuctionInfoParams, GetBalance, GetBalanceParams, GetDictionary, GetDictionaryParams,
+            GetItem, GetItemParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -120,6 +121,50 @@ impl RpcCall {
         };
         let response = GetItem::request_with_map_params(self, params)?;
         validation::validate_query_response(&response, &state_root_hash, &key, &path)?;
+        Ok(response)
+    }
+
+    pub(crate) fn get_dictionary(
+        self,
+        state_root_hash: &str,
+        key: &str,
+        dictionary_uref: &str,
+        dictionary_base: &str,
+        dictionary_name: &str,
+        path: &str,
+    ) -> Result<JsonRpc> {
+        let state_root_hash =
+            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
+                context: "state_root_hash",
+                error,
+            })?;
+
+        let dictionary_identifier = if !key.is_empty() {
+            let key = match Key::from_formatted_str(key) {
+                Ok(key) => key,
+                Err(_) => return Err(Error::FailedToParseKey),
+            };
+            DictionaryIdentifier::NamedKey(key.to_formatted_string(), dictionary_base.to_string())
+        } else if !dictionary_uref.is_empty() {
+            DictionaryIdentifier::URef(dictionary_uref.to_string())
+        } else {
+            return Err(Error::FailedToParseDictionaryIdentifier);
+        };
+
+        let path = if path.is_empty() {
+            vec![]
+        } else {
+            path.split('/').map(ToString::to_string).collect()
+        };
+
+        let params = GetDictionaryParams {
+            state_root_hash,
+            dictionary_identifier,
+            dictionary_name: dictionary_name.to_string(),
+            path,
+        };
+
+        let response = GetDictionary::request_with_map_params(self, params)?;
         Ok(response)
     }
 
@@ -389,6 +434,10 @@ impl RpcClient for GetAccountInfo {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for GetDictionary {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 pub(crate) trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
@@ -412,3 +461,4 @@ impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}
 impl IntoJsonMap for GetAuctionInfoParams {}
 impl IntoJsonMap for GetAccountInfoParams {}
+impl IntoJsonMap for GetDictionaryParams {}
