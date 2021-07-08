@@ -30,7 +30,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
         let verbosity_level = common::verbose::get(matches);
         let input_path = creation_common::input::get(matches);
 
-        casper_client::send_deploy_file(maybe_rpc_id, node_address, verbosity_level, &input_path)
+        casper_client::send_deploy_file(maybe_rpc_id, node_address, verbosity_level, input_path)
             .map(Success::from)
     }
 }

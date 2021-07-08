@@ -1062,11 +1062,10 @@ where
         let maybe_missing_name: Option<String> = entry_point_names
             .iter()
             .find(|name| {
-                export_section
+                !export_section
                     .entries()
                     .iter()
-                    .find(|export_entry| export_entry.field() == **name)
-                    .is_none()
+                    .any(|export_entry| export_entry.field() == **name)
             })
             .map(|s| String::from(*s));
 
@@ -1365,7 +1364,7 @@ where
             mint::METHOD_MINT => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.mint)?;
 
-                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
                 if let Err(mint::Error::GasLimit) = result {
                     return Err(execution::Error::GasLimit);
@@ -1375,7 +1374,7 @@ where
             mint::METHOD_REDUCE_TOTAL_SUPPLY => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.reduce_total_supply)?;
 
-                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<(), mint::Error> = mint_runtime.reduce_total_supply(amount);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -1390,7 +1389,7 @@ where
             mint::METHOD_BALANCE => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.balance)?;
 
-                let uref: URef = Self::get_named_argument(&runtime_args, mint::ARG_PURSE)?;
+                let uref: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
                 let maybe_balance: Option<U512> =
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)
@@ -1401,11 +1400,11 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.transfer)?;
 
                 let maybe_to: Option<AccountHash> =
-                    Self::get_named_argument(&runtime_args, mint::ARG_TO)?;
-                let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
-                let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
-                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
-                let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
+                    Self::get_named_argument(runtime_args, mint::ARG_TO)?;
+                let source: URef = Self::get_named_argument(runtime_args, mint::ARG_SOURCE)?;
+                let target: URef = Self::get_named_argument(runtime_args, mint::ARG_TARGET)?;
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
+                let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
                 let result: Result<(), mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1517,7 +1516,7 @@ where
                 runtime.charge_system_contract_call(handle_payment_costs.set_refund_purse)?;
 
                 let purse: URef =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_PURSE)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_PURSE)?;
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
@@ -1531,11 +1530,11 @@ where
                 runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
 
                 let amount_spent: U512 =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_AMOUNT)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_AMOUNT)?;
                 let account: AccountHash =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_ACCOUNT)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_ACCOUNT)?;
                 let target: URef =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_TARGET)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_TARGET)?;
                 runtime
                     .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
@@ -1562,7 +1561,7 @@ where
         // context.
         let gas_counter = self.gas_counter();
         let amount: U512 =
-            Self::get_named_argument(&self.context.args(), standard_payment::ARG_AMOUNT)?;
+            Self::get_named_argument(self.context.args(), standard_payment::ARG_AMOUNT)?;
         let result = self.pay(amount).map_err(Self::reverter);
         self.set_gas_counter(gas_counter);
         result
@@ -1644,11 +1643,10 @@ where
             auction::METHOD_ADD_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.add_bid)?;
 
-                let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let delegation_rate =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .add_bid(account_hash, delegation_rate, amount)
@@ -1660,9 +1658,8 @@ where
             auction::METHOD_WITHDRAW_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.withdraw_bid)?;
 
-                let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .withdraw_bid(account_hash, amount)
@@ -1673,9 +1670,9 @@ where
             auction::METHOD_DELEGATE => (|| {
                 runtime.charge_system_contract_call(auction_costs.delegate)?;
 
-                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
-                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .delegate(delegator, validator, amount)
@@ -1687,9 +1684,9 @@ where
             auction::METHOD_UNDELEGATE => (|| {
                 runtime.charge_system_contract_call(auction_costs.undelegate)?;
 
-                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
-                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .undelegate(delegator, validator, amount)
@@ -1702,9 +1699,9 @@ where
                 runtime.charge_system_contract_call(auction_costs.run_auction)?;
 
                 let era_end_timestamp_millis =
-                    Self::get_named_argument(&runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
                 let evicted_validators =
-                    Self::get_named_argument(&runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
 
                 runtime
                     .run_auction(era_end_timestamp_millis, evicted_validators)
@@ -1718,7 +1715,7 @@ where
                 runtime.charge_system_contract_call(auction_costs.slash)?;
 
                 let validator_public_keys =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
                 runtime
                     .slash(validator_public_keys)
                     .map_err(Self::reverter)?;
@@ -1730,7 +1727,7 @@ where
                 runtime.charge_system_contract_call(auction_costs.distribute)?;
 
                 let reward_factors: BTreeMap<PublicKey, u64> =
-                    Self::get_named_argument(&runtime_args, auction::ARG_REWARD_FACTORS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_REWARD_FACTORS)?;
                 runtime.distribute(reward_factors).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
@@ -1747,7 +1744,7 @@ where
                 runtime.charge_system_contract_call(auction_costs.read_era_id)?;
 
                 let validator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
 
                 runtime
                     .activate_bid(validator_public_key)
@@ -2038,7 +2035,7 @@ where
             access_rights,
             args,
             self.context.authorization_keys().clone(),
-            &self.context.account(),
+            self.context.account(),
             base_key,
             self.context.get_blocktime(),
             self.context.get_deploy_hash(),

@@ -419,7 +419,7 @@ impl BlockProposerReady {
         // We prioritize transfers over deploys, so we try to include them first.
         for (hash, (deploy_type, received_time)) in &self.sets.pending {
             if !deploy_type.is_transfer()
-                || !self.deps_resolved(&deploy_type.header(), &past_deploys)
+                || !self.deps_resolved(deploy_type.header(), &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
                 || block_timestamp.saturating_diff(*received_time) < self.local_config.deploy_delay
@@ -444,7 +444,7 @@ impl BlockProposerReady {
         // Now we try to add other deploys to the block.
         for (hash, (deploy_type, received_time)) in &self.sets.pending {
             if deploy_type.is_transfer()
-                || !self.deps_resolved(&deploy_type.header(), &past_deploys)
+                || !self.deps_resolved(deploy_type.header(), &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
                 || block_timestamp.saturating_diff(*received_time) < self.local_config.deploy_delay

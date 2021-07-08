@@ -21,7 +21,7 @@ where
 {
     let txn: R::ReadTransaction = environment.create_read_txn()?;
     let root = store
-        .get(&txn, &root_hash)?
+        .get(&txn, root_hash)?
         .expect("check_scan received an invalid root hash");
     let TrieScan { mut tip, parents } = scan::<TestKey, TestValue, R::ReadTransaction, S, E>(
         correlation_id,

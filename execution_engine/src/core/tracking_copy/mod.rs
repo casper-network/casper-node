@@ -190,7 +190,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 
     /// Gets value from `key` in the cache.
     pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
-        if let Some(value) = self.muts_cached.get(&key) {
+        if let Some(value) = self.muts_cached.get(key) {
             return Some(value);
         };
 
@@ -289,7 +289,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         key_tag: &KeyTag,
     ) -> Result<BTreeSet<Key>, R::Error> {
         let mut ret: BTreeSet<Key> = BTreeSet::new();
-        match self.cache.get_key_tag_reads_cached(&key_tag) {
+        match self.cache.get_key_tag_reads_cached(key_tag) {
             Some(keys) => ret.extend(keys),
             None => {
                 let key_tag = key_tag.to_owned();
@@ -300,7 +300,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 self.cache.insert_key_tag_read(key_tag, ret.to_owned())
             }
         }
-        if let Some(keys) = self.cache.get_key_tag_muts_cached(&key_tag) {
+        if let Some(keys) = self.cache.get_key_tag_muts_cached(key_tag) {
             ret.extend(keys)
         }
         Ok(ret)
@@ -494,25 +494,25 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     }
                 }
                 StoredValue::ContractPackage(_) => {
-                    return Ok(query.into_not_found_result(&"ContractPackage value found."));
+                    return Ok(query.into_not_found_result("ContractPackage value found."));
                 }
                 StoredValue::ContractWasm(_) => {
-                    return Ok(query.into_not_found_result(&"ContractWasm value found."));
+                    return Ok(query.into_not_found_result("ContractWasm value found."));
                 }
                 StoredValue::Transfer(_) => {
-                    return Ok(query.into_not_found_result(&"Transfer value found."));
+                    return Ok(query.into_not_found_result("Transfer value found."));
                 }
                 StoredValue::DeployInfo(_) => {
-                    return Ok(query.into_not_found_result(&"DeployInfo value found."));
+                    return Ok(query.into_not_found_result("DeployInfo value found."));
                 }
                 StoredValue::EraInfo(_) => {
-                    return Ok(query.into_not_found_result(&"EraInfo value found."));
+                    return Ok(query.into_not_found_result("EraInfo value found."));
                 }
                 StoredValue::Bid(_) => {
-                    return Ok(query.into_not_found_result(&"Bid value found."));
+                    return Ok(query.into_not_found_result("Bid value found."));
                 }
                 StoredValue::Withdraw(_) => {
-                    return Ok(query.into_not_found_result(&"UnbondingPurses value found."));
+                    return Ok(query.into_not_found_result("UnbondingPurses value found."));
                 }
             }
         }

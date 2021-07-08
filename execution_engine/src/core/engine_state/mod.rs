@@ -1017,7 +1017,7 @@ where
             let cost = wasmless_transfer_gas_cost.value();
             let deploy_info = DeployInfo::new(
                 deploy_item.deploy_hash,
-                &transfers,
+                transfers,
                 account.account_hash(),
                 account.main_purse(),
                 cost,
@@ -1538,7 +1538,7 @@ where
             let cost = payment_result_cost.value() + session_result.cost().value();
             let deploy_info = DeployInfo::new(
                 deploy_hash,
-                &transfers,
+                transfers,
                 account.account_hash(),
                 account.main_purse(),
                 cost,

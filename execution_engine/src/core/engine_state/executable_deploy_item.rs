@@ -121,7 +121,7 @@ impl ExecutableDeployItem {
             ExecutableDeployItem::StoredVersionedContractByName { entry_point, .. }
             | ExecutableDeployItem::StoredVersionedContractByHash { entry_point, .. }
             | ExecutableDeployItem::StoredContractByHash { entry_point, .. }
-            | ExecutableDeployItem::StoredContractByName { entry_point, .. } => &entry_point,
+            | ExecutableDeployItem::StoredContractByName { entry_point, .. } => entry_point,
         }
     }
 
@@ -167,7 +167,7 @@ impl ExecutableDeployItem {
                     });
                 }
 
-                let module = preprocessor.preprocess(&module_bytes.as_ref())?;
+                let module = preprocessor.preprocess(module_bytes.as_ref())?;
                 return Ok(DeployMetadata::Session {
                     module,
                     contract_package: ContractPackage::default(),
@@ -178,7 +178,7 @@ impl ExecutableDeployItem {
             | ExecutableDeployItem::StoredContractByName { .. } => {
                 // NOTE: `to_contract_hash_key` ensures it returns valid value only for
                 // ByHash/ByName variants
-                let stored_contract_key = self.to_contract_hash_key(&account)?.unwrap();
+                let stored_contract_key = self.to_contract_hash_key(account)?.unwrap();
 
                 let contract_hash = stored_contract_key
                     .into_hash()
@@ -211,7 +211,7 @@ impl ExecutableDeployItem {
             | ExecutableDeployItem::StoredVersionedContractByHash { version, .. } => {
                 // NOTE: `to_contract_hash_key` ensures it returns valid value only for
                 // ByHash/ByName variants
-                let contract_package_key = self.to_contract_hash_key(&account)?.unwrap();
+                let contract_package_key = self.to_contract_hash_key(account)?.unwrap();
                 let contract_package_hash = contract_package_key
                     .into_hash()
                     .ok_or(Error::InvalidKeyVariant)?;

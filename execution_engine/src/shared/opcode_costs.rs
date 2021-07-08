@@ -69,7 +69,7 @@ pub struct OpcodeCosts {
 }
 
 impl OpcodeCosts {
-    pub(crate) fn to_set(&self) -> Set {
+    pub(crate) fn to_set(self) -> Set {
         let meterings = {
             let mut tmp = BTreeMap::new();
             tmp.insert(InstructionType::Bit, Metering::Fixed(self.bit));
