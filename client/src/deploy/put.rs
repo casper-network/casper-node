@@ -50,7 +50,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
                 dependencies,
                 gas_price,
                 chain_name,
-                session_account,
+                session_account: &session_account,
             },
             session_str_params,
             payment_str_params,

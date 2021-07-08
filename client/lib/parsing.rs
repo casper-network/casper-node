@@ -339,7 +339,7 @@ pub(super) fn parse_deploy_params(
     gas_price: &str,
     dependencies: &[&str],
     chain_name: &str,
-    session_account: String,
+    session_account: &str,
 ) -> Result<DeployParams> {
     let secret_key = self::secret_key(secret_key)?;
     let timestamp = self::timestamp(timestamp)?;
@@ -347,7 +347,15 @@ pub(super) fn parse_deploy_params(
     let gas_price = self::gas_price(gas_price)?;
     let dependencies = self::dependencies(dependencies)?;
     let chain_name = chain_name.to_string();
-    let session_account = PublicKey::from_hex(session_account).ok();
+    let session_account = if !session_account.is_empty() {
+        let public_key = PublicKey::from_hex(session_account).map_err(|error| {
+            eprintln!("Can't parse the contents as a public key: {}", error);
+            Error::FailedToParseKey
+        })?;
+        Some(public_key)
+    } else {
+        None
+    };
 
     Ok(DeployParams {
         timestamp,

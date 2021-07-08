@@ -422,6 +422,12 @@ mod tests {
         }
     }
 
+    pub fn malformed_deploy_params() -> DeployStrParams<'static> {
+        let mut params = deploy_params();
+        params.session_account = "incorrect string";
+        params
+    }
+
     fn args_simple() -> Vec<&'static str> {
         vec!["name_01:bool='false'", "name_02:i32='42'"]
     }
@@ -529,5 +535,11 @@ mod tests {
             "deploy should be is_valid() because it has been signed {:#?}",
             signed_deploy
         );
+    }
+
+    #[test]
+    #[should_panic]
+    fn should_fail_to_create_deploy_params() {
+        TryInto::<DeployParams>::try_into(malformed_deploy_params()).unwrap();
     }
 }

@@ -692,8 +692,7 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
         let session_account = unsafe_str_arg(
             self.session_account,
             "casper_deploy_params_t.session_account",
-        )?
-        .to_string();
+        )?;
         Ok(super::DeployStrParams {
             secret_key,
             timestamp,

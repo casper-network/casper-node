@@ -62,7 +62,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
                 dependencies,
                 gas_price,
                 chain_name,
-                session_account,
+                session_account: &session_account,
             },
             payment_str_params,
             force,

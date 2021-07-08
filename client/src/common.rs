@@ -90,7 +90,7 @@ pub mod rpc_id {
 pub mod secret_key {
     use super::*;
 
-    pub(crate) const ARG_NAME: &str = "secret-key";
+    const ARG_NAME: &str = "secret-key";
     const ARG_SHORT: &str = "k";
     const ARG_VALUE_NAME: &str = super::ARG_PATH;
     const ARG_HELP: &str = "Path to secret key file";
@@ -204,7 +204,6 @@ mod sealed_public_key {
     use super::*;
 
     const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
-    const ARG_PUBLIC_KEY: &str = "public-key";
 
     pub(crate) fn arg(
         order: usize,
@@ -220,9 +219,13 @@ mod sealed_public_key {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches, arg_name: &str) -> Result<String, Error> {
+    pub(crate) fn get(
+        matches: &ArgMatches,
+        arg_name: &str,
+        required: bool,
+    ) -> Result<String, Error> {
         let value = matches.value_of(arg_name).unwrap_or_else(|| {
-            if arg_name == ARG_PUBLIC_KEY {
+            if required {
                 panic!("should have {} arg", arg_name)
             } else {
                 ""
@@ -252,7 +255,6 @@ mod sealed_public_key {
 
 /// Handles providing the arg for and retrieval of the public key.
 pub mod public_key {
-
     use super::*;
 
     const ARG_NAME: &str = "public-key";
@@ -268,7 +270,7 @@ pub mod public_key {
     }
 
     pub(crate) fn get(matches: &ArgMatches) -> Result<String, Error> {
-        sealed_public_key::get(matches, ARG_NAME)
+        sealed_public_key::get(matches, ARG_NAME, IS_REQUIRED)
     }
 }
 
@@ -280,7 +282,8 @@ pub(super) mod session_account {
     pub const ARG_NAME: &str = "session-account";
     const IS_REQUIRED: bool = false;
     const ARG_HELP: &str =
-        "This must be a properly formatted public key. The public key may instead be read in from \
+        "The hex-encoded public key of the account context under which the session code will be
+        executed. This must be a properly formatted public key. The public key may instead be read in from \
         a file, in which case enter the path to the file as the --session-account argument. The file \
         should be one of the two public key files generated via the `keygen` subcommand; \
         \"public_key_hex\" or \"public_key.pem\"";
@@ -290,6 +293,6 @@ pub(super) mod session_account {
     }
 
     pub fn get(matches: &ArgMatches) -> Result<String, Error> {
-        sealed_public_key::get(matches, ARG_NAME)
+        sealed_public_key::get(matches, ARG_NAME, IS_REQUIRED)
     }
 }

@@ -563,11 +563,7 @@ impl Deploy {
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
 
-        let account = if let Some(public_key) = account {
-            public_key
-        } else {
-            PublicKey::from(secret_key)
-        };
+        let account = account.unwrap_or_else(|| PublicKey::from(secret_key));
 
         // Remove duplicates.
         let dependencies = dependencies.into_iter().unique().collect();

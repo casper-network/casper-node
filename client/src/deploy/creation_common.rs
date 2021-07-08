@@ -538,10 +538,9 @@ pub(super) fn apply_common_creation_options<'a, 'b>(
         .arg(gas_price::arg())
         .arg(dependencies::arg())
         .arg(chain_name::arg())
-        .arg(
-            common::session_account::arg(DisplayOrder::SessionAccount as usize)
-                .required_unless(common::secret_key::ARG_NAME),
-        );
+        .arg(common::session_account::arg(
+            DisplayOrder::SessionAccount as usize,
+        ));
     subcommand
 }
 
