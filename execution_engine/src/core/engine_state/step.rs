@@ -136,7 +136,7 @@ pub enum StepError {
     CLValueError(#[from] CLValueError),
     #[error(transparent)]
     GetEraValidatorsError(#[from] GetEraValidatorsError),
-    #[error(transparent)]
+    #[error("Other engine state error: {0}")]
     OtherEngineStateError(#[from] Error),
     #[error(transparent)]
     ExecutionError(#[from] execution::Error),
