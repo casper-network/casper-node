@@ -1051,7 +1051,7 @@ mod tests {
         proposal_timer: Timestamp,
     ) -> Timestamp {
         let (witness_timestamp, bctx) =
-            match &*validator.handle_timer(proposal_timer, &state, instance_id) {
+            match &*validator.handle_timer(proposal_timer, state, instance_id) {
                 [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock(bctx)] => {
                     (*witness_timestamp, bctx.clone())
                 }
@@ -1065,7 +1065,6 @@ mod tests {
             effects
         );
 
-        unwrap_single(&validator.handle_timer(witness_timestamp, &state, instance_id))
-            .unwrap_timer()
+        unwrap_single(&validator.handle_timer(witness_timestamp, state, instance_id)).unwrap_timer()
     }
 }

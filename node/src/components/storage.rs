@@ -896,7 +896,7 @@ impl Storage {
                 Some(block) => {
                     next_block = match block.parent() {
                         None => None,
-                        Some(parent_hash) => self.get_single_block(txn, &parent_hash)?,
+                        Some(parent_hash) => self.get_single_block(txn, parent_hash)?,
                     };
                     blocks.push(block);
                 }
@@ -922,7 +922,7 @@ impl Storage {
                 .chain(block.body().transfer_hashes())
             {
                 let deploy_header = self
-                    .get_deploy_header(&mut txn, &deploy_hash)?
+                    .get_deploy_header(&mut txn, deploy_hash)?
                     .expect("deploy to exist in storage");
                 // If block's deploy has already expired, ignore it.
                 // It may happen that deploy was not expired at the time of proposing a block but it

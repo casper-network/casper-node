@@ -106,7 +106,7 @@ pub fn get_era_id<P>(provider: &mut P) -> Result<EraId, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    Ok(read_from(provider, ERA_ID_KEY)?)
+    read_from(provider, ERA_ID_KEY)
 }
 
 pub fn set_era_id<P>(provider: &mut P, era_id: EraId) -> Result<(), Error>
@@ -120,7 +120,7 @@ pub fn get_era_end_timestamp_millis<P>(provider: &mut P) -> Result<u64, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    Ok(read_from(provider, ERA_END_TIMESTAMP_MILLIS_KEY)?)
+    read_from(provider, ERA_END_TIMESTAMP_MILLIS_KEY)
 }
 
 pub fn set_era_end_timestamp_millis<P>(
@@ -143,7 +143,7 @@ pub fn get_seigniorage_recipients_snapshot<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    Ok(read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)?)
+    read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
 }
 
 pub fn set_seigniorage_recipients_snapshot<P>(

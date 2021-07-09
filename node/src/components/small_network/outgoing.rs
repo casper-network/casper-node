@@ -541,7 +541,7 @@ where
         let mut to_reconnect = Vec::new();
 
         for (&addr, outgoing) in self.outgoing.iter() {
-            let span = make_span(addr, Some(&outgoing));
+            let span = make_span(addr, Some(outgoing));
 
             span.in_scope(|| match outgoing.state {
                 // Decide whether to attempt reconnecting a failed-waiting address.

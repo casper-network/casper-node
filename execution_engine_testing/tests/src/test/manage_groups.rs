@@ -252,7 +252,7 @@ fn should_create_and_extend_user_group() {
         .expect("should have group");
     assert!(group_1_extended.len() > group_1.len());
     // Calculates how many new urefs were created
-    let new_urefs: BTreeSet<_> = group_1_extended.difference(&group_1).collect();
+    let new_urefs: BTreeSet<_> = group_1_extended.difference(group_1).collect();
     assert_eq!(new_urefs.len(), NEW_UREFS_COUNT as usize);
 }
 

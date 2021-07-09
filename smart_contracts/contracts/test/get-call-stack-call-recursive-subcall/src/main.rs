@@ -48,7 +48,7 @@ pub extern "C" fn call() {
             runtime::call_versioned_contract::<()>(
                 *contract_package_hash,
                 None,
-                &target_method,
+                target_method,
                 args,
             );
         }
@@ -57,7 +57,7 @@ pub extern "C" fn call() {
             target_method,
             ..
         }) => {
-            runtime::call_contract::<()>(*contract_hash, &target_method, args);
+            runtime::call_contract::<()>(*contract_hash, target_method, args);
         }
         _ => runtime::revert(ApiError::User(0)),
     }

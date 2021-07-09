@@ -37,7 +37,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetEraInfoBySwitchBlock {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
-        let maybe_block_id = common::block_identifier::get(&matches);
+        let maybe_block_id = common::block_identifier::get(matches);
 
         casper_client::get_era_info_by_switch_block(
             maybe_rpc_id,

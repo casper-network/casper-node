@@ -135,7 +135,7 @@ fn do_read_post_migration_info(
     crypto::verify(
         &signed_info.serialized_info,
         &signed_info.signature,
-        &public_key,
+        public_key,
     )
     .map_err(|_| Error::InvalidSignatureOfStateHashInfo)?;
 

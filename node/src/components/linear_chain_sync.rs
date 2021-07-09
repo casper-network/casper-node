@@ -133,7 +133,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ),
                 None => State::Done(highest_block.map(Box::new)),
             };
-            let state_key = create_state_key(&chainspec);
+            let state_key = create_state_key(chainspec);
             let linear_chain_sync = LinearChainSync {
                 peers: PeersState::new(),
                 state,
@@ -924,7 +924,7 @@ fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
 /// Deserialized vector of bytes into `LinearChainSync::State`.
 /// Panics on deserialization errors.
 fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
-    bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+    bincode::deserialize(serialized_state).unwrap_or_else(|error| {
         // Panicking here should not corrupt the state of any component as it's done in the
         // constructor.
         panic!(
@@ -940,7 +940,7 @@ pub(crate) fn read_init_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<Option<State>, storage::Error> {
-    let key = create_state_key(&chainspec);
+    let key = create_state_key(chainspec);
     if let Some(bytes) = storage.read_state_store(&key)? {
         Ok(deserialize_state(&bytes))
     } else {
@@ -954,7 +954,7 @@ pub(crate) fn clean_linear_chain_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<bool, storage::Error> {
-    let key = create_state_key(&chainspec);
+    let key = create_state_key(chainspec);
     storage.del_state_store(key)
 }
 
