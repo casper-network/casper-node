@@ -118,7 +118,7 @@ pub enum StepError {
     GetSystemModuleError(Error),
     #[error("Slashing error: {0}")]
     SlashingError(Error),
-    #[error("Slashing error: {0}")]
+    #[error("Auction error: {0}")]
     AuctionError(Error),
     #[error("Distribute error: {0}")]
     DistributeError(Error),
