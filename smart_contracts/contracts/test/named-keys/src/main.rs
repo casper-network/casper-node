@@ -39,12 +39,11 @@ pub extern "C" fn call() {
         COMMAND_TEST_READ_UREF1 => {
             // Read data hidden behind `URef1` uref
             let hello_world: String = storage::read(
-                runtime::list_named_keys()
+                (*runtime::list_named_keys()
                     .get("hello-world")
-                    .expect("Unable to get hello-world")
-                    .clone()
-                    .try_into()
-                    .expect("Unable to convert to uref"),
+                    .expect("Unable to get hello-world"))
+                .try_into()
+                .expect("Unable to convert to uref"),
             )
             .expect("Unable to deserialize URef")
             .expect("Unable to find value");

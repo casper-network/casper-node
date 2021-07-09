@@ -67,8 +67,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
-        let state_root_hash = common::state_root_hash::get(&matches);
-        let purse_uref = purse_uref::get(&matches);
+        let state_root_hash = common::state_root_hash::get(matches);
+        let purse_uref = purse_uref::get(matches);
 
         casper_client::get_balance(
             maybe_rpc_id,

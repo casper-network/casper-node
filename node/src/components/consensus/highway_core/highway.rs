@@ -546,7 +546,7 @@ impl<C: Context> Highway<C> {
                         return Err(EndorsementError::Banned.into());
                     }
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *creator);
-                    if !C::verify_signature(&endorsement.hash(), v_id, &signature) {
+                    if !C::verify_signature(&endorsement.hash(), v_id, signature) {
                         return Err(EndorsementError::Signature.into());
                     }
                 }
@@ -983,6 +983,6 @@ pub(crate) mod tests {
             "should use validator that is not bonded"
         );
         // Verify that sending a Ping from a non-existing validator does not panic.
-        assert_eq!(highway.has_vertex(&ping), false);
+        assert!(!highway.has_vertex(&ping));
     }
 }

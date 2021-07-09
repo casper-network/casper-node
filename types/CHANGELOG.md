@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Restrict summarization when JSON pretty-printing to contiguous long hex strings.
+* Update pinned version of Rust to `nightly-2021-06-17`
 
 ### Removed
 * Remove ability to clone `SecretKey`s.
