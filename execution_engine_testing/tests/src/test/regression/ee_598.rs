@@ -105,6 +105,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
             "{:?}",
             ApiError::from(auction::Error::UnbondTooLarge)
         )),
+        "{}",
         error_message
     );
 }

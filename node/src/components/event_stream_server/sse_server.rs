@@ -751,7 +751,7 @@ mod tests {
                     ServerSentEvent { id: Some(id), data }
                 })
                 .collect()
-        };
+        }
 
         // Returns `NUM_ONGOING_EVENTS` random SSE events for the ongoing stream containing
         // duplicates taken from the end of the initial stream.  Allows for the full initial stream
@@ -779,7 +779,7 @@ mod tests {
                     deploys,
                 ))
                 .collect()
-        };
+        }
 
         // The number of events in the initial stream, excluding the very first `ApiVersion` one.
         const NUM_INITIAL_EVENTS: usize = 10;

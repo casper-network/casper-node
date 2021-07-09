@@ -47,7 +47,7 @@ mod partial_tries {
     {
         let mut txn = environment.create_read_write_txn()?;
         // The assert below only works with partial tries
-        assert_eq!(store.get(&txn, &expected_root_after_delete)?, None);
+        assert_eq!(store.get(&txn, expected_root_after_delete)?, None);
         let root_after_delete = match checked_delete::<K, V, _, _, E>(
             correlation_id,
             &mut txn,
@@ -61,7 +61,7 @@ mod partial_tries {
         };
         assert_eq!(root_after_delete, *expected_root_after_delete);
         for HashedTrie { hash, trie } in expected_tries_after_delete {
-            assert_eq!(store.get(&txn, &hash)?, Some(trie.clone()));
+            assert_eq!(store.get(&txn, hash)?, Some(trie.clone()));
         }
         Ok(())
     }
@@ -241,7 +241,7 @@ mod full_tries {
                 correlation_id,
                 &mut txn,
                 store,
-                roots.last().unwrap_or(&root),
+                roots.last().unwrap_or(root),
                 key,
                 value,
             )? {

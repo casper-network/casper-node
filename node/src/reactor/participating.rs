@@ -430,7 +430,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -487,9 +487,9 @@ impl reactor::Reactor for Reactor {
         );
         contract_runtime.set_parent_map_from_block(maybe_latest_block_header);
 
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
-            &registry,
+            registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -1075,7 +1075,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(&self);
+        self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
     }

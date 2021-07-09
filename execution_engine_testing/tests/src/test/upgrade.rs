@@ -578,10 +578,8 @@ fn should_maintain_named_keys_across_upgrade() {
         let purse_name: &str = &format!("purse_{}", index);
         assert!(
             contract.named_keys().contains_key(purse_name),
-            format!(
-                "{} uref should still exist in contract's named_keys after upgrade",
-                index
-            )
+            "{} uref should still exist in contract's named_keys after upgrade",
+            index
         );
     }
 }
