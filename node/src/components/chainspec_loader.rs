@@ -549,7 +549,7 @@ impl ChainspecLoader {
     fn handle_commit_genesis_result(
         &mut self,
         result: Result<GenesisSuccess, engine_state::Error>,
-    ) -> Effects<Event> {
+    ) {
         match result {
             Ok(GenesisSuccess {
                 post_state_hash,
@@ -566,7 +566,6 @@ impl ChainspecLoader {
                 self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
             }
         }
-        Effects::new()
     }
 
     fn handle_upgrade_result(
