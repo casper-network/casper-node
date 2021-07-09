@@ -205,7 +205,7 @@ where
                 initial_root_hash,
                 effect.transforms.to_owned(),
             )
-            .map_err(Into::into)?;
+            .map_err(Into::<execution::Error>::into)?;
 
         // Return the result
         Ok(GenesisSuccess {
