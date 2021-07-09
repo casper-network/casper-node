@@ -48,7 +48,7 @@ impl SeigniorageRecipient {
 
     /// Calculates total stake, including delegators' total stake
     pub fn total_stake(&self) -> Option<U512> {
-        Some(self.delegator_total_stake()?.checked_add(self.stake)?)
+        self.delegator_total_stake()?.checked_add(self.stake)
     }
 
     /// Calculates total stake for all delegators

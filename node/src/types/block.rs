@@ -157,7 +157,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key);
+    let signature = crypto::sign(block.hash.inner(), secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, Some(block_signature))
@@ -733,7 +733,7 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
+        let serialized_header = Self::serialize(self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(hash::hash(&serialized_header))
     }
@@ -1042,10 +1042,9 @@ impl Block {
         );
         let body_hash = body.hash();
 
-        let era_end = match finalized_block.era_report {
-            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
-            None => None,
-        };
+        let era_end = finalized_block
+            .era_report
+            .map(|era_report| EraEnd::new(era_report, next_era_validator_weights.unwrap()));
 
         let mut accumulated_seed = [0; Digest::LENGTH];
 
@@ -1190,10 +1189,10 @@ impl Block {
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = Digest::random(rng);
-        let next_era_validator_weights = match finalized_block.era_report {
-            Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
-            None => None,
-        };
+        let next_era_validator_weights = finalized_block
+            .era_report
+            .as_ref()
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
             parent_hash,
@@ -1610,7 +1609,7 @@ impl FinalitySignature {
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
-        let signature = crypto::sign(bytes, &secret_key, &public_key);
+        let signature = crypto::sign(bytes, secret_key, &public_key);
         FinalitySignature {
             block_hash,
             era_id,

@@ -68,7 +68,7 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
     let mut txn = env.create_read_write_txn().unwrap();
     // wait for reader threads to read
     barrier.wait();
-    store.put(&mut txn, &leaf_1_hash, &leaf_1).unwrap();
+    store.put(&mut txn, leaf_1_hash, leaf_1).unwrap();
     txn.commit().unwrap();
     // sync with reader threads
     barrier.wait();
@@ -119,7 +119,7 @@ fn in_memory_writer_mutex_does_not_collide_with_readers() {
     let mut txn = env.create_read_write_txn().unwrap();
     // wait for reader threads to read
     barrier.wait();
-    store.put(&mut txn, &leaf_1_hash, &leaf_1).unwrap();
+    store.put(&mut txn, leaf_1_hash, leaf_1).unwrap();
     txn.commit().unwrap();
     // sync with reader threads
     barrier.wait();

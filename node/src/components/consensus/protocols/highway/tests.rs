@@ -277,7 +277,7 @@ fn detect_doppelganger() {
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
-    assert_eq!(highway_protocol.is_active(), true);
+    assert!(highway_protocol.is_active());
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.

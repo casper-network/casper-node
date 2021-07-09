@@ -41,9 +41,9 @@ fn ttl(value: &str) -> Result<TimeDiff> {
 }
 
 fn gas_price(value: &str) -> Result<u64> {
-    Ok(value
+    value
         .parse::<u64>()
-        .map_err(|error| Error::FailedToParseInt("gas_price", error))?)
+        .map_err(|error| Error::FailedToParseInt("gas_price", error))
 }
 
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
@@ -106,7 +106,7 @@ mod arg_simple {
                 arg, ARG_VALUE_NAME
             )));
         }
-        let cl_type = cl_type::parse(&parts[1]).map_err(|_| {
+        let cl_type = cl_type::parse(parts[1]).map_err(|_| {
             Error::InvalidCLValue(format!(
                 "unknown variant {}, expected one of {}",
                 parts[1],
@@ -615,9 +615,9 @@ mod tests {
         }
     }
 
-    impl Into<ErrWrapper> for Error {
-        fn into(self) -> ErrWrapper {
-            ErrWrapper(self)
+    impl From<Error> for ErrWrapper {
+        fn from(error: Error) -> Self {
+            ErrWrapper(error)
         }
     }
 
