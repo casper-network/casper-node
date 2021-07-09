@@ -641,7 +641,7 @@ impl RpcWithParamsExt for GetDictionary {
             // First check if URef or Named Key
             // Get URef based on that
             // Create dictionary address
-            // Query one last time with new address
+            // Query one last time with new address Key::Dictionary
 
             let dictionary_uref = match params.dictionary_identifier.clone() {
                 DictionaryIdentifier::NamedKey(formatted_hash, dictionary_key) => {
@@ -720,8 +720,17 @@ impl RpcWithParamsExt for GetDictionary {
                 }
             };
 
-            let dictionary_addr =
-                Key::dictionary(dictionary_uref, params.dictionary_name.as_bytes());
+            let key_bytes = match params.dictionary_name.to_bytes() {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::ParseQueryKey as i64,
+                        "Failed serialize dictionary key",
+                    ))?)
+                }
+            };
+
+            let dictionary_addr = Key::dictionary(dictionary_uref, &key_bytes);
 
             let query_result = effect_builder
                 .make_request(

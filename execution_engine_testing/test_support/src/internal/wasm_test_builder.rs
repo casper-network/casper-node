@@ -443,7 +443,7 @@ where
             return Ok((value.deref().clone(), proofs));
         }
 
-        panic! {query_result};
+        panic! {"{:?}", query_result};
     }
 
     pub fn total_supply(&self, maybe_post_state: Option<Blake2bHash>) -> U512 {

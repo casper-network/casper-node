@@ -11,6 +11,7 @@ use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},
     Account, AccountHash, Error, Result, Session, URefAddr, Value,
 };
+use casper_types::bytesrepr::ToBytes;
 
 /// Context in which to run a test of a Wasm smart contract.
 pub struct TestContext {
@@ -116,6 +117,40 @@ impl TestContext {
     pub fn query(&self, key: AccountHash, path: &[String]) -> Result<Value> {
         self.inner
             .query(None, Key::Account(key), path)
+            .map(Value::new)
+            .map_err(Error::from)
+    }
+
+    /// Queries for a [`Value`] stored in a dictionary under a given 'name'
+    ///
+    /// Returns an [`Error`] if not found.
+    pub fn query_dictionary(
+        &self,
+        key: Key,
+        name: String,
+        dictionary_named_key: Option<String>,
+        path: &[String],
+    ) -> Result<Value> {
+        let dictionary_key_bytes = match name.to_bytes() {
+            Ok(bytes) => bytes,
+            Err(_) => return Err(Error::from("Failed to serialize".to_string())),
+        };
+        let dictionary_address = if let (Key::URef(uref), None) = (key, dictionary_named_key) {
+            Key::dictionary(uref, &dictionary_key_bytes)
+        } else {
+            let path = vec![dictionary_named_key.unwrap()];
+            let dictionary_uref = self
+                .inner
+                .query(None, key, &path)
+                .map(Value::new)
+                .map_err(Error::from)
+                .unwrap()
+                .into_t::<URef>()
+                .unwrap();
+            Key::dictionary(dictionary_uref, &dictionary_key_bytes)
+        };
+        self.inner
+            .query(None, dictionary_address, path)
             .map(Value::new)
             .map_err(Error::from)
     }
