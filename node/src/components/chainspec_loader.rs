@@ -678,7 +678,10 @@ where
             Event::Initialize {
                 maybe_highest_block: highest_block,
             } => self.handle_initialize(effect_builder, highest_block),
-            Event::CommitGenesisResult(result) => self.handle_commit_genesis_result(result),
+            Event::CommitGenesisResult(result) => {
+                self.handle_commit_genesis_result(result);
+                Effects::new()
+            }
             Event::UpgradeResult(result) => self.handle_upgrade_result(result),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()

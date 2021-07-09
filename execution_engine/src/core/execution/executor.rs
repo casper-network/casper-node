@@ -47,14 +47,14 @@ macro_rules! on_fail_charge {
                 warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
-                    effect: Default::default(),
+                    execution_effect: Default::default(),
                     transfers: $transfers,
                     cost: $cost,
                 };
             }
         }
     };
-    ($fn:expr, $cost:expr, $effect:expr, $transfers:expr) => {
+    ($fn:expr, $cost:expr, $execution_effect:expr, $transfers:expr) => {
         match $fn {
             Ok(res) => res,
             Err(e) => {
@@ -62,7 +62,7 @@ macro_rules! on_fail_charge {
                 warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
-                    effect: $effect,
+                    execution_effect: $execution_effect,
                     transfers: $transfers,
                     cost: $cost,
                 };
