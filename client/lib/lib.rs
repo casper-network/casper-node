@@ -551,16 +551,10 @@ pub fn get_dictionary(
     node_address: &str,
     verbosity_level: u64,
     state_root_hash: &str,
-    dictionary_str_params: DictionaryQueryStrParams<'_>,
-    dictionary_name: &str,
-    path: &str,
+    dictionary_str_params: DictionaryItemStrParams<'_>,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_dictionary(
-        state_root_hash,
-        dictionary_str_params,
-        dictionary_name,
-        path,
-    )
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_dictionary(state_root_hash, dictionary_str_params)
 }
 
 /// Container for `Deploy` construction options.
@@ -1052,34 +1046,86 @@ impl<'a> SessionStrParams<'a> {
     }
 }
 
-/// Container struct to handle queries made for `Values` stored in a `Dictionary`.
-#[derive(Default)]
-pub struct DictionaryQueryStrParams<'a> {
-    /// The key under which the URef of the dictionary is stored.
-    pub key: &'a str,
-    /// The name/path for the Dictionary URef.
-    pub named_key_for_dictionary: &'a str,
-    /// The URef of the dictionary itself
-    pub dictionary_uref: &'a str,
+/// A container to manage the args for querying items stored in a dictionary.
+pub enum DictionaryItemStrParams<'a> {
+    /// Lookup a dictionary item via an Account's named keys.
+    AccountNamedKey {
+        /// The account key as a formatted string whose named keys contains dictionary_name.
+        key: &'a str,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via a Contract's named keys.
+    ContractNamedKey {
+        /// The contract key as a formatted string whose named keys contains dictionary_name.
+        key: &'a str,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via its seed URef.
+    URef {
+        /// The dictionary's seed URef.
+        seed_uref: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via its unique key.
+    Dictionary(&'a str),
 }
 
-impl<'a> TryInto<DictionaryIdentifier> for DictionaryQueryStrParams<'a> {
+impl<'a> TryInto<DictionaryIdentifier> for DictionaryItemStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<DictionaryIdentifier> {
-        if !self.key.is_empty() {
-            let key = match Key::from_formatted_str(self.key) {
-                Ok(key) => key,
-                Err(_) => return Err(Error::FailedToParseDictionaryIdentifier),
-            };
-            Ok(DictionaryIdentifier::NamedKey(
-                key.to_formatted_string(),
-                self.named_key_for_dictionary.to_string(),
-            ))
-        } else if !self.dictionary_uref.is_empty() {
-            Ok(DictionaryIdentifier::URef(self.dictionary_uref.to_string()))
-        } else {
-            Err(Error::FailedToParseDictionaryIdentifier)
+        match self {
+            DictionaryItemStrParams::AccountNamedKey {
+                key,
+                dictionary_item_key,
+                dictionary_name,
+            } => {
+                let key = Key::from_formatted_str(key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::AccountNamedKey {
+                    key: key.to_formatted_string(),
+                    dictionary_name: dictionary_name.to_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::ContractNamedKey {
+                key,
+                dictionary_item_key,
+                dictionary_name,
+            } => {
+                let key = Key::from_formatted_str(key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::ContractNamedKey {
+                    key: key.to_formatted_string(),
+                    dictionary_name: dictionary_name.to_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::URef {
+                seed_uref,
+                dictionary_item_key,
+            } => {
+                let uref = Key::from_formatted_str(seed_uref)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::URef {
+                    seed_uref: uref.to_formatted_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::Dictionary(dictionary_key) => {
+                let dictionary_key = Key::from_formatted_str(dictionary_key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::Dictionary(
+                    dictionary_key.to_formatted_string(),
+                ))
+            }
         }
     }
 }

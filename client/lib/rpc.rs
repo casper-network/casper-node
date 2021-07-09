@@ -20,7 +20,7 @@ use casper_node::{
         info::{GetDeploy, GetDeployParams},
         state::{
             GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
-            GetBalanceParams, GetDictionary, GetDictionaryParams, GetItem, GetItemParams,
+            GetBalanceParams, GetDictionaryItem, GetDictionaryParams, GetItem, GetItemParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -31,7 +31,7 @@ use casper_types::{AsymmetricType, Key, PublicKey, URef, U512};
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
-    validation, DictionaryQueryStrParams,
+    validation, DictionaryItemStrParams,
 };
 use std::convert::TryInto;
 
@@ -127,9 +127,7 @@ impl RpcCall {
     pub(crate) fn get_dictionary(
         self,
         state_root_hash: &str,
-        dictionary_str_params: DictionaryQueryStrParams<'_>,
-        dictionary_name: &str,
-        path: &str,
+        dictionary_str_params: DictionaryItemStrParams<'_>,
     ) -> Result<JsonRpc> {
         let state_root_hash =
             Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
@@ -139,20 +137,12 @@ impl RpcCall {
 
         let dictionary_identifier = dictionary_str_params.try_into()?;
 
-        let path = if path.is_empty() {
-            vec![]
-        } else {
-            path.split('/').map(ToString::to_string).collect()
-        };
-
         let params = GetDictionaryParams {
             state_root_hash,
             dictionary_identifier,
-            dictionary_name: dictionary_name.to_string(),
-            path,
         };
 
-        let response = GetDictionary::request_with_map_params(self, params)?;
+        let response = GetDictionaryItem::request_with_map_params(self, params)?;
         Ok(response)
     }
 
@@ -422,7 +412,7 @@ impl RpcClient for GetAccountInfo {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
-impl RpcClient for GetDictionary {
+impl RpcClient for GetDictionaryItem {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 

@@ -24,7 +24,7 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionary, GetItem as QueryState},
+    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem as QueryState},
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
@@ -92,7 +92,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
-        .subcommand(GetDictionary::build(DisplayOrder::GetDictionary as usize))
+        .subcommand(GetDictionaryItem::build(
+            DisplayOrder::GetDictionary as usize,
+        ))
 }
 
 #[tokio::main]
@@ -121,7 +123,7 @@ async fn main() {
         (GenerateCompletion::NAME, Some(matches)) => (GenerateCompletion::run(matches), matches),
         (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches), matches),
         (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches), matches),
-        (GetDictionary::NAME, Some(matches)) => (GetDictionary::run(matches), matches),
+        (GetDictionaryItem::NAME, Some(matches)) => (GetDictionaryItem::run(matches), matches),
         _ => {
             let _ = cli().print_long_help();
             println!();

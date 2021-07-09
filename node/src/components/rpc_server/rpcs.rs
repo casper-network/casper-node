@@ -48,6 +48,7 @@ enum ErrorCode {
     InvalidDeploy = -32008,
     NoSuchAccount = -32009,
     FailedToGetDictURef = -32010,
+    NoDictionaryName = -32011,
 }
 
 #[derive(Debug)]

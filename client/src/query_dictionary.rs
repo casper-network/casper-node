@@ -2,8 +2,8 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
-use casper_client::{DictionaryQueryStrParams, Error};
-use casper_node::rpcs::state::GetDictionary;
+use casper_client::{DictionaryItemStrParams, Error};
+use casper_node::rpcs::state::GetDictionaryItem;
 use casper_types::PublicKey;
 
 use crate::{command::ClientCommand, common, Success};
@@ -14,11 +14,12 @@ enum DisplayOrder {
     NodeAddress,
     RpcId,
     StateRootHash,
-    Key,
-    Uref,
-    DictionaryBase,
+    AccountHash,
+    ContractHash,
     DictionaryName,
-    Path,
+    DictionaryItemKey,
+    SeedURef,
+    DictionaryAddress,
 }
 
 /// Handles providing the arg for and retrieval of the key.
@@ -28,8 +29,6 @@ mod key {
 
     use super::*;
 
-    pub(crate) const ARG_NAME: &str = "key";
-    const ARG_SHORT: &str = "k";
     const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
     const ARG_HELP: &str =
         "The base key for the query. This must be a properly formatted public key, account hash, \
@@ -40,18 +39,17 @@ mod key {
         enter the path to the file as the --key argument. The file should be one of the two public \
         key files generated via the `keygen` subcommand; \"public_key_hex\" or \"public_key.pem\"";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .short(ARG_SHORT)
+    pub(super) fn arg(arg_name: &'static str, display_order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(arg_name)
+            .long(arg_name)
             .required(false)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(DisplayOrder::Key as usize)
+            .display_order(display_order)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
-        let value = matches.value_of(ARG_NAME).unwrap_or_default();
+    pub(super) fn get(arg_name: &'static str, matches: &ArgMatches) -> Result<String, Error> {
+        let value = matches.value_of(arg_name).unwrap_or_default();
 
         // Try to read as a PublicKey PEM file first.
         if let Ok(public_key) = PublicKey::from_file(value) {
@@ -75,83 +73,63 @@ mod key {
     }
 }
 
-/// Handles providing the arg for and retrieval of the key.
-mod path {
+mod account_hash {
     use super::*;
 
-    const ARG_NAME: &str = "query-path";
-    const ARG_SHORT: &str = "q";
-    const ARG_VALUE_NAME: &str = "PATH/FROM/KEY";
-    const ARG_HELP: &str = "The path from the key of the query";
+    pub(crate) const ARG_NAME: &str = "account-hash";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .short(ARG_SHORT)
-            .required(false)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::Path as usize)
+        key::arg(ARG_NAME, DisplayOrder::AccountHash as usize)
     }
 
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
+        key::get(ARG_NAME, matches)
     }
 }
 
-/// Handles providing the arg for and retrieval of the purse URef.
-mod dictionary_uref {
+mod contract_hash {
     use super::*;
 
-    pub(crate) const ARG_NAME: &str = "dictionary-uref";
-    const ARG_VALUE_NAME: &str = "FORMATTED STRING";
-    const ARG_HELP: &str =
-        "The URef under which the purse is stored. This must be a properly formatted URef \
-        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\"";
+    pub(crate) const ARG_NAME: &str = "contract-hash";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .required(false)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::Uref as usize)
+        key::arg(ARG_NAME, DisplayOrder::ContractHash as usize)
     }
 
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
+        key::get(ARG_NAME, matches)
     }
 }
 
-/// Handles providing the arg for and retrieval of the purse URef.
-mod dictionary_base {
-    use super::*;
-
-    pub(crate) const ARG_NAME: &str = "dictionary-base-key";
-    const ARG_VALUE_NAME: &str = "STRING";
-    const ARG_HELP: &str = "The name under which the dictionary is stored";
-
-    pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .required(false)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::DictionaryBase as usize)
-    }
-
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
-    }
-}
-
-/// Handles providing the arg for dictionary name.
+/// Handles providing the arg for the named key under which the dictionary seed URef is stored.
 mod dictionary_name {
     use super::*;
 
-    pub(crate) const ARG_NAME: &str = "dictionary-named-key";
+    pub(crate) const ARG_NAME: &str = "dictionary-name";
     const ARG_VALUE_NAME: &str = "STRING";
-    const ARG_HELP: &str = "The name under which the dictionary is stored";
+    const ARG_HELP: &str = "The named key under which the dictionary seed URef is stored.";
+
+    pub(super) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::DictionaryName as usize)
+    }
+
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
+    }
+}
+
+/// Handles providing the arg for name of the key under which the dictionary item is stored.
+mod dictionary_item_key {
+    use super::*;
+
+    pub(crate) const ARG_NAME: &str = "dictionary-item-key";
+    const ARG_VALUE_NAME: &str = "STRING";
+    const ARG_HELP: &str = "The dictionary item key formatted as a string.";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -159,7 +137,7 @@ mod dictionary_name {
             .required(true)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(DisplayOrder::DictionaryName as usize)
+            .display_order(DisplayOrder::DictionaryItemKey as usize)
     }
 
     pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
@@ -169,8 +147,53 @@ mod dictionary_name {
     }
 }
 
-impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionary {
-    const NAME: &'static str = "get-dictionary";
+/// Handles providing the arg for and retrieval of the dictionary's seed URef.
+mod seed_uref {
+    use super::*;
+
+    pub(crate) const ARG_NAME: &str = "seed-uref";
+    const ARG_VALUE_NAME: &str = "FORMATTED STRING";
+    const ARG_HELP: &str = "The dictionary's seed URef. This must be a properly formatted URef \
+        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\"";
+
+    pub(super) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::SeedURef as usize)
+    }
+
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
+    }
+}
+
+/// Handles providing the arg for and retrieval of the Dictionary address.
+mod dictionary_address {
+    use super::*;
+
+    pub(crate) const ARG_NAME: &str = "dictionary-address";
+    const ARG_VALUE_NAME: &str = "FORMATTED STRING";
+    const ARG_HELP: &str = "The dictionary item's unique key.";
+
+    pub(super) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::DictionaryAddress as usize)
+    }
+
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
+    }
+}
+
+impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionaryItem {
+    const NAME: &'static str = "get-dictionary-item";
     const ABOUT: &'static str = "Query for values managed in a dictionary";
 
     fn build(display_order: usize) -> App<'a, 'b> {
@@ -185,15 +208,22 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionary {
             .arg(common::state_root_hash::arg(
                 DisplayOrder::StateRootHash as usize,
             ))
-            .arg(key::arg())
-            .arg(path::arg())
-            .arg(dictionary_uref::arg())
-            .arg(dictionary_base::arg().required_unless(dictionary_uref::ARG_NAME))
-            .arg(dictionary_name::arg())
+            .arg(account_hash::arg())
+            .arg(contract_hash::arg())
+            .arg(seed_uref::arg())
+            .arg(dictionary_address::arg())
+            .arg(
+                dictionary_name::arg()
+                    .required_unless(seed_uref::ARG_NAME)
+                    .required_unless(dictionary_address::ARG_NAME),
+            )
+            .arg(dictionary_item_key::arg())
             .group(
                 ArgGroup::with_name("dictionary-identifier")
-                    .arg(key::ARG_NAME)
-                    .arg(dictionary_uref::ARG_NAME)
+                    .arg(account_hash::ARG_NAME)
+                    .arg(contract_hash::ARG_NAME)
+                    .arg(seed_uref::ARG_NAME)
+                    .arg(dictionary_address::ARG_NAME)
                     .required(true),
             )
     }
@@ -203,16 +233,36 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionary {
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
         let state_root_hash = common::state_root_hash::get(matches);
-        let key = key::get(matches)?;
-        let path = path::get(matches);
-        let dictionary_uref = dictionary_uref::get(matches);
-        let dictionary_base = dictionary_base::get(matches);
-        let dictionary_name = dictionary_name::get(matches);
 
-        let dictionary_str_params = DictionaryQueryStrParams {
-            key: &key,
-            named_key_for_dictionary: dictionary_base,
-            dictionary_uref,
+        let account_hash = account_hash::get(matches)?;
+        let contract_hash = contract_hash::get(matches)?;
+        let dictionary_name = dictionary_name::get(matches);
+        let seed_uref = seed_uref::get(matches);
+        let dictionary_key = dictionary_address::get(matches);
+        let dictionary_item_key = dictionary_item_key::get(matches);
+
+        let dictionary_query_str_params = if !account_hash.is_empty() && !dictionary_name.is_empty()
+        {
+            DictionaryItemStrParams::AccountNamedKey {
+                key: &account_hash,
+                dictionary_name,
+                dictionary_item_key,
+            }
+        } else if !contract_hash.is_empty() && !dictionary_name.is_empty() {
+            DictionaryItemStrParams::ContractNamedKey {
+                key: &contract_hash,
+                dictionary_name,
+                dictionary_item_key,
+            }
+        } else if !seed_uref.is_empty() {
+            DictionaryItemStrParams::URef {
+                seed_uref,
+                dictionary_item_key,
+            }
+        } else if !dictionary_key.is_empty() {
+            DictionaryItemStrParams::Dictionary(dictionary_key)
+        } else {
+            return Err(Error::FailedToParseDictionaryIdentifier);
         };
 
         casper_client::get_dictionary(
@@ -220,9 +270,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionary {
             node_address,
             verbosity_level,
             state_root_hash,
-            dictionary_str_params,
-            dictionary_name,
-            path,
+            dictionary_query_str_params,
         )
         .map(Success::from)
     }

@@ -124,34 +124,43 @@ impl TestContext {
     /// Queries for a [`Value`] stored in a dictionary under a given 'name'
     ///
     /// Returns an [`Error`] if not found.
-    pub fn query_dictionary(
+    pub fn query_dictionary_item(
         &self,
         key: Key,
-        name: String,
-        dictionary_named_key: Option<String>,
-        path: &[String],
+        dictionary_name: Option<String>,
+        dictionary_item_key: String,
     ) -> Result<Value> {
-        let dictionary_key_bytes = match name.to_bytes() {
-            Ok(bytes) => bytes,
-            Err(_) => return Err(Error::from("Failed to serialize".to_string())),
+        let empty_path = vec![];
+        let dictionary_key_bytes = dictionary_item_key
+            .to_bytes()
+            .map_err(|_| Error::from("Could not serialize key bytes".to_string()))?;
+        let address = match key {
+            Key::Account(_) | Key::Hash(_) => {
+                if let Some(name) = dictionary_name {
+                    let path = vec![name];
+                    let seed_uref = self
+                        .inner
+                        .query(None, key, &path)
+                        .map(Value::new)
+                        .map_err(Error::from)
+                        .unwrap()
+                        .into_t::<URef>()
+                        .unwrap();
+                    Key::dictionary(seed_uref, &dictionary_key_bytes)
+                } else {
+                    return Err(Error::from("No dictionary name was provided".to_string()));
+                }
+            }
+            Key::URef(uref) => Key::dictionary(uref, &dictionary_key_bytes),
+            Key::Dictionary(_) => key,
+            _ => {
+                return Err(Error::from(
+                    "Unsupported key type for a query to a dictionary item".to_string(),
+                ))
+            }
         };
-        let dictionary_address =
-            if let (Key::URef(uref), None) = (key, dictionary_named_key.clone()) {
-                Key::dictionary(uref, &dictionary_key_bytes)
-            } else {
-                let path = vec![dictionary_named_key.unwrap()];
-                let dictionary_uref = self
-                    .inner
-                    .query(None, key, &path)
-                    .map(Value::new)
-                    .map_err(Error::from)
-                    .unwrap()
-                    .into_t::<URef>()
-                    .unwrap();
-                Key::dictionary(dictionary_uref, &dictionary_key_bytes)
-            };
         self.inner
-            .query(None, dictionary_address, path)
+            .query(None, address, &empty_path)
             .map(Value::new)
             .map_err(Error::from)
     }
