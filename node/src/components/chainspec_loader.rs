@@ -313,7 +313,7 @@ impl ChainspecLoader {
     /// [`Self::initial_state_root_hash`].
     ///   2. The height of the next block to be added to the chain.
     ///     - At genesis the height is 0.
-    ///     - Otherwise it is the successor of the last emergency upgrade block.
+    ///     - Otherwise it is the successor of the last upgrade block.
     ///   3. The parent hash for the first block to use when executing.
     ///     - At genesis this is `[0u8; 32]`
     ///     - Otherwise it is the block hash of the highest block.
