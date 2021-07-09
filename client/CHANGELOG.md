@@ -15,13 +15,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Add support for retrieving historical auction information via the addition of an optional `--block-identifier` arg in the `get-auction-info` subcommand.
+* Add `keygen::generate_files` to FFI.
 
 ### Changed
 * Change `account-address` subcommand to output properly formatted string.
 * Change `put-deploy` and `make-deploy` subcommands to support transfers.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to not overwrite files unless `--force` is passed.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to use transactional file writing for enhanced safety and reliability.
-* Add `keygen::generate_files` to FFI.
 
 
 ## [1.2.0] - 2021-05-27
