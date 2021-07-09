@@ -143,15 +143,19 @@ fn commit_execution_effects(
     let execution_result = ExecutionResult::from(&ee_execution_result);
 
     let execution_effect = match ee_execution_result {
-        EngineExecutionResult::Success { effect, cost, .. } => {
+        EngineExecutionResult::Success {
+            execution_effect,
+            cost,
+            ..
+        } => {
             // We do want to see the deploy hash and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, %cost, "execution succeeded");
-            effect
+            execution_effect
         }
         EngineExecutionResult::Failure {
             error,
-            effect,
+            execution_effect,
             cost,
             ..
         } => {
@@ -159,7 +163,7 @@ fn commit_execution_effects(
             // We do want to see the deploy hash, error, and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, ?error, %cost, "execution failure");
-            effect
+            execution_effect
         }
     };
     let new_state_root = commit(

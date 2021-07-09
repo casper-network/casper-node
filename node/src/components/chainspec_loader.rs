@@ -553,11 +553,11 @@ impl ChainspecLoader {
         match result {
             Ok(GenesisSuccess {
                 post_state_hash,
-                effect,
+                execution_effect,
             }) => {
                 info!("chainspec name {}", self.chainspec.network_config.name);
                 info!("genesis state root hash {}", post_state_hash);
-                trace!(%post_state_hash, ?effect);
+                trace!(%post_state_hash, ?execution_effect);
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
                 self.initial_state_root_hash = post_state_hash.into();
             }
@@ -576,11 +576,11 @@ impl ChainspecLoader {
         match result {
             Ok(UpgradeSuccess {
                 post_state_hash,
-                effect,
+                execution_effect,
             }) => {
                 info!("chainspec name {}", self.chainspec.network_config.name);
                 info!("state root hash {}", post_state_hash);
-                trace!(%post_state_hash, ?effect);
+                trace!(%post_state_hash, ?execution_effect);
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
                 self.initial_state_root_hash = post_state_hash.into();
             }

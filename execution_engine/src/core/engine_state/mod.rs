@@ -196,21 +196,21 @@ where
         }
 
         // Commit the transforms.
-        let effect = genesis_installer.finalize();
+        let execution_effect = genesis_installer.finalize();
 
         let post_state_hash = self
             .state
             .commit(
                 correlation_id,
                 initial_root_hash,
-                effect.transforms.to_owned(),
+                execution_effect.transforms.to_owned(),
             )
             .map_err(Into::<execution::Error>::into)?;
 
         // Return the result
         Ok(GenesisSuccess {
             post_state_hash,
-            effect,
+            execution_effect,
         })
     }
 
@@ -372,18 +372,22 @@ where
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
-        let effect = tracking_copy.borrow().effect();
+        let execution_effect = tracking_copy.borrow().effect();
 
         // commit
         let post_state_hash = self
             .state
-            .commit(correlation_id, pre_state_hash, effect.transforms.to_owned())
+            .commit(
+                correlation_id,
+                pre_state_hash,
+                execution_effect.transforms.to_owned(),
+            )
             .map_err(Into::into)?;
 
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
-            effect,
+            execution_effect,
         })
     }
 

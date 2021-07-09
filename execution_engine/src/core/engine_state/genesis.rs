@@ -60,12 +60,16 @@ const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 #[derive(Debug)]
 pub struct GenesisSuccess {
     pub post_state_hash: Blake2bHash,
-    pub effect: ExecutionEffect,
+    pub execution_effect: ExecutionEffect,
 }
 
 impl fmt::Display for GenesisSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Success: {} {:?}", self.post_state_hash, self.effect)
+        write!(
+            f,
+            "Success: {} {:?}",
+            self.post_state_hash, self.execution_effect
+        )
     }
 }
 

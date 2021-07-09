@@ -26,12 +26,16 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
     pub post_state_hash: Blake2bHash,
-    pub effect: ExecutionEffect,
+    pub execution_effect: ExecutionEffect,
 }
 
 impl fmt::Display for UpgradeSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Success: {} {:?}", self.post_state_hash, self.effect)
+        write!(
+            f,
+            "Success: {} {:?}",
+            self.post_state_hash, self.execution_effect
+        )
     }
 }
 

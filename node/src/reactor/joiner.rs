@@ -780,7 +780,7 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::EventStreamServer(event_stream_server::Event::Step {
                     era_id,
-                    effect: execution_effect,
+                    execution_effect,
                 }),
             ),
             Event::LinearChain(event) => reactor::wrap_effects(

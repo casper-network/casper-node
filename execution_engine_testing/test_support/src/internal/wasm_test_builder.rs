@@ -355,7 +355,7 @@ where
 
         let GenesisSuccess {
             post_state_hash,
-            effect,
+            execution_effect,
         } = self
             .engine_state
             .commit_genesis(
@@ -366,7 +366,7 @@ where
             )
             .expect("Unable to get genesis response");
 
-        let transforms = effect.transforms;
+        let transforms = execution_effect.transforms;
 
         let genesis_account =
             utils::get_account(&transforms, &system_account).expect("Unable to get system account");
@@ -533,7 +533,7 @@ where
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
-            effect: _,
+            execution_effect: _,
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);

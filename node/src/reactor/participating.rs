@@ -999,7 +999,7 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let reactor_event = Event::EventStreamServer(event_stream_server::Event::Step {
                     era_id,
-                    effect: execution_effect,
+                    execution_effect,
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
