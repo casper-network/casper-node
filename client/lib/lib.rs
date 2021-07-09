@@ -29,8 +29,9 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::types::Deploy;
-use casper_types::{UIntParseError, U512};
+use casper_types::{Key, UIntParseError, U512};
 
+use casper_node::rpcs::state::DictionaryIdentifier;
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
@@ -550,17 +551,13 @@ pub fn get_dictionary(
     node_address: &str,
     verbosity_level: u64,
     state_root_hash: &str,
-    key: &str,
-    dictionary_uref: &str,
-    dictionary_base: &str,
+    dictionary_str_params: DictionaryQueryStrParams<'_>,
     dictionary_name: &str,
     path: &str,
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_dictionary(
         state_root_hash,
-        key,
-        dictionary_uref,
-        dictionary_base,
+        dictionary_str_params,
         dictionary_name,
         path,
     )
@@ -1051,6 +1048,38 @@ impl<'a> SessionStrParams<'a> {
             session_args_simple,
             session_args_complex,
             ..Default::default()
+        }
+    }
+}
+
+/// Container struct to handle queries made for `Values` stored in a `Dictionary`.
+#[derive(Default)]
+pub struct DictionaryQueryStrParams<'a> {
+    /// The key under which the URef of the dictionary is stored.
+    pub key: &'a str,
+    /// The name/path for the Dictionary URef.
+    pub named_key_for_dictionary: &'a str,
+    /// The URef of the dictionary itself
+    pub dictionary_uref: &'a str,
+}
+
+impl<'a> TryInto<DictionaryIdentifier> for DictionaryQueryStrParams<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> Result<DictionaryIdentifier> {
+        if !self.key.is_empty() {
+            let key = match Key::from_formatted_str(self.key) {
+                Ok(key) => key,
+                Err(_) => return Err(Error::FailedToParseDictionaryIdentifier),
+            };
+            Ok(DictionaryIdentifier::NamedKey(
+                key.to_formatted_string(),
+                self.named_key_for_dictionary.to_string(),
+            ))
+        } else if !self.dictionary_uref.is_empty() {
+            Ok(DictionaryIdentifier::URef(self.dictionary_uref.to_string()))
+        } else {
+            Err(Error::FailedToParseDictionaryIdentifier)
         }
     }
 }

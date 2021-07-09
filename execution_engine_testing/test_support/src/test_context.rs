@@ -135,20 +135,21 @@ impl TestContext {
             Ok(bytes) => bytes,
             Err(_) => return Err(Error::from("Failed to serialize".to_string())),
         };
-        let dictionary_address = if let (Key::URef(uref), None) = (key, dictionary_named_key) {
-            Key::dictionary(uref, &dictionary_key_bytes)
-        } else {
-            let path = vec![dictionary_named_key.unwrap()];
-            let dictionary_uref = self
-                .inner
-                .query(None, key, &path)
-                .map(Value::new)
-                .map_err(Error::from)
-                .unwrap()
-                .into_t::<URef>()
-                .unwrap();
-            Key::dictionary(dictionary_uref, &dictionary_key_bytes)
-        };
+        let dictionary_address =
+            if let (Key::URef(uref), None) = (key, dictionary_named_key.clone()) {
+                Key::dictionary(uref, &dictionary_key_bytes)
+            } else {
+                let path = vec![dictionary_named_key.unwrap()];
+                let dictionary_uref = self
+                    .inner
+                    .query(None, key, &path)
+                    .map(Value::new)
+                    .map_err(Error::from)
+                    .unwrap()
+                    .into_t::<URef>()
+                    .unwrap();
+                Key::dictionary(dictionary_uref, &dictionary_key_bytes)
+            };
         self.inner
             .query(None, dictionary_address, path)
             .map(Value::new)

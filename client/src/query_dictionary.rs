@@ -2,7 +2,7 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
-use casper_client::Error;
+use casper_client::{DictionaryQueryStrParams, Error};
 use casper_node::rpcs::state::GetDictionary;
 use casper_types::PublicKey;
 
@@ -209,14 +209,18 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionary {
         let dictionary_base = dictionary_base::get(matches);
         let dictionary_name = dictionary_name::get(matches);
 
+        let dictionary_str_params = DictionaryQueryStrParams {
+            key: &key,
+            named_key_for_dictionary: dictionary_base,
+            dictionary_uref,
+        };
+
         casper_client::get_dictionary(
             maybe_rpc_id,
             node_address,
             verbosity_level,
             state_root_hash,
-            &key,
-            dictionary_uref,
-            dictionary_base,
+            dictionary_str_params,
             dictionary_name,
             path,
         )

@@ -682,7 +682,7 @@ impl RpcWithParamsExt for GetDictionary {
                         }
                     };
 
-                    let uref = if let StoredValue::CLValue(value) = stored_value {
+                    if let StoredValue::CLValue(value) = stored_value {
                         let uref: URef = match value.into_t() {
                             Ok(uref) => uref,
                             Err(_) => {
@@ -700,9 +700,7 @@ impl RpcWithParamsExt for GetDictionary {
                             ErrorCode::FailedToGetDictURef as i64,
                             "Stored value return was not a URef",
                         ))?);
-                    };
-
-                    uref
+                    }
                 }
                 DictionaryIdentifier::URef(formatted_uref) => {
                     let uref = match URef::from_formatted_str(&formatted_uref) {
@@ -715,7 +713,6 @@ impl RpcWithParamsExt for GetDictionary {
                             ))?);
                         }
                     };
-
                     uref
                 }
             };

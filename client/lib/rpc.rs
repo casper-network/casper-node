@@ -19,9 +19,8 @@ use casper_node::{
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
         state::{
-            DictionaryIdentifier, GetAccountInfo, GetAccountInfoParams, GetAuctionInfo,
-            GetAuctionInfoParams, GetBalance, GetBalanceParams, GetDictionary, GetDictionaryParams,
-            GetItem, GetItemParams,
+            GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
+            GetBalanceParams, GetDictionary, GetDictionaryParams, GetItem, GetItemParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -32,8 +31,9 @@ use casper_types::{AsymmetricType, Key, PublicKey, URef, U512};
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
-    validation,
+    validation, DictionaryQueryStrParams,
 };
+use std::convert::TryInto;
 
 /// Target for a given transfer.
 pub(crate) enum TransferTarget {
@@ -127,9 +127,7 @@ impl RpcCall {
     pub(crate) fn get_dictionary(
         self,
         state_root_hash: &str,
-        key: &str,
-        dictionary_uref: &str,
-        dictionary_base: &str,
+        dictionary_str_params: DictionaryQueryStrParams<'_>,
         dictionary_name: &str,
         path: &str,
     ) -> Result<JsonRpc> {
@@ -139,17 +137,7 @@ impl RpcCall {
                 error,
             })?;
 
-        let dictionary_identifier = if !key.is_empty() {
-            let key = match Key::from_formatted_str(key) {
-                Ok(key) => key,
-                Err(_) => return Err(Error::FailedToParseKey),
-            };
-            DictionaryIdentifier::NamedKey(key.to_formatted_string(), dictionary_base.to_string())
-        } else if !dictionary_uref.is_empty() {
-            DictionaryIdentifier::URef(dictionary_uref.to_string())
-        } else {
-            return Err(Error::FailedToParseDictionaryIdentifier);
-        };
+        let dictionary_identifier = dictionary_str_params.try_into()?;
 
         let path = if path.is_empty() {
             vec![]
