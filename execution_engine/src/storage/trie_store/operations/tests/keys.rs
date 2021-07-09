@@ -131,7 +131,7 @@ mod full_tries {
                         correlation_id,
                         &txn,
                         &context.store,
-                        &state,
+                        state,
                     )
                     .filter_map(Result::ok)
                     .collect::<Vec<TestKey>>();

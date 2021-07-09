@@ -910,7 +910,7 @@ mod tests {
         let mut chainspec = Chainspec::random(rng);
         chainspec.protocol_config.version = *version;
 
-        let subdir = root_dir.join(dir_name_from_version(&version));
+        let subdir = root_dir.join(dir_name_from_version(version));
         fs::create_dir(&subdir).unwrap();
 
         let path = subdir.join(CHAINSPEC_NAME);
@@ -1025,7 +1025,7 @@ mod tests {
             };
 
             let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-            let effect_builder = EffectBuilder::new(EventQueueHandle::new(&scheduler));
+            let effect_builder = EffectBuilder::new(EventQueueHandle::new(scheduler));
 
             TestFixture {
                 chainspec_loader,

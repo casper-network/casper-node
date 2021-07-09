@@ -56,7 +56,7 @@ where
 
     /// Retrieves a blob from the cache, if present.
     pub(super) fn get(&self, id: &I) -> Option<Arc<Vec<u8>>> {
-        self.items.get(&id).and_then(Weak::upgrade)
+        self.items.get(id).and_then(Weak::upgrade)
     }
 }
 

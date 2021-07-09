@@ -221,9 +221,9 @@ impl PartialEq for ErrWrapper {
     }
 }
 
-impl Into<ErrWrapper> for Error {
-    fn into(self) -> ErrWrapper {
-        ErrWrapper(self)
+impl From<Error> for ErrWrapper {
+    fn from(error: Error) -> Self {
+        ErrWrapper(error)
     }
 }
 
