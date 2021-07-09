@@ -592,13 +592,11 @@ impl ContractRuntime {
 
         // If the child is already finalized, start execution.
         if let Some((finalized_block, deploys)) = self.exec_queue.remove(&(block_height + 1)) {
-            effects.extend(self.execute_finalized_block(
-                effect_builder,
-                protocol_version,
-                self.execution_pre_state.clone(),
-                finalized_block,
-                deploys,
-            ));
+            effects.extend(
+                effect_builder
+                    .execute_block(finalized_block, deploys)
+                    .ignore(),
+            );
         }
         effects
     }
