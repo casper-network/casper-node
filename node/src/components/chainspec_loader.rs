@@ -568,10 +568,7 @@ impl ChainspecLoader {
         }
     }
 
-    fn handle_upgrade_result(
-        &mut self,
-        result: Result<UpgradeSuccess, engine_state::Error>,
-    ) -> Effects<Event> {
+    fn handle_upgrade_result(&mut self, result: Result<UpgradeSuccess, engine_state::Error>) {
         match result {
             Ok(UpgradeSuccess {
                 post_state_hash,
@@ -588,7 +585,6 @@ impl ChainspecLoader {
                 self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
             }
         }
-        Effects::new()
     }
 
     fn new_chainspec_info(&self) -> ChainspecInfo {
@@ -682,7 +678,10 @@ where
                 self.handle_commit_genesis_result(result);
                 Effects::new()
             }
-            Event::UpgradeResult(result) => self.handle_upgrade_result(result),
+            Event::UpgradeResult(result) => {
+                self.handle_upgrade_result(result);
+                Effects::new()
+            }
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
             }
