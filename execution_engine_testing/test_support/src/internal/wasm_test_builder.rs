@@ -489,28 +489,21 @@ where
 
         let effects = self.transforms.last().cloned().unwrap_or_default();
 
-        self.commit_effects(prestate_hash, effects)
-    }
-
-    /// Applies effects to global state.
-    pub fn commit_transforms(
-        &self,
-        pre_state_hash: Blake2bHash,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Blake2bHash {
-        self.engine_state
-            .apply_effect(CorrelationId::new(), pre_state_hash, effects)
-            .expect("should commit")
+        self.commit_transforms(prestate_hash, effects)
     }
 
     /// Runs a commit request, expects a successful response, and
     /// overwrites existing cached post state hash with a new one.
-    pub fn commit_effects(
+    pub fn commit_transforms(
         &mut self,
-        prestate_hash: Blake2bHash,
+        pre_state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
     ) -> &mut Self {
-        self.post_state_hash = Some(self.commit_transforms(prestate_hash, effects));
+        let post_state_hash = self
+            .engine_state
+            .apply_effect(CorrelationId::new(), pre_state_hash, effects)
+            .expect("should commit");
+        self.post_state_hash = Some(post_state_hash);
         self
     }
 
