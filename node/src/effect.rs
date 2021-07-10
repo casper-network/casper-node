@@ -1168,7 +1168,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Passes a finalized proto-block to the block executor component to execute it.
+    /// Queues a proto-block where the network has reached consensus for execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `finalized_block` - a finalized proto-block to add to the execution queue.
+    /// * `deploys` - A vector of deploys and transactions that match the hashes in the finalized
+    ///   block, in that order.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock, deploys: Vec<Deploy>)
     where
         REv: From<ContractRuntimeRequest>,
