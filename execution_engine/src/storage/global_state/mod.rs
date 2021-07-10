@@ -3,21 +3,25 @@ pub mod lmdb;
 
 use std::hash::BuildHasher;
 
-use crate::shared::{
-    additive_map::AdditiveMap,
-    newtypes::{Blake2bHash, CorrelationId},
-    stored_value::StoredValue,
-    transform::{self, Transform},
-};
+use tracing::error;
+
 use casper_types::{bytesrepr, Key, ProtocolVersion};
 
-use crate::storage::{
-    protocol_data::ProtocolData,
-    transaction_source::{Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, Trie},
-    trie_store::{
-        operations::{read, write, ReadResult, WriteResult},
-        TrieStore,
+use crate::{
+    shared::{
+        additive_map::AdditiveMap,
+        newtypes::{Blake2bHash, CorrelationId},
+        stored_value::StoredValue,
+        transform::{self, Transform},
+    },
+    storage::{
+        protocol_data::ProtocolData,
+        transaction_source::{Transaction, TransactionSource},
+        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie_store::{
+            operations::{read, write, ReadResult, WriteResult},
+            TrieStore,
+        },
     },
 };
 
@@ -49,11 +53,8 @@ pub trait StateReader<K, V> {
 pub enum CommitError {
     #[error("Root not found: {0:?}")]
     RootNotFound(Blake2bHash),
-    #[error("Root not found attempting transform. Root: {state_root:?}, Transform: {transform}")]
-    ReadRootNotFoundWhenAttemptingTransform {
-        state_root: Blake2bHash,
-        transform: Transform,
-    },
+    #[error("Root not found while attempting to read: {0:?}")]
+    ReadRootNotFound(Blake2bHash),
     #[error("Root not found while writing: {0:?}")]
     WriteRootNotFound(Blake2bHash),
     #[error("Key not found: {0}")]
@@ -141,19 +142,35 @@ where
 
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
-            (ReadResult::NotFound, _) => {
+            (ReadResult::NotFound, transform) => {
+                error!(
+                    ?state_root,
+                    ?key,
+                    ?transform,
+                    "Key not found wile attempting to apply transform"
+                );
                 return Err(CommitError::KeyNotFound(key).into());
             }
             (ReadResult::Found(current_value), transform) => match transform.apply(current_value) {
                 Ok(updated_value) => updated_value,
-                Err(err) => return Err(CommitError::TransformError(err).into()),
+                Err(err) => {
+                    error!(
+                        ?state_root,
+                        ?key,
+                        ?err,
+                        "Key found, but could not apply transform"
+                    );
+                    return Err(CommitError::TransformError(err).into());
+                }
             },
             (ReadResult::RootNotFound, transform) => {
-                return Err(CommitError::ReadRootNotFoundWhenAttemptingTransform {
-                    state_root,
-                    transform,
-                }
-                .into())
+                error!(
+                    ?state_root,
+                    ?key,
+                    ?transform,
+                    "Failed to read state root while processing transform"
+                );
+                return Err(CommitError::ReadRootNotFound(state_root).into());
             }
         };
 
@@ -166,7 +183,8 @@ where
             }
             WriteResult::AlreadyExists => (),
             WriteResult::RootNotFound => {
-                return Err(CommitError::WriteRootNotFound(state_root).into())
+                error!(?state_root, ?key, ?value, "Error writing new value");
+                return Err(CommitError::WriteRootNotFound(state_root).into());
             }
         }
     }
