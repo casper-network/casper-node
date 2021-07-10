@@ -49,8 +49,11 @@ pub trait StateReader<K, V> {
 pub enum CommitError {
     #[error("Root not found: {0:?}")]
     RootNotFound(Blake2bHash),
-    #[error("Root not found while reading: {0:?}")]
-    ReadRootNotFound(Blake2bHash),
+    #[error("Root not found attempting transform. Root: {state_root:?}, Transform: {transform}")]
+    ReadRootNotFoundWhenAttemptingTransform {
+        state_root: Blake2bHash,
+        transform: Transform,
+    },
     #[error("Root not found while writing: {0:?}")]
     WriteRootNotFound(Blake2bHash),
     #[error("Key not found: {0}")]
@@ -145,8 +148,12 @@ where
                 Ok(updated_value) => updated_value,
                 Err(err) => return Err(CommitError::TransformError(err).into()),
             },
-            (ReadResult::RootNotFound, _) => {
-                return Err(CommitError::ReadRootNotFound(state_root).into())
+            (ReadResult::RootNotFound, transform) => {
+                return Err(CommitError::ReadRootNotFoundWhenAttemptingTransform {
+                    state_root,
+                    transform,
+                }
+                .into())
             }
         };
 
