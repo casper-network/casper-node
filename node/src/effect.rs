@@ -1720,6 +1720,6 @@ impl<REv> EffectBuilder<REv> {
 #[macro_export]
 macro_rules! fatal {
     ($effect_builder:expr, $($arg:tt)*) => {
-        $effect_builder.fatal(file!(), line!(), format!($($arg)*).to_string())
+        $effect_builder.fatal(file!(), line!(), format!($($arg)*))
     };
 }
