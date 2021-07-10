@@ -42,7 +42,6 @@ pub enum BlockExecutionError {
 }
 
 /// An error emitted by the execution engine on commit
-// TODO: Consider replacing CommitResult with Result<Blake2bHash, CommitError>
 #[derive(Debug, thiserror::Error)]
 pub enum CommitError {
     #[error(transparent)]
