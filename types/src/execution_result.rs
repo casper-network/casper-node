@@ -111,6 +111,9 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
 });
 
 /// The result of executing a single deploy.
+// Note: For backward compatibility reasons, the `execution_effect` fields are serialized under the
+// name `effect`. We could consider introducing a json representation struct here as we have done
+// elsewhere for `Block`.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -118,6 +121,7 @@ pub enum ExecutionResult {
     /// The result of a failed execution.
     Failure {
         /// The effect of executing the deploy.
+        #[serde(rename = "effect")]
         execution_effect: ExecutionEffect,
         /// A record of Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
@@ -129,6 +133,7 @@ pub enum ExecutionResult {
     /// The result of a successful execution.
     Success {
         /// The effect of executing the deploy.
+        #[serde(rename = "effect")]
         execution_effect: ExecutionEffect,
         /// A record of Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
