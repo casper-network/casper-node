@@ -236,7 +236,7 @@ fn commit_step(
         pre_state_hash: pre_state_root_hash.into(),
         protocol_version,
         reward_items,
-        // Note: Highway does not slash; but another consensus protocol (e.g., BABE) could
+        // Note: The Casper Network does not slash, but another network could
         slash_items: vec![],
         evict_items,
         run_auction: true,
