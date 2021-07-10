@@ -57,7 +57,6 @@ pub struct ExecutionPreState {
     /// The height of the next [`Block`] to be constructed. Note that this must match the height of
     /// the [`FinalizedBlock`] used to generate the block.
     next_block_height: u64,
-
     /// The state root to use when executing deploys.
     pre_state_root_hash: Digest,
     /// The parent hash of the next [`Block`].
