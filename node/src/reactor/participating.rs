@@ -122,7 +122,7 @@ pub enum Event {
     LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
 
     // Requests
-    /// Contract runtime event.
+    /// Contract runtime request.
     #[from]
     ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
     /// Network request.
