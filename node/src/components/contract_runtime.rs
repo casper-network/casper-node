@@ -5,7 +5,7 @@ mod operations;
 mod types;
 
 use std::{
-    collections::HashMap,
+    collections::VecDeque,
     fmt::{self, Debug, Formatter},
     sync::Arc,
     time::Instant,
@@ -99,8 +99,6 @@ impl From<&BlockHeader> for ExecutionPreState {
     }
 }
 
-type BlockHeight = u64;
-
 /// The contract runtime components.
 #[derive(DataSize)]
 pub struct ContractRuntime {
@@ -110,7 +108,7 @@ pub struct ContractRuntime {
     protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
-    exec_queue: HashMap<BlockHeight, (FinalizedBlock, Vec<Deploy>)>,
+    exec_queue: VecDeque<(FinalizedBlock, Vec<Deploy>)>,
 }
 
 impl Debug for ContractRuntime {
@@ -453,8 +451,7 @@ where
                         deploys,
                     )
                 } else {
-                    self.exec_queue
-                        .insert(finalized_block.height(), (finalized_block, deploys));
+                    self.exec_queue.push_back((finalized_block, deploys));
                     Effects::new()
                 }
             }
@@ -539,7 +536,7 @@ impl ContractRuntime {
         Ok(ContractRuntime {
             execution_pre_state,
             protocol_version,
-            exec_queue: HashMap::new(),
+            exec_queue: VecDeque::new(),
             engine_state,
             metrics,
         })
@@ -610,7 +607,6 @@ impl ContractRuntime {
         };
 
         self.execution_pre_state = ExecutionPreState::from(block.header());
-        let block_height = block.height();
 
         let era_id = block.header().era_id();
         let mut effects = effect_builder
@@ -625,7 +621,7 @@ impl ContractRuntime {
         }
 
         // If the child is already finalized, start execution.
-        if let Some((finalized_block, deploys)) = self.exec_queue.remove(&(block_height + 1)) {
+        if let Some((finalized_block, deploys)) = self.exec_queue.pop_front() {
             effects.extend(
                 effect_builder
                     .enqueue_block_for_execution(finalized_block, deploys)

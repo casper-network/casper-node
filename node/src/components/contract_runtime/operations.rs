@@ -39,8 +39,8 @@ pub(super) fn execute_finalized_block(
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
-            finalized_block,
-            execution_pre_state,
+            finalized_block: Box::new(finalized_block),
+            execution_pre_state: Box::new(execution_pre_state),
         });
     }
     let ExecutionPreState {

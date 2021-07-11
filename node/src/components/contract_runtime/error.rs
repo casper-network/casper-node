@@ -33,10 +33,16 @@ pub enum BlockExecutionError {
     MoreThanOneExecutionResult,
     /// Both the block to be executed and the execution pre-state specify the height of the next
     /// block. These must agree and this error will be thrown if they do not.
-    #[error("Block's height does not agree with execution pre-state. Block: {finalized_block:?}, Execution pre-state: {execution_pre_state:?}")]
+    #[error(
+        "Block's height does not agree with execution pre-state. \
+         Block: {finalized_block:?}, \
+         Execution pre-state: {execution_pre_state:?}"
+    )]
     WrongBlockHeight {
-        finalized_block: FinalizedBlock,
-        execution_pre_state: ExecutionPreState,
+        /// The finalized block the system attempted to execute.
+        finalized_block: Box<FinalizedBlock>,
+        /// The state of the block chain prior to block execution that was to be used.
+        execution_pre_state: Box<ExecutionPreState>,
     },
     /// A core error thrown by the execution engine.
     #[error(transparent)]
