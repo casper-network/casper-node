@@ -130,6 +130,9 @@ use requests::{
 };
 
 use self::announcements::BlocklistAnnouncement;
+use crate::components::contract_runtime::{
+    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
+};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1168,20 +1171,47 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Queues a proto-block where the network has reached consensus for execution.
+    /// Executes a finalized block.
+    pub(crate) async fn execute_finalized_block(
+        self,
+        protocol_version: ProtocolVersion,
+        execution_pre_state: ExecutionPreState,
+        finalized_block: FinalizedBlock,
+        deploys: Vec<Deploy>,
+    ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::ExecuteBlock {
+                protocol_version,
+                execution_pre_state,
+                finalized_block,
+                deploys,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Enqueues a finalized proto-block execution.
     ///
     /// # Arguments
     ///
     /// * `finalized_block` - a finalized proto-block to add to the execution queue.
-    /// * `deploys` - A vector of deploys and transactions that match the hashes in the finalized
+    /// * `deploys` - a vector of deploys and transactions that match the hashes in the finalized
     ///   block, in that order.
-    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock, deploys: Vec<Deploy>)
-    where
+    pub(crate) async fn enqueue_block_for_execution(
+        self,
+        finalized_block: FinalizedBlock,
+        deploys: Vec<Deploy>,
+    ) where
         REv: From<ContractRuntimeRequest>,
     {
         self.0
             .schedule(
-                ContractRuntimeRequest::ExecuteBlock {
+                ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
                 },

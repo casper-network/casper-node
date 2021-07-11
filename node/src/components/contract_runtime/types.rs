@@ -83,6 +83,7 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 
 /// A [`Block`] that was the result of execution in the [`ContractRuntime`] along with any execution
 /// effects it may have.
+#[derive(Debug)]
 pub struct BlockAndExecutionEffects {
     /// The [`Block`] the contract runtime executed.
     pub block: Block,

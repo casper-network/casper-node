@@ -496,6 +496,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_block().cloned(),
             validator_weights,
             maybe_next_activation_point,
+            chainspec_loader.initial_execution_pre_state(),
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -765,13 +766,6 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
-            Event::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::BlockAlreadyExecuted(block),
-            ) => self.dispatch_event(
-                effect_builder,
-                rng,
-                Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(Box::new(*block))),
-            ),
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
                 era_id,
                 execution_effect,

@@ -33,22 +33,24 @@ use casper_types::{
     Transfer, URef,
 };
 
-use super::Responder;
 use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
         consensus::{BlockContext, ClContext},
-        contract_runtime::EraValidatorsRequest,
+        contract_runtime::{
+            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+        },
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
     crypto::hash::Digest,
+    effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
-        Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
-        Item, NodeId, StatusFeed, TimeDiff,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, ChainspecInfo,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed,
+        TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -547,7 +549,7 @@ pub enum RpcRequest<I> {
         /// The identifier (can either be a hash or the height) of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
-        responder: Responder<Option<(LinearBlock, BlockSignatures)>>,
+        responder: Responder<Option<(Block, BlockSignatures)>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -715,10 +717,9 @@ impl<I> Display for RestRequest<I> {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
-    /// A request to execute a [`FinalizedBlock`], which are the blocks produced by the consensus
-    /// component.
-    ExecuteBlock {
-        /// A [`FinalizedBlock`] to execute.
+    /// A request enqueue a [`FinalizedBlock`] for execution.
+    EnqueueBlockForExecution {
+        /// A [`FinalizedBlock`] to enqueue.
         finalized_block: FinalizedBlock,
         /// The deploys for that [`FinalizedBlock`]
         deploys: Vec<Deploy>,
@@ -812,12 +813,27 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
     },
+    /// Execute a provided protoblock
+    ExecuteBlock {
+        /// The protocol version of the block to execute.
+        protocol_version: ProtocolVersion,
+        /// The state of the storage and blockchain to use to make the new block.
+        execution_pre_state: ExecutionPreState,
+        /// The finalized block to execute; must have the same height as the child height specified
+        /// by the `execution_pre_state`.
+        finalized_block: FinalizedBlock,
+        /// The deploys for the block to execute; must correspond to the deploy and execution
+        /// hashes of the `finalized_block` in that order.
+        deploys: Vec<Deploy>,
+        /// Responder to call with the result.
+        responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeRequest::ExecuteBlock {
+            ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys: _,
             } => {
@@ -874,6 +890,11 @@ impl Display for ContractRuntimeRequest {
                     "find missing descendants of trie_key: {}",
                     trie_key
                 )
+            }
+            ContractRuntimeRequest::ExecuteBlock {
+                finalized_block, ..
+            } => {
+                write!(formatter, "Execute finalized block: {}", finalized_block)
             }
         }
     }

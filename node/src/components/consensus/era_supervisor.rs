@@ -1303,7 +1303,9 @@ async fn execute_finalized_block<REv>(
             return;
         }
     }
-    effect_builder.execute_block(finalized_block, deploys).await
+    effect_builder
+        .enqueue_block_for_execution(finalized_block, deploys)
+        .await
 }
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.

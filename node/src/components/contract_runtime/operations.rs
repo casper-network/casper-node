@@ -37,13 +37,18 @@ pub(super) fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
+    if finalized_block.height() != execution_pre_state.next_block_height {
+        return Err(BlockExecutionError::WrongBlockHeight {
+            finalized_block,
+            execution_pre_state,
+        });
+    }
     let ExecutionPreState {
-        next_block_height,
         pre_state_root_hash,
         parent_hash,
         parent_seed,
+        next_block_height: _,
     } = execution_pre_state;
-    debug_assert_eq!(next_block_height, finalized_block.height());
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)> =
         HashMap::new();

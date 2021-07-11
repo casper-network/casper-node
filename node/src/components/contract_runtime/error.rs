@@ -7,7 +7,11 @@ use casper_execution_engine::{
 };
 use casper_types::{bytesrepr, Key};
 
-use crate::{crypto::hash::Digest, types::error::BlockCreationError};
+use crate::{
+    components::contract_runtime::ExecutionPreState,
+    crypto::hash::Digest,
+    types::{error::BlockCreationError, FinalizedBlock},
+};
 
 /// Error returned from mis-configuring the contract runtime component.
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +31,13 @@ pub enum BlockExecutionError {
     /// more than one execution result.
     #[error("More than one execution result")]
     MoreThanOneExecutionResult,
+    /// Both the block to be executed and the execution pre-state specify the height of the next
+    /// block. These must agree and this error will be thrown if they do not.
+    #[error("Block's height does not agree with execution pre-state. Block: {finalized_block:?}, Execution pre-state: {execution_pre_state:?}")]
+    WrongBlockHeight {
+        finalized_block: FinalizedBlock,
+        execution_pre_state: ExecutionPreState,
+    },
     /// A core error thrown by the execution engine.
     #[error(transparent)]
     EngineStateError(#[from] EngineStateError),

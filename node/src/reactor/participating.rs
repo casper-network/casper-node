@@ -987,12 +987,6 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
-            Event::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::BlockAlreadyExecuted(_),
-            ) => {
-                debug!("Ignoring `BlockAlreadyExecuted` announcement in `participating` reactor.");
-                Effects::new()
-            }
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
                 era_id,
                 execution_effect,

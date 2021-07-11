@@ -18,6 +18,7 @@ pub use types::{BlockAndExecutionEffects, EraValidatorsRequest, ValidatorWeights
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
+use serde::Serialize;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
@@ -52,7 +53,7 @@ use crate::{
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
-#[derive(DataSize, Debug, Clone)]
+#[derive(DataSize, Debug, Clone, Serialize)]
 pub struct ExecutionPreState {
     /// The height of the next [`Block`] to be constructed. Note that this must match the height of
     /// the [`FinalizedBlock`] used to generate the block.
@@ -79,6 +80,11 @@ impl ExecutionPreState {
             parent_hash,
             parent_seed,
         }
+    }
+
+    /// Get the next block height according that will succeed the block specified by `parent_hash`.
+    pub fn next_block_height(&self) -> u64 {
+        self.next_block_height
     }
 }
 
@@ -404,10 +410,40 @@ where
                 .ignore()
             }
             ContractRuntimeRequest::ExecuteBlock {
+                protocol_version,
+                execution_pre_state,
+                finalized_block,
+                deploys,
+                responder,
+            } => {
+                trace!(
+                    ?protocol_version,
+                    ?execution_pre_state,
+                    ?finalized_block,
+                    ?deploys,
+                    "execute block request"
+                );
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let result = operations::execute_finalized_block(
+                        engine_state.as_ref(),
+                        metrics.as_ref(),
+                        protocol_version,
+                        execution_pre_state,
+                        finalized_block,
+                        deploys,
+                    );
+                    trace!(?result, "execute block response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
             } => {
-                info!(?finalized_block, "execute finalized block");
+                info!(?finalized_block, "enqueuing finalized block for execution");
                 if self.execution_pre_state.next_block_height == finalized_block.height() {
                     self.execute_finalized_block(
                         effect_builder,
@@ -592,7 +628,7 @@ impl ContractRuntime {
         if let Some((finalized_block, deploys)) = self.exec_queue.remove(&(block_height + 1)) {
             effects.extend(
                 effect_builder
-                    .execute_block(finalized_block, deploys)
+                    .enqueue_block_for_execution(finalized_block, deploys)
                     .ignore(),
             );
         }
