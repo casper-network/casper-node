@@ -739,8 +739,8 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 | DictionaryIdentifier::ContractNamedKey { .. } => {
                     let base_key = match params.dictionary_identifier.get_dictionary_base_key() {
                         Ok(Some(key)) => key,
-                        Err(Error(error_msg)) | Ok(None) => {
-                            error!("{}", error_msg);
+                        Err(_) | Ok(None) => {
+                            error!("Failed to parse key");
                             return Ok(response_builder.error(warp_json_rpc::Error::custom(
                                 ErrorCode::ParseQueryKey as i64,
                                 "Failed to parse key",
@@ -750,8 +750,8 @@ impl RpcWithParamsExt for GetDictionaryItem {
 
                     let path = match params.dictionary_identifier.get_base_query_path() {
                         Ok(Some(path)) => path,
-                        Err(Error(error_msg)) | Ok(None) => {
-                            error!("{}", error_msg);
+                        Err(_) | Ok(None) => {
+                            error!("Failed to execute query");
                             return Ok(response_builder.error(warp_json_rpc::Error::custom(
                                 ErrorCode::NoDictionaryName as i64,
                                 "Failed to execute query",
