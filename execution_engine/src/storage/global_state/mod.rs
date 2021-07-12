@@ -147,7 +147,7 @@ where
                     ?state_root,
                     ?key,
                     ?transform,
-                    "Key not found wile attempting to apply transform"
+                    "Key not found while attempting to apply transform"
                 );
                 return Err(CommitError::KeyNotFound(key).into());
             }
