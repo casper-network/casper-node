@@ -101,7 +101,6 @@ pub struct ContractRuntime {
     execution_pre_state: ExecutionPreState,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
-
     protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
