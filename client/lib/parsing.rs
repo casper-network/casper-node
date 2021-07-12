@@ -595,12 +595,12 @@ pub(crate) fn transfer_id(value: &str) -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryFrom, result::Result as StdResult};
-
     use casper_types::{
         account::AccountHash, bytesrepr::ToBytes, AccessRights, CLTyped, CLValue, NamedArg,
         PublicKey, RuntimeArgs, URef, U128, U256, U512,
     };
+    use std::{convert::TryFrom, io::Write, path::Path, result::Result as StdResult};
+    use tempfile::tempdir;
 
     use crate::{PaymentStrParams, SessionStrParams};
 
@@ -963,6 +963,55 @@ mod tests {
             }
             .into())
         );
+    }
+
+    #[test]
+    fn should_parse_valid_deploy_params() {
+        // create secret key file in tempdir.
+        let keys_dir = tempdir().expect("Failed to create temp dir.");
+        let secret_key_path = keys_dir.path().join("key.pem");
+        let secret_key_path_clone = secret_key_path.clone();
+        let secret_key_path_str = secret_key_path_clone.to_str().unwrap();
+        let mut secret_key_file =
+            fs::File::create(secret_key_path).expect("Failed to create test secret key file.");
+        write!(
+            secret_key_file,
+            "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFAr+JLnFaRwpqsAEbcYLfaDixKHGdBfFsPrLKS9VTMH\n-----END PRIVATE KEY-----"
+        )
+        .expect("Failed to write data to test secret key file.");
+
+        // create a valid timestamp and convert it to &str.
+        let timestamp = Timestamp::now().to_string();
+        let timestamp = timestamp.as_str();
+
+        let params =
+            parse_deploy_params(secret_key_path_str, timestamp, "2sec", "10000", &[], "test");
+
+        assert!(params.is_ok());
+    }
+
+    #[test]
+    fn should_fail_to_parse_invalid_deploy_params() {
+        // err for secret_key_path,
+        // err for timestamp,
+        // err for ttl,
+        // err for gas price,
+        todo!()
+    }
+
+    #[test]
+    fn should_parse_valid_deploy_params_with_valid_dependencies() {
+        // make another deploy and get the deploy hash...
+        // dispatch the deploy.
+        // add the deploy hash as a dependency in the dep array.
+        todo!()
+    }
+
+    #[test]
+    fn should_fail_to_parse_valid_deploy_params_with_invalid_dependencies() {
+        // make a fake but correctly formatted deploy hash.
+        // add the fake deploy hash to the dep array.
+        todo!()
     }
 
     mod missing_args {
