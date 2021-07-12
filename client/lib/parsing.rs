@@ -599,7 +599,7 @@ mod tests {
         account::AccountHash, bytesrepr::ToBytes, AccessRights, CLTyped, CLValue, NamedArg,
         PublicKey, RuntimeArgs, URef, U128, U256, U512,
     };
-    use std::{convert::TryFrom, io::Write, path::Path, result::Result as StdResult};
+    use std::{convert::TryFrom, io::Write, result::Result as StdResult};
     use tempfile::tempdir;
 
     use crate::{PaymentStrParams, SessionStrParams};
@@ -992,11 +992,65 @@ mod tests {
 
     #[test]
     fn should_fail_to_parse_invalid_deploy_params() {
-        // err for secret_key_path,
-        // err for timestamp,
-        // err for ttl,
-        // err for gas price,
-        todo!()
+        // create secret key file in tempdir.
+        let keys_dir = tempdir().expect("Failed to create temp dir.");
+        let secret_key_path = keys_dir.path().join("key.pem");
+        let secret_key_path_clone = secret_key_path.clone();
+        let secret_key_path_str = secret_key_path_clone.to_str().unwrap();
+        let mut secret_key_file =
+            fs::File::create(secret_key_path).expect("Failed to create test secret key file.");
+        write!(
+            secret_key_file,
+            "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFAr+JLnFaRwpqsAEbcYLfaDixKHGdBfFsPrLKS9VTMH\n-----END PRIVATE KEY-----"
+        )
+        .expect("Failed to write data to test secret key file.");
+
+        // create a valid timestamp and convert it to &str.
+        let timestamp = Timestamp::now().to_string();
+        let timestamp = timestamp.as_str();
+
+        let result = parse_deploy_params("bad file path", timestamp, "2sec", "10000", &[], "test");
+
+        // TODO: Match Error to error variant. May need to impl PartialEq for Error.
+
+        // failed to parse secret key file path.
+        assert!(result.is_err());
+
+        let result = parse_deploy_params(
+            secret_key_path_str,
+            "bad timestamp",
+            "2sec",
+            "10000",
+            &[],
+            "test",
+        );
+
+        // failed to parse timestamp.
+        assert!(result.is_err());
+
+        let result = parse_deploy_params(
+            secret_key_path_str,
+            timestamp,
+            "bad ttl",
+            "10000",
+            &[],
+            "test",
+        );
+
+        // failed to parse ttl.
+        assert!(result.is_err());
+
+        let result = parse_deploy_params(
+            secret_key_path_str,
+            timestamp,
+            "2sec",
+            "bad gas price",
+            &[],
+            "test",
+        );
+
+        // failed to parse gas price.
+        assert!(result.is_err());
     }
 
     #[test]
