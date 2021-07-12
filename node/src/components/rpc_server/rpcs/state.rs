@@ -825,7 +825,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
 
             let result = Self::ResponseResult {
                 api_version,
-                dictionary_key: dictionary_address.unwrap().to_formatted_string(),
+                dictionary_key: dictionary_query_key.to_formatted_string(),
                 stored_value,
                 merkle_proof: hex::encode(proof_bytes),
             };
