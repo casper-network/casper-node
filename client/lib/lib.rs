@@ -554,7 +554,7 @@ pub fn get_dictionary(
     dictionary_str_params: DictionaryItemStrParams<'_>,
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
-        .get_dictionary(state_root_hash, dictionary_str_params)
+        .get_dictionary_item(state_root_hash, dictionary_str_params)
 }
 
 /// Container for `Deploy` construction options.

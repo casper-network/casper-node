@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{convert::TryInto, fs::File};
 
 use futures::executor;
 use jsonrpc_lite::{Id, JsonRpc, Params};
@@ -20,7 +20,7 @@ use casper_node::{
         info::{GetDeploy, GetDeployParams},
         state::{
             GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
-            GetBalanceParams, GetDictionaryItem, GetDictionaryParams, GetItem, GetItemParams,
+            GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams, GetItem, GetItemParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -33,7 +33,6 @@ use crate::{
     error::{Error, Result},
     validation, DictionaryItemStrParams,
 };
-use std::convert::TryInto;
 
 /// Target for a given transfer.
 pub(crate) enum TransferTarget {
@@ -124,7 +123,7 @@ impl RpcCall {
         Ok(response)
     }
 
-    pub(crate) fn get_dictionary(
+    pub(crate) fn get_dictionary_item(
         self,
         state_root_hash: &str,
         dictionary_str_params: DictionaryItemStrParams<'_>,
@@ -137,7 +136,7 @@ impl RpcCall {
 
         let dictionary_identifier = dictionary_str_params.try_into()?;
 
-        let params = GetDictionaryParams {
+        let params = GetDictionaryItemParams {
             state_root_hash,
             dictionary_identifier,
         };
@@ -439,4 +438,4 @@ impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}
 impl IntoJsonMap for GetAuctionInfoParams {}
 impl IntoJsonMap for GetAccountInfoParams {}
-impl IntoJsonMap for GetDictionaryParams {}
+impl IntoJsonMap for GetDictionaryItemParams {}

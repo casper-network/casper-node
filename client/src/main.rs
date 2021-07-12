@@ -57,7 +57,7 @@ enum DisplayOrder {
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
-    GetDictionary,
+    GetDictionaryItem,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -93,7 +93,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
         .subcommand(GetDictionaryItem::build(
-            DisplayOrder::GetDictionary as usize,
+            DisplayOrder::GetDictionaryItem as usize,
         ))
 }
 

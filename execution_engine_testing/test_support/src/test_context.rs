@@ -5,13 +5,12 @@ use casper_execution_engine::{
     },
     shared::motes::Motes,
 };
-use casper_types::{AccessRights, Key, PublicKey, URef, U512};
+use casper_types::{bytesrepr::ToBytes, AccessRights, Key, PublicKey, URef, U512};
 
 use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},
     Account, AccountHash, Error, Result, Session, URefAddr, Value,
 };
-use casper_types::bytesrepr::ToBytes;
 
 /// Context in which to run a test of a Wasm smart contract.
 pub struct TestContext {
@@ -142,10 +141,9 @@ impl TestContext {
                         .inner
                         .query(None, key, &path)
                         .map(Value::new)
-                        .map_err(Error::from)
-                        .unwrap()
+                        .map_err(Error::from)?
                         .into_t::<URef>()
-                        .unwrap();
+                        .map_err(Error::from)?;
                     Key::dictionary(seed_uref, &dictionary_key_bytes)
                 } else {
                     return Err(Error::from("No dictionary name was provided".to_string()));
