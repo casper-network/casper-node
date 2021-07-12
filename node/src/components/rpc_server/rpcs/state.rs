@@ -11,7 +11,7 @@ use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{error, info};
 use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult};
@@ -739,21 +739,23 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 | DictionaryIdentifier::ContractNamedKey { .. } => {
                     let base_key = match params.dictionary_identifier.get_dictionary_base_key() {
                         Ok(Some(key)) => key,
-                        Err(_) | Ok(None) => {
+                        Err(Error(error_msg)) | Ok(None) => {
+                            error!("{}", error_msg);
                             return Ok(response_builder.error(warp_json_rpc::Error::custom(
                                 ErrorCode::ParseQueryKey as i64,
                                 "Failed to parse key",
-                            ))?)
+                            ))?);
                         }
                     };
 
                     let path = match params.dictionary_identifier.get_base_query_path() {
                         Ok(Some(path)) => path,
-                        Err(_) | Ok(None) => {
+                        Err(Error(error_msg)) | Ok(None) => {
+                            error!("{}", error_msg);
                             return Ok(response_builder.error(warp_json_rpc::Error::custom(
                                 ErrorCode::NoDictionaryName as i64,
                                 "Failed to execute query",
-                            ))?)
+                            ))?);
                         }
                     };
 
@@ -784,10 +786,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
                         .dictionary_identifier
                         .get_dictionary_address(Some(stored_value))
                 }
-                DictionaryIdentifier::URef { .. } => {
-                    params.dictionary_identifier.get_dictionary_address(None)
-                }
-                DictionaryIdentifier::Dictionary { .. } => {
+                DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
                     params.dictionary_identifier.get_dictionary_address(None)
                 }
             };

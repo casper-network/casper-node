@@ -150,7 +150,7 @@ impl TestContext {
                 }
             }
             Key::URef(uref) => Key::dictionary(uref, &dictionary_key_bytes),
-            Key::Dictionary(_) => key,
+            Key::Dictionary(address) => Key::Dictionary(address),
             _ => {
                 return Err(Error::from(
                     "Unsupported key type for a query to a dictionary item".to_string(),
