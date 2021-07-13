@@ -303,7 +303,7 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
                 transfers,
                 cost,
             } => casper_types::ExecutionResult::Success {
-                execution_effect: execution_effect.into(),
+                effect: execution_effect.into(),
                 transfers: transfers.clone(),
                 cost: cost.value(),
             },
@@ -313,7 +313,7 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
                 transfers,
                 cost,
             } => casper_types::ExecutionResult::Failure {
-                execution_effect: execution_effect.into(),
+                effect: execution_effect.into(),
                 transfers: transfers.clone(),
                 cost: cost.value(),
                 error_message: error.to_string(),

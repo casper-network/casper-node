@@ -55,15 +55,15 @@ use crate::{
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
 pub struct ExecutionPreState {
-    /// The height of the next [`Block`] to be constructed. Note that this must match the height of
-    /// the [`FinalizedBlock`] used to generate the block.
+    /// The height of the next `Block` to be constructed. Note that this must match the height of
+    /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
     /// The state root to use when executing deploys.
     pre_state_root_hash: Digest,
-    /// The parent hash of the next [`Block`].
+    /// The parent hash of the next `Block`.
     parent_hash: BlockHash,
     /// The accumulated seed for the pseudo-random number generator to be incorporated into the
-    /// next [`Block`], where additional entropy will be introduced.
+    /// next `Block`, where additional entropy will be introduced.
     parent_seed: Digest,
 }
 

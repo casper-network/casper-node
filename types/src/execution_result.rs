@@ -93,7 +93,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
         },
     ];
 
-    let execution_effect = ExecutionEffect {
+    let effect = ExecutionEffect {
         operations,
         transforms,
     };
@@ -104,16 +104,13 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
     ];
 
     ExecutionResult::Success {
-        execution_effect,
+        effect,
         transfers,
         cost: U512::from(123_456),
     }
 });
 
 /// The result of executing a single deploy.
-// Note: For backward compatibility reasons, the `execution_effect` fields are serialized under the
-// name `effect`. We could consider introducing a json representation struct here as we have done
-// elsewhere for `Block`.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -121,8 +118,7 @@ pub enum ExecutionResult {
     /// The result of a failed execution.
     Failure {
         /// The effect of executing the deploy.
-        #[serde(rename = "effect")]
-        execution_effect: ExecutionEffect,
+        effect: ExecutionEffect,
         /// A record of Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
@@ -133,8 +129,7 @@ pub enum ExecutionResult {
     /// The result of a successful execution.
     Success {
         /// The effect of executing the deploy.
-        #[serde(rename = "effect")]
-        execution_effect: ExecutionEffect,
+        effect: ExecutionEffect,
         /// A record of Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
@@ -187,14 +182,14 @@ impl Distribution<ExecutionResult> for Standard {
 
         if rng.gen() {
             ExecutionResult::Failure {
-                execution_effect,
+                effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
             ExecutionResult::Success {
-                execution_effect,
+                effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
             }
@@ -207,24 +202,24 @@ impl ToBytes for ExecutionResult {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
             ExecutionResult::Failure {
-                execution_effect,
+                effect,
                 transfers,
                 cost,
                 error_message,
             } => {
                 buffer.push(EXECUTION_RESULT_FAILURE_TAG);
-                buffer.extend(execution_effect.to_bytes()?);
+                buffer.extend(effect.to_bytes()?);
                 buffer.extend(transfers.to_bytes()?);
                 buffer.extend(cost.to_bytes()?);
                 buffer.extend(error_message.to_bytes()?);
             }
             ExecutionResult::Success {
-                execution_effect,
+                effect,
                 transfers,
                 cost,
             } => {
                 buffer.push(EXECUTION_RESULT_SUCCESS_TAG);
-                buffer.extend(execution_effect.to_bytes()?);
+                buffer.extend(effect.to_bytes()?);
                 buffer.extend(transfers.to_bytes()?);
                 buffer.extend(cost.to_bytes()?);
             }
@@ -236,7 +231,7 @@ impl ToBytes for ExecutionResult {
         U8_SERIALIZED_LENGTH
             + match self {
                 ExecutionResult::Failure {
-                    execution_effect,
+                    effect: execution_effect,
                     transfers,
                     cost,
                     error_message,
@@ -247,7 +242,7 @@ impl ToBytes for ExecutionResult {
                         + error_message.serialized_length()
                 }
                 ExecutionResult::Success {
-                    execution_effect,
+                    effect: execution_effect,
                     transfers,
                     cost,
                 } => {
@@ -264,12 +259,12 @@ impl FromBytes for ExecutionResult {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             EXECUTION_RESULT_FAILURE_TAG => {
-                let (execution_effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
+                let (effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
                 let execution_result = ExecutionResult::Failure {
-                    execution_effect,
+                    effect,
                     transfers,
                     cost,
                     error_message,
@@ -281,7 +276,7 @@ impl FromBytes for ExecutionResult {
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let execution_result = ExecutionResult::Success {
-                    execution_effect,
+                    effect: execution_effect,
                     transfers,
                     cost,
                 };
