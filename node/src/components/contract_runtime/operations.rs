@@ -171,7 +171,7 @@ fn commit_execution_effects(
             execution_effect
         }
     };
-    let new_state_root = commit(
+    let new_state_root = commit_transforms(
         engine_state,
         metrics,
         state_root_hash,
@@ -180,7 +180,7 @@ fn commit_execution_effects(
     Ok((new_state_root, execution_result))
 }
 
-fn commit(
+fn commit_transforms(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: &ContractRuntimeMetrics,
     state_root_hash: Digest,
