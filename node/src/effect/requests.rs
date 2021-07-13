@@ -717,7 +717,7 @@ impl<I> Display for RestRequest<I> {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
-    /// A request enqueue a `FinalizedBlock` for execution.
+    /// A request to enqueue a `FinalizedBlock` for execution.
     EnqueueBlockForExecution {
         /// A `FinalizedBlock` to enqueue.
         finalized_block: FinalizedBlock,
