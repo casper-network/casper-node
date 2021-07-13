@@ -226,8 +226,8 @@ fn commit_step(
     } = era_report;
 
     let reward_items = rewards
-        .iter()
-        .cloned()
+        .clone()
+        .into_iter()
         .map(|(vid, value)| RewardItem::new(vid, value))
         .collect();
 
