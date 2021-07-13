@@ -102,7 +102,7 @@ pub fn mock_runtime_context<'a>(
         access_rights,
         RuntimeArgs::new(),
         BTreeSet::from_iter(vec![AccountHash::new([0; 32])]),
-        &account,
+        account,
         base_key,
         BlockTime::new(0),
         DeployHash::new([1u8; 32]),

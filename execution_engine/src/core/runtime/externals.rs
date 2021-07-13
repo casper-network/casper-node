@@ -15,7 +15,10 @@ use casper_types::{
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
-    shared::{host_function_costs::Cost, stored_value::StoredValue},
+    shared::{
+        host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
+        stored_value::StoredValue,
+    },
     storage::global_state::StateReader,
 };
 
@@ -967,6 +970,80 @@ where
                 let era_info: EraInfo = self.t_from_mem(era_info_ptr, era_info_size)?;
                 self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
+            }
+            FunctionIndex::NewDictionaryFuncIndex => {
+                // args(0) = pointer to output size (output param)
+                let (output_size_ptr,): (u32,) = Args::parse(args)?;
+
+                self.charge_host_function_call(
+                    &DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+                    [output_size_ptr],
+                )?;
+                let ret = self.new_dictionary(output_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::DictionaryGetFuncIndex => {
+                // args(0) = pointer to uref in Wasm memory
+                // args(1) = size of uref in Wasm memory
+                // args(2) = pointer to key bytes pointer in Wasm memory
+                // args(3) = pointer to key bytes size in Wasm memory
+                // args(4) = pointer to output size (output param)
+                let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, output_size_ptr): (
+                    _,
+                    u32,
+                    _,
+                    u32,
+                    _,
+                ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.dictionary_get,
+                    [key_bytes_ptr, key_bytes_size, output_size_ptr],
+                )?;
+                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
+                let ret = self.dictionary_get(
+                    uref_ptr,
+                    uref_size,
+                    key_bytes_ptr,
+                    key_bytes_size,
+                    output_size_ptr,
+                )?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::DictionaryPutFuncIndex => {
+                // args(0) = pointer to uref in Wasm memory
+                // args(1) = size of uref in Wasm memory
+                // args(2) = pointer to key bytes pointer in Wasm memory
+                // args(3) = pointer to key bytes size in Wasm memory
+                // args(4) = pointer to value bytes pointer in Wasm memory
+                // args(5) = pointer to value bytes size in Wasm memory
+                let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.dictionary_put,
+                    [key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size],
+                )?;
+                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
+                scoped_instrumenter.add_property("value_size", value_ptr_size);
+                self.dictionary_put(
+                    uref_ptr,
+                    uref_size,
+                    key_bytes_ptr,
+                    key_bytes_size,
+                    value_ptr,
+                    value_ptr_size,
+                )?;
+                Ok(None)
+            }
+            FunctionIndex::LoadCallStack => {
+                // args(0) (Output) Pointer to number of elements in the call stack.
+                // args(1) (Output) Pointer to size in bytes of the serialized call stack.
+                let (call_stack_len_ptr, result_size_ptr) = Args::parse(args)?;
+                // TODO: add cost table entry once we can upgrade safely
+                self.charge_host_function_call(
+                    &HostFunction::fixed(10_000),
+                    [call_stack_len_ptr, result_size_ptr],
+                )?;
+                let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
         }
     }

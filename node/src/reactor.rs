@@ -710,6 +710,11 @@ where
                         // exiting: Go over the entire remaining event queue and look for a control
                         // announcement. This approach is hacky, and should be replaced with
                         // `ControlAnnouncement` handling instead.
+                        //
+                        // When this workaround is fixed, we should revisit the handling of getting
+                        // a deploy in the event stream server (handling of SseData::DeployAccepted)
+                        // since that workaround of making two attempts with the first wrapped in a
+                        // timeout should no longer be required.
 
                         for event in self.scheduler.drain_queue(QueueKind::Control).await {
                             if let Some(ctrl_ann) = event.as_control() {

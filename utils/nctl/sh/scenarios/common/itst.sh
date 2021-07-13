@@ -73,7 +73,7 @@ function do_start_node() {
         nctl-status
         exit 1
     else
-        log "node-${NODE_ID} is running"
+        log "node-${NODE_ID} is running, started in era: $(check_current_era)"
     fi
 }
 
@@ -118,9 +118,10 @@ function do_await_era_change() {
 }
 
 function check_current_era {
+    local NODE_ID=${1:-$(get_node_for_dispatch)}
     local ERA="null"
     while true; do
-        ERA=$(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
+        ERA="$(get_chain_era $NODE_ID | awk '{print $NF}')"
         if [ "$ERA" = "null" ] || [ "$ERA" = "N/A" ]; then
             sleep 1
         else
@@ -303,6 +304,36 @@ function assert_node_proposed() {
     fi
 }
 
+function assert_no_proposal_walkback() {
+    local NODE_ID=${1}
+    local WALKBACK_HASH=${2}
+    local NODE_PATH=$(get_path_to_node "$NODE_ID")
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex_extended "$NODE_ID")
+    local COMPARE_NODE=$(get_node_for_dispatch)
+    local CHECK_HASH=$(do_read_lfb_hash "$COMPARE_NODE")
+    local JSON_OUT
+    local PROPOSER
+
+    log_step "Checking proposers: Walking back to hash $WALKBACK_HASH..."
+
+    while [ "$CHECK_HASH" != "$WALKBACK_HASH" ]; do
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$COMPARE_NODE") -b "$CHECK_HASH")
+        PROPOSER=$(echo "$JSON_OUT" | jq -r '.result.block.body.proposer')
+        if [ "$PROPOSER" = "$PUBLIC_KEY_HEX" ]; then
+            log "ERROR: Node proposal found!"
+            log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
+            log "$JSON_OUT"
+            exit 1
+        else
+            log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
+            unset CHECK_HASH
+            CHECK_HASH=$(echo $JSON_OUT | jq -r '.result.block.header.parent_hash')
+            log "Checking next hash: $CHECK_HASH"
+        fi
+    done
+    log "Node $NODE_ID didn't propose! [expected]"
+}
+
 # Checks logs for nodes 1-10 for equivocators
 function assert_no_equivocators_logs() {
     local LOGS
@@ -310,12 +341,16 @@ function assert_no_equivocators_logs() {
     for i in $(seq 1 $(get_count_of_nodes)); do
         # true is because grep exits 1 on no match
         LOGS=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'validator equivocated') || true
+        log "... checking node-$i's log"
         if [ ! -z "$LOGS" ]; then
             log "$(echo $LOGS)"
-            log "Fail: Equivocator(s) found!"
+            log "ERROR: Equivocator(s) found!"
             exit 1
+        else
+            log "... No Equivocator(s) found! [expected]"
         fi
     done
+    log "Finished Equivocator(s) search successfully!"
 }
 
 function do_submit_auction_bids()
@@ -330,10 +365,63 @@ function do_submit_auction_bids()
             node="$NODE_ID" \
             amount="$BID_AMOUNT" \
             rate="$BID_DELEGATION_RATE" \
-            quiet="TRUE"
+            quiet="FALSE"
 
     log "node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
 
-    log_step "awaiting 10 seconds for auction bid deploys to finalise"
+    log "awaiting 10 seconds for auction bid deploys to finalise"
     sleep 10.0
+}
+
+function assert_same_era() {
+    local ERA=${1}
+    local NODE_ID=${2}
+    log_step "Checking if within same era..."
+    if [ "$ERA" = "$(check_current_era $NODE_ID)" ]; then
+        log "Still within the era! [expected]"
+        log "... ERA = $ERA : CURRENT_ERA = $(check_current_era $NODE_ID)"
+    else
+        log "Error: Era progressed! Exiting..."
+        log "... ERA = $ERA : CURRENT_ERA = $(check_current_era $NODE_ID)"
+        exit 1
+    fi
+}
+
+# Checks that the current era + 1 contains a nodes
+# public key hex
+function is_trusted_validator() {
+    local NODE_ID=${1}
+    local HEX=$(get_node_public_key_hex_extended "$NODE_ID")
+    local ERA=$(check_current_era)
+    # Plus 1 to avoid query issue if era switches mid run
+    local ERA_PLUS_1=$(expr $ERA + 1)
+    # note: tonumber is a must here to prevent jq from being too smart.
+    # The jq arg 'era' is set to $ERA_PLUS_1. The query looks to find that
+    # the validator is removed from era_validators list. We grep for
+    # the public_key_hex to see if the validator is still listed and return
+    # the exit code to check success.
+    nctl-view-chain-auction-info | jq --arg era "$ERA_PLUS_1" '.auction_state.era_validators[] | select(.era_id == ($era | tonumber))' | grep -q "$HEX"
+    return $?
+}
+
+function assert_eviction() {
+    local NODE_ID=${1}
+    local SYNC_TIMEOUT_SEC=${2:-"300"}
+    local WAIT_TIME_SEC='0'
+
+    log_step "Checking for evicted node-$NODE_ID..."
+    while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
+        if ( ! is_trusted_validator "$NODE_ID" ); then
+            log "validator node-$NODE_ID was ejected! [expected]"
+            break
+        fi
+
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
+
+        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
+            log "ERROR: Time out. Failed to confirm node-$NODE_ID as evicted validator in $SYNC_TIMEOUT_SEC seconds."
+            exit 1
+        fi
+        sleep 1
+    done
 }

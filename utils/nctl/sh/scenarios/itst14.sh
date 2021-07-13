@@ -53,17 +53,6 @@ function main() {
     log "------------------------------------------------------------"
 }
 
-function assert_same_era() {
-    local ERA=${1}
-    log_step "Checking if within same era..."
-    if [ "$ERA" == "$(check_current_era)" ]; then
-        log "Still within the era. Continuing..."
-    else
-        log "Error: Era progressed! Exiting..."
-        exit 1
-    fi
-}
-
 function assert_no_equivocation() {
     local NODE_ID=${1}
     local QUERY_NODE_ID=${2}

@@ -75,13 +75,12 @@ fn should_transfer_to_account() {
     );
 
     let handle_payment = builder.get_handle_payment_contract();
-    let payment_purse = handle_payment
+    let payment_purse = (*handle_payment
         .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
-        .unwrap()
-        .clone()
-        .into_uref()
-        .unwrap();
+        .unwrap())
+    .into_uref()
+    .unwrap();
     assert_eq!(builder.get_purse_balance(payment_purse), U512::zero());
 }
 

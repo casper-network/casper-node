@@ -15,7 +15,9 @@ use tracing::info;
 use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult};
-use casper_types::{bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, URef, U512};
+use casper_types::{
+    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
+};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -32,7 +34,7 @@ use crate::{
         RpcWithOptionalParamsExt,
     },
     types::{
-        json_compatibility::{AuctionState, StoredValue},
+        json_compatibility::{Account, AuctionState, StoredValue},
         Block,
     },
 };
@@ -63,6 +65,19 @@ static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuc
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     auction_state: AuctionState::doc_example().clone(),
+});
+static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
+    let public_key = PublicKey::from(&secret_key);
+    GetAccountInfoParams {
+        public_key,
+        block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
+    }
+});
+static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    account: Account::doc_example().clone(),
+    merkle_proof: MERKLE_PROOF.clone(),
 });
 
 /// Params for "state_get_item" RPC request.
@@ -407,6 +422,137 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 api_version,
                 auction_state,
             };
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Params for "state_get_account_info" RPC request
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetAccountInfoParams {
+    /// The public key of the Account.
+    pub public_key: PublicKey,
+    /// The block identifier.
+    pub block_identifier: Option<BlockIdentifier>,
+}
+
+impl DocExample for GetAccountInfoParams {
+    fn doc_example() -> &'static Self {
+        &*GET_ACCOUNT_INFO_PARAMS
+    }
+}
+
+/// Result for "state_get_account_info" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetAccountInfoResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The account.
+    pub account: Account,
+    /// The merkle proof.
+    pub merkle_proof: String,
+}
+
+impl DocExample for GetAccountInfoResult {
+    fn doc_example() -> &'static Self {
+        &*GET_ACCOUNT_INFO_RESULT
+    }
+}
+
+/// "state_get_account_info" RPC.
+pub struct GetAccountInfo {}
+
+impl RpcWithParams for GetAccountInfo {
+    const METHOD: &'static str = "state_get_account_info";
+    type RequestParams = GetAccountInfoParams;
+    type ResponseResult = GetAccountInfoResult;
+}
+
+impl RpcWithParamsExt for GetAccountInfo {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let base_key = {
+                let account_hash = params.public_key.to_account_hash();
+                Key::Account(account_hash)
+            };
+
+            let block: Block = {
+                let maybe_id = params.block_identifier;
+                let maybe_block = effect_builder
+                    .make_request(
+                        |responder| RpcRequest::GetBlock {
+                            maybe_id,
+                            responder,
+                        },
+                        QueueKind::Api,
+                    )
+                    .await;
+
+                match maybe_block {
+                    None => {
+                        let error_msg = if maybe_id.is_none() {
+                            "get-account-info failed to get last added block".to_string()
+                        } else {
+                            "get-account-info failed to get specified block".to_string()
+                        };
+                        info!("{}", error_msg);
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::NoSuchBlock as i64,
+                            error_msg,
+                        ))?);
+                    }
+                    Some((block, _)) => block,
+                }
+            };
+
+            let state_root_hash = *block.header().state_root_hash();
+
+            let query_result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::QueryGlobalState {
+                        state_root_hash,
+                        base_key,
+                        path: vec![],
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+                Ok(tuple) => tuple,
+                Err((error_code, error_msg)) => {
+                    info!("{}", error_msg);
+                    return Ok(response_builder
+                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+                }
+            };
+
+            let account = if let StoredValue::Account(account) = stored_value {
+                account
+            } else {
+                let error_msg = "get-account-info failed to get specified account".to_string();
+                return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                    ErrorCode::NoSuchAccount as i64,
+                    error_msg,
+                ))?);
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                account,
+                merkle_proof: hex::encode(proof_bytes),
+            };
+
             Ok(response_builder.success(result)?)
         }
         .boxed()

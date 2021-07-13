@@ -800,7 +800,7 @@ impl fmt::Display for ApiError {
             ApiError::ContractHeader(value) => write!(f, "Contract header error: {}", value),
             ApiError::Mint(value) => write!(f, "Mint error: {}", value),
             ApiError::HandlePayment(value) => write!(f, "Handle Payment error: {}", value),
-            _ => <Self as Debug>::fmt(&self, f),
+            _ => <Self as Debug>::fmt(self, f),
         }
     }
 }
