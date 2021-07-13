@@ -27,7 +27,7 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
-        event_stream_server::EventStreamServer,
+        event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -398,7 +398,7 @@ impl reactor::Reactor for Reactor {
             None,
         )?;
 
-        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
+        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
         let mut effects = reactor::wrap_effects(Event::Network, network_effects);
         effects.extend(reactor::wrap_effects(
@@ -452,24 +452,25 @@ impl reactor::Reactor for Reactor {
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
             *protocol_version,
+            DeployGetter::new(effect_builder),
         )?;
 
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
 
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
 
-        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
+        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
 
         let block_header_and_finality_signatures_by_height_fetcher: Fetcher<
             BlockHeaderWithMetadata,
         > = Fetcher::new(
             "block_header_and_finality_signatures_by_height",
             config.fetcher,
-            &registry,
+            registry,
         )?;
 
         let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
-            Fetcher::new("block_header_by_hash", config.fetcher, &registry)?;
+            Fetcher::new("block_header_by_hash", config.fetcher, registry)?;
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
@@ -480,7 +481,7 @@ impl reactor::Reactor for Reactor {
         );
 
         let linear_chain = linear_chain::LinearChainComponent::new(
-            &registry,
+            registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -663,11 +664,21 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
+                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::EventStreamServer(event));
+
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
                     source,
                 };
-                self.dispatch_event(effect_builder, rng, Event::DeployFetcher(event))
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::DeployFetcher(event),
+                ));
+
+                effects
             }
             Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
                 deploy,
@@ -900,7 +911,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(&self);
+        self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle);
     }

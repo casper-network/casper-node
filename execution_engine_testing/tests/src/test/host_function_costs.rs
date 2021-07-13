@@ -9,7 +9,6 @@ const CONTRACT_KEY_NAME: &str = "contract";
 
 const DO_NOTHING_NAME: &str = "do_nothing";
 const DO_SOMETHING_NAME: &str = "do_something";
-const ACCOUNT_FUNCTION_NAME: &str = "account_function";
 const CALLS_DO_NOTHING_LEVEL1_NAME: &str = "calls_do_nothing_level1";
 const CALLS_DO_NOTHING_LEVEL2_NAME: &str = "calls_do_nothing_level2";
 const ARG_BYTES: &str = "bytes";
@@ -82,33 +81,6 @@ fn should_measure_gas_cost() {
         "executing nothing should cost zero"
     );
     assert!(do_something_cost > do_nothing_cost);
-
-    //
-    // Measure host functions
-    //
-    let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
-        *DEFAULT_ACCOUNT_ADDR,
-        contract_hash,
-        ACCOUNT_FUNCTION_NAME,
-        runtime_args! {
-            "source_account" => *DEFAULT_ACCOUNT_ADDR,
-        },
-    )
-    .build();
-
-    let account_1_funds_before = builder.get_purse_balance(account.main_purse());
-
-    builder.exec(exec_request_3).expect_success().commit();
-
-    let account_1_funds_after = builder.get_purse_balance(account.main_purse());
-
-    let do_host_function_calls = account_1_funds_before - account_1_funds_after;
-    assert!(
-        !do_host_function_calls.is_zero(),
-        "executing nothing should cost zero"
-    );
-    assert!(do_host_function_calls > do_something_cost);
-    assert!(do_host_function_calls > do_nothing_cost);
 }
 
 #[ignore]

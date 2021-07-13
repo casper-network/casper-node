@@ -35,6 +35,8 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
         max_deploy_store_size: 50 * MIB,
         max_deploy_metadata_store_size: 50 * MIB,
         max_state_store_size: 50 * MIB,
+        enable_mem_deduplication: false,
+        mem_pool_prune_interval: 1024,
     }
 }
 

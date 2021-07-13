@@ -367,6 +367,7 @@ impl Reactor {
     pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
     }
+
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
@@ -429,7 +430,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -486,9 +487,9 @@ impl reactor::Reactor for Reactor {
         );
         contract_runtime.set_parent_map_from_block(maybe_latest_block_header);
 
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
-            &registry,
+            registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -503,6 +504,8 @@ impl reactor::Reactor for Reactor {
             Event::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
+
+        event_stream_server.set_participating_effect_builder(effect_builder);
 
         Ok((
             Reactor {
@@ -684,25 +687,17 @@ impl reactor::Reactor for Reactor {
 
                             match self
                                 .storage
-                                .handle_legacy_direct_deploy_request(deploy_hash)
+                                .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
                             {
-                                // This functionality was moved out of the storage component and
-                                // should be refactored ASAP.
-                                Some(deploy) => {
-                                    match Message::new_get_response(&deploy) {
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                    };
+                                Some(serialized_item) => {
+                                    let message = Message::new_get_response_raw_unchecked::<Deploy>(
+                                        serialized_item,
+                                    );
+                                    return effect_builder.send_message(sender, message).ignore();
                                 }
+
                                 None => {
-                                    debug!("failed to get {} for {}", deploy_hash, sender);
+                                    debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
                                     return Effects::new();
                                 }
                             }
@@ -916,6 +911,13 @@ impl reactor::Reactor for Reactor {
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event));
 
+                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::EventStreamServer(event),
+                ));
+
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
                     source,
@@ -1073,7 +1075,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(&self);
+        self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
     }

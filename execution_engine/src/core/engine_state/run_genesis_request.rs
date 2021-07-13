@@ -2,14 +2,19 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+use serde::{Deserialize, Serialize};
 
 use casper_types::ProtocolVersion;
 
 use super::genesis::ExecConfig;
 use crate::shared::newtypes::Blake2bHash;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {
+    #[serde(
+        serialize_with = "hex::serialize",
+        deserialize_with = "hex::deserialize"
+    )]
     genesis_config_hash: Blake2bHash,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,

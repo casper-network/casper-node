@@ -1,5 +1,6 @@
 //! Contains implementation of a Handle Payment contract functionality.
 mod constants;
+mod entry_points;
 mod error;
 mod mint_provider;
 mod runtime_provider;
@@ -9,7 +10,8 @@ use core::marker::Sized;
 use crate::{account::AccountHash, AccessRights, URef, U512};
 
 pub use crate::system::handle_payment::{
-    constants::*, error::Error, mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+    constants::*, entry_points::handle_payment_entry_points, error::Error,
+    mint_provider::MintProvider, runtime_provider::RuntimeProvider,
 };
 
 // A simplified representation of a refund percentage which is currently hardcoded to 0%.

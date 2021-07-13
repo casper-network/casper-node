@@ -7,16 +7,13 @@ where
     fn parse(args: RuntimeArgs) -> Result<Self, Trap>;
 }
 
-impl Args for u32 {
+impl<T1> Args for (T1,)
+where
+    T1: FromRuntimeValue + Sized,
+{
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
-        args.nth_checked(0)
-    }
-}
-
-impl Args for usize {
-    fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
-        let a0: u32 = args.nth_checked(0)?;
-        Ok(a0 as usize)
+        let a0: T1 = args.nth_checked(0)?;
+        Ok((a0,))
     }
 }
 

@@ -43,6 +43,15 @@ impl<P: Payload> Message<P> {
             Message::Payload(payload) => payload.classify(),
         }
     }
+
+    /// Returns the incoming resource estimate of the payload.
+    #[inline]
+    pub(super) fn payload_incoming_resource_estimate(&self) -> u32 {
+        match self {
+            Message::Handshake { .. } => 0,
+            Message::Payload(payload) => payload.incoming_resource_estimate(),
+        }
+    }
 }
 
 /// A pair of secret keys used by consensus.
@@ -164,6 +173,11 @@ pub trait Payload:
 {
     /// Classifies the payload based on its contents.
     fn classify(&self) -> MessageKind;
+
+    /// The penalty for resource usage of a message to be applied when processed as incoming.
+    fn incoming_resource_estimate(&self) -> u32 {
+        0
+    }
 }
 
 #[cfg(test)]
@@ -330,7 +344,7 @@ mod tests {
 
     #[test]
     fn current_handshake_decodes_from_historic_v1_0_0() {
-        let modern_handshake: Message<protocol::Message> = deserialize_message(&V1_0_0_HANDSHAKE);
+        let modern_handshake: Message<protocol::Message> = deserialize_message(V1_0_0_HANDSHAKE);
 
         match modern_handshake {
             Message::Handshake {

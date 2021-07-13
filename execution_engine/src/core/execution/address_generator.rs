@@ -18,7 +18,7 @@ impl AddressGenerator {
     /// Creates an [`AddressGenerator`] from a 32-byte hash digest and [`Phase`].
     pub fn new(hash: &[u8], phase: Phase) -> AddressGenerator {
         AddressGeneratorBuilder::new()
-            .seed_with(&hash)
+            .seed_with(hash)
             .seed_with(&[phase as u8])
             .build()
     }
