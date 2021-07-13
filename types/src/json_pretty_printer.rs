@@ -74,28 +74,24 @@ fn shorten_string_field(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
-    use core::iter::{self, FromIterator};
-
     use super::*;
 
     fn hex_string(length: usize) -> String {
-        String::from_iter("0123456789abcdef".chars().cycle().take(length))
+        "0123456789abcdef".chars().cycle().take(length).collect()
     }
 
     #[test]
     fn should_shorten_long_strings() {
         let max_unshortened_hex_string = hex_string(MAX_STRING_LEN);
         let long_hex_string = hex_string(MAX_STRING_LEN + 1);
-        let long_non_hex_string = String::from_iter(iter::repeat('g').take(MAX_STRING_LEN + 1));
+        let long_non_hex_string: String = "g".repeat(MAX_STRING_LEN + 1);
         let long_hex_substring = format!("a-{}-b", hex_string(MAX_STRING_LEN + 1));
         let multiple_long_hex_substrings =
             format!("a: {0}, b: {0}, c: {0}", hex_string(MAX_STRING_LEN + 1));
 
-        let mut long_strings = vec![];
+        let mut long_strings: Vec<String> = vec![];
         for i in 1..=5 {
-            long_strings.push(String::from_iter(
-                iter::repeat('a').take(MAX_STRING_LEN + i),
-            ));
+            long_strings.push("a".repeat(MAX_STRING_LEN + i));
         }
         let value = json!({
             "field_1": Option::<usize>::None,
@@ -149,7 +145,7 @@ mod tests {
 
     #[test]
     fn should_not_modify_short_strings() {
-        let max_string = String::from_iter(iter::repeat('a').take(MAX_STRING_LEN));
+        let max_string: String = "a".repeat(MAX_STRING_LEN);
         let value = json!({
             "field_1": Option::<usize>::None,
             "field_2": true,

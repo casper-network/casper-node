@@ -3,6 +3,7 @@ mod bid;
 mod constants;
 mod delegator;
 mod detail;
+mod entry_points;
 mod era_info;
 mod error;
 mod providers;
@@ -14,11 +15,12 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
-use crate::{account::AccountHash, EraId, PublicKey, U512};
+use crate::{account::AccountHash, system::CallStackElement, EraId, PublicKey, U512};
 
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
+pub use entry_points::auction_entry_points;
 pub use era_info::*;
 pub use error::Error;
 pub use providers::{
@@ -104,10 +106,19 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
@@ -160,13 +171,22 @@ pub trait Auction:
     /// The function returns the new amount of motes remaining in the bid. If the target bid does
     /// not exist, the function call returns an error.
     fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         let mut bid = self
-            .read_bid(&account_hash)?
+            .read_bid(&provided_account_hash)?
             .ok_or(Error::ValidatorNotFound)?;
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
@@ -200,7 +220,7 @@ pub trait Auction:
             bid.deactivate();
         }
 
-        self.write_bid(account_hash, bid)?;
+        self.write_bid(provided_account_hash, bid)?;
 
         Ok(updated_stake)
     }
@@ -217,10 +237,20 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash =
+            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
@@ -279,10 +309,20 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash =
+            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         let validator_account_hash = AccountHash::from(&validator_public_key);
         let mut bid = match self.read_bid(&validator_account_hash)? {
@@ -588,19 +628,29 @@ pub trait Auction:
     /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
     /// by consensus (aka "evicted").
     fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<(), Error> {
-        let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash =
+            AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
-        let mut bid = match self.read_bid(&account_hash)? {
+        let mut bid = match self.read_bid(&provided_account_hash)? {
             Some(bid) => bid,
             None => return Err(Error::ValidatorNotFound),
         };
 
         bid.activate();
 
-        self.write_bid(account_hash, bid)?;
+        self.write_bid(provided_account_hash, bid)?;
 
         Ok(())
     }

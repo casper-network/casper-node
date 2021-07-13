@@ -10,16 +10,16 @@ export NCTL_ACCOUNT_TYPE_NODE="node"
 export NCTL_ACCOUNT_TYPE_USER="user"
 
 # Base RPC server port number.
-export NCTL_BASE_PORT_RPC=40000
+export NCTL_BASE_PORT_RPC=11000
 
 # Base JSON server port number.
-export NCTL_BASE_PORT_REST=50000
+export NCTL_BASE_PORT_REST=14000
 
 # Base event server port number.
-export NCTL_BASE_PORT_SSE=60000
+export NCTL_BASE_PORT_SSE=18000
 
 # Base network server port number.
-export NCTL_BASE_PORT_NETWORK=34452
+export NCTL_BASE_PORT_NETWORK=22000
 
 # Set of client side auction contracts.
 export NCTL_CONTRACTS_CLIENT_AUCTION=(

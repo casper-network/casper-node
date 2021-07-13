@@ -1,6 +1,6 @@
-//! Reactor for validator nodes.
+//! Reactor for participating nodes.
 //!
-//! Validator nodes join the validator-only network upon startup.
+//! Participating nodes join the participating-only network upon startup.
 
 mod config;
 mod error;
@@ -304,8 +304,8 @@ impl Display for Event {
     }
 }
 
-/// The configuration needed to initialize a Validator reactor
-pub struct ValidatorInitConfig {
+/// The configuration needed to initialize a Participating reactor
+pub struct ParticipatingInitConfig {
     pub(super) root: PathBuf,
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
@@ -318,20 +318,20 @@ pub struct ValidatorInitConfig {
 }
 
 #[cfg(test)]
-impl ValidatorInitConfig {
+impl ParticipatingInitConfig {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
 }
 
-impl Debug for ValidatorInitConfig {
+impl Debug for ParticipatingInitConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ValidatorInitConfig {{ .. }}")
+        write!(f, "ParticipatingInitConfig {{ .. }}")
     }
 }
 
-/// Validator node reactor.
+/// Participating node reactor.
 #[derive(DataSize, Debug)]
 pub struct Reactor {
     metrics: Metrics,
@@ -367,6 +367,7 @@ impl Reactor {
     pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
     }
+
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
@@ -378,7 +379,7 @@ impl reactor::Reactor for Reactor {
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = ValidatorInitConfig;
+    type Config = ParticipatingInitConfig;
     type Error = Error;
 
     fn new(
@@ -387,7 +388,7 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event>), Error> {
-        let ValidatorInitConfig {
+        let ParticipatingInitConfig {
             root,
             config,
             chainspec_loader,
@@ -414,14 +415,6 @@ impl reactor::Reactor for Reactor {
             network_identity,
             chainspec_loader.chainspec(),
         )?;
-        let (small_network, small_network_effects) = SmallNetwork::new(
-            event_queue,
-            config.network,
-            Some(WithDir::new(&root, &config.consensus)),
-            registry,
-            small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
-        )?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -437,7 +430,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -452,13 +445,23 @@ impl reactor::Reactor for Reactor {
                 .map(|block_header| block_header.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
-            config.block_proposer,
         )?;
 
         let initial_era = maybe_latest_block_header.as_ref().map_or_else(
             || chainspec_loader.initial_era(),
             |block_header| block_header.next_block_era_id(),
         );
+
+        let (small_network, small_network_effects) = SmallNetwork::new(
+            event_queue,
+            config.network,
+            Some(WithDir::new(&root, &config.consensus)),
+            registry,
+            small_network_identity,
+            chainspec_loader.chainspec().as_ref(),
+            Some(initial_era),
+        )?;
+
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
 
         let maybe_next_activation_point = chainspec_loader
@@ -484,9 +487,9 @@ impl reactor::Reactor for Reactor {
         );
         contract_runtime.set_parent_map_from_block(maybe_latest_block_header);
 
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
-            &registry,
+            registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -501,6 +504,8 @@ impl reactor::Reactor for Reactor {
             Event::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
+
+        event_stream_server.set_participating_effect_builder(effect_builder);
 
         Ok((
             Reactor {
@@ -682,25 +687,17 @@ impl reactor::Reactor for Reactor {
 
                             match self
                                 .storage
-                                .handle_legacy_direct_deploy_request(deploy_hash)
+                                .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
                             {
-                                // This functionality was moved out of the storage component and
-                                // should be refactored ASAP.
-                                Some(deploy) => {
-                                    match Message::new_get_response(&deploy) {
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                    };
+                                Some(serialized_item) => {
+                                    let message = Message::new_get_response_raw_unchecked::<Deploy>(
+                                        serialized_item,
+                                    );
+                                    return effect_builder.send_message(sender, message).ignore();
                                 }
+
                                 None => {
-                                    debug!("failed to get {} for {}", deploy_hash, sender);
+                                    debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
                                     return Effects::new();
                                 }
                             }
@@ -889,7 +886,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_peer_id)) => {
-                trace!("new peer announcement not handled in the validator reactor");
+                trace!("new peer announcement not handled in the participating reactor");
                 Effects::new()
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
@@ -907,29 +904,18 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let deploy_info = match deploy.deploy_info() {
-                    Ok(deploy_info) => deploy_info,
-                    Err(error) => {
-                        tracing::error!("Invalid deploy: {:?}", error);
-                        return Effects::new();
-                    }
-                };
-
-                let event = block_proposer::Event::BufferDeploy {
-                    hash: deploy.deploy_or_transfer_hash(),
-                    deploy_info: Box::new(deploy_info),
-                };
-                let mut effects =
-                    self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
-
                 let event = gossiper::Event::ItemReceived {
                     item_id: *deploy.id(),
                     source: source.clone(),
                 };
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event));
+
+                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
                 effects.extend(self.dispatch_event(
                     effect_builder,
                     rng,
-                    Event::DeployGossiper(event),
+                    Event::EventStreamServer(event),
                 ));
 
                 let event = fetcher::Event::GotRemotely {
@@ -1010,7 +996,7 @@ impl reactor::Reactor for Reactor {
             Event::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::BlockAlreadyExecuted(_),
             ) => {
-                debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
+                debug!("Ignoring `BlockAlreadyExecuted` announcement in `participating` reactor.");
                 Effects::new()
             }
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
@@ -1023,15 +1009,30 @@ impl reactor::Reactor for Reactor {
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::DeployGossiperAnnouncement(_ann) => {
-                unreachable!("the deploy gossiper should never make an announcement")
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_deploy_id,
+            )) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                Effects::new()
             }
-            Event::AddressGossiperAnnouncement(ann) => {
-                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                gossiped_deploy_id,
+            )) => {
+                let reactor_event =
+                    Event::BlockProposer(block_proposer::Event::BufferDeploy(gossiped_deploy_id));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
                 let reactor_event = Event::SmallNetwork(small_network::Event::PeerAddressReceived(
                     gossiped_address,
                 ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We don't care about completion of gossiping an address.
+                Effects::new()
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
                 let reactor_event_consensus = Event::Consensus(consensus::Event::BlockAdded(
@@ -1074,7 +1075,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(&self);
+        self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
     }

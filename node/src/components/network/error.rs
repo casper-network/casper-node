@@ -42,5 +42,5 @@ pub enum Error {
 
     /// Instantiating metrics failed.
     #[error(transparent)]
-    MetricsError(#[from] prometheus::Error),
+    Metrics(#[from] prometheus::Error),
 }

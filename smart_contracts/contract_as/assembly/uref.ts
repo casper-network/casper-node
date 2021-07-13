@@ -82,6 +82,13 @@ export class URef {
     }
 
     /**
+     * Sets the access rights of this [[URef]].
+     */
+    public setAccessRights(newAccessRights: AccessRights): void {
+        this.accessRights = newAccessRights;
+    }
+
+    /**
      * Validates uref against named keys.
      */
     public isValid(): boolean{
