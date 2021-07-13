@@ -104,7 +104,7 @@ where
                 correlation_id,
                 &source_txn,
                 source_store,
-                &root,
+                root,
                 &key,
             )?;
             assert!(maybe_value.is_found())
@@ -125,7 +125,7 @@ where
                 correlation_id,
                 &target_txn,
                 target_store,
-                &root,
+                root,
                 &key,
             )?;
             assert!(maybe_value.is_found())

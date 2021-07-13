@@ -25,9 +25,12 @@ export function delegate(): void {
 
 export function call(): void {
   let entryPoints = new CL.EntryPoints();
+
+  let entryPointArgs = new Array<Pair<String, CLType>>();
+  entryPointArgs.push(new Pair<String, CLType>("purse_name", new CLType(CLTypeTag.String)));
   let entryPoint = new CL.EntryPoint(
     ENTRY_FUNCTION_NAME,
-    new Array<Pair<String, CLType>>(),
+    entryPointArgs,
     new CLType(CLTypeTag.Unit),
     new CL.PublicAccess(),
     CL.EntryPointType.Session);

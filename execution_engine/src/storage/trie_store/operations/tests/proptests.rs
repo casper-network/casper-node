@@ -44,7 +44,7 @@ fn lmdb_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
         &context.environment,
         &context.store,
         &states_to_check,
-        &pairs,
+        pairs,
     )
     .unwrap();
 
@@ -53,7 +53,7 @@ fn lmdb_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
         &context.environment,
         &context.store,
         &states_to_check,
-        &pairs,
+        pairs,
     )
     .unwrap()
 }
@@ -80,7 +80,7 @@ fn in_memory_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
         &context.environment,
         &context.store,
         &states_to_check,
-        &pairs,
+        pairs,
     )
     .unwrap();
 
@@ -89,7 +89,7 @@ fn in_memory_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
         &context.environment,
         &context.store,
         &states_to_check,
-        &pairs,
+        pairs,
     )
     .unwrap()
 }

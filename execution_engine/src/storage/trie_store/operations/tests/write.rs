@@ -245,7 +245,7 @@ mod partial_tries {
                     correlation_id,
                     environment,
                     store,
-                    &current_root,
+                    current_root,
                     &[leaf.to_owned()],
                 )?;
                 assert_eq!(1, results.len());
