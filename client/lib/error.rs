@@ -55,7 +55,7 @@ pub enum Error {
     #[error("Failed to parse as JSON-RPC response: {0}")]
     FailedToParseResponse(reqwest::Error),
 
-    /// Failed to create new key file because it already exists.
+    /// Failed to create new file because it already exists.
     #[error("File at {} already exists", .0.display())]
     FileAlreadyExists(PathBuf),
 

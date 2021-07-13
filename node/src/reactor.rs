@@ -27,8 +27,8 @@
 mod event_queue_metrics;
 pub mod initializer;
 pub mod joiner;
+pub mod participating;
 mod queue_kind;
-pub mod validator;
 
 #[cfg(test)]
 use std::sync::Arc;
@@ -710,6 +710,11 @@ where
                         // exiting: Go over the entire remaining event queue and look for a control
                         // announcement. This approach is hacky, and should be replaced with
                         // `ControlAnnouncement` handling instead.
+                        //
+                        // When this workaround is fixed, we should revisit the handling of getting
+                        // a deploy in the event stream server (handling of SseData::DeployAccepted)
+                        // since that workaround of making two attempts with the first wrapped in a
+                        // timeout should no longer be required.
 
                         for event in self.scheduler.drain_queue(QueueKind::Control).await {
                             if let Some(ctrl_ann) = event.as_control() {
@@ -750,9 +755,13 @@ where
         &mut self.reactor
     }
 
-    /// Deconstructs the runner to return the reactor.
+    /// Shuts down a reactor, sealing and draining the entire queue before returning it.
     #[inline]
-    pub fn into_inner(self) -> R {
+    pub async fn drain_into_inner(self) -> R {
+        self.scheduler.seal();
+        for event in self.scheduler.drain_queues().await {
+            debug!(event=%event, "drained event");
+        }
         self.reactor
     }
 }

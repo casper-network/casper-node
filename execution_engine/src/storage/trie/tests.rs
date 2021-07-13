@@ -47,7 +47,7 @@ mod pointer_block {
 }
 
 mod proptests {
-    use proptest::prelude::proptest;
+    use proptest::prelude::*;
 
     use casper_types::{bytesrepr, gens::key_arb, Key};
 
@@ -114,7 +114,7 @@ mod proptests {
         fn bincode_roundtrip_key(key in key_arb()) {
              let bincode_bytes = bincode::serialize(&key)?;
              let deserialized_key = bincode::deserialize(&bincode_bytes)?;
-             assert_eq!(key, deserialized_key)
+             prop_assert_eq!(key, deserialized_key)
         }
 
         #[test]

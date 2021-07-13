@@ -291,23 +291,23 @@ where
 
     {
         let read_txn_1 = env.create_read_txn()?;
-        let result = store.get(&read_txn_1, &leaf_1_hash)?;
+        let result = store.get(&read_txn_1, leaf_1_hash)?;
         assert_eq!(result, None);
 
         {
             let mut write_txn = env.create_read_write_txn()?;
-            store.put(&mut write_txn, &leaf_1_hash, &leaf_1)?;
+            store.put(&mut write_txn, leaf_1_hash, leaf_1)?;
             write_txn.commit()?;
         }
 
-        let result = store.get(&read_txn_1, &leaf_1_hash)?;
+        let result = store.get(&read_txn_1, leaf_1_hash)?;
         read_txn_1.commit()?;
         assert_eq!(result, None);
     }
 
     {
         let read_txn_2 = env.create_read_txn()?;
-        let result = store.get(&read_txn_2, &leaf_1_hash)?;
+        let result = store.get(&read_txn_2, leaf_1_hash)?;
         read_txn_2.commit()?;
         assert_eq!(result, Some(leaf_1.to_owned()));
     }

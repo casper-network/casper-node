@@ -335,3 +335,72 @@ pub fn disable_contract_version(
 
     api_error::result_from(result)
 }
+
+/// Creates new [`URef`] that represents a seed for a dictionary partition of the global state and
+/// puts it under named keys.
+pub fn new_dictionary(dictionary_name: &str) -> Result<URef, ApiError> {
+    if dictionary_name.is_empty() || runtime::has_key(dictionary_name) {
+        return Err(ApiError::InvalidArgument);
+    }
+
+    let value_size = {
+        let mut value_size = MaybeUninit::uninit();
+        let ret = unsafe { ext_ffi::casper_new_dictionary(value_size.as_mut_ptr()) };
+        api_error::result_from(ret)?;
+        unsafe { value_size.assume_init() }
+    };
+    let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
+    let uref: URef = bytesrepr::deserialize(value_bytes).unwrap_or_revert();
+    runtime::put_key(dictionary_name, Key::from(uref));
+    Ok(uref)
+}
+
+/// Retrieve value stored under `key` in the dictionary accessed by `dictionary_uref`.
+pub fn dictionary_get<K: ToBytes, V: CLTyped + FromBytes>(
+    uref: URef,
+    key: K,
+) -> Result<Option<V>, bytesrepr::Error> {
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(uref);
+    let (key_bytes_ptr, key_bytes_size, _bytes1) = contract_api::to_ptr(key);
+
+    let value_size = {
+        let mut value_size = MaybeUninit::uninit();
+        let ret = unsafe {
+            ext_ffi::casper_dictionary_get(
+                uref_ptr,
+                uref_size,
+                key_bytes_ptr,
+                key_bytes_size,
+                value_size.as_mut_ptr(),
+            )
+        };
+        match api_error::result_from(ret) {
+            Ok(_) => unsafe { value_size.assume_init() },
+            Err(ApiError::ValueNotFound) => return Ok(None),
+            Err(e) => runtime::revert(e),
+        }
+    };
+
+    let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
+    Ok(Some(bytesrepr::deserialize(value_bytes)?))
+}
+
+/// Writes `value` under `key` in the dictionary accessed by `dictionary_uref`.
+pub fn dictionary_put<K: ToBytes, V: CLTyped + ToBytes>(dictionary_uref: URef, key: K, value: V) {
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_uref);
+    let (key_ptr, key_size, _bytes2) = contract_api::to_ptr(key);
+
+    let cl_value = CLValue::from_t(value).unwrap_or_revert();
+    let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
+
+    unsafe {
+        ext_ffi::casper_dictionary_put(
+            uref_ptr,
+            uref_size,
+            key_ptr,
+            key_size,
+            cl_value_ptr,
+            cl_value_size,
+        );
+    }
+}

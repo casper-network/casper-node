@@ -16,7 +16,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, U512};
 
@@ -102,7 +102,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
-        slashed: &HashSet<C::ValidatorId>,
+        faulty: &HashSet<C::ValidatorId>,
         inactive: &HashSet<C::ValidatorId>,
         protocol_config: &ProtocolConfig,
         config: &Config,
@@ -126,7 +126,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let mut validators: Validators<C::ValidatorId> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        for vid in slashed {
+        for vid in faulty {
             validators.ban(vid);
         }
         for vid in inactive {
@@ -173,7 +173,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
-        // without getting slashed.
+        // without getting faulty.
         let min_round_len = state::round_len(highway_config.minimum_round_exponent);
         let min_rounds_per_era = protocol_config
             .minimum_era_height
@@ -474,6 +474,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return vec![]; // Era has ended. No further progress is expected.
         }
         if self.last_panorama == *self.highway.state().panorama() {
+            info!(
+                instance_id = ?self.highway.instance_id(),
+                "no progress in the last {}, creating latest state request",
+                self.standstill_timeout,
+            );
             // We haven't made any progress. Request latest panorama from peers and schedule
             // standstill alert. If we still won't progress by the time
             // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
@@ -485,6 +490,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return outcomes;
         }
 
+        debug!(
+            instance_id = ?self.highway.instance_id(),
+            "progress detected; scheduling next standstill check in {}",
+            self.standstill_timeout,
+        );
         // Record the current panorama and schedule the next standstill check.
         self.last_panorama = self.highway.state().panorama().clone();
         vec![ProtocolOutcome::ScheduleTimer(
@@ -499,8 +509,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return vec![]; // Era has ended. No further progress is expected.
         }
         if self.last_panorama == *self.highway.state().panorama() {
+            info!(
+                instance_id = ?self.highway.instance_id(),
+                "no progress in the last {}, raising standstill alert",
+                self.standstill_timeout,
+            );
             return vec![ProtocolOutcome::StandstillAlert]; // No progress within the timeout.
         }
+        debug!(
+            instance_id = ?self.highway.instance_id(),
+            "progress detected; scheduling next standstill check in {}",
+            self.standstill_timeout,
+        );
         // Record the current panorama and schedule the next standstill check.
         self.last_panorama = self.highway.state().panorama().clone();
         vec![ProtocolOutcome::ScheduleTimer(
@@ -549,7 +569,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Creates a message to be gossiped that sends the validator's panorama.
     fn latest_panorama_request(&self) -> ProtocolOutcomes<I, C> {
-        trace!(instance_id=?self.highway.instance_id(), "creating latest state request");
         let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
         vec![ProtocolOutcome::CreatedGossipMessage(
             (&request).serialize(),
@@ -815,7 +834,7 @@ where
             outcomes.extend(self.detect_finality());
             outcomes
         } else {
-            // TODO: Slash proposer?
+            // TODO: Report proposer as faulty?
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(&proposed_block);
             warn!(?proposed_block, ?dropped_vertices, "proposal is invalid");

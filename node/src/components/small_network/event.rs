@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io, mem,
     net::SocketAddr,
+    sync::Arc,
 };
 
 use casper_types::PublicKey;
@@ -272,7 +273,7 @@ pub enum OutgoingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
         #[serde(skip_serializing)]
-        sink: SplitSink<FramedTransport<P>, Message<P>>,
+        sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
     },
 }
 

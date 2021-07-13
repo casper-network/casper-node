@@ -108,7 +108,7 @@ impl PendingSignatures {
         block_hash: &BlockHash,
     ) -> Option<Signature> {
         let validator_sigs = self.pending_finality_signatures.get_mut(public_key)?;
-        let sig = validator_sigs.remove(&block_hash);
+        let sig = validator_sigs.remove(block_hash);
         self.remove_empty_entries();
         sig.map(|status| status.into_inner())
     }

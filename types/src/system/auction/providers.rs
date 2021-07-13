@@ -3,7 +3,10 @@ use alloc::{collections::BTreeSet, vec::Vec};
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
+    system::{
+        auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
+        CallStackElement,
+    },
     CLTyped, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
@@ -11,6 +14,9 @@ use crate::{
 pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
     fn get_caller(&self) -> AccountHash;
+
+    /// This method should return the immediate caller of the current call.
+    fn get_immediate_caller(&self) -> Option<&CallStackElement>;
 
     /// Gets named key under a `name`.
     fn named_keys_get(&self, name: &str) -> Option<Key>;

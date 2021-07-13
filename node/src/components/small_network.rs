@@ -23,13 +23,13 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
-mod bandwidth_limiter;
 mod chain_info;
 mod config;
 mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod limiter;
 mod message;
 mod message_pack_format;
 mod outgoing;
@@ -67,15 +67,14 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::SymmetricallyFramed;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
-    bandwidth_limiter::BandwidthLimiter,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
+    limiter::Limiter,
     message::ConsensusKeyPair,
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
@@ -83,7 +82,6 @@ use self::{
     tasks::NetworkContext,
 };
 pub(crate) use self::{
-    error::display_error,
     event::Event,
     gossiped_address::GossipedAddress,
     message::{Message, MessageKind, Payload},
@@ -101,8 +99,8 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
-    types::{Block, NodeId},
-    utils::{self, WithDir},
+    types::NodeId,
+    utils::{self, display_error, WithDir},
     NodeRng,
 };
 use chain_info::ChainInfo;
@@ -135,7 +133,7 @@ const SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 #[derive(Clone, DataSize, Debug)]
 pub struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    sender: UnboundedSender<Message<P>>,
+    sender: UnboundedSender<Arc<Message<P>>>,
     peer_addr: SocketAddr,
 }
 
@@ -184,9 +182,15 @@ where
     /// era, so we treat the highest era we have seen as the active era.
     highest_era_seen: EraId,
 
-    /// The active bandwidth limiter.
+    /// The outgoing bandwidth limiter.
     #[data_size(skip)]
-    limiter: Box<dyn BandwidthLimiter>,
+    outgoing_limiter: Box<dyn Limiter>,
+
+    /// The limiter for incoming resource usage.
+    ///
+    /// This is not incoming bandwidth but an independent resource estimate.
+    #[data_size(skip)]
+    incoming_limiter: Box<dyn Limiter>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -208,6 +212,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
+        initial_era: Option<EraId>,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -229,13 +234,22 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
-        let limiter: Box<dyn BandwidthLimiter> = if cfg.max_non_validating_peer_bps == 0 {
-            Box::new(bandwidth_limiter::Unlimited)
+        let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
+            Box::new(limiter::Unlimited)
         } else {
-            Box::new(bandwidth_limiter::ClassBasedLimiter::new(
-                cfg.max_non_validating_peer_bps,
+            Box::new(limiter::ClassBasedLimiter::new(
+                cfg.max_outgoing_byte_rate_non_validators,
             ))
         };
+
+        let incoming_limiter: Box<dyn Limiter> =
+            if cfg.max_incoming_message_rate_non_validators == 0 {
+                Box::new(limiter::Unlimited)
+            } else {
+                Box::new(limiter::ClassBasedLimiter::new(
+                    cfg.max_incoming_message_rate_non_validators,
+                ))
+            };
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
             retry_attempts: RECONNECTION_ATTEMPTS,
@@ -247,7 +261,7 @@ where
         let mut public_addr =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
-        let net_metrics = Arc::new(NetworkingMetrics::new(&registry)?);
+        let net_metrics = Arc::new(NetworkingMetrics::new(registry)?);
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -309,7 +323,8 @@ where
             server_join_handle: Some(server_join_handle),
             net_metrics,
             highest_era_seen: EraId::new(0),
-            limiter,
+            outgoing_limiter,
+            incoming_limiter,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -320,7 +335,13 @@ where
             .into_iter()
             .filter_map(|addr| component.outgoing_manager.learn_addr(addr, true, now))
             .collect();
-        let mut effects = component.process_dial_requests(dial_requests);
+
+        // Initialize the known validator set with the active era, if given.
+        let mut effects = initial_era
+            .map(|era_id| component.handle_active_era_change(effect_builder, era_id))
+            .unwrap_or_default();
+
+        effects.extend(component.process_dial_requests(dial_requests));
 
         // Start broadcasting our public listening address.
         effects.extend(
@@ -340,7 +361,7 @@ where
     }
 
     /// Queues a message to be sent to all nodes.
-    fn broadcast_message(&self, msg: Message<P>) {
+    fn broadcast_message(&self, msg: Arc<Message<P>>) {
         for peer_id in self.outgoing_manager.connected_peers() {
             self.send_message(peer_id, msg.clone());
         }
@@ -350,7 +371,7 @@ where
     fn gossip_message(
         &self,
         rng: &mut NodeRng,
-        msg: Message<P>,
+        msg: Arc<Message<P>>,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
@@ -380,7 +401,7 @@ where
     }
 
     /// Queues a message to be sent to a specific node.
-    fn send_message(&self, dest: NodeId, msg: Message<P>) {
+    fn send_message(&self, dest: NodeId, msg: Arc<Message<P>>) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             if let Err(msg) = connection.sender.send(msg) {
@@ -435,7 +456,7 @@ where
                 peer_addr,
                 public_addr,
                 peer_id,
-                peer_consensus_public_key: _,
+                peer_consensus_public_key,
                 stream,
             } => {
                 info!("new incoming connection established");
@@ -462,6 +483,8 @@ where
                     tasks::message_reader(
                         self.context.clone(),
                         stream,
+                        self.incoming_limiter
+                            .create_handle(peer_id, peer_consensus_public_key),
                         self.shutdown_receiver.clone(),
                         peer_id,
                         span.clone(),
@@ -611,7 +634,7 @@ where
                     tasks::message_sender(
                         receiver,
                         sink,
-                        self.limiter
+                        self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
                     )
@@ -741,7 +764,7 @@ where
     fn handle_active_era_change(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block: Box<Block>,
+        era_id: EraId,
     ) -> Effects<Event<P>>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
@@ -752,16 +775,6 @@ where
         // `next`: Era that will begin shortly.
         // `upcoming`: Era after `next`.
 
-        let era_id = block.header().era_id();
-        let next: HashSet<PublicKey> = block
-            .header()
-            .next_era_validator_weights()
-            .map(|validators| validators.keys().map(Clone::clone).collect())
-            .unwrap_or_else(|| {
-                error!("did not expect switch block to not contain validators");
-                Default::default()
-            });
-
         async move {
             let current: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id)
@@ -771,12 +784,20 @@ where
                     warn!("could not determine current era validators");
                     Default::default()
                 });
+            let next: HashSet<PublicKey> = effect_builder
+                .get_era_validators(era_id.successor())
+                .await
+                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
+                .unwrap_or_else(|| {
+                    warn!("could not determine next era validators");
+                    Default::default()
+                });
             let upcoming_validators: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id.successor().successor())
                 .await
                 .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
                 .unwrap_or_else(|| {
-                    warn!("could not determine upcoming (current+2) era validators");
+                    debug!("could not determine upcoming (current+2) era validators");
                     Default::default()
                 });
 
@@ -800,6 +821,8 @@ where
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
     ) -> Effects<Event<P>> {
+        trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
+        self.net_metrics.peers.set(self.peers().len() as i64);
         effect_builder.announce_new_peer(peer_id).ignore()
     }
 
@@ -910,13 +933,13 @@ where
                     } => {
                         // We're given a message to send out.
                         self.net_metrics.direct_message_requests.inc();
-                        self.send_message(*dest, Message::Payload(*payload));
+                        self.send_message(*dest, Arc::new(Message::Payload(*payload)));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.
                         self.net_metrics.broadcast_requests.inc();
-                        self.broadcast_message(Message::Payload(*payload));
+                        self.broadcast_message(Arc::new(Message::Payload(*payload)));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Gossip {
@@ -926,8 +949,12 @@ where
                         responder,
                     } => {
                         // We're given a message to gossip.
-                        let sent_to =
-                            self.gossip_message(rng, Message::Payload(*payload), count, exclude);
+                        let sent_to = self.gossip_message(
+                            rng,
+                            Arc::new(Message::Payload(*payload)),
+                            count,
+                            exclude,
+                        );
                         responder.respond(sent_to).ignore()
                     }
                 }
@@ -1002,7 +1029,7 @@ where
 
                     if era_id > self.highest_era_seen {
                         self.highest_era_seen = era_id;
-                        self.handle_active_era_change(effect_builder, block)
+                        self.handle_active_era_change(effect_builder, era_id)
                     } else {
                         debug!(highest_era_seen=%self.highest_era_seen, %era_id,
                                "ignoring era, as it is not the highest seen");
@@ -1020,7 +1047,11 @@ where
                 active_validators,
                 upcoming_validators,
             } => {
-                self.limiter
+                self.outgoing_limiter.update_validators(
+                    (*active_validators).clone(),
+                    (*upcoming_validators).clone(),
+                );
+                self.incoming_limiter
                     .update_validators(*active_validators, *upcoming_validators);
                 Effects::new()
             }
@@ -1081,9 +1112,10 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub type FramedTransport<P> = SymmetricallyFramed<
-    Framed<Transport, LengthDelimitedCodec>,
+pub type FramedTransport<P> = tokio_serde::Framed<
+    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
+    Arc<Message<P>>,
     CountingFormat<MessagePackFormat>,
 >;
 
@@ -1099,14 +1131,14 @@ where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let length_delimited = Framed::new(
+    let length_delimited = tokio_util::codec::Framed::new(
         stream,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
     );
 
-    SymmetricallyFramed::new(
+    tokio_serde::Framed::new(
         length_delimited,
         CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )

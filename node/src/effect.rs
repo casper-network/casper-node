@@ -222,13 +222,24 @@ impl<T> Serialize for Responder<T> {
 
 /// Effect extension for futures, used to convert futures into actual effects.
 pub trait EffectExt: Future + Send {
-    /// Finalizes a future into an effect that returns an event.
+    /// Finalizes a future into an effect that returns a single event.
     ///
     /// The function `f` is used to translate the returned value from an effect into an event.
     fn event<U, F>(self, f: F) -> Effects<U>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
+        Self: Sized;
+
+    /// Finalizes a future into an effect that returns an iterator of events.
+    ///
+    /// The function `f` is used to translate the returned value from an effect into an iterator of
+    /// events.
+    fn events<U, F, I>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Output) -> I + 'static + Send,
+        U: 'static,
+        I: Iterator<Item = U>,
         Self: Sized;
 
     /// Finalizes a future into an effect that runs but drops the result.
@@ -290,6 +301,15 @@ where
         U: 'static,
     {
         smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
+    }
+
+    fn events<U, F, I>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Output) -> I + 'static + Send,
+        U: 'static,
+        I: Iterator<Item = U>,
+    {
+        smallvec![self.map(f).map(|iter| iter.collect()).boxed()]
     }
 
     fn ignore<Ev>(self) -> Effects<Ev> {
@@ -651,6 +671,20 @@ impl<REv> EffectBuilder<REv> {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             QueueKind::Regular,
         )
+    }
+
+    /// Announces that we have finished gossiping the indicated item.
+    pub(crate) async fn announce_finished_gossiping<T>(self, item_id: T::Id)
+    where
+        REv: From<GossiperAnnouncement<T>>,
+        T: Item,
+    {
+        self.0
+            .schedule(
+                GossiperAnnouncement::FinishedGossiping(item_id),
+                QueueKind::Regular,
+            )
+            .await;
     }
 
     /// Announces that an invalid deploy has been received.
