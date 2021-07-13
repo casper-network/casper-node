@@ -216,10 +216,10 @@ where
         time::timeout(within, self.settle_indefinitely(rng, quiet_for))
             .await
             .unwrap_or_else(|_| {
-                panic!(format!(
+                panic!(
                     "network did not settle for {:?} within {:?}",
                     quiet_for, within
-                ))
+                )
             })
     }
 
@@ -253,12 +253,7 @@ where
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
             .await
-            .unwrap_or_else(|_| {
-                panic!(format!(
-                    "network did not settle on condition within {:?}",
-                    within
-                ))
-            })
+            .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
     }
 
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)
@@ -321,7 +316,7 @@ where
 impl<R> Finalize for Network<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
-    R::Event: Serialize,
+    R::Event: Serialize + Send + Sync,
     R::NodeId: Send,
     R::Error: From<prometheus::Error>,
 {
@@ -331,7 +326,7 @@ where
         async move {
             // Shutdown the sender of every reactor node to ensure the port is open again.
             for (_, node) in self.nodes.into_iter() {
-                node.into_inner().finalize().await;
+                node.drain_into_inner().await.finalize().await;
             }
 
             debug!("network finalized");

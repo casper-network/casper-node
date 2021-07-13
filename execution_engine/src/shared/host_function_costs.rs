@@ -49,8 +49,8 @@ const DEFAULT_READ_HOST_BUFFER_COST: u32 = 3_500;
 const DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT: u32 = 310;
 
 const DEFAULT_READ_VALUE_COST: u32 = 6_000;
-const DEFAULT_READ_VALUE_LOCAL_COST: u32 = 5_500;
-const DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT: u32 = 590;
+const DEFAULT_DICTIONARY_GET_COST: u32 = 5_500;
+const DEFAULT_DICTIONARY_GET_KEY_SIZE_WEIGHT: u32 = 590;
 
 const DEFAULT_REMOVE_ASSOCIATED_KEY_COST: u32 = 4_200;
 
@@ -70,9 +70,14 @@ const DEFAULT_UPDATE_ASSOCIATED_KEY_COST: u32 = 4_200;
 const DEFAULT_WRITE_COST: u32 = 14_000;
 const DEFAULT_WRITE_VALUE_SIZE_WEIGHT: u32 = 980;
 
-const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500;
-const DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
-const DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
+const DEFAULT_DICTIONARY_PUT_COST: u32 = 9_500;
+const DEFAULT_DICTIONARY_PUT_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
+const DEFAULT_DICTIONARY_PUT_VALUE_SIZE_WEIGHT: u32 = 520;
+
+const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
+
+pub(crate) const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
+    HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
 
 /// Representation of a host function cost
 ///
@@ -95,7 +100,7 @@ where
 }
 
 impl<T> HostFunction<T> {
-    pub fn new(cost: Cost, arguments: T) -> Self {
+    pub const fn new(cost: Cost, arguments: T) -> Self {
         Self { cost, arguments }
     }
 
@@ -186,9 +191,11 @@ where
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HostFunctionCosts {
     pub read_value: HostFunction<[Cost; 3]>,
-    pub read_value_local: HostFunction<[Cost; 3]>,
+    #[serde(alias = "read_value_local")]
+    pub dictionary_get: HostFunction<[Cost; 3]>,
     pub write: HostFunction<[Cost; 4]>,
-    pub write_local: HostFunction<[Cost; 4]>,
+    #[serde(alias = "write_local")]
+    pub dictionary_put: HostFunction<[Cost; 4]>,
     pub add: HostFunction<[Cost; 4]>,
     pub new_uref: HostFunction<[Cost; 3]>,
     pub load_named_keys: HostFunction<[Cost; 2]>,
@@ -233,9 +240,9 @@ impl Default for HostFunctionCosts {
     fn default() -> Self {
         Self {
             read_value: HostFunction::fixed(DEFAULT_READ_VALUE_COST),
-            read_value_local: HostFunction::new(
-                DEFAULT_READ_VALUE_LOCAL_COST,
-                [NOT_USED, DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT, NOT_USED],
+            dictionary_get: HostFunction::new(
+                DEFAULT_DICTIONARY_GET_COST,
+                [NOT_USED, DEFAULT_DICTIONARY_GET_KEY_SIZE_WEIGHT, NOT_USED],
             ),
             write: HostFunction::new(
                 DEFAULT_WRITE_COST,
@@ -246,13 +253,13 @@ impl Default for HostFunctionCosts {
                     DEFAULT_WRITE_VALUE_SIZE_WEIGHT,
                 ],
             ),
-            write_local: HostFunction::new(
-                DEFAULT_WRITE_LOCAL_COST,
+            dictionary_put: HostFunction::new(
+                DEFAULT_DICTIONARY_PUT_COST,
                 [
                     NOT_USED,
-                    DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT,
+                    DEFAULT_DICTIONARY_PUT_KEY_BYTES_SIZE_WEIGHT,
                     NOT_USED,
-                    DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT,
+                    DEFAULT_DICTIONARY_PUT_VALUE_SIZE_WEIGHT,
                 ],
             ),
             add: HostFunction::fixed(DEFAULT_ADD_COST),
@@ -352,9 +359,9 @@ impl ToBytes for HostFunctionCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.read_value.to_bytes()?);
-        ret.append(&mut self.read_value_local.to_bytes()?);
+        ret.append(&mut self.dictionary_get.to_bytes()?);
         ret.append(&mut self.write.to_bytes()?);
-        ret.append(&mut self.write_local.to_bytes()?);
+        ret.append(&mut self.dictionary_put.to_bytes()?);
         ret.append(&mut self.add.to_bytes()?);
         ret.append(&mut self.new_uref.to_bytes()?);
         ret.append(&mut self.load_named_keys.to_bytes()?);
@@ -398,9 +405,9 @@ impl ToBytes for HostFunctionCosts {
 
     fn serialized_length(&self) -> usize {
         self.read_value.serialized_length()
-            + self.read_value_local.serialized_length()
+            + self.dictionary_get.serialized_length()
             + self.write.serialized_length()
-            + self.write_local.serialized_length()
+            + self.dictionary_put.serialized_length()
             + self.add.serialized_length()
             + self.new_uref.serialized_length()
             + self.load_named_keys.serialized_length()
@@ -445,9 +452,9 @@ impl ToBytes for HostFunctionCosts {
 impl FromBytes for HostFunctionCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (read_value, rem) = FromBytes::from_bytes(bytes)?;
-        let (read_value_local, rem) = FromBytes::from_bytes(rem)?;
+        let (dictionary_get, rem) = FromBytes::from_bytes(rem)?;
         let (write, rem) = FromBytes::from_bytes(rem)?;
-        let (write_local, rem) = FromBytes::from_bytes(rem)?;
+        let (dictionary_put, rem) = FromBytes::from_bytes(rem)?;
         let (add, rem) = FromBytes::from_bytes(rem)?;
         let (new_uref, rem) = FromBytes::from_bytes(rem)?;
         let (load_named_keys, rem) = FromBytes::from_bytes(rem)?;
@@ -489,9 +496,9 @@ impl FromBytes for HostFunctionCosts {
         Ok((
             HostFunctionCosts {
                 read_value,
-                read_value_local,
+                dictionary_get,
                 write,
-                write_local,
+                dictionary_put,
                 add,
                 new_uref,
                 load_named_keys,
@@ -540,9 +547,9 @@ impl Distribution<HostFunctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionCosts {
         HostFunctionCosts {
             read_value: rng.gen(),
-            read_value_local: rng.gen(),
+            dictionary_get: rng.gen(),
             write: rng.gen(),
-            write_local: rng.gen(),
+            dictionary_put: rng.gen(),
             add: rng.gen(),
             new_uref: rng.gen(),
             load_named_keys: rng.gen(),
@@ -598,9 +605,9 @@ pub mod gens {
     prop_compose! {
         pub fn host_function_costs_arb() (
             read_value in host_function_cost_arb(),
-            read_value_local in host_function_cost_arb(),
+            dictionary_get in host_function_cost_arb(),
             write in host_function_cost_arb(),
-            write_local in host_function_cost_arb(),
+            dictionary_put in host_function_cost_arb(),
             add in host_function_cost_arb(),
             new_uref in host_function_cost_arb(),
             load_named_keys in host_function_cost_arb(),
@@ -642,9 +649,9 @@ pub mod gens {
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
-                read_value_local,
+                dictionary_get,
                 write,
-                write_local,
+                dictionary_put,
                 add,
                 new_uref,
                 load_named_keys,

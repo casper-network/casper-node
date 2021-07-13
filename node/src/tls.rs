@@ -534,7 +534,7 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
 pub(crate) fn load_cert<P: AsRef<Path>>(src: P) -> anyhow::Result<X509> {
     let pem = read_file(src.as_ref()).with_context(|| "failed to load certificate")?;
 
-    Ok(X509::from_pem(&pem).context("parsing certificate")?)
+    X509::from_pem(&pem).context("parsing certificate")
 }
 
 /// Loads a private key from a file.
@@ -542,7 +542,7 @@ pub(crate) fn load_private_key<P: AsRef<Path>>(src: P) -> anyhow::Result<PKey<Pr
     let pem = read_file(src.as_ref()).with_context(|| "failed to load private key")?;
 
     // TODO: It might be that we need to call `PKey::private_key_from_pkcs8` instead.
-    Ok(PKey::private_key_from_pem(&pem).context("parsing private key")?)
+    PKey::private_key_from_pem(&pem).context("parsing private key")
 }
 
 /// Saves a certificate to a file.
@@ -626,7 +626,7 @@ fn num_eq(num: &Asn1IntegerRef, other: u32) -> SslResult<bool> {
     let r = BigNum::from_u32(other)?;
 
     // The `BigNum` API seems to be really lacking here.
-    Ok(l.is_negative() == r.is_negative() && l.ucmp(&r.as_ref()) == Ordering::Equal)
+    Ok(l.is_negative() == r.is_negative() && l.ucmp(r.as_ref()) == Ordering::Equal)
 }
 
 /// Generates a secret key suitable for TLS encryption.

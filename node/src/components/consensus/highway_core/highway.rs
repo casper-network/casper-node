@@ -248,7 +248,7 @@ impl<C: Context> Highway<C> {
     /// Returns the next missing dependency, or `None` if all dependencies of `pvv` are satisfied.
     ///
     /// If this returns `None`, `validate_vertex` can be called.
-    pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
+    pub(super) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.inner() {
             Vertex::Evidence(_) | Vertex::Ping(_) => None,
             Vertex::Endorsements(endorsements) => {
@@ -546,7 +546,7 @@ impl<C: Context> Highway<C> {
                         return Err(EndorsementError::Banned.into());
                     }
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *creator);
-                    if !C::verify_signature(&endorsement.hash(), v_id, &signature) {
+                    if !C::verify_signature(&endorsement.hash(), v_id, signature) {
                         return Err(EndorsementError::Signature.into());
                     }
                 }
@@ -983,6 +983,6 @@ pub(crate) mod tests {
             "should use validator that is not bonded"
         );
         // Verify that sending a Ping from a non-existing validator does not panic.
-        assert_eq!(highway.has_vertex(&ping), false);
+        assert!(!highway.has_vertex(&ping));
     }
 }

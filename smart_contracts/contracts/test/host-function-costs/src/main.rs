@@ -201,8 +201,6 @@ pub extern "C" fn account_function() {
     )
     .unwrap_or_revert();
 
-    system::transfer_to_account(DESTINATION_ACCOUNT_HASH, transfer_amount, None).unwrap_or_revert();
-
     // ========== remaining functions from `runtime` module ========================================
 
     if !runtime::is_valid_uref(main_purse) {
@@ -397,12 +395,12 @@ pub extern "C" fn call() {
 
     let (contract_package_hash, _access_uref) = storage::create_contract_package_at_hash();
 
-    runtime::put_key(&HASH_KEY_NAME, contract_package_hash.into());
+    runtime::put_key(HASH_KEY_NAME, contract_package_hash.into());
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(HASH_KEY_NAME.into(), contract_package_hash.into());
 
     let (contract_hash, _version) =
         storage::add_contract_version(contract_package_hash, entry_points, named_keys);
-    runtime::put_key(&CONTRACT_KEY_NAME, contract_hash.into());
+    runtime::put_key(CONTRACT_KEY_NAME, contract_hash.into());
 }

@@ -9,8 +9,8 @@ const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 /// Default number of SSEs to buffer.
 const DEFAULT_EVENT_STREAM_BUFFER_LENGTH: u32 = 5000;
 
-/// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: u64 = 100;
+/// Default maximum number of subscribers.
+const DEFAULT_MAX_CONCURRENT_SUBSCRIBERS: u32 = 100;
 
 /// SSE HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -23,8 +23,8 @@ pub struct Config {
     /// Number of SSEs to buffer.
     pub event_stream_buffer_length: u32,
 
-    /// Rate limit for queries per second.
-    pub qps_limit: u64,
+    /// Default maximum number of subscribers across all event streams permitted at any one time.
+    pub max_concurrent_subscribers: u32,
 }
 
 impl Config {
@@ -33,7 +33,7 @@ impl Config {
         Config {
             address: DEFAULT_ADDRESS.to_string(),
             event_stream_buffer_length: DEFAULT_EVENT_STREAM_BUFFER_LENGTH,
-            qps_limit: DEFAULT_QPS_LIMIT,
+            max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,
         }
     }
 }

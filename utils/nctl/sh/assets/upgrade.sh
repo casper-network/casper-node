@@ -54,7 +54,7 @@ function _upgrade_node() {
     cp "$PATH_TO_UPGRADED_CHAINSPEC_FILE" "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
 
     # Copy config file.
-    cp "$PATH_TO_NODE"/config/1_0_0/config.toml "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
+    cp $(get_path_to_node_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
 
     # Clean up.
     rm "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
@@ -221,6 +221,7 @@ function _emergency_upgrade_node_balances() {
         "import toml;"
         "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml');"
         "cfg['protocol']['hard_reset']=True;"
+        "cfg['protocol']['last_emergency_restart']=$ACTIVATE_ERA;"
         "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"

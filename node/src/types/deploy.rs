@@ -273,12 +273,6 @@ impl From<Digest> for DeployHash {
     }
 }
 
-impl From<DeployHash> for Digest {
-    fn from(deploy_hash: DeployHash) -> Self {
-        deploy_hash.0
-    }
-}
-
 impl AsRef<[u8]> for DeployHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
@@ -1152,7 +1146,7 @@ mod tests {
             &mut rng,
             deploy_config.max_ttl,
             deploy_config.max_dependencies.into(),
-            &chain_name,
+            chain_name,
         );
         deploy
             .is_acceptable(chain_name, &deploy_config)
@@ -1200,7 +1194,7 @@ mod tests {
             &mut rng,
             deploy_config.max_ttl,
             dependency_count,
-            &chain_name,
+            chain_name,
         );
 
         let expected_error = DeployValidationFailure::ExcessiveDependencies {
@@ -1230,7 +1224,7 @@ mod tests {
             &mut rng,
             ttl,
             deploy_config.max_dependencies.into(),
-            &chain_name,
+            chain_name,
         );
 
         let expected_error = DeployValidationFailure::ExcessiveTimeToLive {

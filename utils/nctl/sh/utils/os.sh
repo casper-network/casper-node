@@ -47,6 +47,14 @@ function log ()
 }
 
 #######################################
+# Line break logging helper.
+#######################################
+function log_break() 
+{
+    log "---------------------------------------------------------------------------------"
+}
+
+#######################################
 # Wraps standard echo by adding application error prefix.
 #######################################
 function log_error ()
@@ -57,6 +65,23 @@ function log_error ()
     NOW=$(date +%Y-%m-%dT%H:%M:%S.%6N)
 
     echo -e "$NOW [ERROR] [$$] NCTL :: $MSG"
+}
+
+#######################################
+# Step logging helper..
+#######################################
+function log_step_upgrades()
+{
+    local STEP_ID=${1}
+    local MSG=${2}
+    local PREFIX=${3:-""}
+
+    log_break
+    if [ "$PREFIX" == "" ]; then
+        log "STEP $STEP_ID: $MSG"
+    else
+        log "$PREFIX STEP $STEP_ID: $MSG"
+    fi
 }
 
 #######################################

@@ -29,7 +29,7 @@ steps:
     commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
-      - cargo audit
+      - cargo audit --ignore RUSTSEC-2021-0073
 
 trigger:
   branch:
@@ -269,6 +269,22 @@ steps:
       - "release-*"
     event:
       - push
+
+- name: nctl-upgrade-test
+  image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+    - "python3 -m pip install supervisor toml"
+    - "apt update && apt install lsof -y"
+    - "bash -i ./ci/nctl_upgrade.sh"
+  when:
+    branch:
+      - trying
+      - staging
 
 depends_on:
   - pre-checks
@@ -553,6 +569,14 @@ steps:
   volumes:
   - name: nctl-temp-dir
     path: /tmp/nctl_upgrade_stage
+
+- name: update-default-branch
+  image: casperlabs/node-build-u1804
+  environment:
+    GITHUB_TOKEN:
+      from_secret: github_token_def_branch
+  commands:
+    - "./ci/change_default_branch.py"
 
 volumes:
 - name: nctl-temp-dir

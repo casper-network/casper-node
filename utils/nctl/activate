@@ -40,9 +40,11 @@ alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 alias nctl-compile-node-launcher='source $NCTL/sh/assets/compile_node_launcher.sh'
 
 # Staging.
-alias nctl-stage-init-settings='source $NCTL/sh/staging/init_settings.sh'
 alias nctl-stage-build='source $NCTL/sh/staging/build.sh'
 alias nctl-stage-build-from-settings='source $NCTL/sh/staging/build_from_settings.sh'
+alias nctl-stage-init-settings='source $NCTL/sh/staging/init_settings.sh'
+alias nctl-stage-set-remote='source $NCTL/sh/staging/set_remote.sh'
+alias nctl-stage-set-remotes='source $NCTL/sh/staging/set_remotes.sh'
 alias nctl-stage-teardown='source $NCTL/sh/staging/teardown.sh'
 
 # Node control.
@@ -145,3 +147,7 @@ alias nctl-erc20-view-balances='source $NCTL/sh/contracts-erc20/view_balances.sh
 alias nctl-kv-storage-get-key='source $NCTL/sh/contracts-kv/get_key.sh'
 alias nctl-kv-storage-install='source $NCTL/sh/contracts-kv/do_install.sh'
 alias nctl-kv-storage-set-key='source $NCTL/sh/contracts-kv/set_key.sh'
+
+# Scenarios #1: Execute protocol upgrade.
+alias nctl-exec-upgrade-scenario-1='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_01.sh'
+alias nctl-exec-upgrade-scenario-2='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_02.sh'

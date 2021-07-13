@@ -17,8 +17,8 @@ const CONTRACT_PACKAGE_KEY: &str = "contract_package";
 
 #[no_mangle]
 pub extern "C" fn create_purse() {
-    // This should exercise common issues with unsafe providers in mint: new_uref, write_local and
-    // put_key.
+    // This should exercise common issues with unsafe providers in mint: new_uref, dictionary_put
+    // and put_key.
     let _purse = system::create_purse();
 }
 

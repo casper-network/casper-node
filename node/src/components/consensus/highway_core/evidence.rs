@@ -122,8 +122,8 @@ impl<C: Context> Evidence<C> {
                     instance_id,
                     validators,
                 )?;
-                if !C::verify_signature(&endorsement1.hash(), v_id, &endorsement1.signature())
-                    || !C::verify_signature(&endorsement2.hash(), v_id, &endorsement2.signature())
+                if !C::verify_signature(&endorsement1.hash(), v_id, endorsement1.signature())
+                    || !C::verify_signature(&endorsement2.hash(), v_id, endorsement2.signature())
                 {
                     return Err(EvidenceError::Signature);
                 }

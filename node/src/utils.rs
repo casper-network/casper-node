@@ -2,6 +2,7 @@
 //! being factored out into standalone crates.
 
 mod counting_channel;
+mod display_error;
 pub mod ds;
 mod external;
 pub mod milliseconds;
@@ -35,6 +36,7 @@ use thiserror::Error;
 use tracing::{error, warn};
 
 pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, CountingSender};
+pub(crate) use display_error::display_error;
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
@@ -372,7 +374,7 @@ where
         ),
         Err(env::VarError::NotPresent) => None,
         Err(err) => {
-            panic!(err)
+            panic!("{:?}", err)
         }
     }
 }

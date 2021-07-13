@@ -9,7 +9,7 @@ use std::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     pin::Pin,
-    sync::Weak,
+    sync::{Arc, Weak},
 };
 
 use bytes::{Bytes, BytesMut};
@@ -87,15 +87,15 @@ impl<F> CountingFormat<F> {
     }
 }
 
-impl<F, P> Serializer<Message<P>> for CountingFormat<F>
+impl<F, P> Serializer<Arc<Message<P>>> for CountingFormat<F>
 where
-    F: Serializer<Message<P>>,
+    F: Serializer<Arc<Message<P>>>,
     P: Payload,
 {
     type Error = F::Error;
 
     #[inline]
-    fn serialize(self: Pin<&mut Self>, item: &Message<P>) -> Result<Bytes, Self::Error> {
+    fn serialize(self: Pin<&mut Self>, item: &Arc<Message<P>>) -> Result<Bytes, Self::Error> {
         let this = self.project();
         let projection: Pin<&mut F> = this.inner;
 

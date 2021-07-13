@@ -541,7 +541,7 @@ where
         let mut to_reconnect = Vec::new();
 
         for (&addr, outgoing) in self.outgoing.iter() {
-            let span = make_span(addr, Some(&outgoing));
+            let span = make_span(addr, Some(outgoing));
 
             span.in_scope(|| match outgoing.state {
                 // Decide whether to attempt reconnecting a failed-waiting address.
@@ -691,13 +691,22 @@ where
                 info!(err = display_error(&error), "outgoing connection failed");
 
                 let failures_so_far = if let Some(outgoing) = self.outgoing.get(&addr) {
-                    if let OutgoingState::Connecting { failures_so_far,.. } = outgoing.state {
-                         failures_so_far + 1
-                    } else {
-                        warn!(
-                            "processing dial outcome on a connection that was not marked as connecting"
-                        );
-                        1
+                    match outgoing.state {
+                        OutgoingState::Connecting { failures_so_far,.. } => {
+                            failures_so_far + 1
+                        }
+                        OutgoingState::Blocked { .. } => {
+                            debug!("failed dial outcome after block ignored");
+                            1
+                        }
+                        OutgoingState::Waiting { .. } |
+                        OutgoingState::Connected { .. } |
+                        OutgoingState::Loopback => {
+                            warn!(
+                                "processing dial outcome on a connection that was not marked as connecting or blocked"
+                            );
+                            1
+                        }
                     }
                 } else {
                     warn!("processing dial outcome non-existent connection");
