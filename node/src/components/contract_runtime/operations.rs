@@ -220,20 +220,22 @@ fn commit_step(
 ) -> Result<StepSuccess, StepError> {
     // Extract the rewards and the inactive validators if this is a switch block
     let EraReport {
-        // Note: Highway does not slash, do nothing with the equivocators
-        equivocators: _,
+        equivocators,
         rewards,
         inactive_validators,
     } = era_report;
 
     let reward_items = rewards
-        .clone()
-        .into_iter()
+        .iter()
+        .cloned()
         .map(|(vid, value)| RewardItem::new(vid, value))
         .collect();
+
+    // Both inactive validators and equivocators are evicted
     let evict_items = inactive_validators
-        .clone()
-        .into_iter()
+        .iter()
+        .chain(equivocators)
+        .cloned()
         .map(EvictItem::new)
         .collect();
 
