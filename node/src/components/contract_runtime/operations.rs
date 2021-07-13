@@ -81,7 +81,7 @@ pub(super) fn execute_finalized_block(
     }
 
     // If the finalized block has an era report, run the auction contract
-    let maybe_step_result_success = match finalized_block.era_report() {
+    let maybe_step_success = match finalized_block.era_report() {
         None => None,
         Some(era_report) => Some(commit_step(
             engine_state,
@@ -102,7 +102,7 @@ pub(super) fn execute_finalized_block(
         post_state_hash,
         next_era_validators,
         execution_effect,
-    }) = maybe_step_result_success
+    }) = maybe_step_success
     {
         BlockAndExecutionEffects {
             block: Block::new(
