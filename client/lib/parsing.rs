@@ -664,6 +664,7 @@ mod tests {
         pub const ENTRY_POINT: &str = "entrypoint";
         pub const VERSION: &str = "1.0.0";
         pub const TRANSFER: bool = true;
+        pub const PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFAr+JLnFaRwpqsAEbcYLfaDixKHGdBfFsPrLKS9VTMH\n-----END PRIVATE KEY-----";
     }
 
     fn invalid_simple_args_test(cli_string: &str) {
@@ -974,18 +975,21 @@ mod tests {
         let secret_key_path_str = secret_key_path_clone.to_str().unwrap();
         let mut secret_key_file =
             fs::File::create(secret_key_path).expect("Failed to create test secret key file.");
-        write!(
-            secret_key_file,
-            "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFAr+JLnFaRwpqsAEbcYLfaDixKHGdBfFsPrLKS9VTMH\n-----END PRIVATE KEY-----"
-        )
-        .expect("Failed to write data to test secret key file.");
+        write!(secret_key_file, "{}", happy::PRIVATE_KEY)
+            .expect("Failed to write data to test secret key file.");
 
         // create a valid timestamp and convert it to &str.
         let timestamp = Timestamp::now().to_string();
         let timestamp = timestamp.as_str();
 
-        let params =
-            parse_deploy_params(secret_key_path_str, timestamp, "2sec", "10000", &[], "test");
+        let params = parse_deploy_params(
+            secret_key_path_str,
+            timestamp,
+            "2sec",
+            "10000",
+            &[happy::HASH],
+            "test",
+        );
 
         assert!(params.is_ok());
     }
@@ -999,11 +1003,8 @@ mod tests {
         let secret_key_path_str = secret_key_path_clone.to_str().unwrap();
         let mut secret_key_file =
             fs::File::create(secret_key_path).expect("Failed to create test secret key file.");
-        write!(
-            secret_key_file,
-            "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFAr+JLnFaRwpqsAEbcYLfaDixKHGdBfFsPrLKS9VTMH\n-----END PRIVATE KEY-----"
-        )
-        .expect("Failed to write data to test secret key file.");
+        write!(secret_key_file, "{}", happy::PRIVATE_KEY)
+            .expect("Failed to write data to test secret key file.");
 
         // create a valid timestamp and convert it to &str.
         let timestamp = Timestamp::now().to_string();
@@ -1011,10 +1012,11 @@ mod tests {
 
         let result = parse_deploy_params("bad file path", timestamp, "2sec", "10000", &[], "test");
 
-        // TODO: Match Error to error variant. May need to impl PartialEq for Error.
-
         // failed to parse secret key file path.
-        assert!(result.is_err());
+        assert!(matches!(
+            result.err().expect("Result should be an Err."),
+            Error::CryptoError { .. }
+        ));
 
         let result = parse_deploy_params(
             secret_key_path_str,
@@ -1026,7 +1028,10 @@ mod tests {
         );
 
         // failed to parse timestamp.
-        assert!(result.is_err());
+        assert!(matches!(
+            result.err().expect("Result should be an Err."),
+            Error::FailedToParseTimestamp(_, _)
+        ));
 
         let result = parse_deploy_params(
             secret_key_path_str,
@@ -1038,7 +1043,10 @@ mod tests {
         );
 
         // failed to parse ttl.
-        assert!(result.is_err());
+        assert!(matches!(
+            result.err().expect("Result should be an Err."),
+            Error::FailedToParseTimeDiff(_, _)
+        ));
 
         let result = parse_deploy_params(
             secret_key_path_str,
@@ -1050,22 +1058,25 @@ mod tests {
         );
 
         // failed to parse gas price.
-        assert!(result.is_err());
-    }
+        assert!(matches!(
+            result.err().expect("Result should be an Err."),
+            Error::FailedToParseInt(_, _)
+        ));
 
-    #[test]
-    fn should_parse_valid_deploy_params_with_valid_dependencies() {
-        // make another deploy and get the deploy hash...
-        // dispatch the deploy.
-        // add the deploy hash as a dependency in the dep array.
-        todo!()
-    }
+        let result = parse_deploy_params(
+            secret_key_path_str,
+            timestamp,
+            "2sec",
+            "10000",
+            &["bad deploy hash"],
+            "test",
+        );
 
-    #[test]
-    fn should_fail_to_parse_valid_deploy_params_with_invalid_dependencies() {
-        // make a fake but correctly formatted deploy hash.
-        // add the fake deploy hash to the dep array.
-        todo!()
+        // failed to parse deploy hash.
+        assert!(matches!(
+            result.err().expect("Result should be an Err."),
+            Error::CryptoError { .. }
+        ));
     }
 
     mod missing_args {
