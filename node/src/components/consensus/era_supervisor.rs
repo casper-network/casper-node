@@ -1279,9 +1279,6 @@ async fn execute_finalized_block<REv>(
 ) where
     REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
 {
-    // TODO: We already had all these deploys from when we validated the
-    // ProtoBlock. We should just carry them around instead of doing this.
-
     // Get the deploy hashes for the finalized block.
     let deploy_hashes = finalized_block
         .deploys_and_transfers_iter()
