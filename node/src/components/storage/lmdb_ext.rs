@@ -87,10 +87,11 @@ pub enum LmdbExtError {
         merkle_root: Digest,
     },
     #[error(
-        "Could not delete block body part with Merkle linked list node hash: \
+        "Could not find block body part with Merkle linked list node hash: \
          {merkle_linked_list_node_hash:?}"
     )]
-    CouldNotDeleteBlockBodyPart {
+    CouldNotFindBlockBodyPart {
+        block_hash: BlockHash,
         merkle_linked_list_node_hash: Digest,
     },
 }
