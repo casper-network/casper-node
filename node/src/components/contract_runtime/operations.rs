@@ -226,9 +226,8 @@ fn commit_step(
     } = era_report;
 
     let reward_items = rewards
-        .clone()
-        .into_iter()
-        .map(|(vid, value)| RewardItem::new(vid, value))
+        .iter()
+        .map(|(vid, value)| RewardItem::new(*vid, value.clone()))
         .collect();
 
     // Both inactive validators and equivocators are evicted
