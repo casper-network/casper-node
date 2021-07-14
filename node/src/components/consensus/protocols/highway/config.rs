@@ -20,6 +20,7 @@ pub struct Config {
     /// state from peers.
     pub standstill_timeout: TimeDiff,
     /// If another `standstill_timeout` passes assume we failed to join the network and restart.
+    #[serde(default = "default_shutdown_on_standstill")]
     pub shutdown_on_standstill: bool,
     /// Log inactive or faulty validators periodically, with this interval.
     pub log_participation_interval: TimeDiff,
@@ -31,6 +32,10 @@ pub struct Config {
     /// The maximum number of peers we request the same vertex from in parallel.
     pub max_requests_for_vertex: usize,
     pub round_success_meter: RSMConfig,
+}
+
+fn default_shutdown_on_standstill() -> bool {
+    false
 }
 
 impl Default for Config {
