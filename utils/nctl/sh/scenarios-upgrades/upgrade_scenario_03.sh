@@ -4,11 +4,21 @@
 # ----------------------------------------------------------------
 
 # 1. Start v1 running at current mainnet commit.
-# 2. Execute some deploys to populate global state a little
-# 3. Upgrade all running nodes to v2
-# 4. Assert v2 nodes run & the chain advances (new blocks are generated)
-# 5. Start passive nodes.  The launcher should cause the v1 node to run, it should exit and the v2 node should then catch up.
-# 6. Assert passive nodes are now running.
+# 2. Waits for genesis era to complete.
+# 3. Bonds in a non-genesis validator.
+# 4. Delegates from an unused account.
+# 5. Waits for the auction delay to take effect.
+# 6. Asserts non-genesis validator is in auction info.
+# 7. Asserts delegation is in auction info.
+# 8. Stages the network for upgrade.
+# 9. Assert v2 nodes run & the chain advances (new blocks are generated).
+# 10. Waits 1 era.
+# 11. Unbonds previously bonded non-genesis validator.
+# 12. Undelegates from previously used account
+# 13. Waits for the auction delay to take effect.
+# 14. Asserts non-genesis validator is NO LONGER an active validator.
+# 15. Asserts delegatee is NO LONGER in auction info.
+# 16. Successful test cleanup.
 
 # ----------------------------------------------------------------
 # Imports.
