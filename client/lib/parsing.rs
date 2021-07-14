@@ -948,13 +948,7 @@ mod tests {
                     }
                     .try_into();
 
-                    let msg = format!(
-                        "Field {} also requires following fields to be provided: {:?}",
-                        stringify!($field),
-                        $missing
-                    );
-
-                    assert!(matches!(info, Err(Error::InvalidArgument($context, msg))));
+                    assert!(matches!(info, Err(Error::InvalidArgument($context, _msg))));
                 }
             };
         }
