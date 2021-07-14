@@ -13,7 +13,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-No changes.
+### Changed
+* Support building and testing using stable Rust.
 
 
 
@@ -41,7 +42,7 @@ No changes.
 * Replace config option `[block_propser][deploy_delay]` (which specified a fixed delay before proposing a deploy) with a gossip-finished announcement.
 * Improve logging around stalled consensus detection.
 * Skip storage integrity checks if the node didn't previously crash.
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
 * Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
 
 ### Removed

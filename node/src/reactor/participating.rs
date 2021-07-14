@@ -510,8 +510,8 @@ impl reactor::Reactor for Reactor {
         Ok((
             Reactor {
                 metrics,
-                network,
                 small_network,
+                network,
                 address_gossiper,
                 storage,
                 contract_runtime,

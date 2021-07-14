@@ -13,14 +13,19 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-No changes.
+### Added
+* Add explicit `no-std` feature, enabled by default and which causes a compiler error if enabled along with `std`.
+
+### Changed
+* Feature-gate the convenience functionality of providing a global allocator for use in `no_std` smart-contracts.
+* Change default feature set to enable new `no-std` and `provide-allocator` features.
 
 
 
 ## [1.3.0] - 2021-07-19
 
 ### Changed
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
 
 
 

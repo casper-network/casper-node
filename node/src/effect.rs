@@ -1185,9 +1185,9 @@ impl<REv> EffectBuilder<REv> {
                 BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                     context,
                     next_finalized,
-                    responder,
                     accusations,
                     random_bit,
+                    responder,
                 })
             },
             QueueKind::Regular,

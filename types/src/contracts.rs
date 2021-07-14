@@ -281,7 +281,7 @@ impl ContractHash {
     }
 
     /// Formats the `ContractHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         format!(
             "{}{}",
             CONTRACT_STRING_PREFIX,
@@ -427,7 +427,7 @@ impl ContractPackageHash {
     }
 
     /// Formats the `ContractPackageHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
