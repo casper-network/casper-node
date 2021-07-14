@@ -877,99 +877,75 @@ mod keygen_generate_files {
 
     #[test]
     fn should_succeed_for_valid_args_ed25519() {
-        todo!()
-        // let temp_dir = TempDir::new()
-        //     .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
-        // let path = temp_dir.path().join("test-keygen-ed25519");
-        // let result = casper_client::keygen::generate_files(
-        //     path.to_str().unwrap(),
-        //     casper_client::keygen::ED25519,
-        //     true,
-        // )
-        // .map_err(ErrWrapper);
-        // assert_eq!(result, Ok(()));
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-ed25519");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::ED25519,
+            true,
+        );
+        assert!(matches!(result, Ok(())))
     }
 
     #[test]
     fn should_succeed_for_valid_args_secp256k1() {
-        todo!()
-        // let temp_dir = TempDir::new()
-        //     .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
-        // let path = temp_dir.path().join("test-keygen-secp256k1");
-        // let result = casper_client::keygen::generate_files(
-        //     path.to_str().unwrap(),
-        //     casper_client::keygen::SECP256K1,
-        //     true,
-        // )
-        // .map_err(ErrWrapper);
-        // assert_eq!(result, Ok(()));
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-secp256k1");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            true,
+        );
+
+        assert!(matches!(result, Ok(())));
     }
 
     #[test]
     fn should_force_overwrite_when_set() {
-        todo!()
-        // let temp_dir = TempDir::new()
-        //     .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
-        // let path = temp_dir.path().join("test-keygen-force");
-        // let result = casper_client::keygen::generate_files(
-        //     path.to_str().unwrap(),
-        //     casper_client::keygen::SECP256K1,
-        //     false,
-        // )
-        // .map_err(ErrWrapper);
-        // assert_eq!(result, Ok(()));
-        // let result = casper_client::keygen::generate_files(
-        //     path.to_str().unwrap(),
-        //     casper_client::keygen::SECP256K1,
-        //     false,
-        // )
-        // .map_err(ErrWrapper);
-        // assert_eq!(
-        //     result,
-        //     Err(Error::FileAlreadyExists(path.join("secret_key.pem")).into())
-        // );
-        // let result = casper_client::keygen::generate_files(
-        //     path.to_str().unwrap(),
-        //     casper_client::keygen::SECP256K1,
-        //     true,
-        // )
-        // .map_err(ErrWrapper);
-        // assert_eq!(result, Ok(()));
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-force");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            false,
+        );
+        assert!(matches!(result, Ok(())));
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            false,
+        );
+        assert!(matches!(result, Err(Error::FileAlreadyExists(_))));
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            true,
+        );
+        assert!(matches!(result, Ok(())));
     }
 
     #[test]
     fn should_fail_for_invalid_algorithm() {
-        todo!()
-        // let temp_dir = TempDir::new()
-        //     .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
-        // let path = temp_dir.path().join("test-keygen-invalid-algo");
-        // let result = casper_client::keygen::generate_files(
-        //     path.to_str().unwrap(),
-        //     "<not a valid algo>",
-        //     true,
-        // )
-        // .map_err(ErrWrapper);
-        // assert_eq!(
-        //     result,
-        //     Err(Error::UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
-        // );
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-invalid-algo");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            "<not a valid algo>",
+            true,
+        );
+        assert!(matches!(result, Err(Error::UnsupportedAlgorithm(_))));
     }
 
     #[test]
     fn should_fail_for_invalid_output_dir() {
-        todo!()
-        // let path = "";
-        // let result =
-        //     casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true)
-        //         .map_err(ErrWrapper);
-        // assert_eq!(
-        //     result,
-        //     Err(Error::InvalidArgument(
-        //         "generate_files",
-        //         "empty output_dir provided, must be a valid path".to_string()
-        //     )
-        //     .into())
-        // );
+        let path = "";
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true);
+        assert!(matches!(result, Err(Error::InvalidArgument(_, _))))
     }
 }
 
@@ -978,16 +954,15 @@ mod put_deploy {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn should_send_put_deploy() {
-        todo!()
-        // let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
-        // assert_eq!(
-        //     server_handle.put_deploy(
-        //         deploy_params::test_data_valid(),
-        //         session_params::test_data_with_package_hash(),
-        //         payment_params::test_data_with_name()
-        //     ),
-        //     Ok(())
-        // );
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        assert!(matches!(
+            server_handle.put_deploy(
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            ),
+            Ok(())
+        ));
     }
 }
 
@@ -997,46 +972,45 @@ mod rate_limit {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn client_should_should_be_rate_limited_to_approx_1_qps() {
-        todo!()
         // Transfer uses PutDeployParams + PutDeploy
-        // let server_handle = Arc::new(MockServerHandle::spawn::<PutDeployParams>(
-        //     PutDeploy::METHOD,
-        // ));
+        let server_handle = Arc::new(MockServerHandle::spawn::<PutDeployParams>(
+            PutDeploy::METHOD,
+        ));
 
-        // let now = Timestamp::now();
-        // // Our default is 1 req/s, so this will hit the threshold
-        // for _ in 0..3u32 {
-        //     let amount = "100";
-        //     let maybe_target_account =
-        //         "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
+        let now = Timestamp::now();
+        // Our default is 1 req/s, so this will hit the threshold
+        for _ in 0..3u32 {
+            let amount = "100";
+            let maybe_target_account =
+                "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
 
-        //     // If you remove the tokio::task::spawn_blocking call wrapping the call to transfer,
-        // the     // client will eventually eat all executor threads and deadlock (at 64
-        // consecutive     // requests). I believe this is happening because the server is
-        // executing on the same     // tokio runtime as the client.
-        //     let server_handle = server_handle.clone();
-        //     let join_handle = task::spawn_blocking(move || {
-        //         server_handle.transfer(
-        //             amount,
-        //             maybe_target_account,
-        //             deploy_params::test_data_valid(),
-        //             payment_params::test_data_with_name(),
-        //         )
-        //     });
-        //     assert_eq!(join_handle.await.unwrap(), Ok(()));
-        // }
+            // If you remove the tokio::task::spawn_blocking call wrapping the call to transfer,
+            // the client will eventually eat all executor threads and deadlock (at 64 consecutive
+            // requests). I believe this is happening because the server is executing on the same
+            // tokio runtime as the client.
+            let server_handle = server_handle.clone();
+            let join_handle = task::spawn_blocking(move || {
+                server_handle.transfer(
+                    amount,
+                    maybe_target_account,
+                    deploy_params::test_data_valid(),
+                    payment_params::test_data_with_name(),
+                )
+            });
+            assert!(matches!(join_handle.await.unwrap(), Ok(())));
+        }
 
-        // let diff = now.elapsed();
-        // assert!(
-        //     diff < Duration::from_millis(4000).into(),
-        //     "Rate limiting of 1 qps for 3 sec took too long at {}ms",
-        //     diff.millis()
-        // );
-        // assert!(
-        //     diff > Duration::from_millis(2000).into(),
-        //     "Rate limiting of 1 qps for 3 sec too fast took {}ms",
-        //     diff.millis()
-        // );
+        let diff = now.elapsed();
+        assert!(
+            diff < Duration::from_millis(4000).into(),
+            "Rate limiting of 1 qps for 3 sec took too long at {}ms",
+            diff.millis()
+        );
+        assert!(
+            diff > Duration::from_millis(2000).into(),
+            "Rate limiting of 1 qps for 3 sec too fast took {}ms",
+            diff.millis()
+        );
     }
 }
 
@@ -1045,20 +1019,19 @@ mod transfer {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed() {
-        todo!()
         // // Transfer uses PutDeployParams + PutDeploy
-        // let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
-        // let amount = "100";
-        // let maybe_target_account =
-        //     "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
-        // assert_eq!(
-        //     server_handle.transfer(
-        //         amount,
-        //         maybe_target_account,
-        //         deploy_params::test_data_valid(),
-        //         payment_params::test_data_with_name()
-        //     ),
-        //     Ok(())
-        // );
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        let amount = "100";
+        let maybe_target_account =
+            "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
+        assert!(matches!(
+            server_handle.transfer(
+                amount,
+                maybe_target_account,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            ),
+            Ok(())
+        ));
     }
 }
