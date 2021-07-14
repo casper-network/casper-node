@@ -960,7 +960,11 @@ mod keygen_generate_files {
     fn should_force_overwrite_when_set() {
         let temp_dir = TempDir::new()
             .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
-        let path = temp_dir.path().join("test-keygen-force");
+        let path = temp_dir
+            .path()
+            .canonicalize()
+            .unwrap_or_else(|err| panic!("Failed to canonicalize path of temp dir: {}", err))
+            .join("test-keygen-force");
         let result = casper_client::keygen::generate_files(
             path.to_str().unwrap(),
             casper_client::keygen::SECP256K1,
