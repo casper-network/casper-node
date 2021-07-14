@@ -519,7 +519,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Returns a `StandstillAlert` if no progress was made; otherwise schedules the next check.
     fn handle_standstill_alert_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
         if self.evidence_only || self.finalized_switch_block() || !self.shutdown_on_standstill {
-            return vec![]; // Era has ended. No further progress is expected.
+            // Era has ended and no further progress is expected, or shutdown on standstill is
+            // turned off.
+            return vec![];
         }
         if self.last_panorama == *self.highway.state().panorama() {
             info!(
