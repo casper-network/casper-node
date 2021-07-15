@@ -5,6 +5,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
+use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
     runtime_args, system::standard_payment::ARG_AMOUNT, ContractHash, ContractPackageHash,
     RuntimeArgs,
@@ -58,29 +59,12 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractPackageHash, ContractHash) {
     (builder, contract_package_hash, contract_hash)
 }
 
-#[ignore]
-#[test]
-fn should_run_gh_1688_regression_stored_versioned_contract_by_hash() {
+fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> ExecuteRequest) {
     let (mut builder, contract_package_hash, contract_hash) = setup();
 
-    let put_key_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_hash(
-                contract_package_hash.value(),
-                None,
-                METHOD_PUT_KEY,
-                RuntimeArgs::default(),
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let exec_request = request_builder(contract_package_hash, contract_hash);
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    builder.exec(put_key_request).expect_success().commit();
+    builder.exec(exec_request).expect_success().commit();
 
     let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
     let contract = builder
@@ -103,10 +87,28 @@ fn should_run_gh_1688_regression_stored_versioned_contract_by_hash() {
 
 #[ignore]
 #[test]
-fn should_run_gh_1688_regression_stored_versioned_contract_by_name() {
-    let (mut builder, _contract_package_hash, contract_hash) = setup();
+fn should_run_gh_1688_regression_stored_versioned_contract_by_hash() {
+    test(|contract_package_hash, _contract_hash| {
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_stored_versioned_contract_by_hash(
+                contract_package_hash.value(),
+                None,
+                METHOD_PUT_KEY,
+                RuntimeArgs::default(),
+            )
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
+            .build();
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    });
+}
 
-    let put_key_request = {
+#[ignore]
+#[test]
+fn should_run_gh_1688_regression_stored_versioned_contract_by_name() {
+    test(|_contract_package_hash, _contract_hash| {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
@@ -121,35 +123,13 @@ fn should_run_gh_1688_regression_stored_versioned_contract_by_name() {
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    builder.exec(put_key_request).expect_success().commit();
-
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-    let contract = builder
-        .get_contract(contract_hash)
-        .expect("should have contract");
-
-    assert!(
-        contract.named_keys().contains_key(NEW_KEY_NAME),
-        "expected {} in {:?}",
-        NEW_KEY_NAME,
-        contract.named_keys()
-    );
-    assert!(
-        !account.named_keys().contains_key(NEW_KEY_NAME),
-        "unexpected {} in {:?}",
-        NEW_KEY_NAME,
-        contract.named_keys()
-    );
+    });
 }
 
 #[ignore]
 #[test]
 fn should_run_gh_1688_regression_stored_contract_by_hash() {
-    let (mut builder, _contract_package_hash, contract_hash) = setup();
-
-    let put_key_request = {
+    test(|_contract_package_hash, contract_hash| {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(contract_hash, METHOD_PUT_KEY, RuntimeArgs::default())
@@ -159,35 +139,13 @@ fn should_run_gh_1688_regression_stored_contract_by_hash() {
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    builder.exec(put_key_request).expect_success().commit();
-
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-    let contract = builder
-        .get_contract(contract_hash)
-        .expect("should have contract");
-
-    assert!(
-        contract.named_keys().contains_key(NEW_KEY_NAME),
-        "expected {} in {:?}",
-        NEW_KEY_NAME,
-        contract.named_keys()
-    );
-    assert!(
-        !account.named_keys().contains_key(NEW_KEY_NAME),
-        "unexpected {} in {:?}",
-        NEW_KEY_NAME,
-        contract.named_keys()
-    );
+    });
 }
 
 #[ignore]
 #[test]
 fn should_run_gh_1688_regression_stored_contract_by_name() {
-    let (mut builder, _contract_package_hash, contract_hash) = setup();
-
-    let put_key_request = {
+    test(|_contract_package_hash, _contract_hash| {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(
@@ -201,25 +159,5 @@ fn should_run_gh_1688_regression_stored_contract_by_name() {
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    builder.exec(put_key_request).expect_success().commit();
-
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-    let contract = builder
-        .get_contract(contract_hash)
-        .expect("should have contract");
-
-    assert!(
-        contract.named_keys().contains_key(NEW_KEY_NAME),
-        "expected {} in {:?}",
-        NEW_KEY_NAME,
-        contract.named_keys()
-    );
-    assert!(
-        !account.named_keys().contains_key(NEW_KEY_NAME),
-        "unexpected {} in {:?}",
-        NEW_KEY_NAME,
-        contract.named_keys()
-    );
+    });
 }
