@@ -70,8 +70,8 @@ use crate::internal::{
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
-/// This default value should give 50MiB initial map size by default.
-const DEFAULT_LMDB_PAGES: usize = 128_000;
+/// This default value should give 1024MiB initial map size by default.
+const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 
 /// LMDB max readers
 ///
@@ -233,6 +233,11 @@ impl LmdbWasmTestBuilder {
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
+    }
+
+    pub fn flush_environment(&self) {
+        let engine_state = &*self.engine_state;
+        engine_state.flush_environment();
     }
 
     pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
