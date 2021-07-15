@@ -63,7 +63,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, FinalizedBlock, TimeDiff, Timestamp,
+        Chainspec, Deploy, FinalizedBlock, TimeDiff, Timestamp,
     },
     NodeRng,
 };
@@ -1048,26 +1048,60 @@ async fn execute_block<REv>(
     let finalized_block = FinalizedBlock::from(block_to_execute);
 
     // Get the deploy hashes for the block.
-    let deploy_hashes = finalized_block
-        .deploys_and_transfers_iter()
-        .map(DeployHash::from)
-        .collect::<SmallVec<_>>();
+    let deploys = {
+        let deploy_hashes = finalized_block
+            .deploy_hashes()
+            .iter()
+            .cloned()
+            .collect::<SmallVec<_>>();
 
-    // Get all deploys in order they appear in the finalized block.
-    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
-    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
-        if let Some(deploy) = maybe_deploy {
-            deploys.push(deploy)
-        } else {
-            fatal!(
-                effect_builder,
-                "Could not fetch deploys for finalized block: {:?}",
-                finalized_block
-            )
-            .await;
-            return;
+        // Get all deploys in order they appear in the finalized block.
+        let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
+        for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
+            if let Some(deploy) = maybe_deploy {
+                deploys.push(deploy)
+            } else {
+                fatal!(
+                    effect_builder,
+                    "Could not fetch deploys for finalized block: {:?}",
+                    finalized_block
+                )
+                .await;
+                return;
+            }
         }
-    }
+        deploys
+    };
+
+    // Get the deploy hashes for the block.
+    let transfers = {
+        let transfer_hashes = finalized_block
+            .transfer_hashes()
+            .iter()
+            .cloned()
+            .collect::<SmallVec<_>>();
+
+        // Get all deploys in order they appear in the finalized block.
+        let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());
+        for maybe_deploy in effect_builder
+            .get_deploys_from_storage(transfer_hashes)
+            .await
+        {
+            if let Some(deploy) = maybe_deploy {
+                transfers.push(deploy)
+            } else {
+                fatal!(
+                    effect_builder,
+                    "Could not fetch deploys for finalized block: {:?}",
+                    finalized_block
+                )
+                .await;
+                return;
+            }
+        }
+        transfers
+    };
+
     let BlockAndExecutionEffects {
         block,
         execution_results,
@@ -1078,6 +1112,7 @@ async fn execute_block<REv>(
             execution_pre_state,
             finalized_block,
             deploys,
+            transfers,
         )
         .await
     {

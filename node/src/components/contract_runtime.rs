@@ -412,6 +412,7 @@ where
                 execution_pre_state,
                 finalized_block,
                 deploys,
+                transfers,
                 responder,
             } => {
                 trace!(
@@ -431,6 +432,7 @@ where
                         execution_pre_state,
                         finalized_block,
                         deploys,
+                        transfers,
                     );
                     trace!(?result, "execute block response");
                     responder.respond(result).await
@@ -449,6 +451,8 @@ where
                         self.execution_pre_state.clone(),
                         finalized_block,
                         deploys,
+                        // TODO: track transfers
+                        vec![],
                     )
                 } else {
                     self.exec_queue.push_back((finalized_block, deploys));
@@ -583,6 +587,7 @@ impl ContractRuntime {
         execution_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) -> Effects<ContractRuntimeRequest>
     where
         REv: From<ContractRuntimeRequest>
@@ -601,6 +606,7 @@ impl ContractRuntime {
             execution_pre_state,
             finalized_block,
             deploys,
+            transfers,
         ) {
             Ok(block_and_execution_effects) => block_and_execution_effects,
             Err(error) => return fatal!(effect_builder, "{}", error).ignore(),

@@ -8,10 +8,11 @@ use casper_execution_engine::{
 use casper_types::{EraId, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::{
-    components::fetcher::FetcherError,
+    components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
     crypto,
     types::{
-        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
+        Deploy,
     },
 };
 use num::rational::Ratio;
@@ -107,4 +108,17 @@ where
 
     #[error("config error: missing genesis timestamp")]
     MissingGenesisTimestamp,
+
+    #[error(
+        "Executed block is not the same as downloaded block. \
+         Executed block: {executed_block:?}, \
+         Downloaded block: {downloaded_block:?}"
+    )]
+    ExecutedBlockIsNotTheSameAsDownloadedBlock {
+        executed_block: Box<Block>,
+        downloaded_block: Box<Block>,
+    },
+
+    #[error(transparent)]
+    BlockExecutionError(#[from] BlockExecutionError),
 }

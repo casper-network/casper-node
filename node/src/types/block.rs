@@ -378,7 +378,18 @@ impl FinalizedBlock {
         self.proposer.clone()
     }
 
+    /// Returns the deploy hashes for the finalized block.
+    pub(crate) fn deploy_hashes(&self) -> &[DeployHash] {
+        &self.deploy_hashes
+    }
+
+    /// Returns the transfer hashes for the finalized block.
+    pub(crate) fn transfer_hashes(&self) -> &[DeployHash] {
+        &self.transfer_hashes
+    }
+
     /// Returns an iterator over all deploy and transfer hashes.
+    // TODO: deprecate this and keep isolated
     pub(crate) fn deploys_and_transfers_iter(
         &self,
     ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {

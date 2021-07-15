@@ -17,6 +17,7 @@ use casper_types::{EraId, Key, PublicKey, U512};
 use crate::{
     components::{
         consensus,
+        contract_runtime::ExecutionPreState,
         fetcher::{FetchedData, FetcherError},
         linear_chain_sync::error::{FinalitySignatureError, LinearChainSyncError},
     },
@@ -25,8 +26,8 @@ use crate::{
         EffectBuilder,
     },
     types::{
-        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, Item, Timestamp,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
+        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, Timestamp,
     },
 };
 
@@ -442,7 +443,7 @@ where
     let trusted_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
     // TODO: This will get the pre-upgrade switch block even after an emergency restart. Use the
-    // post-upgrade validator set instead.
+    //       post-upgrade validator set instead.
     let mut maybe_trusted_switch_block =
         maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_header).await?;
 
@@ -561,38 +562,64 @@ where
         outstanding_trie_keys.extend(missing_descendant_trie_keys);
     }
 
+    let mut execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
+
     info!(
         most_recent_block_hash = ?most_recent_block_header.hash(),
         "Syncing blocks to current",
     );
-    while let Some(block_with_metadata) = fetch_and_store_block_by_height(
+    while let Some(BlockWithMetadata {
+        block,
+        finality_signatures: _,
+    }) = fetch_and_store_block_by_height(
         effect_builder,
         most_recent_block_header.height() + 1,
         &trusted_validator_weights,
         chainspec.highway_config.finality_threshold_fraction,
     )
     .await?
+    .map(|boxed_block_with_metadata| *boxed_block_with_metadata)
     {
-        if block_with_metadata.block.protocol_version() > current_version {
+        if block.protocol_version() > current_version {
             return Err(
                 LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
                     current_version,
-                    block_header_with_future_version: Box::new(
-                        block_with_metadata.block.take_header(),
-                    ),
+                    block_header_with_future_version: Box::new(block.take_header()),
                 },
             );
         }
 
-        for deploy_hash in block_with_metadata.block.deploy_hashes() {
-            fetch_and_store_deploy(effect_builder, *deploy_hash).await?;
+        let mut deploys: Vec<Deploy> = Vec::with_capacity(block.deploy_hashes().len());
+        for deploy_hash in block.deploy_hashes() {
+            deploys.push(*fetch_and_store_deploy(effect_builder, *deploy_hash).await?);
+        }
+        let mut transfers: Vec<Deploy> = Vec::with_capacity(block.transfer_hashes().len());
+        for transfer_hash in block.transfer_hashes() {
+            transfers.push(*fetch_and_store_deploy(effect_builder, *transfer_hash).await?);
         }
 
-        for transfer_hash in block_with_metadata.block.transfer_hashes() {
-            fetch_and_store_deploy(effect_builder, *transfer_hash).await?;
+        let block_and_execution_effects = effect_builder
+            .execute_finalized_block(
+                block.protocol_version(),
+                execution_pre_state.clone(),
+                FinalizedBlock::from(block.clone()),
+                deploys,
+                transfers,
+            )
+            .await?;
+
+        if block != *block_and_execution_effects.block() {
+            return Err(
+                LinearChainSyncError::ExecutedBlockIsNotTheSameAsDownloadedBlock {
+                    executed_block: Box::new(Block::from(block_and_execution_effects)),
+                    downloaded_block: Box::new(block.clone()),
+                },
+            );
         }
 
-        most_recent_block_header = block_with_metadata.block.take_header();
+        most_recent_block_header = block.take_header();
+        execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
+
         if let Some(new_trusted_validator_weights) =
             most_recent_block_header.next_era_validator_weights()
         {

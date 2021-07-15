@@ -1176,6 +1176,7 @@ impl<REv> EffectBuilder<REv> {
         execution_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1186,6 +1187,7 @@ impl<REv> EffectBuilder<REv> {
                 execution_pre_state,
                 finalized_block,
                 deploys,
+                transfers,
                 responder,
             },
             QueueKind::Regular,

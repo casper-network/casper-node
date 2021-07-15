@@ -860,9 +860,12 @@ pub enum ContractRuntimeRequest {
         /// The finalized block to execute; must have the same height as the child height specified
         /// by the `execution_pre_state`.
         finalized_block: FinalizedBlock,
-        /// The deploys for the block to execute; must correspond to the deploy and execution
-        /// hashes of the `finalized_block` in that order.
+        /// The deploys for the block to execute; must correspond to the deploy hashes of the
+        /// `finalized_block` in that order.
         deploys: Vec<Deploy>,
+        /// The transfers for the block to execute; must correspond to the transfer hashes of the
+        /// `finalized_block` in that order.
+        transfers: Vec<Deploy>,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },

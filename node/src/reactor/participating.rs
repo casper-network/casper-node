@@ -124,8 +124,7 @@ pub enum Event {
 
     // Requests
     /// Contract runtime request.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
@@ -197,6 +196,12 @@ impl ReactorEvent for Event {
         } else {
             None
         }
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -593,9 +598,9 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
+                Into::into,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
             Event::BlockValidator(event) => reactor::wrap_effects(
                 Event::BlockValidator,
