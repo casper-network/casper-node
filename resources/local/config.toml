@@ -43,8 +43,12 @@ unit_hashes_folder = "../node-storage"
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '1min'
 
-# If the current era's protocol state has not progressed for this long, shut down.
+# If the current era's protocol state has not progressed for this long, request the latest state
+# from peers.
 standstill_timeout = '5min'
+
+# If after another `standstill_timeout` there still was no progress, shut down.
+shutdown_on_standstill = false
 
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
