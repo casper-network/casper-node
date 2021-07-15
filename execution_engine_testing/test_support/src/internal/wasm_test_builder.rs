@@ -69,8 +69,6 @@ use crate::internal::{
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
-///
-/// This default value should give 1024MiB initial map size by default.
 const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 
 /// LMDB max readers
