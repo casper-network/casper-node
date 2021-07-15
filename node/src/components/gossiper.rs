@@ -18,7 +18,7 @@ use std::{
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::Component,
+    components::{fetcher::FetchedOrNotFound, Component},
     effect::{
         announcements::GossiperAnnouncement,
         requests::{NetworkRequest, StorageRequest},
@@ -467,8 +467,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         effect_builder: EffectBuilder<REv>,
         item: T,
         requester: NodeId,
-    ) -> Effects<Event<T>> {
-        match NodeMessage::new_get_response(&item) {
+    ) -> Effects<Event<T>>
+    where
+        T: Item,
+    {
+        match NodeMessage::new_get_response(&FetchedOrNotFound::Fetched(item)) {
             Ok(message) => effect_builder.send_message(requester, message).ignore(),
             Err(error) => {
                 error!("failed to create get-response: {}", error);

@@ -35,7 +35,7 @@ use crate::{
     },
     types::{
         json_compatibility::{Account, AuctionState, StoredValue},
-        Block,
+        Block, BlockWithMetadata,
     },
 };
 
@@ -353,7 +353,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
         async move {
             let maybe_id = maybe_params.map(|params| params.block_identifier);
             let block: Block = {
-                let maybe_block = effect_builder
+                let maybe_block_with_finality_signatures = effect_builder
                     .make_request(
                         |responder| RpcRequest::GetBlock {
                             maybe_id,
@@ -363,7 +363,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                     )
                     .await;
 
-                match maybe_block {
+                match maybe_block_with_finality_signatures {
                     None => {
                         let error_msg = if maybe_id.is_none() {
                             "get-auction-info failed to get last added block".to_string()
@@ -376,7 +376,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                             error_msg,
                         ))?);
                     }
-                    Some((block, _)) => block,
+                    Some(BlockWithMetadata { block, .. }) => block,
                 }
             };
 
@@ -487,7 +487,7 @@ impl RpcWithParamsExt for GetAccountInfo {
 
             let block: Block = {
                 let maybe_id = params.block_identifier;
-                let maybe_block = effect_builder
+                let maybe_block_with_metadata = effect_builder
                     .make_request(
                         |responder| RpcRequest::GetBlock {
                             maybe_id,
@@ -497,7 +497,7 @@ impl RpcWithParamsExt for GetAccountInfo {
                     )
                     .await;
 
-                match maybe_block {
+                match maybe_block_with_metadata {
                     None => {
                         let error_msg = if maybe_id.is_none() {
                             "get-account-info failed to get last added block".to_string()
@@ -510,7 +510,7 @@ impl RpcWithParamsExt for GetAccountInfo {
                             error_msg,
                         ))?);
                     }
-                    Some((block, _)) => block,
+                    Some(BlockWithMetadata { block, .. }) => block,
                 }
             };
 

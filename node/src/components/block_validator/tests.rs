@@ -9,7 +9,7 @@ use derive_more::From;
 use itertools::Itertools;
 
 use crate::{
-    components::{consensus::BlockContext, fetcher::FetchResult},
+    components::{consensus::BlockContext, fetcher::FetcherError},
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
@@ -62,18 +62,25 @@ impl MockReactor {
         T: Into<Option<Deploy>>,
     {
         let (reactor_event, _) = self.scheduler.pop().await;
-        if let ReactorEvent::Fetcher(FetcherRequest::Fetch {
+        if let ReactorEvent::Fetcher(FetcherRequest {
             id,
             peer,
             responder,
         }) = reactor_event
         {
             match deploy.into() {
-                None => responder.respond(None).await,
+                None => {
+                    responder
+                        .respond(Err(FetcherError::Absent { id, peer }))
+                        .await
+                }
                 Some(deploy) => {
                     assert_eq!(id, *deploy.id());
-                    let response = FetchResult::FromPeer(Box::new(deploy), peer);
-                    responder.respond(Some(response)).await;
+                    let response = FetchedData::FromPeer {
+                        item: Box::new(deploy),
+                        peer,
+                    };
+                    responder.respond(Ok(response)).await;
                 }
             }
         } else {

@@ -11,7 +11,6 @@ pub mod json_compatibility;
 mod node_config;
 mod node_id;
 mod peers_map;
-mod shared_object;
 mod status_feed;
 mod timestamp;
 
@@ -21,9 +20,10 @@ use rand_chacha::ChaCha20Rng;
 
 pub use block::{
     json_compatibility::JsonBlock, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
-    BlockValidationError, FinalitySignature,
+    FinalitySignature, HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart,
+    MerkleLinkedListNode,
 };
-pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload, FinalizedBlock};
+pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
 pub use datasize::DataSize;
@@ -32,11 +32,10 @@ pub use deploy::{
     DeployValidationFailure, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
 pub use exit_code::ExitCode;
-pub use item::{Item, Tag};
+pub(crate) use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
-pub(crate) use shared_object::SharedObject;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 

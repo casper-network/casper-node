@@ -36,7 +36,6 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
         max_deploy_metadata_store_size: 50 * MIB,
         max_state_store_size: 50 * MIB,
         enable_mem_deduplication: false,
-        mem_pool_prune_interval: 1024,
     }
 }
 
@@ -420,7 +419,7 @@ fn test_get_block_header_and_finality_signatures_by_height() {
 
     {
         let block_header = storage
-            .read_block_header_by_hash(block.hash())
+            .get_block_header_by_hash(block.hash())
             .expect("should not throw exception")
             .expect("should not be None");
         assert_eq!(
@@ -978,12 +977,13 @@ fn test_legacy_interface() {
     assert!(was_new);
 
     // Ensure we get the deploy we expect.
-    let result = storage.handle_legacy_direct_deploy_request(*deploy.id());
+    let result = storage.get_deploy(*deploy.id()).expect("should get deploy");
     assert_eq!(result, Some(*deploy));
 
     // A non-existent deploy should simply return `None`.
     assert!(storage
-        .handle_legacy_direct_deploy_request(DeployHash::random(&mut harness.rng))
+        .get_deploy(DeployHash::random(&mut harness.rng))
+        .expect("should get deploy")
         .is_none())
 }
 

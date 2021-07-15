@@ -9,10 +9,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        consensus, gossiper,
+        consensus,
+        fetcher::FetchedOrNotFound,
+        gossiper,
         small_network::{GossipedAddress, MessageKind, Payload},
     },
-    types::{Deploy, FinalitySignature, Item, SharedObject, Tag},
+    types::{Deploy, FinalitySignature, Item, Tag},
 };
 
 /// Reactor message.
@@ -39,7 +41,7 @@ pub enum Message {
         /// The type tag of the contained item.
         tag: Tag,
         /// The serialized item.
-        serialized_item: SharedObject<Vec<u8>>,
+        serialized_item: Vec<u8>,
     },
     /// Finality signature.
     #[from]
@@ -59,30 +61,14 @@ impl Payload for Message {
                     Tag::Block => MessageKind::BlockTransfer,
                     // This is a weird message, which we should not encounter here?
                     Tag::GossipedAddress => MessageKind::Other,
-                    Tag::BlockByHeight => MessageKind::BlockTransfer,
+                    Tag::BlockAndMetadataByHeight => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
+                    // TODO: This is wrong
+                    Tag::Trie => MessageKind::Other,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
-        }
-    }
-
-    #[inline]
-    fn incoming_resource_estimate(&self) -> u32 {
-        match self {
-            Message::Consensus(_) => 0,
-            Message::DeployGossiper(_) => 0,
-            Message::AddressGossiper(_) => 0,
-            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy => 1,
-                Tag::Block => 0,
-                Tag::GossipedAddress => 0,
-                Tag::BlockByHeight => 0,
-                Tag::BlockHeaderByHash => 0,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => 0,
-            },
-            Message::FinalitySignature(_) => 0,
         }
     }
 }
@@ -95,20 +81,16 @@ impl Message {
         })
     }
 
-    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, bincode::Error> {
+    pub(crate) fn new_get_response<T>(
+        item: &FetchedOrNotFound<T, T::Id>,
+    ) -> Result<Self, bincode::Error>
+    where
+        T: Item,
+    {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: SharedObject::owned(bincode::serialize(item)?),
+            serialized_item: bincode::serialize(item)?,
         })
-    }
-
-    pub(crate) fn new_get_response_raw_unchecked<T: Item>(
-        serialized_item: SharedObject<Vec<u8>>,
-    ) -> Self {
-        Message::GetResponse {
-            tag: T::TAG,
-            serialized_item,
-        }
     }
 }
 

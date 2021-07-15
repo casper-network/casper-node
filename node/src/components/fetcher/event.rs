@@ -1,32 +1,49 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use serde::Serialize;
+use thiserror::Error;
+use tracing::error;
 
 use super::Item;
 use crate::{
+    components::fetcher::FetchedOrNotFound,
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest, Responder},
     types::{Deploy, NodeId},
     utils::Source,
 };
 
-#[derive(Clone, DataSize, Debug, PartialEq)]
-pub enum FetchResult<T, I> {
-    FromStorage(Box<T>),
-    FromPeer(Box<T>, I),
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum FetcherError<T, I>
+where
+    T: Item,
+    I: Debug + Eq,
+{
+    #[error("Could not fetch item with id {id:?} from peer {peer:?}")]
+    Absent { id: T::Id, peer: I },
+
+    #[error("Timed out getting item with id {id:?} from peer {peer:?}")]
+    TimedOut { id: T::Id, peer: I },
+
+    #[error("Could not construct get request for item with id {id:?} for peer {peer:?}")]
+    CouldNotConstructGetRequest { id: T::Id, peer: I },
 }
 
-pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T, NodeId>>>;
+#[derive(Clone, DataSize, Debug, PartialEq)]
+pub enum FetchedData<T, I> {
+    FromStorage { item: Box<T> },
+    FromPeer { item: Box<T>, peer: I },
+}
+
+pub type FetchResult<T, I> = Result<FetchedData<T, I>, FetcherError<T, I>>;
+
+pub(crate) type FetchResponder<T> = Responder<FetchResult<T, NodeId>>;
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]
 pub enum Event<T: Item> {
     /// The initiating event to fetch an item by its id.
-    Fetch {
-        id: T::Id,
-        peer: NodeId,
-        responder: FetchResponder<T>,
-    },
+    Fetch(FetcherRequest<NodeId, T>),
     /// The result of the `Fetcher` getting a item from the storage component.  If the
     /// result is `None`, the item should be requested from the peer.
     GetFromStorageResult {
@@ -52,19 +69,25 @@ pub enum Event<T: Item> {
     TimeoutPeer { id: T::Id, peer: NodeId },
 }
 
-impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {
-    fn from(request: FetcherRequest<NodeId, T>) -> Self {
-        match request {
-            FetcherRequest::Fetch {
-                id,
-                peer,
-                responder,
-            } => Event::Fetch {
-                id,
-                peer,
-                responder,
-            },
+impl<T: Item> Event<T> {
+    pub fn from_get_response_serialized_item(peer: NodeId, serialized_item: &[u8]) -> Option<Self> {
+        match bincode::deserialize::<FetchedOrNotFound<T, T::Id>>(serialized_item) {
+            Ok(FetchedOrNotFound::Fetched(item)) => Some(Event::GotRemotely {
+                item: Box::new(item),
+                source: Source::Peer(peer),
+            }),
+            Ok(FetchedOrNotFound::NotFound(id)) => Some(Event::AbsentRemotely { id, peer }),
+            Err(error) => {
+                error!("failed to decode {:?} from {}: {:?}", T::TAG, peer, error);
+                None
+            }
         }
+    }
+}
+
+impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {
+    fn from(fetcher_request: FetcherRequest<NodeId, T>) -> Self {
+        Event::Fetch(fetcher_request)
     }
 }
 
@@ -92,7 +115,9 @@ impl From<DeployAcceptorAnnouncement<NodeId>> for Event<Deploy> {
 impl<T: Item> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Fetch { id, .. } => write!(formatter, "request to fetch item at hash {}", id),
+            Event::Fetch(FetcherRequest { id, .. }) => {
+                write!(formatter, "request to fetch item at hash {}", id)
+            }
             Event::GetFromStorageResult { id, maybe_item, .. } => {
                 if maybe_item.is_some() {
                     write!(formatter, "got {} from storage", id)
