@@ -124,7 +124,7 @@ pub enum Error {
     InvalidResponse(#[from] ValidateResponseError),
 
     /// Failed to create a DictionaryIdentifier
-    #[error("Failed to create an indentifier")]
+    #[error("Failed to parse the dictionary identifier")]
     FailedToParseDictionaryIdentifier,
 
     /// Must call FFI's setup function prior to making FFI calls.

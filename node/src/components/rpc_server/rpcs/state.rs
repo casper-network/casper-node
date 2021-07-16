@@ -85,7 +85,7 @@ static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
         dictionary_identifier: DictionaryIdentifier::URef {
             seed_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
                 .to_string(),
-            dictionary_item_key: "dictionary".to_string(),
+            dictionary_item_key: "a_unique_entry_identifier".to_string(),
         },
     });
 static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
@@ -94,7 +94,7 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
         dictionary_key:
             "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f"
                 .to_string(),
-        stored_value: StoredValue::Account(Account::doc_example().clone()),
+        stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
 

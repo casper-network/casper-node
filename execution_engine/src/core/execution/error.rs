@@ -102,7 +102,7 @@ pub enum Error {
     InvalidContractWasm(ContractWasmHash),
     #[error("Missing argument: {name}")]
     MissingArgument { name: String },
-    #[error("Dictionary item key size exceeded limit")]
+    #[error("Dictionary item key exceeded maximum length")]
     DictionaryItemKeyExceedsLength,
 }
 

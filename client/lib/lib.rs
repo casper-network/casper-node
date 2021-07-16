@@ -529,22 +529,7 @@ pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbosity_level: u64) -
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
-/// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
-///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
-///   take one of the following forms:
-/// ```text
-/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c           # PublicKey
-/// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
-/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::Hash
-/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
-/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
-/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
-/// ```
-/// * `path` is comprised of components starting from the `key`, separated by `/`s.
-///  * `purse` is a URef, formatted as e.g.
-/// ```text
-///  uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007
-///  ```
+/// * `dictionary_str_params` contains options to query a dictionary item.
 pub fn get_dictionary(
     maybe_rpc_id: &str,
     node_address: &str,
@@ -1045,7 +1030,7 @@ impl<'a> SessionStrParams<'a> {
     }
 }
 
-/// A container to manage the args for querying items stored in a dictionary.
+/// Various ways of uniquely identifying a dictionary entry.
 pub enum DictionaryItemStrParams<'a> {
     /// Lookup a dictionary item via an Account's named keys.
     AccountNamedKey {

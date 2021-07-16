@@ -355,12 +355,13 @@ pub fn new_dictionary(dictionary_name: &str) -> Result<URef, ApiError> {
     Ok(uref)
 }
 
-/// Retrieve value stored under `key` in the dictionary accessed by `dictionary_uref`.
+/// Retrieve `value` stored under `dictionary_item_key` in the dictionary accessed by
+/// `dictionary_seed_uref`.
 pub fn dictionary_get<V: CLTyped + FromBytes>(
-    seed_uref: URef,
+    dictionary_seed_uref: URef,
     dictionary_item_key: &str,
 ) -> Result<Option<V>, bytesrepr::Error> {
-    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(seed_uref);
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_seed_uref);
     let (dictionary_item_key_ptr, dictionary_item_key_size) =
         contract_api::dictionary_item_key_to_ptr(dictionary_item_key);
 
@@ -390,13 +391,13 @@ pub fn dictionary_get<V: CLTyped + FromBytes>(
     Ok(Some(bytesrepr::deserialize(value_bytes)?))
 }
 
-/// Writes `value` under `key` in the dictionary accessed by `dictionary_uref`.
+/// Writes `value` under `dictionary_item_key` in the dictionary accessed by `dictionary_seed_uref`.
 pub fn dictionary_put<V: CLTyped + ToBytes>(
-    dictionary_uref: URef,
+    dictionary_seed_uref: URef,
     dictionary_item_key: &str,
     value: V,
 ) {
-    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_uref);
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_seed_uref);
     let (dictionary_item_key_ptr, dictionary_item_key_size) =
         contract_api::dictionary_item_key_to_ptr(dictionary_item_key);
 

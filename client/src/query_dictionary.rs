@@ -18,7 +18,7 @@ enum DisplayOrder {
     ContractHash,
     DictionaryName,
     DictionaryItemKey,
-    SeedURef,
+    DictionarySeedURef,
     DictionaryAddress,
 }
 
@@ -30,21 +30,17 @@ mod key {
     use super::*;
 
     const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
-    const ARG_HELP: &str =
-        "The base key for the query. This must be a properly formatted public key, account hash, \
-        contract address hash, URef, transfer hash or deploy-info hash. The format for each \
-        respectively is \"<HEX STRING>\", \"account-hash-<HEX STRING>\", \"hash-<HEX STRING>\", \
-        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\", \"transfer-<HEX-STRING>\" and \
-        \"deploy-<HEX-STRING>\". The public key may instead be read in from a file, in which case \
-        enter the path to the file as the --key argument. The file should be one of the two public \
-        key files generated via the `keygen` subcommand; \"public_key_hex\" or \"public_key.pem\"";
 
-    pub(super) fn arg(arg_name: &'static str, display_order: usize) -> Arg<'static, 'static> {
+    pub(super) fn arg(
+        arg_name: &'static str,
+        arg_help: &'static str,
+        display_order: usize,
+    ) -> Arg<'static, 'static> {
         Arg::with_name(arg_name)
             .long(arg_name)
             .required(false)
             .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
+            .help(arg_help)
             .display_order(display_order)
     }
 
@@ -77,9 +73,12 @@ mod account_hash {
     use super::*;
 
     pub(crate) const ARG_NAME: &str = "account-hash";
+    const ARG_HELP: &str =
+        "This must be a properly formatted account hash. The format for account hash is \
+        \"account-hash-<HEX STRING>\".";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
-        key::arg(ARG_NAME, DisplayOrder::AccountHash as usize)
+        key::arg(ARG_NAME, ARG_HELP, DisplayOrder::AccountHash as usize)
     }
 
     pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
@@ -91,9 +90,12 @@ mod contract_hash {
     use super::*;
 
     pub(crate) const ARG_NAME: &str = "contract-hash";
+    const ARG_HELP: &str =
+        "This must be a properly formatted contract hash. The format for contract hash is \
+        \"hash-<HEX STRING>\".";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
-        key::arg(ARG_NAME, DisplayOrder::ContractHash as usize)
+        key::arg(ARG_NAME, ARG_HELP, DisplayOrder::ContractHash as usize)
     }
 
     pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
@@ -160,7 +162,7 @@ mod seed_uref {
             .required(false)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(DisplayOrder::SeedURef as usize)
+            .display_order(DisplayOrder::DictionarySeedURef as usize)
     }
 
     pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
