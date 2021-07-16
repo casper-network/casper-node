@@ -198,14 +198,33 @@ function _step_09()
     local HEIGHT_1
     local HEIGHT_2
     local NODE_ID
+    local TIMEOUT_SEC
+    local UP_COUNT
 
     log_step_upgrades 9 "asserting node upgrades"
 
-    # Assert no nodes have stopped.
-    if [ "$(get_count_of_up_nodes)" != "6" ]; then
-        log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
-        exit 1
-    fi
+    TIMEOUT_SEC='0'
+
+    while [ "$TIMEOUT_SEC" -le "60" ]; do
+        UP_COUNT="$(get_count_of_up_nodes)"
+        # Assert no nodes have stopped.
+        if [ "$UP_COUNT" != "6" ]; then
+            TIMEOUT_SEC=$((TIMEOUT_SEC + 1))
+            log "TIMEOUT_SEC: $TIMEOUT_SEC"
+            log "... $UP_COUNT != 6"
+            sleep 1
+        else
+            log "... All nodes are up!"
+            break
+        fi
+
+        if [ "$TIMEOUT_SEC" = '60' ]; then
+            log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
+            log "... $UP_COUNT != 6"
+            nctl-status
+            exit 1
+        fi
+    done
 
     # Assert no nodes have stalled.
     HEIGHT_1=$(get_chain_height)
