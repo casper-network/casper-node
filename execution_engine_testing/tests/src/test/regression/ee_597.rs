@@ -62,6 +62,7 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
             "{:?}",
             ApiError::from(auction::Error::BondTooSmall)
         )),
+        "{}",
         error_message
     );
 }

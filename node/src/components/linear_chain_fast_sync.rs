@@ -225,7 +225,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
                     }
                 }
                 self.state = curr_state;
-                self.fetch_next_block(effect_builder, rng, &block.header())
+                self.fetch_next_block(effect_builder, rng, block.header())
             }
         }
     }

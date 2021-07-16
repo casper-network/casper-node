@@ -168,7 +168,7 @@ where
     }
 
     pub fn named_keys(&self) -> &NamedKeys {
-        &self.named_keys
+        self.named_keys
     }
 
     pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
@@ -284,7 +284,7 @@ where
     }
 
     pub fn account(&self) -> &'a Account {
-        &self.account
+        self.account
     }
 
     pub fn args(&self) -> &RuntimeArgs {
@@ -417,7 +417,7 @@ where
         T: TryFrom<StoredValue>,
         T::Error: Debug,
     {
-        let value = match self.read_gs(&key)? {
+        let value = match self.read_gs(key)? {
             None => return Err(Error::KeyNotFound(*key)),
             Some(value) => value,
         };
@@ -632,7 +632,7 @@ where
     }
 
     fn validate_readable(&self, key: &Key) -> Result<(), Error> {
-        if self.is_readable(&key) {
+        if self.is_readable(key) {
             Ok(())
         } else {
             Err(Error::InvalidAccess {
@@ -642,7 +642,7 @@ where
     }
 
     fn validate_addable(&self, key: &Key) -> Result<(), Error> {
-        if self.is_addable(&key) {
+        if self.is_addable(key) {
             Ok(())
         } else {
             Err(Error::InvalidAccess {
@@ -652,7 +652,7 @@ where
     }
 
     fn validate_writeable(&self, key: &Key) -> Result<(), Error> {
-        if self.is_writeable(&key) {
+        if self.is_writeable(key) {
             Ok(())
         } else {
             Err(Error::InvalidAccess {

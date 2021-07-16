@@ -303,7 +303,7 @@ where
             return Ok((model, Effects::new()));
         }
 
-        let net_metrics = NetworkingMetrics::new(&registry)?;
+        let net_metrics = NetworkingMetrics::new(registry)?;
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -738,7 +738,7 @@ where
         peer_id: &NodeId,
         add_to_blocklist: bool,
     ) -> Effects<Event<P>> {
-        if let Some(incoming) = self.incoming.remove(&peer_id) {
+        if let Some(incoming) = self.incoming.remove(peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the incoming connections");
             let _ = self.pending.remove(&incoming.peer_address);
 
@@ -746,7 +746,7 @@ where
                 .open_connections
                 .set(self.incoming.len() as i64);
         }
-        if let Some(outgoing) = self.outgoing.remove(&peer_id) {
+        if let Some(outgoing) = self.outgoing.remove(peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
             if add_to_blocklist && !self.known_addresses.contains(&outgoing.peer_address) {
                 info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
@@ -1234,7 +1234,7 @@ async fn setup_tls(
     cert: Arc<TlsCert>,
     secret_key: Arc<PKey<Private>>,
 ) -> Result<(NodeId, Transport)> {
-    let mut tls_stream = tls::create_tls_acceptor(&cert.as_x509().as_ref(), &secret_key.as_ref())
+    let mut tls_stream = tls::create_tls_acceptor(cert.as_x509().as_ref(), secret_key.as_ref())
         .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
         .and_then(|ssl| SslStream::new(ssl, stream))
         .map_err(Error::AcceptorCreation)?;
@@ -1413,7 +1413,7 @@ async fn connect_outgoing(
     secret_key: Arc<PKey<Private>>,
     server_is_stopped: Arc<AtomicBool>,
 ) -> Result<(NodeId, Transport)> {
-    let ssl = tls::create_tls_connector(&our_certificate.as_x509(), &secret_key)
+    let ssl = tls::create_tls_connector(our_certificate.as_x509(), &secret_key)
         .context("could not create TLS connector")?
         .configure()
         .and_then(|mut config| {

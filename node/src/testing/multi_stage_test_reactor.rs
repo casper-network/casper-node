@@ -193,7 +193,7 @@ impl Reactor for MultiStageTestReactor {
 
         let (initializer_reactor, initializer_effects) = InitializerReactor::new_with_chainspec(
             initializer_reactor_config_with_chainspec.config,
-            &registry,
+            registry,
             initializer_event_queue_handle,
             initializer_reactor_config_with_chainspec.chainspec,
         )

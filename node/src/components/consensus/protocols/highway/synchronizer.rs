@@ -144,9 +144,9 @@ impl<I, C: Context> PendingVertex<I, C> {
     }
 }
 
-impl<I, C: Context> Into<PreValidatedVertex<C>> for PendingVertex<I, C> {
-    fn into(self) -> PreValidatedVertex<C> {
-        self.pvv
+impl<I, C: Context> From<PendingVertex<I, C>> for PreValidatedVertex<C> {
+    fn from(vertex: PendingVertex<I, C>) -> Self {
+        vertex.pvv
     }
 }
 

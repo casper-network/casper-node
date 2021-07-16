@@ -1092,7 +1092,7 @@ mod tests {
             &mut rng,
             deploy_config.max_ttl,
             deploy_config.max_dependencies.into(),
-            &chain_name,
+            chain_name,
         );
         deploy
             .is_acceptable(chain_name, &deploy_config)
@@ -1140,7 +1140,7 @@ mod tests {
             &mut rng,
             deploy_config.max_ttl,
             dependency_count,
-            &chain_name,
+            chain_name,
         );
 
         let expected_error = DeployValidationFailure::ExcessiveDependencies {
@@ -1170,7 +1170,7 @@ mod tests {
             &mut rng,
             ttl,
             deploy_config.max_dependencies.into(),
-            &chain_name,
+            chain_name,
         );
 
         let expected_error = DeployValidationFailure::ExcessiveTimeToLive {

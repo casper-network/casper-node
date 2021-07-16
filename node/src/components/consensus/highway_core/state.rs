@@ -317,7 +317,7 @@ impl<C: Context> State<C> {
         unit.wire_unit()
             .endorsed
             .iter()
-            .find(|hash| !self.endorsements.contains_key(&hash))
+            .find(|hash| !self.endorsements.contains_key(hash))
             .cloned()
     }
 
@@ -541,7 +541,7 @@ impl<C: Context> State<C> {
             return Vec::new();
         }
         let uhash = endorsements.unit();
-        let unit = self.unit(&uhash);
+        let unit = self.unit(uhash);
         if !self.has_evidence(unit.creator) {
             return vec![]; // There are no equivocations, so endorsements cannot conflict.
         }
@@ -551,9 +551,9 @@ impl<C: Context> State<C> {
         let is_new_endorsement = |&&(vidx, _): &&(ValidatorIndex, _)| {
             if self.has_evidence(vidx) {
                 false
-            } else if let Some(known_endorsements) = self.endorsements.get(&uhash) {
+            } else if let Some(known_endorsements) = self.endorsements.get(uhash) {
                 known_endorsements[vidx].is_none()
-            } else if let Some(known_endorsements) = self.incomplete_endorsements.get(&uhash) {
+            } else if let Some(known_endorsements) = self.incomplete_endorsements.get(uhash) {
                 !known_endorsements.contains_key(&vidx)
             } else {
                 true
@@ -579,7 +579,7 @@ impl<C: Context> State<C> {
                     let unit2 = self.unit(uhash2);
                     let ee_limit = self.params().endorsement_evidence_limit();
                     self.unit(uhash2).creator == unit.creator
-                        && !self.is_compatible(&uhash, uhash2)
+                        && !self.is_compatible(uhash, uhash2)
                         && unit.seq_number.saturating_add(ee_limit) >= unit2.seq_number
                         && unit2.seq_number.saturating_add(ee_limit) >= unit.seq_number
                 })
@@ -1007,7 +1007,7 @@ impl<C: Context> State<C> {
                 let unit = self.unit(hash);
                 match &unit.panorama[eq_idx] {
                     Observation::Correct(eq_hash) => {
-                        if !seen_by_endorsed(eq_hash) && !self.is_compatible(eq_hash, &naive_fork) {
+                        if !seen_by_endorsed(eq_hash) && !self.is_compatible(eq_hash, naive_fork) {
                             return false;
                         }
                     }
@@ -1099,7 +1099,7 @@ impl<C: Context> State<C> {
 
     /// Returns panorama of a unit where latest entry of the creator is that unit's hash.
     pub(crate) fn inclusive_panorama(&self, uhash: &C::Hash) -> Panorama<C> {
-        let unit = self.unit(&uhash);
+        let unit = self.unit(uhash);
         let mut pan = unit.panorama.clone();
         pan[unit.creator] = Observation::Correct(*uhash);
         pan

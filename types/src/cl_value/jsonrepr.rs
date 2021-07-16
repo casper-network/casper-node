@@ -10,7 +10,7 @@ use crate::{
 
 /// Returns a best-effort attempt to convert the `CLValue` into a meaningful JSON value.
 pub fn cl_value_to_json(cl_value: &CLValue) -> Option<Value> {
-    to_json(&cl_value.cl_type(), cl_value.inner_bytes()).and_then(|(json_value, remainder)| {
+    to_json(cl_value.cl_type(), cl_value.inner_bytes()).and_then(|(json_value, remainder)| {
         if remainder.is_empty() {
             Some(json_value)
         } else {
@@ -47,7 +47,7 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
             let (count, mut stream) = u32::from_bytes(bytes).ok()?;
             let mut result: Vec<Value> = Vec::new();
             for _ in 0..count {
-                let (value, remainder) = to_json(inner_cl_type, &stream)?;
+                let (value, remainder) = to_json(inner_cl_type, stream)?;
                 result.push(value);
                 stream = remainder;
             }

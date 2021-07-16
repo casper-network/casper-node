@@ -4,7 +4,6 @@ use std::{
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
-    iter::FromIterator,
 };
 
 use datasize::DataSize;
@@ -118,7 +117,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
 
 impl PartialOrd for HighwayMessage {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
@@ -386,7 +385,7 @@ where
     /// Helper for getting validator from the underlying virtual net.
     fn node_mut(&mut self, validator_id: &ValidatorId) -> TestResult<&mut HighwayNode> {
         self.virtual_net
-            .node_mut(&validator_id)
+            .node_mut(validator_id)
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
     }
 
@@ -904,13 +903,12 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             .chain(honest_weights.iter())
             .sum::<Weight>();
 
-        let validators: Validators<ValidatorId> = Validators::from_iter(
-            faulty_weights
-                .iter()
-                .chain(honest_weights.iter())
-                .enumerate()
-                .map(|(i, weight)| (ValidatorId(i as u64), *weight)),
-        );
+        let validators: Validators<ValidatorId> = faulty_weights
+            .iter()
+            .chain(honest_weights.iter())
+            .enumerate()
+            .map(|(i, weight)| (ValidatorId(i as u64), *weight))
+            .collect();
 
         trace!("Weights: {:?}", validators.iter().collect::<Vec<_>>());
 
