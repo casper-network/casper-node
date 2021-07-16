@@ -1058,13 +1058,14 @@ where
     pub(crate) fn dictionary_get(
         &mut self,
         uref: URef,
-        dictionary_item_key_bytes: &[u8],
+        dictionary_item_key: &str,
     ) -> Result<Option<CLValue>, Error> {
         self.validate_readable(&uref.into())?;
         self.validate_key(&uref.into())?;
+        let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
 
         if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-            return Err(Error::DictionaryItemKeyTooLong);
+            return Err(Error::DictionaryItemKeyExceedsLength);
         }
 
         let dictionary_key = Key::dictionary(uref, dictionary_item_key_bytes);
@@ -1090,11 +1091,13 @@ where
     pub fn dictionary_put(
         &mut self,
         seed_uref: URef,
-        dictionary_item_key_bytes: &[u8],
+        dictionary_item_key: &str,
         cl_value: CLValue,
     ) -> Result<(), Error> {
+        let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
+
         if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-            return Err(Error::DictionaryItemKeyTooLong);
+            return Err(Error::DictionaryItemKeyExceedsLength);
         }
 
         self.validate_writeable(&seed_uref.into())?;

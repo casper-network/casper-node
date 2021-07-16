@@ -365,7 +365,7 @@ pub fn dictionary_get<V: CLTyped + FromBytes>(
         contract_api::dictionary_item_key_to_ptr(dictionary_item_key);
 
     if dictionary_item_key_size > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-        revert(ApiError::DictionaryItemKeyTooLarge)
+        revert(ApiError::DictionaryItemKeyExceedsLength)
     }
 
     let value_size = {
@@ -401,14 +401,14 @@ pub fn dictionary_put<V: CLTyped + ToBytes>(
         contract_api::dictionary_item_key_to_ptr(dictionary_item_key);
 
     if dictionary_item_key_size > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-        revert(ApiError::DictionaryItemKeyTooLarge)
+        revert(ApiError::DictionaryItemKeyExceedsLength)
     }
 
     let cl_value = CLValue::from_t(value).unwrap_or_revert();
     let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
 
-    unsafe {
-        ext_ffi::casper_dictionary_put(
+    let result = unsafe {
+        let ret = ext_ffi::casper_dictionary_put(
             uref_ptr,
             uref_size,
             dictionary_item_key_ptr,
@@ -416,5 +416,8 @@ pub fn dictionary_put<V: CLTyped + ToBytes>(
             cl_value_ptr,
             cl_value_size,
         );
-    }
+        api_error::result_from(ret)
+    };
+
+    result.unwrap_or_revert()
 }
