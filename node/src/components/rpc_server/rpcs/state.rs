@@ -653,10 +653,8 @@ impl DictionaryIdentifier {
                         let seed: URef = value
                             .into_t()
                             .map_err(|_| Error("Failed to parse URef".to_string()))?;
-                        let key_bytes = dictionary_item_key.to_bytes().map_err(|_| {
-                            Error("Failed to create dictionary address".to_string())
-                        })?;
-                        Ok(Key::dictionary(seed, &key_bytes))
+                        let key_bytes = dictionary_item_key.as_str().as_bytes();
+                        Ok(Key::dictionary(seed, key_bytes))
                     } else {
                         Err(Error("Failed create dictionary address".to_string()))
                     }
@@ -667,12 +665,10 @@ impl DictionaryIdentifier {
                 seed_uref,
                 dictionary_item_key,
             } => {
-                let key_bytes = dictionary_item_key
-                    .to_bytes()
-                    .map_err(|_| Error("Failed to create dictionary address".to_string()))?;
+                let key_bytes = dictionary_item_key.as_str().as_bytes();
                 let seed_uref = URef::from_formatted_str(seed_uref)
                     .map_err(|_| Error("Failed to parse URef".to_string()))?;
-                Ok(Key::dictionary(seed_uref, &key_bytes))
+                Ok(Key::dictionary(seed_uref, key_bytes))
             }
             DictionaryIdentifier::Dictionary(address) => Key::from_formatted_str(address)
                 .map_err(|_| Error("Failed to parse Dictionary key".to_string())),

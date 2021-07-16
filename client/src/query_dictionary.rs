@@ -141,9 +141,7 @@ mod dictionary_item_key {
     }
 
     pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -217,7 +215,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionaryItem {
                     .required_unless(seed_uref::ARG_NAME)
                     .required_unless(dictionary_address::ARG_NAME),
             )
-            .arg(dictionary_item_key::arg())
+            .arg(dictionary_item_key::arg().required_unless(dictionary_address::ARG_NAME))
             .group(
                 ArgGroup::with_name("dictionary-identifier")
                     .arg(account_hash::ARG_NAME)

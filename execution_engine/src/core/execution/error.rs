@@ -102,6 +102,8 @@ pub enum Error {
     InvalidContractWasm(ContractWasmHash),
     #[error("Missing argument: {name}")]
     MissingArgument { name: String },
+    #[error("Dictionary item key size exceeded limit")]
+    DictionaryItemKeyTooLong,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

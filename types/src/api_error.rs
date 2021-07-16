@@ -536,6 +536,8 @@ pub enum ApiError {
     HostBufferFull,
     /// Could not lay out an array in memory
     AllocLayout,
+    /// The `dictionary_item_key` length exceeds the maximum allowed limit.
+    DictionaryItemKeyTooLarge,
     /// Error specific to Auction contract.
     AuctionError(u8),
     /// Contract header errors.
@@ -686,6 +688,7 @@ impl From<ApiError> for u32 {
             ApiError::HostBufferEmpty => 33,
             ApiError::HostBufferFull => 34,
             ApiError::AllocLayout => 35,
+            ApiError::DictionaryItemKeyTooLarge => 36,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -733,6 +736,7 @@ impl From<u32> for ApiError {
             33 => ApiError::HostBufferEmpty,
             34 => ApiError::HostBufferFull,
             35 => ApiError::AllocLayout,
+            36 => ApiError::DictionaryItemKeyTooLarge,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -783,6 +787,9 @@ impl Debug for ApiError {
             ApiError::HostBufferEmpty => write!(f, "ApiError::HostBufferEmpty")?,
             ApiError::HostBufferFull => write!(f, "ApiError::HostBufferFull")?,
             ApiError::AllocLayout => write!(f, "ApiError::AllocLayout")?,
+            ApiError::DictionaryItemKeyTooLarge => {
+                write!(f, "ApiError::DictionaryItemKeyTooLarge")?
+            }
             ApiError::AuctionError(value) => write!(f, "ApiError::AuctionError({})", value)?,
             ApiError::ContractHeader(value) => write!(f, "ApiError::ContractHeader({})", value)?,
             ApiError::Mint(value) => write!(f, "ApiError::Mint({})", value)?,

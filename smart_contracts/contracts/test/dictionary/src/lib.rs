@@ -17,7 +17,7 @@ use casper_types::{
 };
 
 pub const DICTIONARY_NAME: &str = "local";
-pub const DICTIONARY_PUT_KEY: [u8; 32] = [66u8; 32];
+pub const DICTIONARY_PUT_KEY: &str = "item_key";
 pub const HELLO_PREFIX: &str = " Hello, ";
 pub const WORLD_SUFFIX: &str = "world!";
 pub const MODIFY_WRITE_ENTRYPOINT: &str = "modify_write";

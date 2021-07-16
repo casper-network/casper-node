@@ -4,14 +4,15 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
-    bytesrepr::ToBytes, runtime_args, system::mint, AccessRights, CLType, ContractHash, Key,
-    RuntimeArgs, U512,
+    runtime_args, system::mint, AccessRights, ApiError, CLType, ContractHash, Key, RuntimeArgs,
+    U512,
 };
 
 use dictionary_call::{NEW_DICTIONARY_NAME, NEW_DICTIONARY_VALUE};
 
 const DICTIONARY_WASM: &str = "dictionary.wasm";
 const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
+const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
@@ -95,8 +96,8 @@ fn should_modify_with_owned_access_rights() {
         .expect("dictionary");
     let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
 
-    let key_bytes = dictionary::DICTIONARY_PUT_KEY.to_bytes().unwrap();
-    let dictionary_key = Key::dictionary(dictionary_root_uref, &key_bytes);
+    let key_bytes = dictionary::DICTIONARY_PUT_KEY.as_bytes();
+    let dictionary_key = Key::dictionary(dictionary_root_uref, key_bytes);
 
     builder
         .exec(modify_write_request_1)
@@ -263,10 +264,7 @@ fn should_write_with_write_access_rights() {
         .expect("dictionary");
     let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
 
-    let dictionary = Key::dictionary(
-        dictionary_root_uref,
-        &NEW_DICTIONARY_NAME.to_bytes().unwrap(),
-    );
+    let dictionary = Key::dictionary(dictionary_root_uref, NEW_DICTIONARY_NAME.as_bytes());
 
     let result = builder.query(None, dictionary, &[]).expect("should query");
     let cl_value = result.as_cl_value().cloned().expect("should have cl value");
@@ -315,6 +313,94 @@ fn should_not_write_with_forged_uref() {
             error,
             EngineError::Exec(Error::ForgedReference(uref))
             if *uref == forged_uref
+        ),
+        "Received error {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn dictionary_put_should_fail_with_large_item_key() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let fund_request = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => ACCOUNT_1_ADDR,
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    let install_contract_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        DICTIONARY_ITEM_KEY_CHECK,
+        runtime_args! {
+            "dictionary-operation" => "put"
+        },
+    )
+    .build();
+
+    builder.exec(fund_request).commit().expect_success();
+    builder.exec(install_contract_request).commit();
+    let exec_results = builder
+        .get_exec_results()
+        .last()
+        .expect("should have results");
+    assert_eq!(exec_results.len(), 1);
+    let error = exec_results[0].as_error().expect("should have error");
+    assert!(
+        matches!(
+            error,
+            EngineError::Exec(Error::Revert(ApiError::DictionaryItemKeyTooLarge))
+        ),
+        "Received error {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn dictionary_get_should_fail_with_large_item_key() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let fund_request = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => ACCOUNT_1_ADDR,
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    let install_contract_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        DICTIONARY_ITEM_KEY_CHECK,
+        runtime_args! {
+            "dictionary-operation" => "get"
+        },
+    )
+    .build();
+
+    builder.exec(fund_request).commit().expect_success();
+    builder.exec(install_contract_request).commit();
+    let exec_results = builder
+        .get_exec_results()
+        .last()
+        .expect("should have results");
+    assert_eq!(exec_results.len(), 1);
+    let error = exec_results[0].as_error().expect("should have error");
+    assert!(
+        matches!(
+            error,
+            EngineError::Exec(Error::Revert(ApiError::DictionaryItemKeyTooLarge))
         ),
         "Received error {:?}",
         error
