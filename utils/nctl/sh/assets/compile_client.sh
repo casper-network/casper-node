@@ -13,6 +13,9 @@ source "$NCTL"/sh/utils/main.sh
 
 pushd "$NCTL_CASPER_HOME" || exit
 
+# Make sure toolchains up to date
+make setup-rs
+
 # Build client utility.
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
     cargo build --package casper-client
