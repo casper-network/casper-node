@@ -2010,19 +2010,19 @@ where
         contract_hash: ContractHash,
         entry_point: &EntryPoint,
     ) -> Result<Key, Error> {
-        match entry_point.entry_point_type() {
-            EntryPointType::Session
-                if self.context.entry_point_type() == EntryPointType::Contract =>
-            {
+        let current = self.context.entry_point_type();
+        let next = entry_point.entry_point_type();
+        match (current, next) {
+            (EntryPointType::Contract, EntryPointType::Session) => {
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
-            EntryPointType::Session => {
-                assert_eq!(self.context.entry_point_type(), EntryPointType::Session);
+            (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
                 Ok(self.context.base_key())
             }
-            EntryPointType::Contract => Ok(contract_hash.into()),
+            (EntryPointType::Session, EntryPointType::Contract)
+            | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
         }
     }
 
