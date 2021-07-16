@@ -37,6 +37,7 @@ All notable changes to this project will be documented in this file.  The format
 * Skip storage integrity checks if the node didn't previously crash.
 * Update pinned version of Rust to `nightly-2021-06-17`
 * Changed LMDB flags to reduce flushing and optimize IO performance in the Contract Runtime.
+* Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
