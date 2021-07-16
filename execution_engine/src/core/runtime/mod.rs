@@ -2062,13 +2062,7 @@ where
                 );
             }
             for key in &extra_keys {
-                if let Err(Error::ForgedReference(maybe_forged_uref)) =
-                    self.context.validate_key(key)
-                {
-                    if !extra_keys.contains(&Key::from(maybe_forged_uref)) {
-                        return Err(Error::ForgedReference(maybe_forged_uref));
-                    }
-                }
+                self.context.validate_key(key)?;
             }
 
             if self.is_mint(key) {
