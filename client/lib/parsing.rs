@@ -971,10 +971,9 @@ mod tests {
         // create secret key file in tempdir.
         let keys_dir = tempdir().expect("Failed to create temp dir.");
         let secret_key_path = keys_dir.path().join("key.pem");
-        let secret_key_path_clone = secret_key_path.clone();
-        let secret_key_path_str = secret_key_path_clone.to_str().unwrap();
+        let secret_key_path_str = secret_key_path.to_str().unwrap();
         let mut secret_key_file =
-            fs::File::create(secret_key_path).expect("Failed to create test secret key file.");
+            fs::File::create(&secret_key_path).expect("Failed to create test secret key file.");
         write!(secret_key_file, "{}", happy::PRIVATE_KEY)
             .expect("Failed to write data to test secret key file.");
 
@@ -999,10 +998,9 @@ mod tests {
         // create secret key file in tempdir.
         let keys_dir = tempdir().expect("Failed to create temp dir.");
         let secret_key_path = keys_dir.path().join("key.pem");
-        let secret_key_path_clone = secret_key_path.clone();
-        let secret_key_path_str = secret_key_path_clone.to_str().unwrap();
+        let secret_key_path_str = secret_key_path.to_str().unwrap();
         let mut secret_key_file =
-            fs::File::create(secret_key_path).expect("Failed to create test secret key file.");
+            fs::File::create(&secret_key_path).expect("Failed to create test secret key file.");
         write!(secret_key_file, "{}", happy::PRIVATE_KEY)
             .expect("Failed to write data to test secret key file.");
 
