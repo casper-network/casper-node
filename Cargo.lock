@@ -2362,6 +2362,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gh-1688-regression"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "ghash"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
