@@ -28,14 +28,13 @@ fn should_run_ee_1071_regression() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash = account
+    let contract_hash = (*account
         .named_keys()
         .get(CONTRACT_HASH_NAME)
-        .expect("should have hash")
-        .clone()
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .expect("should have hash"))
+    .into_hash()
+    .expect("should be hash")
+    .into();
 
     let exec_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,

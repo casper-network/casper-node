@@ -439,12 +439,10 @@ async fn get_block<REv: ReactorEventT>(
 ) -> Result<Option<Block>, warp_json_rpc::Error> {
     match get_block_with_metadata(maybe_id, effect_builder).await {
         Ok(Some((block, _))) => Ok(Some(block)),
-        Ok(None) => {
-            return Err(warp_json_rpc::Error::custom(
-                ErrorCode::NoSuchBlock as i64,
-                "block not known",
-            ))
-        }
+        Ok(None) => Err(warp_json_rpc::Error::custom(
+            ErrorCode::NoSuchBlock as i64,
+            "block not known",
+        )),
         Err(error) => Err(error),
     }
 }

@@ -1073,7 +1073,7 @@ mod tests {
             for node_id in &node_ids[0..EXPECTED_DEFAULT_INFECTION_TARGET] {
                 let _ = gossip_table.we_infected(deploy_id, *node_id);
             }
-            assert!(gossip_table.finished.contains(&deploy_id));
+            assert!(gossip_table.finished.contains(deploy_id));
         }
 
         bencher.iter(|| gossip_table.purge_finished());

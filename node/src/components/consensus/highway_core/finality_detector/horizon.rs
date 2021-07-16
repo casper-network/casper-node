@@ -110,7 +110,7 @@ impl<'a, C: Context> Horizon<'a, C> {
         let find_first_lvl_n = |idx: &ValidatorIndex| {
             self.state
                 .swimlane(self.latest[*idx]?)
-                .take_while(|(_, unit)| self.seen_weight(unit, &committee) >= quorum)
+                .take_while(|(_, unit)| self.seen_weight(unit, committee) >= quorum)
                 .last()
                 .map(|(_, unit)| (*idx, unit.seq_number))
         };

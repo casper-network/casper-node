@@ -91,9 +91,9 @@ impl AsRef<[u8]> for Blake2bHash {
     }
 }
 
-impl Into<[u8; Blake2bHash::LENGTH]> for Blake2bHash {
-    fn into(self) -> [u8; Blake2bHash::LENGTH] {
-        self.0
+impl From<Blake2bHash> for [u8; Blake2bHash::LENGTH] {
+    fn from(hash: Blake2bHash) -> Self {
+        hash.0
     }
 }
 

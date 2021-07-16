@@ -13,9 +13,9 @@ enum Error {
     FailedToParseAccountHash = 12,
 }
 
-impl Into<ApiError> for Error {
-    fn into(self) -> ApiError {
-        ApiError::User(self as u16)
+impl From<Error> for ApiError {
+    fn from(error: Error) -> Self {
+        ApiError::User(error as u16)
     }
 }
 

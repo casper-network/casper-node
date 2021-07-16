@@ -3,8 +3,11 @@ use alloc::{collections::BTreeSet, vec::Vec};
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
-    CLTyped, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    system::{
+        auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
+        mint,
+    },
+    CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -45,23 +48,6 @@ pub trait StorageProvider {
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
     ) -> Result<(), Error>;
-}
-
-/// Provides functionality of a system module.
-pub trait SystemProvider {
-    /// Creates new purse.
-    fn create_purse(&mut self) -> Result<URef, Error>;
-
-    /// Gets purse balance.
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
-
-    /// Transfers specified `amount` of tokens from `source` purse into a `target` purse.
-    fn transfer_from_purse_to_purse(
-        &mut self,
-        source: URef,
-        target: URef,
-        amount: U512,
-    ) -> Result<(), Error>;
 
     /// Records era info at the given era id.
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error>;
@@ -69,24 +55,25 @@ pub trait SystemProvider {
 
 /// Provides an access to mint.
 pub trait MintProvider {
-    /// Transfers `amount` from `source` purse to a `target` account.
-    fn transfer_purse_to_account(
-        &mut self,
-        source: URef,
-        target: AccountHash,
-        amount: U512,
-    ) -> Result<TransferredTo, Error>;
+    /// Returns successfully unbonded stake to origin account.
+    fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error>;
 
-    /// Transfers `amount` from `source` purse to a `target` purse.
-    fn transfer_purse_to_purse(
+    /// Allows optimized auction and mint interaction.
+    /// Intended to be used only by system contracts to manage staked purses.
+    fn mint_transfer_direct(
         &mut self,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error>;
+        id: Option<u64>,
+    ) -> Result<Result<(), mint::Error>, Error>;
 
-    /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
-    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
+    /// Creates new purse.
+    fn create_purse(&mut self) -> Result<URef, Error>;
+
+    /// Gets purse balance.
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
 
     /// Reads the base round reward.
     fn read_base_round_reward(&mut self) -> Result<U512, Error>;

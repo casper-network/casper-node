@@ -212,7 +212,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             return Ok((network, Effects::new()));
         }
 
-        let net_metrics = NetworkingMetrics::new(registry).map_err(Error::MetricsError)?;
+        let net_metrics = NetworkingMetrics::new(registry).map_err(Error::Metrics)?;
 
         if notify {
             debug!("our node id: {}", our_id);
@@ -561,7 +561,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             attempts_remaining,
         },
         SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
-            debug!(%address, %error, "{}: failed to connect", our_id(&swarm));
+            debug!(%address, %error, "{}: failed to connect", our_id(swarm));
             let we_are_isolated = match known_addresses_mut.lock() {
                 Err(err) => {
                     panic!("Could not acquire `known_addresses_mut` mutex: {:?}", err)
@@ -581,7 +581,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                     info!(
                         "{}: failed to bootstrap to any other nodes, but continuing to run as we \
                              are a bootstrap node",
-                        our_id(&swarm)
+                        our_id(swarm)
                     );
                 } else {
                     // (Re)schedule connection attempts to known peers.
@@ -596,7 +596,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                         }
                         Ok(known_addresses) => {
                             for address in known_addresses.keys() {
-                                let our_id = our_id(&swarm);
+                                let our_id = our_id(swarm);
                                 debug!(%our_id, %address, "dialing known address");
                                 Swarm::dial_addr(swarm, address.clone()).unwrap_or_else(|err| {
                                     error!(%our_id, %address,

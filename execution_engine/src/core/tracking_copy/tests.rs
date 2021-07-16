@@ -91,8 +91,8 @@ fn tracking_copy_new() {
     let db = CountingDb::new(counter);
     let tc = TrackingCopy::new(db);
 
-    assert_eq!(tc.ops.is_empty(), true);
-    assert_eq!(tc.fns.is_empty(), true);
+    assert!(tc.ops.is_empty());
+    assert!(tc.fns.is_empty());
 }
 
 #[test]
@@ -231,8 +231,8 @@ fn tracking_copy_add_named_key() {
         StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
     );
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
-    assert_eq!(tc.ops.is_empty(), true);
-    assert_eq!(tc.fns.is_empty(), true);
+    assert!(tc.ops.is_empty());
+    assert!(tc.fns.is_empty());
 
     // adding correct type works
     let add = tc.add(correlation_id, k, named_key);

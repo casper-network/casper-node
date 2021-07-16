@@ -150,7 +150,7 @@ impl Executor {
             access_rights,
             args.clone(),
             authorization_keys,
-            &account,
+            account,
             base_key,
             blocktime,
             deploy_hash,
@@ -174,7 +174,7 @@ impl Executor {
         };
 
         on_fail_charge!(runtime_context::validate_entry_point_access_with(
-            &contract_package,
+            contract_package,
             entry_point_access,
             |uref| runtime_context::uref_has_access_rights(uref, &accounts_access_rights)
         ));
@@ -309,7 +309,7 @@ impl Executor {
             payment_named_keys,
             Default::default(),
             payment_base_key,
-            &account,
+            account,
             authorization_keys,
             blocktime,
             deploy_hash,

@@ -426,7 +426,7 @@ where
             return Ok((value.deref().clone(), proofs));
         }
 
-        panic! {query_result};
+        panic! {"{:?}", query_result};
     }
 
     pub fn total_supply(&self, maybe_post_state: Option<Blake2bHash>) -> U512 {
@@ -448,10 +448,7 @@ where
 
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let exec_request = {
-            let hash = self
-                .post_state_hash
-                .clone()
-                .expect("expected post_state_hash");
+            let hash = self.post_state_hash.expect("expected post_state_hash");
             exec_request.parent_state_hash = hash;
             exec_request
         };
@@ -479,10 +476,7 @@ where
 
     /// Commit effects of previous exec call on the latest post-state hash.
     pub fn commit(&mut self) -> &mut Self {
-        let prestate_hash = self
-            .post_state_hash
-            .clone()
-            .expect("Should have genesis hash");
+        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
 
         let effects = self.transforms.last().cloned().unwrap_or_default();
 
@@ -611,6 +605,18 @@ where
         exec_result.is_failure()
     }
 
+    pub fn get_error(&self) -> Option<engine_state::Error> {
+        let exec_results = &self.get_exec_results();
+
+        let exec_result = exec_results
+            .last()
+            .expect("Expected to be called after run()")
+            .get(0)
+            .expect("Unable to get first deploy result");
+
+        exec_result.as_error().cloned()
+    }
+
     /// Gets the transform map that's cached between runs
     pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
         self.transforms.clone()
@@ -644,22 +650,18 @@ where
     }
 
     pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, Transform> {
-        &self
-            .genesis_transforms
+        self.genesis_transforms
             .as_ref()
             .expect("should have genesis transforms")
     }
 
     pub fn get_genesis_hash(&self) -> Blake2bHash {
         self.genesis_hash
-            .clone()
             .expect("Genesis hash should be present. Should be called after run_genesis.")
     }
 
     pub fn get_post_state_hash(&self) -> Blake2bHash {
-        self.post_state_hash
-            .clone()
-            .expect("Should have post-state hash.")
+        self.post_state_hash.expect("Should have post-state hash.")
     }
 
     pub fn get_engine_state(&self) -> &EngineState<S> {
@@ -753,6 +755,10 @@ where
             },
             Err(_) => None,
         }
+    }
+
+    pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
+        self.get_account(account_hash).expect("account to exist")
     }
 
     pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
