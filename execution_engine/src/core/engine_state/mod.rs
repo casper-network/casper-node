@@ -766,6 +766,8 @@ where
                 Err(error) => return Ok(make_charged_execution_failure(error)),
             };
 
+        let payment_uref;
+
         // Construct a payment code that will put cost of wasmless payment into payment purse
         let payment_result = {
             // Check source purses minimum balance
@@ -814,7 +816,7 @@ where
                 );
                 vec![system, handle_payment]
             };
-            let (payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
+            let (maybe_payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
                 executor.exec_system_contract(
                     DirectSystemContractCall::GetPaymentPurse,
                     system_module.clone(),
@@ -836,7 +838,7 @@ where
                     get_payment_purse_call_stack,
                 );
 
-            let payment_uref = match payment_uref {
+            payment_uref = match maybe_payment_uref {
                 Some(payment_uref) => payment_uref,
                 None => return Ok(make_charged_execution_failure(Error::InsufficientPayment)),
             };
@@ -1036,13 +1038,15 @@ where
                 );
                 vec![system, handle_payment]
             };
+            let extra_keys = [Key::from(payment_uref), Key::from(proposer_purse)];
+
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
                     system_module,
                     handle_payment_args,
                     &mut handle_payment_named_keys,
-                    Default::default(),
+                    &extra_keys,
                     Key::from(handle_payment_contract_hash),
                     &system_account,
                     authorization_keys,
@@ -1335,39 +1339,38 @@ where
         let payment_result_cost = payment_result.cost();
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
+
+        // Get handle payment system contract details
+        // payment_code_spec_6: system contract validity
+        let handle_payment_contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, protocol_data.handle_payment())
+        {
+            Ok(contract) => contract,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
+        // Get payment purse Key from handle payment contract
+        // payment_code_spec_6: system contract validity
+        let payment_purse_key: Key = match handle_payment_contract
+            .named_keys()
+            .get(handle_payment::PAYMENT_PURSE_KEY)
+        {
+            Some(key) => *key,
+            None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+        };
+        let purse_balance_key = match tracking_copy
+            .borrow_mut()
+            .get_purse_balance_key(correlation_id, payment_purse_key)
+        {
+            Ok(key) => key,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
         let payment_purse_balance: Motes = {
-            // Get handle payment system contract details
-            // payment_code_spec_6: system contract validity
-            let handle_payment_contract = match tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, protocol_data.handle_payment())
-            {
-                Ok(contract) => contract,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
-
-            // Get payment purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            let payment_purse_key: Key = match handle_payment_contract
-                .named_keys()
-                .get(handle_payment::PAYMENT_PURSE_KEY)
-            {
-                Some(key) => *key,
-                None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-            };
-
-            let purse_balance_key = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, payment_purse_key)
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
-
             match tracking_copy
                 .borrow_mut()
                 .get_purse_balance(correlation_id, purse_balance_key)
@@ -1589,13 +1592,18 @@ where
                 );
                 vec![deploy_account, handle_payment]
             };
+            let extra_keys = [
+                payment_purse_key,
+                purse_balance_key,
+                Key::from(proposer_purse),
+            ];
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
                     system_module,
                     handle_payment_args,
                     &mut handle_payment_keys,
-                    Default::default(),
+                    &extra_keys,
                     Key::from(protocol_data.handle_payment()),
                     &system_account,
                     authorization_keys,
