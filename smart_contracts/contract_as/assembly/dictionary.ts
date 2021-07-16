@@ -4,7 +4,7 @@ import {Error, ErrorCode} from "./error";
 import {CLValue} from "./clvalue";
 import {readHostBuffer} from "./index";
 import { URef } from "./uref";
-import { arrayToTyped } from "./utils";
+import { arrayToTyped, encodeUTF8 } from "./utils";
 import { Key } from "./key";
 import * as CL from "./";
 
@@ -39,9 +39,9 @@ export function newDictionary(keyName: String): URef {
  * @category Storage
  * @returns Returns bytes of serialized value, otherwise a null if given dictionary does not exists.
  */
-export function dictionaryGet(seed_uref: URef, key: Array<u8>): Uint8Array | null {
+export function dictionaryGet(seed_uref: URef, key: String): Uint8Array | null {
     let seedUrefBytes = seed_uref.toBytes();
-    const keyBytes = arrayToTyped(key);
+    const keyBytes = encodeUTF8(key);
 
     let valueSize = new Uint8Array(1);
     const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
@@ -60,8 +60,8 @@ export function dictionaryGet(seed_uref: URef, key: Array<u8>): Uint8Array | nul
  * Writes `value` under `key` in a dictionary.
  * @category Storage
  */
-export function dictionaryPut(uref: URef, key: Array<u8>, value: CLValue): void {
-    const keyBytes = arrayToTyped(key);
+export function dictionaryPut(uref: URef, key: String, value: CLValue): void {
+    const keyBytes = encodeUTF8(key);
     const urefBytes = uref.toBytes();
     const valueBytes = value.toBytes();
     externals.dictionary_put(

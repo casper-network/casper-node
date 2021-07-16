@@ -13,7 +13,7 @@ import { fromBytesString, toBytesString } from "../../../../contract_as/assembly
 import { revert } from "../../../../contract_as/assembly/externals";
 
 const DICTIONARY_NAME = "local";
-const DICTIONARY_PUT: Array<u8> = [66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66];
+const DICTIONARY_PUT_KEY = "item_key";
 const HELLO_PREFIX = " Hello, ";
 const WORLD_SUFFIX = "world!";
 const MODIFY_WRITE_ENTRYPOINT = "modify_write";
@@ -46,7 +46,7 @@ export function modify_write(): void {
 
   let res1: String;
 
-  let resBytes1 = dictionaryGet(dictionaryURef, DICTIONARY_PUT);
+  let resBytes1 = dictionaryGet(dictionaryURef, DICTIONARY_PUT_KEY);
   if (resBytes1 !== null) {
     res1 = fromBytesString(resBytes1).unwrap();
   }
@@ -55,17 +55,17 @@ export function modify_write(): void {
   }
   
   res1 += HELLO_PREFIX;
-  dictionaryPut(dictionaryURef, DICTIONARY_PUT, CLValue.fromString(res1));
+  dictionaryPut(dictionaryURef, DICTIONARY_PUT_KEY, CLValue.fromString(res1));
 
   // Read (this should exercise cache)
-  const resBytes2 = dictionaryGet(dictionaryURef, DICTIONARY_PUT);
+  const resBytes2 = dictionaryGet(dictionaryURef, DICTIONARY_PUT_KEY);
   if (resBytes2 === null) {
     Error.fromUserError(3).revert();
     return;
   }
   let res2 = fromBytesString(resBytes2).unwrap();
   res2 += WORLD_SUFFIX;
-  dictionaryPut(dictionaryURef, DICTIONARY_PUT, CLValue.fromString(res2.trim()));
+  dictionaryPut(dictionaryURef, DICTIONARY_PUT_KEY, CLValue.fromString(res2.trim()));
 }
 
 export function share_ro(): void {
@@ -106,7 +106,7 @@ export function call(): void {
   let namedKeys = new Array<Pair<String, Key>>();
 
   let dictionaryURef = newDictionary(DICTIONARY_REF);
-  dictionaryPut(dictionaryURef, toBytesString(DEFAULT_DICTIONARY_NAME), CLValue.fromString(DEFAULT_DICTIONARY_VALUE));
+  dictionaryPut(dictionaryURef, DEFAULT_DICTIONARY_NAME, CLValue.fromString(DEFAULT_DICTIONARY_VALUE));
 
   namedKeys.push(new Pair(DICTIONARY_NAME, Key.fromURef(dictionaryURef)))
 
