@@ -28,10 +28,9 @@ use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_node::types::Deploy;
+use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
 use casper_types::{Key, UIntParseError, U512};
 
-use casper_node::rpcs::state::DictionaryIdentifier;
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};

@@ -12,7 +12,6 @@ import { newDictionary, dictionaryGet, dictionaryPut } from "../../../../contrac
 import { fromBytesString, toBytesString } from "../../../../contract_as/assembly/bytesrepr";
 import { revert, dictionary_put, dictionary_get } from "../../../../contract_as/assembly/externals";
 
-
 const DICTIONARY_NAME = "local";
 const DICTIONARY_PUT_KEY = "item_key";
 const HELLO_PREFIX = " Hello, ";
