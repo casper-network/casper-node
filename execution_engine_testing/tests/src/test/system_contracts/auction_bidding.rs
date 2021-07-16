@@ -5,9 +5,9 @@ use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
         DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, SYSTEM_ADDR,
-        TIMESTAMP_MILLIS_INCREMENT,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
+        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -21,12 +21,16 @@ use casper_execution_engine::{
     },
     shared::motes::Motes,
 };
+
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::auction::{
-        self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
-        METHOD_SLASH,
+    system::{
+        auction::{
+            self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
+            METHOD_SLASH,
+        },
+        mint,
     },
     ApiError, EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -196,6 +200,61 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let account_balance_after_slashing = builder.get_purse_balance(unbonding_purse);
     assert_eq!(account_balance_after_slashing, account_balance_before);
+}
+
+#[ignore]
+#[test]
+fn should_fail_bonding_with_insufficient_funds_directly() {
+    let new_validator_sk = SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap();
+    let new_validator_pk: PublicKey = (&new_validator_sk).into();
+    let new_validator_hash = AccountHash::from(&new_validator_pk);
+    assert_ne!(&DEFAULT_PROPOSER_PUBLIC_KEY.clone(), &new_validator_pk);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    let transfer_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
+    let delegation_rate: DelegationRate = 10;
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let transfer_args = runtime_args! {
+        mint::ARG_TARGET => new_validator_hash,
+        mint::ARG_AMOUNT => transfer_amount,
+        mint::ARG_ID => Some(1u64),
+    };
+    let exec_request =
+        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let new_validator_account = builder
+        .get_account(new_validator_hash)
+        .expect("should work");
+
+    let new_validator_balance = builder.get_purse_balance(new_validator_account.main_purse());
+
+    assert_eq!(new_validator_balance, transfer_amount,);
+
+    let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
+        new_validator_hash,
+        builder.get_auction_contract_hash(),
+        auction::METHOD_ADD_BID,
+        runtime_args! {
+            auction::ARG_PUBLIC_KEY => new_validator_pk,
+            auction::ARG_AMOUNT => new_validator_balance + 1,
+            auction::ARG_DELEGATION_RATE => delegation_rate,
+        },
+    )
+    .build();
+    builder.exec(add_bid_request);
+
+    let error = builder.get_error().expect("should be error");
+
+    assert!(
+        matches!(error, EngineError::Exec(Error::Revert(e)) if e == ApiError::from(auction::Error::TransferToBidPurse)),
+        "{:?}",
+        error
+    );
 }
 
 #[ignore]

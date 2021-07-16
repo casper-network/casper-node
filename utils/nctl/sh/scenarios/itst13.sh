@@ -99,23 +99,6 @@ function check_inactive() {
     return $?
 }
 
-# Checks that the current era + 1 contains a nodes 
-# public key hex
-function is_trusted_validator() {
-    local NODE_ID=${1}
-    local HEX=$(get_node_public_key_hex_extended "$NODE_ID")
-    local ERA=$(check_current_era)
-    # Plus 1 to avoid query issue if era switches mid run
-    local ERA_PLUS_1=$(expr $ERA + 1)
-    # note: tonumber is a must here to prevent jq from being too smart.
-    # The jq arg 'era' is set to $ERA_PLUS_1. The query looks to find that
-    # the validator is removed from era_validators list. We grep for
-    # the public_key_hex to see if the validator is still listed and return
-    # the exit code to check success.
-    nctl-view-chain-auction-info | jq --arg era "$ERA_PLUS_1" '.auction_state.era_validators[] | select(.era_id == ($era | tonumber))' | grep -q "$HEX"
-    return $?
-}
-
 function assert_inactive() {
     local NODE_ID=${1}
     log_step "Checking for inactive node-$NODE_ID..."
@@ -129,25 +112,6 @@ function assert_inactive() {
 
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Time out. Failed to confirm node-$NODE_ID as inactive validator in $SYNC_TIMEOUT_SEC seconds."
-            exit 1
-        fi
-        sleep 1
-    done
-}
-
-function assert_eviction() {
-    local NODE_ID=${1}
-    log_step "Checking for evicted node-$NODE_ID..."
-    while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        if ( ! is_trusted_validator "$NODE_ID" ); then
-            log "validator node-$NODE_ID was ejected! [expected]"
-            break
-        fi
-
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Time out. Failed to confirm node-$NODE_ID as evicted validator in $SYNC_TIMEOUT_SEC seconds."
             exit 1
         fi
         sleep 1
