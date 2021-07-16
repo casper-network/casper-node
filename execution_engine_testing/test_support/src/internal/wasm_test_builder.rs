@@ -795,6 +795,10 @@ where
         }
     }
 
+    pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
+        self.get_account(account_hash).expect("account to exist")
+    }
+
     pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])

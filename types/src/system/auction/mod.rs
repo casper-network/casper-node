@@ -23,9 +23,7 @@ pub use delegator::Delegator;
 pub use entry_points::auction_entry_points;
 pub use era_info::*;
 pub use error::Error;
-pub use providers::{
-    AccountProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
-};
+pub use providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use unbonding_purse::UnbondingPurse;
 
@@ -52,7 +50,7 @@ pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
 
 /// Bonding auction contract interface
 pub trait Auction:
-    StorageProvider + SystemProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
+    StorageProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
 {
     /// Returns era_validators.
     ///
@@ -131,8 +129,15 @@ pub trait Auction:
                 if bid.inactive() {
                     bid.activate();
                 }
-                self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)
-                    .map_err(|_| Error::TransferToBidPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    *bid.bonding_purse(),
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToBidPurse)?
+                .map_err(|_| Error::TransferToBidPurse)?;
                 let updated_amount = bid
                     .with_delegation_rate(delegation_rate)
                     .increase_stake(amount)?;
@@ -141,8 +146,15 @@ pub trait Auction:
             }
             None => {
                 let bonding_purse = self.create_purse()?;
-                self.transfer_purse_to_purse(source, bonding_purse, amount)
-                    .map_err(|_| Error::TransferToBidPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    bonding_purse,
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToBidPurse)?
+                .map_err(|_| Error::TransferToBidPurse)?;
                 let bid = Bid::unlocked(public_key, bonding_purse, amount, delegation_rate);
                 self.write_bid(account_hash, bid)?;
                 amount
@@ -261,15 +273,29 @@ pub trait Auction:
 
         let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
-                self.transfer_purse_to_purse(source, *delegator.bonding_purse(), amount)
-                    .map_err(|_| Error::TransferToDelegatorPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    *delegator.bonding_purse(),
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
                 delegator.increase_stake(amount)?;
                 *delegator.staked_amount()
             }
             None => {
                 let bonding_purse = self.create_purse()?;
-                self.transfer_purse_to_purse(source, bonding_purse, amount)
-                    .map_err(|_| Error::TransferToDelegatorPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    bonding_purse,
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::unlocked(
                     delegator_public_key.clone(),
                     amount,
@@ -569,7 +595,7 @@ pub trait Auction:
             )?;
             let total_delegator_payout = delegator_payouts
                 .iter()
-                .map(|(amount, _bonding_purse)| *amount)
+                .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
                 .sum();
 
             let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
@@ -583,23 +609,30 @@ pub trait Auction:
             // TODO: add "mint into existing purse" facility
             let tmp_validator_reward_purse =
                 self.mint(validator_reward).map_err(|_| Error::MintReward)?;
-            self.transfer_purse_to_purse(
+
+            self.mint_transfer_direct(
+                Some(public_key.to_account_hash()),
                 tmp_validator_reward_purse,
                 validator_bonding_purse,
                 validator_reward,
+                None,
             )
+            .map_err(|_| Error::ValidatorRewardTransfer)?
             .map_err(|_| Error::ValidatorRewardTransfer)?;
 
             // TODO: add "mint into existing purse" facility
             let tmp_delegator_reward_purse = self
                 .mint(total_delegator_payout)
                 .map_err(|_| Error::MintReward)?;
-            for (delegator_payout, bonding_purse) in delegator_payouts {
-                self.transfer_purse_to_purse(
+            for (delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
+                self.mint_transfer_direct(
+                    Some(delegator_account_hash),
                     tmp_delegator_reward_purse,
                     bonding_purse,
                     delegator_payout,
+                    None,
                 )
+                .map_err(|_| Error::DelegatorRewardTransfer)?
                 .map_err(|_| Error::DelegatorRewardTransfer)?;
             }
         }
