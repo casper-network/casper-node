@@ -1557,6 +1557,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dictionary-item-key-length"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "diff"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -761,5 +761,5 @@ extern "C" {
         key_size: usize,
         value_ptr: *const u8,
         value_size: usize,
-    );
+    ) -> i32;
 }

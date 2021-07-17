@@ -40,3 +40,10 @@ fn to_ptr<T: ToBytes>(t: T) -> (*const u8, usize, Vec<u8>) {
     let size = bytes.len();
     (ptr, size, bytes)
 }
+
+fn dictionary_item_key_to_ptr(dictionary_item_key: &str) -> (*const u8, usize) {
+    let bytes = dictionary_item_key.as_bytes();
+    let ptr = bytes.as_ptr();
+    let size = bytes.len();
+    (ptr, size)
+}
