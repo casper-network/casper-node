@@ -58,9 +58,6 @@
 //! A request **must** have a `Responder` field, which a handler of a request **must** call at
 //! some point. Failing to do so will result in a resource leak.
 
-pub mod announcements;
-pub mod requests;
-
 use std::{
     any::type_name,
     borrow::Cow,
@@ -79,6 +76,11 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{error, warn};
 
+use announcements::{
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+    NetworkAnnouncement, RpcServerAnnouncement,
+};
 use casper_execution_engine::{
     core::engine_state::{
         self,
@@ -96,13 +98,20 @@ use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
     Transfer, U512,
 };
+use requests::{
+    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StateStoreRequest, StorageRequest,
+};
 
 use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
         consensus::{BlockContext, ClContext},
-        contract_runtime::EraValidatorsRequest,
+        contract_runtime::{
+            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+        },
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
@@ -116,21 +125,11 @@ use crate::{
     },
     utils::Source,
 };
-use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    NetworkAnnouncement, RpcServerAnnouncement,
-};
-use requests::{
-    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StateStoreRequest, StorageRequest,
-};
 
 use self::announcements::BlocklistAnnouncement;
-use crate::components::contract_runtime::{
-    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
-};
+
+pub mod announcements;
+pub mod requests;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1003,14 +1002,14 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested deploys from the deploy store.
     pub(crate) async fn get_deploys_from_storage(
         self,
-        deploy_hashes: Multiple<DeployHash>,
+        deploy_hashes: Vec<DeployHash>,
     ) -> Vec<Option<Deploy>>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes: deploy_hashes.to_vec(),
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -1206,6 +1205,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1214,6 +1214,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
+                    transfers,
                 },
                 QueueKind::Regular,
             )

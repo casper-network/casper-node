@@ -8,7 +8,6 @@ use std::{collections::HashMap, fmt::Debug, time::Duration};
 use datasize::DataSize;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
-use smallvec::smallvec;
 use tracing::{debug, error, info};
 
 use casper_execution_engine::{
@@ -287,7 +286,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         peer: NodeId,
     ) -> Effects<Event<Deploy>> {
         effect_builder
-            .get_deploys_from_storage(smallvec![id])
+            .get_deploys_from_storage(vec![id])
             .event(move |mut results| Event::GetFromStorageResult {
                 id,
                 peer,

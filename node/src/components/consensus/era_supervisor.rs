@@ -27,7 +27,6 @@ use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
-use smallvec::SmallVec;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
@@ -1280,10 +1279,7 @@ async fn execute_finalized_block<REv>(
     REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
 {
     // Get the deploy hashes for the finalized block.
-    let deploy_hashes = finalized_block
-        .deploys_and_transfers_iter()
-        .map(DeployHash::from)
-        .collect::<SmallVec<_>>();
+    let deploy_hashes = finalized_block.deploy_hashes().to_owned();
 
     // Get all deploys in order they appear in the finalized block.
     let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
@@ -1300,8 +1296,30 @@ async fn execute_finalized_block<REv>(
             return;
         }
     }
+
+    // Get the deploy hashes for the finalized block.
+    let transaction_hashes = finalized_block.transfer_hashes().to_owned();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut transactions: Vec<Deploy> = Vec::with_capacity(transaction_hashes.len());
+    for maybe_deploy in effect_builder
+        .get_deploys_from_storage(transaction_hashes)
+        .await
+    {
+        if let Some(deploy) = maybe_deploy {
+            transactions.push(deploy)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys)
+        .enqueue_block_for_execution(finalized_block, deploys, transactions)
         .await
 }
 

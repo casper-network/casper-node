@@ -72,7 +72,6 @@ use event::BlockByHeightResult;
 pub use event::Event;
 pub use metrics::LinearChainSyncMetrics;
 pub use peers::PeersState;
-use smallvec::SmallVec;
 pub use state::State;
 pub use traits::ReactorEventT;
 
@@ -1049,11 +1048,7 @@ async fn execute_block<REv>(
 
     // Get the deploy hashes for the block.
     let deploys = {
-        let deploy_hashes = finalized_block
-            .deploy_hashes()
-            .iter()
-            .cloned()
-            .collect::<SmallVec<_>>();
+        let deploy_hashes = finalized_block.deploy_hashes().to_owned();
 
         // Get all deploys in order they appear in the finalized block.
         let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
@@ -1075,11 +1070,7 @@ async fn execute_block<REv>(
 
     // Get the deploy hashes for the block.
     let transfers = {
-        let transfer_hashes = finalized_block
-            .transfer_hashes()
-            .iter()
-            .cloned()
-            .collect::<SmallVec<_>>();
+        let transfer_hashes = finalized_block.transfer_hashes().to_owned();
 
         // Get all deploys in order they appear in the finalized block.
         let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());

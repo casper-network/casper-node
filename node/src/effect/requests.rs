@@ -761,6 +761,8 @@ pub enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
+        /// The transfers for that `FinalizedBlock`
+        transfers: Vec<Deploy>,
     },
 
     /// Get `ProtocolData` by `ProtocolVersion`.
@@ -877,6 +879,7 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys: _,
+                transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }

@@ -17,9 +17,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use itertools::Itertools;
 use prometheus::{self, Registry};
-use smallvec::smallvec;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::PublicKey;
@@ -250,7 +248,7 @@ impl BlockProposerReady {
                 }
             }
             Event::BufferDeploy(hash) => effect_builder
-                .get_deploys_from_storage(smallvec![hash])
+                .get_deploys_from_storage(vec![hash])
                 .events(move |maybe_deploys| {
                     maybe_deploys
                         .into_iter()
@@ -281,7 +279,19 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::FinalizedBlock(block) => {
-                let deploys = block.deploys_and_transfers_iter().collect_vec();
+                let deploys = block
+                    .deploy_hashes()
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Deploy)
+                    .chain(
+                        block
+                            .transfer_hashes()
+                            .iter()
+                            .copied()
+                            .map(DeployOrTransferHash::Transfer),
+                    )
+                    .collect();
                 let mut height = block.height();
 
                 if height > self.sets.next_finalized {

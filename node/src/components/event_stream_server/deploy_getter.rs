@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use datasize::DataSize;
 use once_cell::sync::OnceCell;
-use smallvec::smallvec;
 use tracing::error;
 
 use crate::{
@@ -67,7 +66,7 @@ impl DeployGetter {
         #[cfg(test)]
         return self.get_test_deploy(deploy_hash);
 
-        let deploy_hashes = smallvec![deploy_hash];
+        let deploy_hashes = vec![deploy_hash];
         let mut maybe_deploys =
             if let Some(participating_effect_builder) = self.effect_builder.participating.get() {
                 participating_effect_builder

@@ -388,23 +388,6 @@ impl FinalizedBlock {
         &self.transfer_hashes
     }
 
-    /// Returns an iterator over all deploy and transfer hashes.
-    // TODO: deprecate this and keep isolated
-    pub(crate) fn deploys_and_transfers_iter(
-        &self,
-    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
-        self.deploy_hashes
-            .iter()
-            .copied()
-            .map(DeployOrTransferHash::Deploy)
-            .chain(
-                self.transfer_hashes
-                    .iter()
-                    .copied()
-                    .map(DeployOrTransferHash::Transfer),
-            )
-    }
-
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
