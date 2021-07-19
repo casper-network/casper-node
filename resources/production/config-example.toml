@@ -44,10 +44,10 @@ unit_hashes_folder = "/var/lib/casper/casper-node"
 pending_vertex_timeout = '30min'
 
 # If the current era's protocol state has not progressed for this long, shut down.
-standstill_timeout = '5min'
+standstill_timeout = '30min'
 
 # If after another `standstill_timeout` there still was no progress, shut down.
-shutdown_on_standstill = false
+shutdown_on_standstill = true
 
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
@@ -126,11 +126,11 @@ max_addr_pending_time = '1min'
 
 # The maximum amount of upstream bandwidth in bytes per second allocated to non-validating peers.
 # A value of `0` means unlimited.
-max_outgoing_byte_rate_non_validators = 0
+max_outgoing_byte_rate_non_validators = 6553600
 
 # The maximum amount of requests from validating peers per second answered.
 # A value of `0` means unlimited.
-max_incoming_message_rate_non_validators = 0
+max_incoming_message_rate_non_validators = 3000
 
 
 # ==================================================
@@ -233,7 +233,7 @@ max_state_store_size = 10_737_418_240
 # Memory deduplication.
 #
 # If enabled, nodes will attempt to share loaded objects if possible.
-enable_mem_deduplication = false
+enable_mem_deduplication = true
 
 # Memory duplication garbage collection.
 #
