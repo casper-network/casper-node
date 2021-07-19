@@ -206,10 +206,10 @@ impl RpcCall {
 
     pub(crate) fn transfer(
         self,
-        amount: U512,
+        amount: &str,
         source_purse: Option<URef>,
-        target: TransferTarget,
-        transfer_id: u64,
+        target: &str,
+        transfer_id: &str,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {

@@ -11,10 +11,11 @@ use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, URef, U512};
+use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, UIntParseError, URef, U512};
 
 use crate::{
     error::{Error, Result},
+    parsing,
     rpc::{RpcClient, TransferTarget},
 };
 
@@ -184,10 +185,10 @@ pub(super) trait DeployExt {
 
     /// Constructs a transfer `Deploy`.
     fn new_transfer(
-        amount: U512,
+        amount: &str,
         source_purse: Option<URef>,
-        target: TransferTarget,
-        transfer_id: u64,
+        target: &str,
+        transfer_id: &str,
         params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<Deploy>;
@@ -239,10 +240,10 @@ impl DeployExt for Deploy {
     }
 
     fn new_transfer(
-        amount: U512,
+        amount: &str,
         source_purse: Option<URef>,
-        target: TransferTarget,
-        transfer_id: u64,
+        target: &str,
+        transfer_id: &str,
         params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<Deploy> {
@@ -250,6 +251,11 @@ impl DeployExt for Deploy {
         const TRANSFER_ARG_SOURCE: &str = "source";
         const TRANSFER_ARG_TARGET: &str = "target";
         const TRANSFER_ARG_ID: &str = "id";
+
+        let amount = U512::from_dec_str(amount)
+            .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
+        let target = parsing::get_transfer_target(target)?;
+        let transfer_id = parsing::transfer_id(transfer_id)?;
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;

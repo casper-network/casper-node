@@ -29,7 +29,7 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
-use casper_types::{Key, UIntParseError, U512};
+use casper_types::{Key, U512};
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
@@ -201,16 +201,10 @@ pub fn transfer(
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-    let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).transfer(
         amount,
-        source_purse,
-        target,
+        None,
+        target_account,
         transfer_id,
         deploy_params.try_into()?,
         payment_params.try_into()?,
@@ -246,12 +240,6 @@ pub fn make_transfer(
     payment_params: PaymentStrParams<'_>,
     force: bool,
 ) -> Result<()> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-    let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     let output = if maybe_output_path.is_empty() {
         OutputKind::Stdout
     } else {
@@ -260,8 +248,8 @@ pub fn make_transfer(
 
     Deploy::new_transfer(
         amount,
-        source_purse,
-        target,
+        None,
+        target_account,
         transfer_id,
         deploy_params.try_into()?,
         payment_params.try_into()?,
