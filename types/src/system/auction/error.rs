@@ -70,10 +70,13 @@ pub enum Error {
     /// Raised when caller is not the system account.
     #[cfg_attr(feature = "std", error("Function must be called by system account"))]
     InvalidCaller = 16,
-    /// Raised when function is supplied a public key that does match the caller's.
+    /// Raised when function is supplied a public key that does match the caller's or does not have
+    /// an associated account.
     #[cfg_attr(
         feature = "std",
-        error("Supplied public key does not match caller's public key")
+        error(
+            "Supplied public key does not match caller's public key or has no associated account"
+        )
     )]
     InvalidPublicKey = 17,
     /// Validator is not not bonded.

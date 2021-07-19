@@ -11,6 +11,7 @@ mod get_balance;
 mod get_era_info_by_switch_block;
 mod get_state_hash;
 mod keygen;
+mod query_dictionary;
 mod query_state;
 
 use std::process;
@@ -23,7 +24,7 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetItem as QueryState},
+    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem as QueryState},
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
@@ -56,6 +57,7 @@ enum DisplayOrder {
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
+    GetDictionaryItem,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -90,6 +92,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
+        .subcommand(GetDictionaryItem::build(
+            DisplayOrder::GetDictionaryItem as usize,
+        ))
 }
 
 #[tokio::main]

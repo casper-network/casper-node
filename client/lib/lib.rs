@@ -28,8 +28,8 @@ use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_node::types::Deploy;
-use casper_types::{UIntParseError, U512};
+use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
+use casper_types::{Key, UIntParseError, U512};
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
@@ -544,6 +544,32 @@ pub async fn list_rpcs(
         .await
 }
 
+/// Retrieves a stored value from the network.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+/// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
+/// * `dictionary_str_params` contains options to query a dictionary item.
+pub async fn get_dictionary(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+    state_root_hash: &str,
+    dictionary_str_params: DictionaryItemStrParams<'_>,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_dictionary_item(state_root_hash, dictionary_str_params)
+        .await
+}
+
 /// Container for `Deploy` construction options.
 #[derive(Default, Debug)]
 pub struct DeployStrParams<'a> {
@@ -1029,6 +1055,90 @@ impl<'a> SessionStrParams<'a> {
             session_args_simple,
             session_args_complex,
             ..Default::default()
+        }
+    }
+}
+
+/// Various ways of uniquely identifying a dictionary entry.
+pub enum DictionaryItemStrParams<'a> {
+    /// Lookup a dictionary item via an Account's named keys.
+    AccountNamedKey {
+        /// The account key as a formatted string whose named keys contains dictionary_name.
+        key: &'a str,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via a Contract's named keys.
+    ContractNamedKey {
+        /// The contract key as a formatted string whose named keys contains dictionary_name.
+        key: &'a str,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via its seed URef.
+    URef {
+        /// The dictionary's seed URef.
+        seed_uref: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via its unique key.
+    Dictionary(&'a str),
+}
+
+impl<'a> TryInto<DictionaryIdentifier> for DictionaryItemStrParams<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> Result<DictionaryIdentifier> {
+        match self {
+            DictionaryItemStrParams::AccountNamedKey {
+                key,
+                dictionary_item_key,
+                dictionary_name,
+            } => {
+                let key = Key::from_formatted_str(key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::AccountNamedKey {
+                    key: key.to_formatted_string(),
+                    dictionary_name: dictionary_name.to_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::ContractNamedKey {
+                key,
+                dictionary_item_key,
+                dictionary_name,
+            } => {
+                let key = Key::from_formatted_str(key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::ContractNamedKey {
+                    key: key.to_formatted_string(),
+                    dictionary_name: dictionary_name.to_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::URef {
+                seed_uref,
+                dictionary_item_key,
+            } => {
+                let uref = Key::from_formatted_str(seed_uref)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::URef {
+                    seed_uref: uref.to_formatted_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::Dictionary(dictionary_key) => {
+                let dictionary_key = Key::from_formatted_str(dictionary_key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::Dictionary(
+                    dictionary_key.to_formatted_string(),
+                ))
+            }
         }
     }
 }

@@ -420,6 +420,18 @@ where
         Err(format!("{:?}", query_result))
     }
 
+    pub fn query_dictionary_item(
+        &self,
+        maybe_post_state: Option<Blake2bHash>,
+        dictionary_seed_uref: URef,
+        dictionary_item_key: &str,
+    ) -> Result<StoredValue, String> {
+        let dictionary_address =
+            Key::dictionary(dictionary_seed_uref, dictionary_item_key.as_bytes());
+        let empty_path: Vec<String> = vec![];
+        self.query(maybe_post_state, dictionary_address, &empty_path)
+    }
+
     pub fn query_with_proof(
         &self,
         maybe_post_state: Option<Blake2bHash>,
@@ -793,6 +805,10 @@ where
             },
             Err(_) => None,
         }
+    }
+
+    pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
+        self.get_account(account_hash).expect("account to exist")
     }
 
     pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {

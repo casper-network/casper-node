@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{convert::TryInto, fs::File};
 
 use async_trait::async_trait;
 use jsonrpc_lite::{Id, JsonRpc, Params};
@@ -20,7 +20,7 @@ use casper_node::{
         info::{GetDeploy, GetDeployParams},
         state::{
             GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
-            GetBalanceParams, GetItem, GetItemParams,
+            GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams, GetItem, GetItemParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -31,7 +31,7 @@ use casper_types::{AsymmetricType, Key, PublicKey, URef, U512};
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
-    validation,
+    validation, DictionaryItemStrParams,
 };
 
 /// Target for a given transfer.
@@ -125,6 +125,28 @@ impl RpcCall {
         };
         let response = GetItem::request_with_map_params(self, params).await?;
         validation::validate_query_response(&response, &state_root_hash, &key, &path)?;
+        Ok(response)
+    }
+
+    pub(crate) async fn get_dictionary_item(
+        self,
+        state_root_hash: &str,
+        dictionary_str_params: DictionaryItemStrParams<'_>,
+    ) -> Result<JsonRpc> {
+        let state_root_hash =
+            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
+                context: "state_root_hash",
+                error,
+            })?;
+
+        let dictionary_identifier = dictionary_str_params.try_into()?;
+
+        let params = GetDictionaryItemParams {
+            state_root_hash,
+            dictionary_identifier,
+        };
+
+        let response = GetDictionaryItem::request_with_map_params(self, params).await?;
         Ok(response)
     }
 
@@ -400,6 +422,10 @@ impl RpcClient for GetAccountInfo {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for GetDictionaryItem {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 pub(crate) trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
@@ -423,3 +449,4 @@ impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}
 impl IntoJsonMap for GetAuctionInfoParams {}
 impl IntoJsonMap for GetAccountInfoParams {}
+impl IntoJsonMap for GetDictionaryItemParams {}

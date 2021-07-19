@@ -1558,6 +1558,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dictionary-item-key-length"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "diff"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2360,6 +2368,14 @@ dependencies = [
  "casper-contract",
  "casper-types",
  "gh-1470-regression",
+]
+
+[[package]]
+name = "gh-1688-regression"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4620,6 +4636,14 @@ name = "regex-syntax"
 version = "0.6.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
+
+[[package]]
+name = "regression-20210707"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
 
 [[package]]
 name = "remove-associated-key"
