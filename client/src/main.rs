@@ -127,6 +127,10 @@ async fn main() {
         }
         (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches).await, matches),
         (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches).await, matches),
+        (GetDictionaryItem::NAME, Some(matches)) => {
+            (GetDictionaryItem::run(matches).await, matches)
+        }
+
         _ => {
             let _ = cli().print_long_help();
             println!();
