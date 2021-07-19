@@ -1297,17 +1297,17 @@ async fn execute_finalized_block<REv>(
         }
     }
 
-    // Get the deploy hashes for the finalized block.
-    let transaction_hashes = finalized_block.transfer_hashes().to_owned();
+    // Get the WASM deploy hashes for the finalized block.
+    let transfer_hashes = finalized_block.transfer_hashes().to_owned();
 
-    // Get all deploys in order they appear in the finalized block.
-    let mut transactions: Vec<Deploy> = Vec::with_capacity(transaction_hashes.len());
+    // Get all transfers in order they appear in the finalized block.
+    let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());
     for maybe_deploy in effect_builder
-        .get_deploys_from_storage(transaction_hashes)
+        .get_deploys_from_storage(transfer_hashes)
         .await
     {
         if let Some(deploy) = maybe_deploy {
-            transactions.push(deploy)
+            transfers.push(deploy)
         } else {
             fatal!(
                 effect_builder,
@@ -1319,7 +1319,7 @@ async fn execute_finalized_block<REv>(
         }
     }
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys, transactions)
+        .enqueue_block_for_execution(finalized_block, deploys, transfers)
         .await
 }
 
