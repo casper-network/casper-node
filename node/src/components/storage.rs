@@ -1167,7 +1167,7 @@ impl Storage {
         let found_block_header_hash = block_header.hash();
         if found_block_header_hash != *block_hash {
             return Err(Error::BlockHeaderNotStoredUnderItsHash {
-                queried_block_hash_bytes: Digest::from(*block_hash).to_vec(),
+                queried_block_hash_bytes: block_hash.as_ref().to_vec(),
                 found_block_header_hash,
                 block_header: Box::new(block_header),
             });
