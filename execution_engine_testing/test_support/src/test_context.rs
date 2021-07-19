@@ -5,7 +5,7 @@ use casper_execution_engine::{
     },
     shared::motes::Motes,
 };
-use casper_types::{AccessRights, Key, PublicKey, URef, U512};
+use casper_types::{bytesrepr::ToBytes, AccessRights, Key, PublicKey, URef, U512};
 
 use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},
@@ -116,6 +116,49 @@ impl TestContext {
     pub fn query(&self, key: AccountHash, path: &[String]) -> Result<Value> {
         self.inner
             .query(None, Key::Account(key), path)
+            .map(Value::new)
+            .map_err(Error::from)
+    }
+
+    /// Queries for a [`Value`] stored in a dictionary under a given 'name'
+    ///
+    /// Returns an [`Error`] if not found.
+    pub fn query_dictionary_item(
+        &self,
+        key: Key,
+        dictionary_name: Option<String>,
+        dictionary_item_key: String,
+    ) -> Result<Value> {
+        let empty_path = vec![];
+        let dictionary_key_bytes = dictionary_item_key
+            .to_bytes()
+            .map_err(|_| Error::from("Could not serialize key bytes".to_string()))?;
+        let address = match key {
+            Key::Account(_) | Key::Hash(_) => {
+                if let Some(name) = dictionary_name {
+                    let path = vec![name];
+                    let seed_uref = self
+                        .inner
+                        .query(None, key, &path)
+                        .map(Value::new)
+                        .map_err(Error::from)?
+                        .into_t::<URef>()
+                        .map_err(Error::from)?;
+                    Key::dictionary(seed_uref, &dictionary_key_bytes)
+                } else {
+                    return Err(Error::from("No dictionary name was provided".to_string()));
+                }
+            }
+            Key::URef(uref) => Key::dictionary(uref, &dictionary_key_bytes),
+            Key::Dictionary(address) => Key::Dictionary(address),
+            _ => {
+                return Err(Error::from(
+                    "Unsupported key type for a query to a dictionary item".to_string(),
+                ))
+            }
+        };
+        self.inner
+            .query(None, address, &empty_path)
             .map(Value::new)
             .map_err(Error::from)
     }

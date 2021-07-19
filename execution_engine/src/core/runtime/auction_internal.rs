@@ -1,17 +1,18 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account,
-    account::AccountHash,
+    account::{self, AccountHash},
     bytesrepr::{FromBytes, ToBytes},
+    contracts::NamedKeys,
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-            StorageProvider, SystemProvider, UnbondingPurse,
+            StorageProvider, UnbondingPurse,
         },
-        CallStackElement,
+        mint, CallStackElement,
     },
-    CLTyped, CLValue, EraId, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH,
+    U512,
 };
 
 use super::Runtime;
@@ -102,39 +103,6 @@ where
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
-}
-
-impl<'a, R> SystemProvider for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
-{
-    fn create_purse(&mut self) -> Result<URef, Error> {
-        Runtime::create_purse(self).map_err(|exec_error| {
-            <Option<Error>>::from(exec_error).unwrap_or(Error::CreatePurseFailed)
-        })
-    }
-
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        Runtime::get_balance(self, purse)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
-    }
-
-    fn transfer_from_purse_to_purse(
-        &mut self,
-        source: URef,
-        target: URef,
-        amount: U512,
-    ) -> Result<(), Error> {
-        let mint_contract_hash = self.get_mint_contract();
-        match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
-            Ok(Ok(_)) => Ok(()),
-            // NOTE: Error below is a mint error which is lossy conversion. In calling code we map
-            // it anyway into more specific error.
-            Ok(Err(_mint_error)) => Err(Error::Transfer),
-            Err(exec_error) => Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer)),
-        }
-    }
 
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
         Runtime::record_era_info(self, era_id, era_info)
@@ -173,35 +141,85 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn transfer_purse_to_account(
-        &mut self,
-        source: URef,
-        target: AccountHash,
-        amount: U512,
-    ) -> Result<TransferredTo, Error> {
-        match self.transfer_from_purse_to_account(source, target, amount, None) {
-            Ok(Ok(transferred_to)) => Ok(transferred_to),
-            Ok(Err(_api_error)) => Err(Error::Transfer),
-            Err(exec_error) => Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer)),
+    fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
+        let account_hash =
+            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), account::blake2b);
+        let maybe_value = self
+            .context
+            .read_gs_direct(&Key::Account(account_hash))
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+        match maybe_value {
+            Some(StoredValue::Account(account)) => {
+                self.mint_transfer_direct(
+                    Some(account_hash),
+                    *unbonding_purse.bonding_purse(),
+                    account.main_purse(),
+                    *unbonding_purse.amount(),
+                    None,
+                )
+                .map_err(|_| Error::Transfer)?
+                .map_err(|_| Error::Transfer)?;
+
+                Ok(())
+            }
+            Some(_cl_value) => Err(Error::CLValue),
+            None => Err(Error::InvalidPublicKey),
         }
     }
 
-    fn transfer_purse_to_purse(
+    /// Allows optimized auction and mint interaction.
+    /// Intended to be used only by system contracts to manage staked purses.
+    /// NOTE: Never expose this through FFI.
+    fn mint_transfer_direct(
         &mut self,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error> {
-        let mint_contract_hash = self.get_mint_contract();
-        match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
-            Ok(Ok(_)) => Ok(()),
-            Ok(Err(_mint_error)) => Err(Error::Transfer),
-            Err(exec_error) => Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer)),
+        id: Option<u64>,
+    ) -> Result<Result<(), mint::Error>, Error> {
+        // if caller is system proceed
+        // else if caller has access to uref proceed
+        if self.context.get_caller() != PublicKey::System.to_account_hash()
+            && self.context.validate_uref(&source).is_err()
+        {
+            return Err(Error::InvalidCaller);
         }
+
+        let args_values = RuntimeArgs::try_new(|args| {
+            args.insert(mint::ARG_TO, to)?;
+            args.insert(mint::ARG_SOURCE, source)?;
+            args.insert(mint::ARG_TARGET, target)?;
+            args.insert(mint::ARG_AMOUNT, amount)?;
+            args.insert(mint::ARG_ID, id)?;
+            Ok(())
+        })
+        .map_err(|_| Error::CLValue)?;
+
+        let gas_counter = self.gas_counter();
+        let call_stack = self.call_stack().clone();
+        let cl_value = self
+            .call_host_mint(
+                self.context.protocol_version(),
+                mint::METHOD_TRANSFER,
+                &mut NamedKeys::default(),
+                &args_values,
+                &[],
+                call_stack,
+            )
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
+        self.set_gas_counter(gas_counter);
+        cl_value.into_t().map_err(|_| Error::CLValue)
     }
 
-    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        self.get_balance(purse)
+    fn create_purse(&mut self) -> Result<URef, Error> {
+        Runtime::create_purse(self).map_err(|exec_error| {
+            <Option<Error>>::from(exec_error).unwrap_or(Error::CreatePurseFailed)
+        })
+    }
+
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Runtime::get_balance(self, purse)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 

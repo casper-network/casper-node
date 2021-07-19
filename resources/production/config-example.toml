@@ -46,6 +46,9 @@ pending_vertex_timeout = '30min'
 # If the current era's protocol state has not progressed for this long, shut down.
 standstill_timeout = '5min'
 
+# If after another `standstill_timeout` there still was no progress, shut down.
+shutdown_on_standstill = false
+
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
 
