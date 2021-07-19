@@ -94,7 +94,7 @@ pub struct BlockAndExecutionEffects {
 }
 
 impl BlockAndExecutionEffects {
-    /// Get the block.
+    /// Gets the block.
     pub fn block(&self) -> &Block {
         &self.block
     }
