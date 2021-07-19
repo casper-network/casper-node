@@ -775,20 +775,18 @@ impl Storage {
                         .insert(*block_hash, execution_result);
                     let was_written =
                         txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
-                    debug_assert!(
-                        was_written,
-                        "failed to write deploy metadata for block_hash {} deploy_hash {}",
-                        block_hash, deploy_hash
-                    );
+                    if !was_written {
+                        error!(?block_hash, ?deploy_hash, "failed to write deploy metadata");
+                        debug_assert!(was_written);
+                    }
                 }
 
                 let was_written =
                     txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
-                debug_assert!(
-                    was_written,
-                    "failed to write transfers for block_hash {}",
-                    block_hash
-                );
+                if !was_written {
+                    error!(?block_hash, "failed to write deploy metadata");
+                    debug_assert!(was_written);
+                }
 
                 txn.commit()?;
                 responder.respond(()).ignore()
