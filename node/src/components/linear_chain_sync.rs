@@ -1068,7 +1068,7 @@ async fn execute_block<REv>(
         deploys
     };
 
-    // Get the deploy hashes for the block.
+    // Get the transfer hashes for the block.
     let transfers = {
         let transfer_hashes = finalized_block.transfer_hashes().to_owned();
 
