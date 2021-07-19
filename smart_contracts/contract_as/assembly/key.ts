@@ -6,7 +6,8 @@ import {CLValue} from "./clvalue";
 import {Error, ErrorCode} from "./error";
 import {checkTypedArrayEqual, typedToArray} from "./utils";
 import {Ref} from "./ref";
-import {Result, Error as BytesreprError} from "./bytesrepr";
+import {Result, Error as BytesreprError,toBytesString} from "./bytesrepr";
+import {PublicKey} from "./public_key";
 
 /**
  * Enum representing a variant of a [[Key]] - Account, Hash or URef.
@@ -39,6 +40,30 @@ export class AccountHash {
     @operator("!=")
     notEqualsTo(other: AccountHash): bool {
         return !this.equalsTo(other);
+    }
+
+    static fromPublicKey(publicKey:PublicKey) : AccountHash{
+        //const SYSTEM_LOWERCASE: string = "system";
+        const ED25519_LOWERCASE: string = "ed25519";
+        const SECP256K1_LOWERCASE: string = "secp256k1";
+
+        let algorithmName = publicKey.getAlgorithmName();
+        let algorithmNameBytes = toBytesString (algorithmName);
+        let publicKeyBytes = publicKey.toBytes();
+        let dataLength = algorithmNameBytes.length + publicKeyBytes.length +1;
+        
+        let data = new Array<u8>(dataLength);
+        for(let i=0;i<algorithmNameBytes.length;i++){
+            data[i]=algorithmNameBytes[i];
+        }
+        data[algorithmNameBytes.length]=0;
+        for(let i=algorithmNameBytes.length+1;i<dataLength;i++){
+            data[i]=publicKeyBytes[i];
+        }
+
+        let ret = new Uint8Array(BLAKE2B_DIGEST_LENGTH);
+        externals.casper_blake2b(data.dataStart, data.length, ret.dataStart, ret.length);
+        return new AccountHash(ret);
     }
 
     /** Deserializes a `AccountHash` from an array of bytes. */

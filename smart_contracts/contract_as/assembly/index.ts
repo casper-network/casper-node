@@ -6,7 +6,6 @@ import {Key, AccountHash} from "./key";
 import {Pair} from "./pair";
 import {Ref} from "./ref";
 import {toBytesString,
-        toBytesVecT,
         fromBytesMap,
         fromBytesString,
         toBytesStringList,
@@ -57,7 +56,7 @@ export const enum SystemContract {
  * @internal
  * @param i I-th parameter
  */
-export function getNamedArgSize(name: String): Ref<U32> | null {
+export function getNamedArgSize(name: String): Ref<u32> | null {
   let size = new Array<u32>(1);
   size[0] = 0;
 
@@ -69,10 +68,10 @@ export function getNamedArgSize(name: String): Ref<U32> | null {
       return null;
     }
     error.revert();
-    return <Ref<U32>>unreachable();
+    return <Ref<u32>>unreachable();
   }
-  const sizeU32 = changetype<U32>(size[0]);
-  return new Ref<U32>(sizeU32);
+  const sizeU32 = changetype<u32>(size[0]);
+  return new Ref<u32>(sizeU32);
 }
 
 /**
