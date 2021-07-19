@@ -1272,52 +1272,66 @@ where
     }
 }
 
+async fn get_deploys_or_transfers<REv>(
+    effect_builder: EffectBuilder<REv>,
+    hashes: Vec<DeployHash>,
+) -> Option<Vec<Deploy>>
+where
+    REv: From<StorageRequest>,
+{
+    let mut deploys_or_transfer: Vec<Deploy> = Vec::with_capacity(hashes.len());
+    for maybe_deploy_or_transfer in effect_builder.get_deploys_from_storage(hashes).await {
+        if let Some(deploy_or_transfer) = maybe_deploy_or_transfer {
+            deploys_or_transfer.push(deploy_or_transfer)
+        } else {
+            return None;
+        }
+    }
+    Some(deploys_or_transfer)
+}
+
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
 {
-    // Get the deploy hashes for the finalized block.
-    let deploy_hashes = finalized_block.deploy_hashes().to_owned();
-
     // Get all deploys in order they appear in the finalized block.
-    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
-    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
-        if let Some(deploy) = maybe_deploy {
-            deploys.push(deploy)
-        } else {
-            fatal!(
-                effect_builder,
-                "Could not fetch deploys for finalized block: {:?}",
-                finalized_block
-            )
-            .await;
-            return;
-        }
-    }
+    let deploys =
+        match get_deploys_or_transfers(effect_builder, finalized_block.deploy_hashes().to_owned())
+            .await
+        {
+            Some(deploys) => deploys,
+            None => {
+                fatal!(
+                    effect_builder,
+                    "Could not fetch deploys for finalized block: {:?}",
+                    finalized_block
+                )
+                .await;
+                return;
+            }
+        };
 
-    // Get all of the WASM deploy hashes for the finalized block.
-    let transfer_hashes = finalized_block.transfer_hashes().to_owned();
-
-    // Get all of the transfers in order they appear in the finalized block.
-    let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());
-    for maybe_deploy in effect_builder
-        .get_deploys_from_storage(transfer_hashes)
-        .await
+    // Get all transfers in order they appear in the finalized block.
+    let transfers = match get_deploys_or_transfers(
+        effect_builder,
+        finalized_block.transfer_hashes().to_owned(),
+    )
+    .await
     {
-        if let Some(deploy) = maybe_deploy {
-            transfers.push(deploy)
-        } else {
+        Some(transfers) => transfers,
+        None => {
             fatal!(
                 effect_builder,
-                "Could not fetch deploys for finalized block: {:?}",
+                "Could not fetch transfers for finalized block: {:?}",
                 finalized_block
             )
             .await;
             return;
         }
-    }
+    };
+
     effect_builder
         .enqueue_block_for_execution(finalized_block, deploys, transfers)
         .await
