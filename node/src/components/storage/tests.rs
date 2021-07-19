@@ -1240,7 +1240,7 @@ fn should_garbage_collect() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
+    // Create and store 9 blocks, 0-2 in era 0, 3-5 in era 1, and 6-8 in era 2.
     let blocks: Vec<Block> = (0..blocks_count)
         .map(|height| {
             let is_switch = height % blocks_per_era == blocks_per_era - 1;
@@ -1302,8 +1302,8 @@ fn should_garbage_collect() {
         .unwrap();
         txn.commit().unwrap();
 
-        // Garbage collection after removal of blocks from era 2 should revert the state of block
-        // bodies to what it was after era 1.
+        // Garbage collection after removal of blocks from reset_era should revert the state of
+        // block bodies to what it was after reset_era - 1.
         let snapshot = DatabaseEntriesSnapshot::from_storage(&storage);
         assert_eq!(snapshot, snapshots[reset_era - 1]);
     };
