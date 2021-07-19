@@ -9,6 +9,8 @@ import {Ref} from "./ref";
 import {Result, Error as BytesreprError,toBytesString} from "./bytesrepr";
 import {PublicKey} from "./public_key";
 
+const BLAKE2B_DIGEST_LENGTH: usize = 32;
+
 /**
  * Enum representing a variant of a [[Key]] - Account, Hash or URef.
  */
@@ -43,10 +45,6 @@ export class AccountHash {
     }
 
     static fromPublicKey(publicKey:PublicKey) : AccountHash{
-        //const SYSTEM_LOWERCASE: string = "system";
-        const ED25519_LOWERCASE: string = "ed25519";
-        const SECP256K1_LOWERCASE: string = "secp256k1";
-
         let algorithmName = publicKey.getAlgorithmName();
         let algorithmNameBytes = toBytesString (algorithmName);
         let publicKeyBytes = publicKey.toBytes();
@@ -66,7 +64,7 @@ export class AccountHash {
         return new AccountHash(ret);
     }
 
-    /** Deserializes a `AccountHash` from an array of bytes. */
+    /** Deserializes a `AccountHash` from an carray of bytes. */
     static fromBytes(bytes: Uint8Array): Result<AccountHash> {
         if (bytes.length < 32) {
             return new Result<AccountHash>(null, BytesreprError.EarlyEndOfStream, 0);
