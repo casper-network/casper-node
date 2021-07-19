@@ -528,6 +528,25 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
             block_header_with_metadata.block_signatures, block_signatures,
             "Should have retrieved expected block signatures"
         );
+
+        let block_with_metadata = storage
+            .read_block_and_sufficient_finality_signatures_by_height(
+                block.header().height(),
+                &genesis_validator_weights,
+                finality_threshold_fraction,
+                None, // last emergency restart
+            )
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_with_metadata.block.header(),
+            block.header(),
+            "Should have retrieved expected block header"
+        );
+        assert_eq!(
+            block_with_metadata.finality_signatures, block_signatures,
+            "Should have retrieved expected block signatures"
+        );
     }
 }
 

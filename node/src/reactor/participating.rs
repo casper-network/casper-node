@@ -725,7 +725,7 @@ impl reactor::Reactor for Reactor {
                             ))
                         }
                         Tag::BlockAndMetadataByHeight => {
-                            let height = match bincode::deserialize(&serialized_id) {
+                            let block_height = match bincode::deserialize(&serialized_id) {
                                 Ok(block_by_height) => block_by_height,
                                 Err(error) => {
                                     error!(
@@ -737,9 +737,42 @@ impl reactor::Reactor for Reactor {
                                     return Effects::new();
                                 }
                             };
-                            Event::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockWithMetadataAtHeight(height, sender),
-                            ))
+
+                            let chainspec = self.chainspec_loader.chainspec();
+                            let genesis_validator_weights =
+                                chainspec.network_config.chainspec_validator_stakes();
+                            let fetched_or_not_found_block_and_finality_signatures = match self
+                                .storage
+                                .read_block_and_sufficient_finality_signatures_by_height(
+                                    block_height,
+                                    &genesis_validator_weights,
+                                    chainspec.highway_config.finality_threshold_fraction,
+                                    chainspec.protocol_config.last_emergency_restart,
+                                ) {
+                                Ok(Some(block)) => FetchedOrNotFound::Fetched(block),
+                                Ok(None) => FetchedOrNotFound::NotFound(block_height),
+                                Err(error) => {
+                                    error!(
+                                        ?block_height,
+                                        ?sender,
+                                        ?error,
+                                        "error getting block at height",
+                                    );
+                                    FetchedOrNotFound::NotFound(block_height)
+                                }
+                            };
+
+                            match Message::new_get_response(
+                                &fetched_or_not_found_block_and_finality_signatures,
+                            ) {
+                                Ok(message) => {
+                                    return effect_builder.send_message(sender, message).ignore();
+                                }
+                                Err(error) => {
+                                    error!("failed to create get-response: {}", error);
+                                    return Effects::new();
+                                }
+                            };
                         }
                         Tag::GossipedAddress => {
                             warn!("received get request for gossiped-address from {}", sender);
@@ -794,7 +827,7 @@ impl reactor::Reactor for Reactor {
                                         ?serialized_id,
                                         ?sender,
                                         ?error,
-                                        "failed to decode block height",
+                                        "failed to decode block header height",
                                     );
                                     return Effects::new();
                                 }
@@ -820,7 +853,7 @@ impl reactor::Reactor for Reactor {
                                             ?block_height,
                                             ?sender,
                                             ?error,
-                                            "error getting block at height",
+                                            "error getting block header at height",
                                         );
                                         FetchedOrNotFound::NotFound(block_height)
                                     }
