@@ -794,11 +794,17 @@ impl reactor::Reactor for Reactor {
                                     return Effects::new();
                                 }
                             };
+                            let chainspec = self.chainspec_loader.chainspec();
+                            let genesis_validator_weights =
+                                chainspec.network_config.chainspec_validator_stakes();
                             let fetched_or_not_found_block_header_and_finality_signatures =
                                 match self
                                     .storage
-                                    .read_block_header_and_finality_signatures_by_height(
+                                    .read_block_header_and_sufficient_finality_signatures_by_height(
                                         block_height,
+                                        &genesis_validator_weights,
+                                        chainspec.highway_config.finality_threshold_fraction,
+                                        chainspec.protocol_config.last_emergency_restart,
                                     ) {
                                     Ok(Some(block_header)) => {
                                         FetchedOrNotFound::Fetched(block_header)

@@ -357,7 +357,7 @@ fn can_put_and_get_block() {
 }
 
 #[test]
-fn test_get_block_header_and_finality_signatures_by_height() {
+fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
@@ -429,9 +429,17 @@ fn test_get_block_header_and_finality_signatures_by_height() {
         );
     }
 
+    let genesis_validator_weights = todo!();
+    let finality_threshold_fraction = todo!();
+
     {
         let block_header_with_metadata = storage
-            .read_block_header_and_finality_signatures_by_height(block.header().height())
+            .read_block_header_and_sufficient_finality_signatures_by_height(
+                block.header().height(),
+                genesis_validator_weights,
+                finality_threshold_fraction,
+                None, // last emergency restart
+            )
             .expect("should not throw exception")
             .expect("should not be None");
         assert_eq!(

@@ -68,9 +68,11 @@ use crate::{
     NodeRng,
 };
 use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
+pub(crate) use error::FinalitySignatureError;
 use event::BlockByHeightResult;
 pub use event::Event;
 pub use metrics::LinearChainSyncMetrics;
+pub(crate) use operations::check_sufficient_finality_signatures;
 pub use peers::PeersState;
 use smallvec::SmallVec;
 pub use state::State;
