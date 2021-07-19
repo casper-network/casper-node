@@ -378,12 +378,14 @@ impl FinalizedBlock {
         self.proposer.clone()
     }
 
-    /// Returns the deploy hashes for the finalized block.
+    /// Returns the WebAssembly-deploy hashes for the finalized block. These correspond to complex
+    /// smart contract operations that require a WebAssembly VM in the execution engine.
     pub(crate) fn deploy_hashes(&self) -> &[DeployHash] {
         &self.deploy_hashes
     }
 
-    /// Returns the transfer hashes for the finalized block.
+    /// Returns the transfer hashes for the finalized block. These correspond to simple token
+    /// transfers that do not require a VM as part of their execution.
     pub(crate) fn transfer_hashes(&self) -> &[DeployHash] {
         &self.transfer_hashes
     }

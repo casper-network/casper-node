@@ -1297,10 +1297,10 @@ async fn execute_finalized_block<REv>(
         }
     }
 
-    // Get the WASM deploy hashes for the finalized block.
+    // Get all of the WASM deploy hashes for the finalized block.
     let transfer_hashes = finalized_block.transfer_hashes().to_owned();
 
-    // Get all transfers in order they appear in the finalized block.
+    // Get all of the transfers in order they appear in the finalized block.
     let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());
     for maybe_deploy in effect_builder
         .get_deploys_from_storage(transfer_hashes)
