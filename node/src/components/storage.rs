@@ -929,6 +929,29 @@ impl Storage {
         Ok(maybe_block_header_and_finality_signatures)
     }
 
+    /// Retrieves a block to handle a network request.
+    /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    pub fn read_block_and_sufficient_finality_signatures_by_height(
+        &self,
+        height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockWithMetadata>, Error> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_and_finality_signatures = self
+            .get_block_and_sufficient_finality_signatures_by_height(
+                &mut txn,
+                height,
+                genesis_validator_weights,
+                finality_threshold_fraction,
+                last_emergency_restart,
+            )?;
+        drop(txn);
+        Ok(maybe_block_and_finality_signatures)
+    }
+
     /// Retrieves single block header by height by looking it up in the index and returning it.
     fn get_block_header_by_height<Tx: Transaction>(
         &self,
@@ -1212,14 +1235,8 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let maybe_block_body: Option<BlockBody> = match block_header.hashing_algorithm_version() {
-            HashingAlgorithmVersion::V1 => {
-                self.get_single_v1_block_body(tx, block_header.body_hash())?
-            }
-            HashingAlgorithmVersion::V2 => {
-                self.get_single_block_body_v2(tx, block_header.body_hash())?
-            }
-        };
+        let maybe_block_body: Option<BlockBody> =
+            self.get_block_body_for_block_header(tx, &block_header)?;
         let block_body = match maybe_block_body {
             Some(block_body) => block_body,
             None => {
@@ -1234,7 +1251,22 @@ impl Storage {
         Ok(Some(block))
     }
 
-    fn get_single_v1_block_body<Tx: Transaction>(
+    fn get_block_body_for_block_header<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_header: &BlockHeader,
+    ) -> Result<Option<BlockBody>, LmdbExtError> {
+        match block_header.hashing_algorithm_version() {
+            HashingAlgorithmVersion::V1 => {
+                self.get_single_block_body_v1(tx, block_header.body_hash())
+            }
+            HashingAlgorithmVersion::V2 => {
+                self.get_single_block_body_v2(tx, block_header.body_hash())
+            }
+        }
+    }
+
+    fn get_single_block_body_v1<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_body_hash: &Digest,
@@ -1295,6 +1327,41 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
+    }
+
+    /// Retrieves single block header by height by looking it up in the index and returning it;
+    /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    fn get_block_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockWithMetadata>, Error> {
+        let BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        } = match self.get_block_header_and_sufficient_finality_signatures_by_height(
+            tx,
+            height,
+            genesis_validator_weights,
+            finality_threshold_fraction,
+            last_emergency_restart,
+        )? {
+            None => return Ok(None),
+            Some(block_header_with_metadata) => block_header_with_metadata,
+        };
+        if let Some(block_body) = self.get_block_body_for_block_header(tx, &block_header)? {
+            Ok(Some(BlockWithMetadata {
+                block: Block::new_from_header_and_body(block_header, block_body)?,
+                finality_signatures: block_signatures,
+            }))
+        } else {
+            debug!(?block_header, "Missing block body for header");
+            Ok(None)
+        }
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
