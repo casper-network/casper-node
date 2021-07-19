@@ -35,7 +35,7 @@ use casper_types::{
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, NamedArg, Parameter,
     Phase, ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef,
-    U128, U256, U512,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
 };
 
 use crate::{
@@ -2010,19 +2010,19 @@ where
         contract_hash: ContractHash,
         entry_point: &EntryPoint,
     ) -> Result<Key, Error> {
-        match entry_point.entry_point_type() {
-            EntryPointType::Session
-                if self.context.entry_point_type() == EntryPointType::Contract =>
-            {
+        let current = self.context.entry_point_type();
+        let next = entry_point.entry_point_type();
+        match (current, next) {
+            (EntryPointType::Contract, EntryPointType::Session) => {
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
-            EntryPointType::Session => {
-                assert_eq!(self.context.entry_point_type(), EntryPointType::Session);
+            (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
                 Ok(self.context.base_key())
             }
-            EntryPointType::Contract => Ok(contract_hash.into()),
+            (EntryPointType::Session, EntryPointType::Contract)
+            | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
         }
     }
 
@@ -2062,13 +2062,7 @@ where
                 );
             }
             for key in &extra_keys {
-                if let Err(Error::ForgedReference(maybe_forged_uref)) =
-                    self.context.validate_key(key)
-                {
-                    if !extra_keys.contains(&Key::from(maybe_forged_uref)) {
-                        return Err(Error::ForgedReference(maybe_forged_uref));
-                    }
-                }
+                self.context.validate_key(key)?;
             }
 
             if self.is_mint(key) {
@@ -3525,8 +3519,8 @@ where
         &mut self,
         uref_ptr: u32,
         uref_size: u32,
-        key_bytes_ptr: u32,
-        key_bytes_size: u32,
+        dictionary_item_key_bytes_ptr: u32,
+        dictionary_item_key_bytes_size: u32,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
         // check we can write to the host buffer
@@ -3535,9 +3529,19 @@ where
         }
 
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let key_bytes = self.bytes_from_mem(key_bytes_ptr, key_bytes_size as usize)?;
+        let dictionary_item_key_bytes = self.bytes_from_mem(
+            dictionary_item_key_bytes_ptr,
+            dictionary_item_key_bytes_size as usize,
+        )?;
 
-        let cl_value = match self.context.dictionary_get(uref, &key_bytes)? {
+        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
+        {
+            item_key
+        } else {
+            return Ok(Err(ApiError::InvalidDictionaryItemKey));
+        };
+
+        let cl_value = match self.context.dictionary_get(uref, &dictionary_item_key)? {
             Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
@@ -3564,13 +3568,26 @@ where
         key_size: u32,
         value_ptr: u32,
         value_size: u32,
-    ) -> Result<(), Trap> {
+    ) -> Result<Result<(), ApiError>, Trap> {
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
+        let dictionary_item_key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
+        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+            return Ok(Err(ApiError::DictionaryItemKeyExceedsLength));
+        }
+        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
+        {
+            item_key
+        } else {
+            return Ok(Err(ApiError::InvalidDictionaryItemKey));
+        };
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
-        self.context
-            .dictionary_put(uref, &key_bytes, cl_value)
-            .map_err(Into::into)
+        if let Err(e) = self
+            .context
+            .dictionary_put(uref, &dictionary_item_key, cl_value)
+        {
+            return Err(Trap::from(e));
+        }
+        Ok(Ok(()))
     }
 }
 

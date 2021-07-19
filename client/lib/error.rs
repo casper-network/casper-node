@@ -123,6 +123,10 @@ pub enum Error {
     #[error("Invalid response: {0}")]
     InvalidResponse(#[from] ValidateResponseError),
 
+    /// Failed to create a DictionaryIdentifier
+    #[error("Failed to parse the dictionary identifier")]
+    FailedToParseDictionaryIdentifier,
+
     /// Must call FFI's setup function prior to making FFI calls.
     #[cfg(feature = "ffi")]
     #[error("Failed to call casper_setup_client()")]
