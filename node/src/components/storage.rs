@@ -1669,7 +1669,14 @@ fn garbage_collect_block_body_v2_db(
 ) -> Result<(), LmdbExtError> {
     // This will store all the keys that are reachable from a block header, in all the parts
     // databases (we're basically doing a mark-and-sweep below).
-    let mut live_digests = HashSet::new();
+    // The entries correspond to: the block_body_v2_db, deploy_hashes_db, transfer_hashes_db,
+    // proposer_db respectively.
+    let mut live_digests = [
+        HashSet::new(),
+        HashSet::new(),
+        HashSet::new(),
+        HashSet::new(),
+    ];
 
     for (body_hash, header) in block_body_hash_to_header_map {
         if header.hashing_algorithm_version() != HashingAlgorithmVersion::V2 {
@@ -1677,8 +1684,9 @@ fn garbage_collect_block_body_v2_db(
             continue;
         }
         let mut current_digest = *body_hash;
-        while current_digest != hash::SENTINEL1 && !live_digests.contains(&current_digest) {
-            live_digests.insert(current_digest);
+        let mut live_digests_index = 1;
+        while current_digest != hash::SENTINEL1 && !live_digests[0].contains(&current_digest) {
+            live_digests[0].insert(current_digest);
             let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
                 match txn.get_value(*block_body_v2_db, &current_digest)? {
                     Some(slice) => slice,
@@ -1689,7 +1697,8 @@ fn garbage_collect_block_body_v2_db(
                         })
                     }
                 };
-            live_digests.insert(key_to_part_db);
+            live_digests[live_digests_index].insert(key_to_part_db);
+            live_digests_index += 1;
             current_digest = merkle_proof_of_rest;
         }
     }
@@ -1702,12 +1711,12 @@ fn garbage_collect_block_body_v2_db(
     ];
 
     // Clean dead entries from all the databases
-    for (database, info_text) in databases_to_clean {
+    for (index, (database, info_text)) in databases_to_clean.into_iter().enumerate() {
         let mut cursor = txn.open_rw_cursor(*database)?;
         for (raw_key, _raw_val) in cursor.iter() {
             let key = Digest::try_from(raw_key)
                 .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-            if !live_digests.contains(&key) {
+            if !live_digests[index].contains(&key) {
                 info!(?raw_key, info_text);
                 cursor.del(WriteFlags::empty())?;
             }
