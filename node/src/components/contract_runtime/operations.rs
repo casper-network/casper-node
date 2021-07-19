@@ -55,7 +55,7 @@ pub(super) fn execute_finalized_block(
         HashMap::new();
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
-    for deploy in deploys.into_iter().chain(transfers.into_iter()) {
+    for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
