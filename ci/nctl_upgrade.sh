@@ -25,7 +25,7 @@ function main() {
 
     # Start
     start_upgrade_scenario_1
-    start_upgrade_scenario_3
+    #start_upgrade_scenario_3
 }
 
 # Pulls down all remotely staged files
