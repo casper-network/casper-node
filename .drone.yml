@@ -219,24 +219,6 @@ steps:
     event:
       - push
 
-- name: s3-genesis-rel-pr
-  image: plugins/s3
-  settings:
-    bucket: 'genesis.casperlabs.io'
-    region: 'us-east-2'
-    access_key:
-      from_secret: drone_genesis_key_id
-    secret_key:
-      from_secret: drone_genesis_secret
-    source: "target/upgrade_build/**/*"
-    strip_prefix: 'target/upgrade_build/'
-    target: "/drone/${DRONE_COMMIT}/"
-  when:
-    branch:
-      - "release-*"
-    event:
-      - pull_request
-
 - name: nctl-upgrade-assets-stage-rc
   image: casperlabs/node-build-u1804
   commands:
