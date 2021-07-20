@@ -1547,6 +1547,10 @@ impl Storage {
     }
 
     /// Reads all known deploy hashes from the internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
     pub fn get_all_deploy_hashes(&self) -> BTreeSet<DeployHash> {
         let txn = self
             .env
