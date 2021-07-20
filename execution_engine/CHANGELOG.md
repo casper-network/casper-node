@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Update pinned version of Rust to `nightly-2021-06-17`
-
+* Added genesis validation step to ensure there are more genesis validators than validator slots.
 
 
 ## [1.2.0] - 2021-05-27
