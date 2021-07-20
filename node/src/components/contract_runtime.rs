@@ -633,7 +633,7 @@ impl ContractRuntime {
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
     pub fn read_trie(
-        &mut self,
+        &self,
         trie_key: Blake2bHash,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
         let correlation_id = CorrelationId::new();

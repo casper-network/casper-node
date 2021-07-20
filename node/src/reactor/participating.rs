@@ -362,6 +362,70 @@ impl Reactor {
 }
 
 impl Reactor {
+    /// Handles a request to get an item by id.
+    fn handle_get_request(
+        &self,
+        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
+        sender: NodeId,
+        tag: Tag,
+        serialized_id: &[u8],
+    ) -> Effects<<Self as reactor::Reactor>::Event> {
+        match tag {
+            Tag::Deploy => {
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |deploy_hash| {
+                    self.storage.get_deploy(deploy_hash)
+                })
+            }
+            Tag::Block => {
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_hash| {
+                    self.storage.read_block(&block_hash)
+                })
+            }
+            Tag::BlockAndMetadataByHeight => {
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
+                    let chainspec = self.chainspec_loader.chainspec();
+                    let genesis_validator_weights =
+                        chainspec.network_config.chainspec_validator_stakes();
+                    self.storage
+                        .read_block_and_sufficient_finality_signatures_by_height(
+                            block_height,
+                            &genesis_validator_weights,
+                            chainspec.highway_config.finality_threshold_fraction,
+                            chainspec.protocol_config.last_emergency_restart,
+                        )
+                })
+            }
+            Tag::GossipedAddress => {
+                warn!("received get request for gossiped-address from {}", sender);
+                Effects::new()
+            }
+            Tag::BlockHeaderByHash => {
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_hash| {
+                    self.storage.get_block_header_by_hash(&block_hash)
+                })
+            }
+            Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
+                    let chainspec = self.chainspec_loader.chainspec();
+                    let genesis_validator_weights =
+                        chainspec.network_config.chainspec_validator_stakes();
+                    self.storage
+                        .read_block_header_and_sufficient_finality_signatures_by_height(
+                            block_height,
+                            &genesis_validator_weights,
+                            chainspec.highway_config.finality_threshold_fraction,
+                            chainspec.protocol_config.last_emergency_restart,
+                        )
+                })
+            }
+            Tag::Trie => {
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_key| {
+                    self.contract_runtime.read_trie(trie_key)
+                })
+            }
+        }
+    }
+
     fn respond_to_fetch<T, F, E>(
         effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
         serialized_id: &[u8],
@@ -705,83 +769,9 @@ impl reactor::Reactor for Reactor {
                     Message::AddressGossiper(message) => {
                         Event::AddressGossiper(gossiper::Event::MessageReceived { sender, message })
                     }
-                    Message::GetRequest { tag, serialized_id } => match tag {
-                        Tag::Deploy => {
-                            return Self::respond_to_fetch(
-                                effect_builder,
-                                &serialized_id,
-                                sender,
-                                |deploy_hash| self.storage.get_deploy(deploy_hash),
-                            )
-                        }
-                        Tag::Block => {
-                            return Self::respond_to_fetch(
-                                effect_builder,
-                                &serialized_id,
-                                sender,
-                                |block_hash| self.storage.read_block(&block_hash),
-                            )
-                        }
-                        Tag::BlockAndMetadataByHeight => {
-                            return Self::respond_to_fetch(
-                                effect_builder,
-                                &serialized_id,
-                                sender,
-                                |block_height| {
-                                    let chainspec = self.chainspec_loader.chainspec();
-                                    let genesis_validator_weights =
-                                        chainspec.network_config.chainspec_validator_stakes();
-                                    self.storage
-                                        .read_block_and_sufficient_finality_signatures_by_height(
-                                            block_height,
-                                            &genesis_validator_weights,
-                                            chainspec.highway_config.finality_threshold_fraction,
-                                            chainspec.protocol_config.last_emergency_restart,
-                                        )
-                                },
-                            )
-                        }
-                        Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
-                            return Effects::new();
-                        }
-                        Tag::BlockHeaderByHash => {
-                            return Self::respond_to_fetch(
-                                effect_builder,
-                                &serialized_id,
-                                sender,
-                                |block_hash| self.storage.get_block_header_by_hash(&block_hash),
-                            )
-                        }
-                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                            return Self::respond_to_fetch(
-                                effect_builder,
-                                &serialized_id,
-                                sender,
-                                |block_height| {
-                                    let chainspec = self.chainspec_loader.chainspec();
-                                    let genesis_validator_weights =
-                                        chainspec.network_config.chainspec_validator_stakes();
-                                    self
-                                    .storage
-                                    .read_block_header_and_sufficient_finality_signatures_by_height(
-                                        block_height,
-                                        &genesis_validator_weights,
-                                        chainspec.highway_config.finality_threshold_fraction,
-                                        chainspec.protocol_config.last_emergency_restart,
-                                    )
-                                },
-                            )
-                        }
-                        Tag::Trie => {
-                            return Self::respond_to_fetch(
-                                effect_builder,
-                                &serialized_id,
-                                sender,
-                                |trie_key| self.contract_runtime.read_trie(trie_key),
-                            )
-                        }
-                    },
+                    Message::GetRequest { tag, serialized_id } => {
+                        return self.handle_get_request(effect_builder, sender, tag, &serialized_id)
+                    }
                     Message::GetResponse {
                         tag,
                         serialized_item,
