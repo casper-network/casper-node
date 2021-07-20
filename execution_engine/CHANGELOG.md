@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Update pinned version of Rust to `nightly-2021-06-17`
-
+* Added serialized test fixtures for ABI and an automated verification tool.
 
 
 ## [1.2.0] - 2021-05-27
