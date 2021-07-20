@@ -49,8 +49,8 @@ use crate::{
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, RestRequest, StateStoreRequest, StorageRequest,
+            ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+            NetworkRequest, RestRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -111,7 +111,7 @@ pub enum Event {
     #[from]
     NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
 
-    /// Linear chain fetcher event.
+    /// Block fetcher event.
     #[from]
     BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
 
@@ -153,7 +153,7 @@ pub enum Event {
 
     /// Linear chain event.
     #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
 
     /// Address gossiper event.
     #[from]
@@ -241,12 +241,6 @@ impl ReactorEvent for Event {
         } else {
             None
         }
-    }
-}
-
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(req: LinearChainRequest<NodeId>) -> Self {
-        Event::LinearChain(linear_chain::Event::Request(req))
     }
 }
 

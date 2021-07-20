@@ -983,28 +983,6 @@ impl<I: Display> Display for BlockValidationRequest<I> {
 
 type BlockHeight = u64;
 
-#[derive(Debug, Serialize)]
-/// Requests issued to the Linear Chain component.
-pub enum LinearChainRequest<I> {
-    /// Request whole block from the linear chain, by hash.
-    BlockRequest(BlockHash, I),
-    /// Request for a linear chain block at height.
-    BlockWithMetadataAtHeight(BlockHeight, I),
-}
-
-impl<I: Display> Display for LinearChainRequest<I> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LinearChainRequest::BlockRequest(bh, peer) => {
-                write!(f, "block request for hash {} from {}", bh, peer)
-            }
-            LinearChainRequest::BlockWithMetadataAtHeight(height, sender) => {
-                write!(f, "block request for {} from {}", height, sender)
-            }
-        }
-    }
-}
-
 #[derive(DataSize, Debug)]
 #[must_use]
 /// Consensus component requests.

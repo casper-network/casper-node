@@ -4,18 +4,11 @@ use std::{
 };
 
 use casper_types::ExecutionResult;
-use derive_more::From;
 
-use crate::{
-    effect::requests::LinearChainRequest,
-    types::{Block, BlockSignatures, DeployHash, FinalitySignature},
-};
+use crate::types::{Block, BlockSignatures, DeployHash, FinalitySignature};
 
-#[derive(Debug, From)]
-pub enum Event<I> {
-    /// A linear chain request issued by another node in the network.
-    #[from]
-    Request(LinearChainRequest<I>),
+#[derive(Debug)]
+pub enum Event {
     /// New linear chain block has been produced.
     NewLinearChainBlock {
         /// The block.
@@ -39,10 +32,9 @@ pub enum Event<I> {
     IsBonded(Option<Box<BlockSignatures>>, Box<FinalitySignature>, bool),
 }
 
-impl<I: Display> Display for Event<I> {
+impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request(req) => write!(f, "linear chain request: {}", req),
             Event::NewLinearChainBlock { block, .. } => {
                 write!(f, "linear chain new block: {}", block.hash())
             }
