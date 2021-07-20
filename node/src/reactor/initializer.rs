@@ -27,8 +27,8 @@ use crate::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
         requests::{
-            ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
-            RestRequest, StateStoreRequest, StorageRequest,
+            ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -95,12 +95,6 @@ impl From<NetworkRequest<NodeId, Message>> for Event {
 impl From<ChainspecLoaderAnnouncement> for Event {
     fn from(_announcement: ChainspecLoaderAnnouncement) -> Self {
         unreachable!("no chainspec announcements happen during initialization")
-    }
-}
-
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(_req: LinearChainRequest<NodeId>) -> Self {
-        unreachable!("no linear chain events happen during initialization")
     }
 }
 

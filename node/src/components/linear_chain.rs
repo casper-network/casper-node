@@ -16,15 +16,13 @@ use casper_types::ProtocolVersion;
 
 use crate::{
     components::{
-        fetcher::FetchedOrNotFound,
         linear_chain::state::{Outcome, Outcomes},
         Component,
     },
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
-            StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
@@ -64,7 +62,7 @@ impl<I> LinearChainComponent<I> {
 fn outcomes_to_effects<REv, I>(
     effect_builder: EffectBuilder<REv>,
     outcomes: Outcomes,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
     REv: From<StorageRequest>
         + From<NetworkRequest<I, Message>>
@@ -132,7 +130,7 @@ where
         + Send,
     I: Display + Send + 'static,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(
@@ -142,36 +140,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => async move {
-                let fetched_or_not_found_block =
-                    match effect_builder.get_block_from_storage(block_hash).await {
-                        None => FetchedOrNotFound::NotFound(block_hash),
-                        Some(block) => FetchedOrNotFound::Fetched(block),
-                    };
-                match Message::new_get_response(&fetched_or_not_found_block) {
-                    Ok(message) => effect_builder.send_message(sender, message).await,
-                    Err(error) => error!("failed to create get-response {}", error),
-                }
-            }
-            .ignore(),
-            Event::Request(LinearChainRequest::BlockWithMetadataAtHeight(height, sender)) => {
-                async move {
-                    let fetch_or_not_found_block_with_metadata = match effect_builder
-                        .get_block_at_height_with_metadata_from_storage(height)
-                        .await
-                    {
-                        None => FetchedOrNotFound::NotFound(height),
-                        Some(block) => FetchedOrNotFound::Fetched(block),
-                    };
-                    match Message::new_get_response(&fetch_or_not_found_block_with_metadata) {
-                        Ok(message) => effect_builder.send_message(sender, message).await,
-                        Err(error) => {
-                            error!("failed to create get-response {}", error);
-                        }
-                    }
-                }
-                .ignore()
-            }
             Event::NewLinearChainBlock {
                 block,
                 execution_results,

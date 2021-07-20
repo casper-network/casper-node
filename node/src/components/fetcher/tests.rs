@@ -89,8 +89,6 @@ reactor!(Reactor {
     }
 
     requests: {
-        // This test contains no linear chain requests, so we panic if we receive any.
-        LinearChainRequest<NodeId> -> !;
         NetworkRequest<NodeId, Message> -> network;
         StorageRequest -> storage;
         StateStoreRequest -> storage;

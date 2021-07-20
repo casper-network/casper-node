@@ -30,7 +30,7 @@ use crate::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
+        requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
     },
     fatal,
@@ -103,12 +103,6 @@ impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
 
 impl From<ConsensusRequest> for Event {
     fn from(_request: ConsensusRequest) -> Self {
-        unimplemented!("not implemented for gossiper tests")
-    }
-}
-
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(_request: LinearChainRequest<NodeId>) -> Self {
         unimplemented!("not implemented for gossiper tests")
     }
 }

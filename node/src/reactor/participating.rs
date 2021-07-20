@@ -54,9 +54,8 @@ use crate::{
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest, StateStoreRequest,
-            StorageRequest,
+            ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+            NetworkRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -119,7 +118,7 @@ pub enum Event {
     BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
     /// Linear chain event.
     #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
 
     // Requests
     /// Contract runtime request.
@@ -237,12 +236,6 @@ impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event 
 impl From<ConsensusRequest> for Event {
     fn from(request: ConsensusRequest) -> Self {
         Event::Consensus(consensus::Event::ConsensusRequest(request))
-    }
-}
-
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(request: LinearChainRequest<NodeId>) -> Self {
-        Event::LinearChain(linear_chain::Event::Request(request))
     }
 }
 
