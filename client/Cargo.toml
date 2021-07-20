@@ -6,8 +6,8 @@ edition = "2018"
 description = "A client for interacting with the Casper network"
 readme = "README.md"
 documentation = "https://docs.rs/casper-client"
-homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/client"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/client"
 license-file = "../LICENSE"
 
 [lib]

@@ -6,8 +6,8 @@ edition = "2018"
 description = "A macro to create reactor implementations for the casper-node."
 readme = "README.md"
 documentation = "https://docs.rs/casper-node-macros"
-homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/node_macros"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/node_macros"
 license-file = "../LICENSE"
 
 [dependencies]

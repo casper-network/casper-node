@@ -6,8 +6,8 @@ edition = "2018"
 description = "Types used to allow creation of Wasm contracts and tests for use on the Casper network."
 readme = "README.md"
 documentation = "https://docs.rs/casper-types"
-homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/types"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/types"
 license-file = "../LICENSE"
 
 [dependencies]
