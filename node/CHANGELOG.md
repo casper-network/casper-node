@@ -13,8 +13,14 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+No changes.
+
+
+
+## [1.3.0] - 2021-07-19
+
 ### Added
-* Add support for providing historical auction information via the addition of an optional block ID in the `state_get_auction_info` JSON-RPC. 
+* Add support for providing historical auction information via the addition of an optional block ID in the `state_get_auction_info` JSON-RPC.
 * Exclude inactive validators from proposing blocks.
 * Add validation of the `[protocol]` configuration on startup, to ensure the contained values make sense.
 * Add optional outgoing bandwidth limiter to the networking component, controllable via new `[network][max_outgoing_byte_rate_non_validators]` config option.
@@ -117,7 +123,7 @@ All notable changes to this project will be documented in this file.  The format
 ## [1.1.1] - 2021-04-19
 
 ### Changed
-* Ensure consistent validation when adding deploys and transfers while proposing and validating blocks. 
+* Ensure consistent validation when adding deploys and transfers while proposing and validating blocks.
 
 
 
@@ -149,7 +155,8 @@ All notable changes to this project will be documented in this file.  The format
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.2.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
