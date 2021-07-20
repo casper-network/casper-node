@@ -1351,8 +1351,7 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let maybe_block_body: Option<BlockBody> =
-            self.get_block_body_for_block_header(tx, &block_header)?;
+        let maybe_block_body = self.get_body_for_block_header(tx, &block_header)?;
         let block_body = match maybe_block_body {
             Some(block_body) => block_body,
             None => {
@@ -1367,7 +1366,7 @@ impl Storage {
         Ok(Some(block))
     }
 
-    fn get_block_body_for_block_header<Tx: Transaction>(
+    fn get_body_for_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_header: &BlockHeader,
@@ -1469,7 +1468,7 @@ impl Storage {
             None => return Ok(None),
             Some(block_header_with_metadata) => block_header_with_metadata,
         };
-        if let Some(block_body) = self.get_block_body_for_block_header(tx, &block_header)? {
+        if let Some(block_body) = self.get_body_for_block_header(tx, &block_header)? {
             Ok(Some(BlockWithMetadata {
                 block: Block::new_from_header_and_body(block_header, block_body)?,
                 finality_signatures: block_signatures,
