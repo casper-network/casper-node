@@ -68,7 +68,10 @@ use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
 
 use crate::{
-    components::{storage::lmdb_ext::LmdbExtError::CouldNotFindBlockBodyPart, Component},
+    components::{
+        storage::lmdb_ext::LmdbExtError::{CouldNotFindBlockBodyPart, UnexpectedBlockBodyPart},
+        Component,
+    },
     crypto::hash::{self, Digest},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
@@ -1697,7 +1700,14 @@ fn garbage_collect_block_body_v2_db(
                         })
                     }
                 };
-            live_digests[live_digests_index].insert(key_to_part_db);
+            if live_digests_index < live_digests.len() {
+                live_digests[live_digests_index].insert(key_to_part_db);
+            } else {
+                return Err(UnexpectedBlockBodyPart {
+                    block_body_hash: *body_hash,
+                    part_hash: key_to_part_db,
+                });
+            }
             live_digests_index += 1;
             current_digest = merkle_proof_of_rest;
         }

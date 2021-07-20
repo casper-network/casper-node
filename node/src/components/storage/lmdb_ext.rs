@@ -94,6 +94,14 @@ pub enum LmdbExtError {
         block_hash: BlockHash,
         merkle_linked_list_node_hash: Digest,
     },
+    #[error(
+        "Found an unexpected part of a block body in the database: \
+        {part_hash:?}"
+    )]
+    UnexpectedBlockBodyPart {
+        block_body_hash: Digest,
+        part_hash: Digest,
+    },
 }
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a
