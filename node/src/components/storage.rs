@@ -835,7 +835,7 @@ impl Storage {
                         Some(signatures) => signatures,
                         None => BlockSignatures::new(block_hash, block.header().era_id()),
                     };
-                if finality_signatures.verify().is_ok() {
+                if finality_signatures.verify().is_err() {
                     error!(?block, "invalid finality signatures for block");
                     debug_assert!(finality_signatures.verify().is_ok());
                 }
