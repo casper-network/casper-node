@@ -722,21 +722,12 @@ impl reactor::Reactor for Reactor {
                             )
                         }
                         Tag::Block => {
-                            let block_hash = match bincode::deserialize(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        ?serialized_id,
-                                        ?sender,
-                                        ?error,
-                                        "failed to decode block hash",
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            Event::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockRequest(block_hash, sender),
-                            ))
+                            return Self::respond_to_fetch(
+                                effect_builder,
+                                &serialized_id,
+                                sender,
+                                |block_hash| self.storage.read_block(&block_hash),
+                            )
                         }
                         Tag::BlockAndMetadataByHeight => {
                             return Self::respond_to_fetch(

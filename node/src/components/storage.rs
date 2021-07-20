@@ -562,9 +562,7 @@ impl Storage {
             StorageRequest::GetBlock {
                 block_hash,
                 responder,
-            } => responder
-                .respond(self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?)
-                .ignore(),
+            } => responder.respond(self.read_block(&block_hash)?).ignore(),
             StorageRequest::GetBlockHeaderAtHeight { height, responder } => responder
                 .respond(self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
@@ -906,7 +904,12 @@ impl Storage {
         }))
     }
 
-    /// Retrieves a block header to handle a network request.
+    /// Retrieves a block by hash.
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, LmdbExtError> {
+        self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
+    }
+
+    /// Retrieves a block header by height.
     /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
     /// before the most recent emergency upgrade.
     pub fn read_block_header_and_sufficient_finality_signatures_by_height(
@@ -929,7 +932,7 @@ impl Storage {
         Ok(maybe_block_header_and_finality_signatures)
     }
 
-    /// Retrieves a block to handle a network request.
+    /// Retrieves a block by height.
     /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
     /// before the most recent emergency upgrade.
     pub fn read_block_and_sufficient_finality_signatures_by_height(
@@ -1214,7 +1217,7 @@ impl Storage {
         Ok(true)
     }
 
-    // Retrieves a block header to handle a network request.
+    // Retrieves a block header by hash.
     pub fn get_block_header_by_hash(
         &self,
         block_hash: &BlockHash,
