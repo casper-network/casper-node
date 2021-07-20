@@ -132,7 +132,7 @@ pub enum Event {
     StateStoreRequest(StateStoreRequest),
 }
 
-/// A storage component initialization error.
+/// A storage component error.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Failure to create the root database directory.
