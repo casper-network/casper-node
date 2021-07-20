@@ -12,7 +12,7 @@
   "ascMain": "assembly/index.ts",
   "dependencies": {},
   "devDependencies": {
-    "@assemblyscript/loader": "^0.9.4",
+    "@assemblyscript/loader": "^0.19.7",
     "assemblyscript": "^0.10.0",
     "ava": "^3.12.1",
     "concat-md": "^0.3.5",
