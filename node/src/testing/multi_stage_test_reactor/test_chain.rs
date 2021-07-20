@@ -311,7 +311,7 @@ async fn get_switch_block(
         .storage()
         .expect("Can not access storage of first node");
     let switch_block = storage
-        .read_switch_block_by_era_num(switch_block_era_num)
+        .read_switch_block_by_era_id(EraId::from(switch_block_era_num))
         .expect("Storage error")
         .expect("Could not find block for era num");
     info!(

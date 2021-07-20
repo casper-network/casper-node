@@ -1569,16 +1569,14 @@ impl Storage {
             .collect()
     }
 
-    /// Get the switch block for a specified era number.
-    pub fn read_switch_block_by_era_num(
+    /// Get the switch block for a specified [`EraID`].
+    pub fn read_switch_block_by_era_id(
         &self,
-        switch_block_era_num: u64,
+        switch_block_era_id: EraId,
     ) -> Result<Option<Block>, Error> {
         let mut read_only_lmdb_transaction = self.env().begin_ro_txn()?;
-        let maybe_switch_block = self.get_switch_block_by_era_id(
-            &mut read_only_lmdb_transaction,
-            EraId::from(switch_block_era_num),
-        )?;
+        let maybe_switch_block =
+            self.get_switch_block_by_era_id(&mut read_only_lmdb_transaction, switch_block_era_id)?;
         drop(read_only_lmdb_transaction);
         Ok(maybe_switch_block)
     }
