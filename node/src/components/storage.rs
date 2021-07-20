@@ -1574,11 +1574,7 @@ impl Storage {
         &self,
         switch_block_era_id: EraId,
     ) -> Result<Option<Block>, Error> {
-        let mut read_only_lmdb_transaction = self.env().begin_ro_txn()?;
-        let maybe_switch_block =
-            self.get_switch_block_by_era_id(&mut read_only_lmdb_transaction, switch_block_era_id)?;
-        drop(read_only_lmdb_transaction);
-        Ok(maybe_switch_block)
+        self.get_switch_block_by_era_id(&mut self.env().begin_ro_txn()?, switch_block_era_id)
     }
 }
 
