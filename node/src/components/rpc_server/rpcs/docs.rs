@@ -42,12 +42,13 @@ const DEFINITIONS_PATH: &str = "#/components/schemas/";
 // As per https://spec.open-rpc.org/#service-discovery-method.
 pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
-        name: "CasperLabs".to_string(),
-        url: "https://casperlabs.io".to_string(),
+        name: "Casper".to_string(),
+        url: "https://casper.network".to_string(),
     };
     let license = OpenRpcLicenseField {
-        name: "CasperLabs Open Source License Version 1.0".to_string(),
-        url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
+        name: "Apache License Version 2.0".to_string(),
+        url: "https://raw.githubusercontent.com/casper-network/casper-node/master/LICENSE"
+            .to_string(),
     };
     let info = OpenRpcInfoField {
         version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),

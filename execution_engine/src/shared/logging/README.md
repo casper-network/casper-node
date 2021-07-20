@@ -47,4 +47,3 @@ available via a `GET` endpoint.
 [log_metric]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.log_metric.html
 [log_duration]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.log_duration.html
 [TestContextBuilder]: https://docs.rs/casper-engine-test-support/latest/casper_engine_test_support/struct.TestContextBuilder.html
-[scraper]: https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/engine-metrics-scraper

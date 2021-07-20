@@ -7,7 +7,7 @@ LAUNCHER_DIR="$ROOT_DIR/../"
 # NCTL compile requires casper-node-launcher
 if [ ! -d "$LAUNCHER_DIR/casper-node-launcher" ]; then
     pushd $LAUNCHER_DIR
-    git clone https://github.com/CasperLabs/casper-node-launcher.git
+    git clone https://github.com/casper-network/casper-node-launcher.git
 fi
 
 # Activate Environment
