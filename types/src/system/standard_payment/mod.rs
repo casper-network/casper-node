@@ -1,6 +1,7 @@
 //! Contains implementation of a standard payment contract implementation.
 mod account_provider;
 mod constants;
+mod entry_points;
 mod handle_payment_provider;
 mod mint_provider;
 
@@ -9,7 +10,7 @@ use core::marker::Sized;
 use crate::{ApiError, U512};
 
 pub use crate::system::standard_payment::{
-    account_provider::AccountProvider, constants::*,
+    account_provider::AccountProvider, constants::*, entry_points::standard_payment_entry_points,
     handle_payment_provider::HandlePaymentProvider, mint_provider::MintProvider,
 };
 

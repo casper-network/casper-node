@@ -9,6 +9,10 @@ use core::{
     str::FromStr,
 };
 
+use blake2::{
+    digest::{Update, VariableOutput},
+    VarBlake2b,
+};
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use rand::{
@@ -33,6 +37,7 @@ const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
 const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
+const DICTIONARY_PREFIX: &str = "dictionary-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -42,6 +47,10 @@ pub const KEY_HASH_LENGTH: usize = 32;
 pub const KEY_TRANSFER_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
 pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
+/// The number of bytes in a [`Key::Dictionary`].
+pub const KEY_DICTIONARY_LENGTH: usize = 32;
+/// The maximum length for a `dictionary_item_key`.
+pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
@@ -53,15 +62,13 @@ const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SER
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
-impl From<HashAddr> for Key {
-    fn from(addr: HashAddr) -> Self {
-        Key::Hash(addr)
-    }
-}
+/// An alias for [`Key`]s dictionary variant.
+pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
 
 #[allow(missing_docs)]
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -76,6 +83,7 @@ pub enum KeyTag {
     Balance = 6,
     Bid = 7,
     Withdraw = 8,
+    Dictionary = 9,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -102,6 +110,8 @@ pub enum Key {
     Bid(AccountHash),
     /// A `Key` under which we store unbond information.
     Withdraw(AccountHash),
+    /// A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.
+    Dictionary(DictionaryAddr),
 }
 
 #[derive(Debug)]
@@ -115,6 +125,7 @@ pub enum FromStrError {
     Balance(String),
     Bid(String),
     Withdraw(String),
+    Dictionary(String),
     UnknownPrefix,
 }
 
@@ -151,6 +162,7 @@ impl Display for FromStrError {
             FromStrError::Bid(error) => write!(f, "bid-key from string error: {}", error),
             FromStrError::Withdraw(error) => write!(f, "withdraw-key from string error: {}", error),
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
+            FromStrError::Dictionary(error) => write!(f, "dictionary from string error: {}", error),
         }
     }
 }
@@ -169,6 +181,7 @@ impl Key {
             Key::Balance(_) => String::from("Key::Balance"),
             Key::Bid(_) => String::from("Key::Bid"),
             Key::Withdraw(_) => String::from("Key::Unbond"),
+            Key::Dictionary(_) => String::from("Key::Dictionary"),
         }
     }
 
@@ -212,6 +225,13 @@ impl Key {
             }
             Key::Withdraw(account_hash) => {
                 format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
+            }
+            Key::Dictionary(dictionary_addr) => {
+                format!(
+                    "{}{}",
+                    DICTIONARY_PREFIX,
+                    base16::encode_lower(&dictionary_addr)
+                )
             }
         }
     }
@@ -281,6 +301,14 @@ impl Key {
             return Ok(Key::Withdraw(AccountHash::new(account_hash)));
         }
 
+        if let Some(dictionary_addr) = input.strip_prefix(DICTIONARY_PREFIX) {
+            let dictionary_addr_bytes = base16::decode(dictionary_addr)
+                .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
+            let addr = DictionaryAddr::try_from(dictionary_addr_bytes.as_ref())
+                .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
+            return Ok(Key::Dictionary(addr));
+        }
+
         Err(FromStrError::UnknownPrefix)
     }
 
@@ -319,11 +347,33 @@ impl Key {
         }
     }
 
+    /// Returns a reference to the inner [`DictionaryAddr`] if `self` is of type
+    /// [`Key::Dictionary`], otherwise returns `None`.
+    pub fn as_dictionary(&self) -> Option<&DictionaryAddr> {
+        match self {
+            Key::Dictionary(v) => Some(v),
+            _ => None,
+        }
+    }
+
     /// Casts a [`Key::URef`] to a [`Key::Hash`]
     pub fn uref_to_hash(&self) -> Option<Key> {
         let uref = self.as_uref()?;
         let addr = uref.addr();
         Some(Key::Hash(addr))
+    }
+
+    /// Creates a new [`Key::Dictionary`] variant based on a `seed_uref` and a `dictionary_item_key`
+    /// bytes.
+    pub fn dictionary(seed_uref: URef, dictionary_item_key: &[u8]) -> Key {
+        // NOTE: Expect below is safe because the length passed is supported.
+        let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
+        hasher.update(seed_uref.addr().as_ref());
+        hasher.update(dictionary_item_key);
+        // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
+        let mut addr = HashAddr::default();
+        hasher.finalize_variable(|hash| addr.clone_from_slice(hash));
+        Key::Dictionary(addr)
     }
 }
 
@@ -339,6 +389,7 @@ impl Display for Key {
             Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
+            Key::Dictionary(addr) => write!(f, "Key::Dictionary({})", HexFmt(addr)),
         }
     }
 }
@@ -361,6 +412,7 @@ impl Tagged<KeyTag> for Key {
             Key::Balance(_) => KeyTag::Balance,
             Key::Bid(_) => KeyTag::Bid,
             Key::Withdraw(_) => KeyTag::Withdraw,
+            Key::Dictionary(_) => KeyTag::Dictionary,
         }
     }
 }
@@ -440,6 +492,9 @@ impl ToBytes for Key {
             Key::Withdraw(account_hash) => {
                 result.append(&mut account_hash.to_bytes()?);
             }
+            Key::Dictionary(addr) => {
+                result.append(&mut addr.to_bytes()?);
+            }
         }
         Ok(result)
     }
@@ -457,6 +512,7 @@ impl ToBytes for Key {
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
+            Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
         }
     }
 }
@@ -501,6 +557,10 @@ impl FromBytes for Key {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Withdraw(account_hash), rem))
             }
+            tag if tag == KeyTag::Dictionary as u8 => {
+                let (addr, rem) = DictionaryAddr::from_bytes(remainder)?;
+                Ok((Key::Dictionary(addr), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -508,7 +568,7 @@ impl FromBytes for Key {
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..9) {
+        match rng.gen_range(0..=9) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -518,6 +578,7 @@ impl Distribution<Key> for Standard {
             6 => Key::Balance(rng.gen()),
             7 => Key::Bid(rng.gen()),
             8 => Key::Withdraw(rng.gen()),
+            9 => Key::Dictionary(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -537,6 +598,7 @@ mod serde_helpers {
         Balance(String),
         Bid(String),
         Withdraw(String),
+        Dictionary(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -552,6 +614,7 @@ mod serde_helpers {
                 Key::Balance(_) => HumanReadable::Balance(formatted_string),
                 Key::Bid(_) => HumanReadable::Bid(formatted_string),
                 Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
+                Key::Dictionary(_) => HumanReadable::Dictionary(formatted_string),
             }
         }
     }
@@ -572,6 +635,9 @@ mod serde_helpers {
                 | HumanReadable::Withdraw(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
+                HumanReadable::Dictionary(formatted_string) => {
+                    Key::from_formatted_str(&formatted_string)
+                }
             }
         }
     }
@@ -587,6 +653,7 @@ mod serde_helpers {
         Balance(&'a URefAddr),
         Bid(&'a AccountHash),
         Withdraw(&'a AccountHash),
+        Dictionary(&'a HashAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -601,6 +668,7 @@ mod serde_helpers {
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
+                Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
             }
         }
     }
@@ -616,6 +684,7 @@ mod serde_helpers {
         Balance(URefAddr),
         Bid(AccountHash),
         Withdraw(AccountHash),
+        Dictionary(DictionaryAddr),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -630,6 +699,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
+                BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
             }
         }
     }

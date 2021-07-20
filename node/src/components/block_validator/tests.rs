@@ -51,7 +51,7 @@ impl MockReactor {
     async fn expect_block_validator_event(&self) -> Event<NodeId> {
         let (reactor_event, _) = self.scheduler.pop().await;
         if let ReactorEvent::BlockValidator(event) = reactor_event {
-            return event;
+            event
         } else {
             panic!("unexpected event: {:?}", reactor_event);
         }
@@ -91,7 +91,7 @@ fn new_proposed_block(
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
     let block_payload = BlockPayload::new(deploy_hashes, transfer_hashes, vec![], true);
-    ProposedBlock::new(block_payload, block_context)
+    ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
 fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {

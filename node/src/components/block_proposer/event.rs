@@ -8,69 +8,16 @@ use serde::{Deserialize, Serialize};
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{DeployHash, DeployHeader, FinalizedBlock},
+    types::{Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::shared::motes::Motes;
 
-/// A wrapper over `DeployHeader` to differentiate between wasm-less transfers and wasm headers.
+/// Information about a deploy.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
-pub enum DeployType {
-    /// Represents a wasm-less transfer.
-    Transfer {
-        header: DeployHeader,
-        payment_amount: Motes,
-        size: usize,
-    },
-    /// Represents a wasm deploy.
-    Other {
-        header: DeployHeader,
-        payment_amount: Motes,
-        size: usize,
-    },
-}
-
-impl DeployType {
-    /// Access header in all variants of `DeployType`.
-    pub fn header(&self) -> &DeployHeader {
-        match self {
-            Self::Transfer { header, .. } => header,
-            Self::Other { header, .. } => header,
-        }
-    }
-
-    /// Extract into header and drop `DeployType`.
-    pub fn take_header(self) -> DeployHeader {
-        match self {
-            Self::Transfer { header, .. } => header,
-            Self::Other { header, .. } => header,
-        }
-    }
-
-    /// Access payment_amount from all variants.
-    pub fn payment_amount(&self) -> Motes {
-        match self {
-            Self::Transfer { payment_amount, .. } => *payment_amount,
-            Self::Other { payment_amount, .. } => *payment_amount,
-        }
-    }
-
-    /// Access size from all variants.
-    pub fn size(&self) -> usize {
-        match self {
-            Self::Transfer { size, .. } => *size,
-            Self::Other { size, .. } => *size,
-        }
-    }
-
-    /// Asks if the variant is a Transfer.
-    pub fn is_transfer(&self) -> bool {
-        matches!(self, DeployType::Transfer { .. })
-    }
-
-    /// Asks if the variant is Wasm.
-    pub fn is_wasm(&self) -> bool {
-        matches!(self, DeployType::Other { .. })
-    }
+pub struct DeployInfo {
+    pub header: DeployHeader,
+    pub payment_amount: Motes,
+    pub size: usize,
 }
 
 /// An event for when using the block proposer as a component.
@@ -86,12 +33,12 @@ pub enum Event {
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
     },
-    /// A new deploy should be buffered.
-    BufferDeploy {
-        hash: DeployHash,
-        deploy_type: Box<DeployType>,
-    },
-    /// The block proposer has been asked to prune stale deploys
+    /// A new deploy has been received by this node and gossiped: it should be retrieved from
+    /// storage and buffered here.
+    BufferDeploy(DeployHash),
+    /// The given deploy has been gossiped and can now be included in a block.
+    GotFromStorage(Box<Deploy>),
+    /// The block proposer has been asked to prune stale deploys.
     Prune,
     /// A block has been finalized. We should never propose its deploys again.
     FinalizedBlock(Box<FinalizedBlock>),
@@ -109,7 +56,10 @@ impl Display for Event {
                 "loaded block-proposer finalized deploys; expected next finalized block: {}",
                 next_finalized_block
             ),
-            Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
+            Event::BufferDeploy(hash) => write!(f, "block-proposer add {}", hash),
+            Event::GotFromStorage(deploy) => {
+                write!(f, "block-proposer got from storage {}", deploy.id())
+            }
             Event::Prune => write!(f, "block-proposer prune"),
             Event::FinalizedBlock(block) => {
                 write!(f, "block-proposer finalized block {}", block)

@@ -39,7 +39,6 @@ impl<C: Context> BlockContext<C> {
     }
 
     /// The block's relative height, i.e. the number of ancestors in the current era.
-    #[cfg(test)]
     pub(crate) fn height(&self) -> u64 {
         self.ancestor_values.len() as u64
     }

@@ -9,7 +9,7 @@ use std::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     pin::Pin,
-    sync::Weak,
+    sync::{Arc, Weak},
 };
 
 use bytes::{Bytes, BytesMut};
@@ -51,7 +51,7 @@ impl Display for TraceId {
 /// a message is sent or received.
 #[pin_project]
 #[derive(Debug)]
-pub(super) struct CountingFormat<F> {
+pub struct CountingFormat<F> {
     /// The actual serializer performing the work.
     #[pin]
     inner: F,
@@ -87,15 +87,15 @@ impl<F> CountingFormat<F> {
     }
 }
 
-impl<F, P> Serializer<Message<P>> for CountingFormat<F>
+impl<F, P> Serializer<Arc<Message<P>>> for CountingFormat<F>
 where
-    F: Serializer<Message<P>>,
+    F: Serializer<Arc<Message<P>>>,
     P: Payload,
 {
     type Error = F::Error;
 
     #[inline]
-    fn serialize(self: Pin<&mut Self>, item: &Message<P>) -> Result<Bytes, Self::Error> {
+    fn serialize(self: Pin<&mut Self>, item: &Arc<Message<P>>) -> Result<Bytes, Self::Error> {
         let this = self.project();
         let projection: Pin<&mut F> = this.inner;
 
@@ -276,6 +276,12 @@ impl ConnectionId {
             TryFrom::try_from(&full_hash.to_array()[0..8]).expect("buffer size mismatch");
 
         TraceId(truncated)
+    }
+
+    #[inline]
+    /// Returns a reference to the raw bytes of the connection ID.
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 
     /// Creates a new connection ID from an existing SSL connection.

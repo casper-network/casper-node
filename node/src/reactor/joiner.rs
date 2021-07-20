@@ -27,7 +27,7 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
-        event_stream_server::EventStreamServer,
+        event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -57,7 +57,7 @@ use crate::{
         self,
         event_queue_metrics::EventQueueMetrics,
         initializer,
-        validator::{self, Error, ValidatorInitConfig},
+        participating::{self, Error, ParticipatingInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
@@ -320,7 +320,7 @@ pub struct Reactor {
     network: Network<Event, Message>,
     small_network: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
-    config: validator::Config,
+    config: participating::Config,
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -387,18 +387,18 @@ impl reactor::Reactor for Reactor {
             registry,
             network_identity,
             chainspec_loader.chainspec(),
-            false,
         )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
+            Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            false,
+            None,
         )?;
 
-        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
+        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
         let mut effects = reactor::wrap_effects(Event::Network, network_effects);
         effects.extend(reactor::wrap_effects(
@@ -448,25 +448,29 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
         )?;
 
-        let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), *protocol_version)?;
+        let event_stream_server = EventStreamServer::new(
+            config.event_stream_server.clone(),
+            storage.root_path().to_path_buf(),
+            *protocol_version,
+            DeployGetter::new(effect_builder),
+        )?;
 
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
 
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
 
-        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
+        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
 
         let block_header_and_finality_signatures_by_height_fetcher: Fetcher<
             BlockHeaderWithMetadata,
         > = Fetcher::new(
             "block_header_and_finality_signatures_by_height",
             config.fetcher,
-            &registry,
+            registry,
         )?;
 
         let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
-            Fetcher::new("block_header_by_hash", config.fetcher, &registry)?;
+            Fetcher::new("block_header_by_hash", config.fetcher, registry)?;
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
@@ -477,7 +481,7 @@ impl reactor::Reactor for Reactor {
         );
 
         let linear_chain = linear_chain::LinearChainComponent::new(
-            &registry,
+            registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -660,11 +664,21 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
+                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::EventStreamServer(event));
+
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
                     source,
                 };
-                self.dispatch_event(effect_builder, rng, Event::DeployFetcher(event))
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::DeployFetcher(event),
+                ));
+
+                effects
             }
             Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
                 deploy,
@@ -794,12 +808,17 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::AddressGossiperAnnouncement(ann) => {
-                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
                 let reactor_event = Event::SmallNetwork(small_network::Event::PeerAddressReceived(
                     gossiped_address,
                 ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We don't care about completion of gossiping an address.
+                Effects::new()
             }
 
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
@@ -812,8 +831,13 @@ impl reactor::Reactor for Reactor {
                     ),
                 );
                 let reactor_event =
-                    Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
+                    Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block.clone()));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
+                ));
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
@@ -887,7 +911,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(&self);
+        self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle);
     }
@@ -897,7 +921,7 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+    pub async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
         let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
         // Clean the state of the linear_chain_sync before shutting it down.
         #[cfg(not(feature = "fast-sync"))]
@@ -905,7 +929,7 @@ impl Reactor {
             &self.storage,
             self.chainspec_loader.chainspec(),
         )?;
-        let config = ValidatorInitConfig {
+        let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,

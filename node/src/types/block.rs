@@ -46,7 +46,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, JsonBlock},
+    types::{Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
     utils::DisplayIter,
 };
 
@@ -157,7 +157,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key);
+    let signature = crypto::sign(block.hash.inner(), secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, Some(block_signature))
@@ -232,10 +232,19 @@ impl BlockPayload {
     }
 
     /// Returns an iterator over all deploys and transfers.
-    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn deploys_and_transfers_iter(
+        &self,
+    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
         self.deploy_hashes()
             .iter()
-            .chain(self.transfer_hashes().iter())
+            .copied()
+            .map(DeployOrTransferHash::Deploy)
+            .chain(
+                self.transfer_hashes()
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Transfer),
+            )
     }
 }
 
@@ -365,8 +374,19 @@ impl FinalizedBlock {
     }
 
     /// Returns an iterator over all deploy and transfer hashes.
-    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes.iter().chain(&self.transfer_hashes)
+    pub(crate) fn deploys_and_transfers_iter(
+        &self,
+    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
+        self.deploy_hashes
+            .iter()
+            .copied()
+            .map(DeployOrTransferHash::Deploy)
+            .chain(
+                self.transfer_hashes
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Transfer),
+            )
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -713,7 +733,7 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
+        let serialized_header = Self::serialize(self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(hash::hash(&serialized_header))
     }
@@ -1022,10 +1042,9 @@ impl Block {
         );
         let body_hash = body.hash();
 
-        let era_end = match finalized_block.era_report {
-            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
-            None => None,
-        };
+        let era_end = finalized_block
+            .era_report
+            .map(|era_report| EraEnd::new(era_report, next_era_validator_weights.unwrap()));
 
         let mut accumulated_seed = [0; Digest::LENGTH];
 
@@ -1148,26 +1167,32 @@ impl Block {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        Block::random_with_specifics(rng, EraId::from(era), height, is_switch)
+        Block::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+        )
     }
 
-    /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
+    /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(test)]
     pub fn random_with_specifics(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
+        protocol_version: ProtocolVersion,
         is_switch: bool,
     ) -> Self {
         let parent_hash = BlockHash::new(Digest::random(rng));
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = Digest::random(rng);
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let next_era_validator_weights = match finalized_block.era_report {
-            Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
-            None => None,
-        };
+        let next_era_validator_weights = finalized_block
+            .era_report
+            .as_ref()
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
             parent_hash,
@@ -1191,7 +1216,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, \
-             random bit {}, timestamp {}, era_id {}, height {}",
+             random bit {}, timestamp {}, era_id {}, height {}, protocol version: {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
@@ -1200,6 +1225,7 @@ impl Display for Block {
             self.header.timestamp,
             self.header.era_id.value(),
             self.header.height,
+            self.header.protocol_version
         )?;
         if let Some(ee) = &self.header.era_end {
             write!(formatter, ", era_end: {}", ee)?;
@@ -1561,7 +1587,7 @@ pub(crate) mod json_compatibility {
 /// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
 /// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
 /// the block as finalized.
-#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq, JsonSchema)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,
@@ -1583,7 +1609,7 @@ impl FinalitySignature {
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
-        let signature = crypto::sign(bytes, &secret_key, &public_key);
+        let signature = crypto::sign(bytes, secret_key, &public_key);
         FinalitySignature {
             block_hash,
             era_id,

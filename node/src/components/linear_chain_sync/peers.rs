@@ -64,7 +64,8 @@ impl<I: Clone + PartialEq + 'static> PeersState<I> {
 
     /// Adds a new peer.
     pub(crate) fn push(&mut self, peer: I) {
-        self.peers.push(peer)
+        self.peers.push(peer.clone());
+        self.peers_to_try.push(peer);
     }
 
     /// Returns the next peer, if any, that we downloaded data the previous time.

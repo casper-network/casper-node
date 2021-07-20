@@ -767,7 +767,7 @@ impl ContractRuntime {
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
             .deploys_and_transfers_iter()
-            .copied()
+            .map(DeployHash::from)
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
             let result_event = move |_| {

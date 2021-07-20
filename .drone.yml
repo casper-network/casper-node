@@ -29,7 +29,7 @@ steps:
     commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
-      - cargo audit
+      - cargo audit --ignore RUSTSEC-2021-0073 --ignore RUSTSEC-2021-0076
 
 trigger:
   branch:
@@ -150,14 +150,17 @@ steps:
     - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
 
 - name: put-drone-s3-cache
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - ./ci/drone_s3_storage.sh put $(pwd)/target/debian/ debian/
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+  image: plugins/s3-sync:latest
+  settings:
+    bucket:
+      from_secret: put-drone-s3-bucket
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: target/debian/
+    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/"
   when:
     branch:
       - master
@@ -216,6 +219,73 @@ steps:
     event:
       - push
 
+- name: s3-genesis-rel-pr
+  image: plugins/s3
+  settings:
+    bucket: 'genesis.casperlabs.io'
+    region: 'us-east-2'
+    access_key:
+      from_secret: drone_genesis_key_id
+    secret_key:
+      from_secret: drone_genesis_secret
+    source: "target/upgrade_build/**/*"
+    strip_prefix: 'target/upgrade_build/'
+    target: "/drone/${DRONE_COMMIT}/"
+  when:
+    branch:
+      - "release-*"
+    event:
+      - pull_request
+
+- name: nctl-upgrade-assets-stage-rc
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/nctl_upgrade_stage.sh"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+  when:
+    branch:
+      - "release-*"
+    event:
+      - push
+
+- name: nctl-bucket-upload-rc
+  image: plugins/s3-sync:latest
+  settings:
+    bucket: 'nctl.casperlabs.io'
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: '../../tmp/nctl_upgrade_stage/'
+    target: "/${DRONE_BRANCH}/"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+  when:
+    branch:
+      - "release-*"
+    event:
+      - push
+
+- name: nctl-upgrade-test
+  image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+    - "python3 -m pip install supervisor toml"
+    - "apt update && apt install lsof -y"
+    - "bash -i ./ci/nctl_upgrade.sh"
+  when:
+    branch:
+      - trying
+      - staging
+
 depends_on:
   - pre-checks
 
@@ -231,6 +301,10 @@ trigger:
     exclude:
       - tag
 
+volumes:
+- name: nctl-temp-dir
+  temp: {}
+
 ---
 # Run on success of cargo-test and package pipelines.
 kind: pipeline
@@ -242,13 +316,16 @@ steps:
 - name: get-and-del-drone-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
-    - ./ci/drone_s3_storage.sh get debian/ $(pwd)/target/debian/
-    - ./ci/drone_s3_storage.sh del
+    - s3cmd sync "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/" "./target/debian/"
+    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+    AWS_DEFAULT_REGION: "us-east-2"
+    AWS_BUCKET:
+      from_secret: put-drone-s3-bucket
   when:
     branch:
       - master
@@ -319,12 +396,15 @@ steps:
 - name: del-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
-    - ./ci/drone_s3_storage.sh del
+    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+    AWS_DEFAULT_REGION: "us-east-2"
+    AWS_BUCKET:
+      from_secret: put-drone-s3-bucket
   when:
     branch:
       - master
@@ -467,9 +547,45 @@ steps:
     access:
     - "public"
 
+- name: nctl-upgrade-assets-stage
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/nctl_upgrade_stage.sh"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+
+- name: nctl-bucket-upload
+  image: plugins/s3-sync:latest
+  settings:
+    bucket: 'nctl.casperlabs.io'
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: '../../tmp/nctl_upgrade_stage/'
+    target: "/${DRONE_TAG}/"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+
+- name: update-default-branch
+  image: casperlabs/node-build-u1804
+  environment:
+    GITHUB_TOKEN:
+      from_secret: github_token_def_branch
+  commands:
+    - "./ci/change_default_branch.py"
+
+volumes:
+- name: nctl-temp-dir
+  temp: {}
+
 trigger:
   ref:
   - refs/tags/v*
+
 ---
 kind: pipeline
 type: docker

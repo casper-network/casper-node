@@ -214,7 +214,7 @@ mod tests {
             TEST_ENDORSEMENT_EVIDENCE_LIMIT,
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
-        let mut state = State::new(weights, params, vec![]);
+        let mut state = State::new(weights, params, vec![], vec![]);
         let total_weight = state.total_weight().0;
 
         // Round 0: Alice has round length 16, Bob and Carol 8.
@@ -285,9 +285,9 @@ mod tests {
             rewards0[CAROL] + rewards8[CAROL] + rewards16[CAROL],
         ]);
         let pan = &state.unit(&ap_last).panorama;
-        assert_eq!(rewards0, compute_rewards_for(&state, &pan, &bp0));
-        assert_eq!(rewards8, compute_rewards_for(&state, &pan, &bp8));
-        assert_eq!(rewards16, compute_rewards_for(&state, &pan, &ap16));
+        assert_eq!(rewards0, compute_rewards_for(&state, pan, &bp0));
+        assert_eq!(rewards8, compute_rewards_for(&state, pan, &bp8));
+        assert_eq!(rewards16, compute_rewards_for(&state, pan, &ap16));
         assert_eq!(expected, compute_rewards(&state, &ap_last));
 
         // However, Carol also equivocated in round 16. And Bob saw her!
@@ -323,9 +323,9 @@ mod tests {
             rewards0f[CAROL] + rewards8f[CAROL] + rewards16f[CAROL],
         ]);
         let pan = &state.unit(&bp_last).panorama;
-        assert_eq!(rewards0f, compute_rewards_for(&state, &pan, &bp0));
-        assert_eq!(rewards8f, compute_rewards_for(&state, &pan, &bp8));
-        assert_eq!(rewards16f, compute_rewards_for(&state, &pan, &ap16));
+        assert_eq!(rewards0f, compute_rewards_for(&state, pan, &bp0));
+        assert_eq!(rewards8f, compute_rewards_for(&state, pan, &bp8));
+        assert_eq!(rewards16f, compute_rewards_for(&state, pan, &ap16));
         assert_eq!(expected, compute_rewards(&state, &bp_last));
 
         Ok(())

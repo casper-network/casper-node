@@ -700,6 +700,11 @@ extern "C" {
         out_ptr: *mut u8,
         out_size: usize,
     ) -> i32;
+    ///
+    pub fn casper_load_call_stack(
+        call_stack_len_ptr: *mut usize,
+        result_size_ptr: *mut usize,
+    ) -> i32;
     /// Prints data directly to standard output on the host.
     ///
     /// # Arguments
@@ -708,4 +713,53 @@ extern "C" {
     /// * `text_size` - size of serialized text to print
     #[cfg(feature = "test-support")]
     pub fn casper_print(text_ptr: *const u8, text_size: usize);
+    /// Creates new URef that points to a dictionary partition of global state.
+    ///
+    /// # Arguments
+    ///
+    /// * `output_size` - pointer to a value where host will write size of bytes of created URef.
+    pub fn casper_new_dictionary(output_size_ptr: *mut usize) -> i32;
+    /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
+    /// will be used together with the current context’s seed to form a dictionary.
+    /// The value at that dictionary is read from the global state, serialized and
+    /// buffered in the runtime. This result can be obtained via the [`casper_read_host_buffer`]
+    /// function.
+    ///
+    /// # Arguments
+    ///
+    /// * `uref_ptr` - pointer to bytes representing the user-defined key
+    /// * `uref_size` - size of the key (in bytes)
+    /// * `key_bytes_ptr` - pointer to bytes representing the user-defined key
+    /// * `key_bytes_size` - size of the user-defined key
+    /// * `output_size` - pointer to a value where host will write size of bytes read from given key
+    pub fn casper_dictionary_get(
+        uref_ptr: *const u8,
+        uref_size: usize,
+        key_bytes_ptr: *const u8,
+        key_bytes_size: usize,
+        output_size: *mut usize,
+    ) -> i32;
+    /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
+    /// will be used together with the passed URef's seed to form a dictionary.
+    /// This function writes the provided value (read via de-serializing the bytes
+    /// in wasm memory from offset `value_ptr` to `value_ptr + value_size`) under
+    /// that dictionary in the global state. This function will cause a `Trap` if
+    /// the value fails to de-serialize.
+    ///
+    /// # Arguments
+    ///
+    /// * `uref_ptr` - pointer to bytes representing the user-defined key
+    /// * `uref_size` - size of the key (in bytes)
+    /// * `key_ptr` - pointer to bytes representing the user-defined key to write to
+    /// * `key_size` - size of the key (in bytes)
+    /// * `value_ptr` - pointer to bytes representing the value to write at the key
+    /// * `value_size` - size of the value (in bytes)
+    pub fn casper_dictionary_put(
+        uref_ptr: *const u8,
+        uref_size: usize,
+        key_ptr: *const u8,
+        key_size: usize,
+        value_ptr: *const u8,
+        value_size: usize,
+    ) -> i32;
 }

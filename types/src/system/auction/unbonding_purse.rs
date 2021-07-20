@@ -142,14 +142,12 @@ mod tests {
     const ERA_OF_WITHDRAWAL: EraId = EraId::MAX;
 
     static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into()
+        let secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
     });
     static UNBONDER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into()
+        let secret_key = SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
     });
     static AMOUNT: Lazy<U512> = Lazy::new(|| U512::max_value() - 1);
 

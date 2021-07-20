@@ -1,20 +1,21 @@
-use std::{
-    fs::File,
-    io::{self, BufReader, Read, Write},
-};
-
+use rand::{self, distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
+use std::{
+    fs::{self, File},
+    io::{self, BufReader, Read, Write},
+    path::{Path, PathBuf},
+};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::{ProtocolVersion, SecretKey};
+use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, URef, U512};
 
 use crate::{
     error::{Error, Result},
-    rpc::RpcClient,
+    rpc::{RpcClient, TransferTarget},
 };
 
 /// The maximum permissible size in bytes of a Deploy when serialized via `ToBytes`.
@@ -72,20 +73,81 @@ impl From<GetBlockResult> for ListDeploysResult {
     }
 }
 
-/// Creates a `Write` trait object respective to the path value passed.  A `File` is returned if
-/// `maybe_path` is `Some`.  If `maybe_path` is `None`, a `Stdout` or `Sink` is returned; `Sink` for
-/// test configuration to avoid cluttering test output.
-pub(super) fn output_or_stdout(maybe_path: Option<&str>) -> io::Result<Box<dyn Write>> {
-    match maybe_path {
-        Some(output_path) => File::create(&output_path).map(|file| {
-            let write: Box<dyn Write> = Box::new(file);
-            write
-        }),
-        None => Ok(if cfg!(test) {
-            Box::new(io::sink())
-        } else {
-            Box::new(io::stdout())
-        }),
+/// An output abstraction for associating a Write with some metadata.
+pub(super) enum OutputKind<'a> {
+    File {
+        /// The path of the output file.
+        path: &'a str,
+        /// The path to a temp file in the same directory as the output file, this is used to make
+        /// the write operation transactional. This is used to make sure that the file at `path` is
+        /// not damaged if it exists.
+        tmp_path: PathBuf,
+        /// If `overwrite_if_exists` is `true`, then the file at `path` will be overwritten.
+        overwrite_if_exists: bool,
+    },
+    Stdout,
+}
+
+impl<'a> OutputKind<'a> {
+    /// This is a convenience method that acts as a constructor for a new `OutputKind::File` enum
+    /// variant.
+    pub(super) fn file(path: &'a str, overwrite_if_exists: bool) -> Self {
+        let collision_resistant_string = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(5)
+            .map(char::from)
+            .collect::<String>();
+        let extension = format!(".{}.tmp", &collision_resistant_string);
+        let tmp_path = Path::new(path).with_extension(extension);
+        OutputKind::File {
+            path,
+            tmp_path,
+            overwrite_if_exists,
+        }
+    }
+
+    /// `get()` returns a Result containing a Write trait object.
+    pub(super) fn get(&self) -> Result<Box<dyn Write>> {
+        match self {
+            OutputKind::File {
+                path,
+                tmp_path,
+                overwrite_if_exists,
+                ..
+            } => {
+                let path = PathBuf::from(path);
+                if path.exists() && !overwrite_if_exists {
+                    return Err(Error::FileAlreadyExists(path));
+                }
+                let file = File::create(&tmp_path).map_err(|error| Error::IoError {
+                    context: format!("failed to create {}", tmp_path.display()),
+                    error,
+                })?;
+
+                let write: Box<dyn Write> = Box::new(file);
+                Ok(write)
+            }
+            OutputKind::Stdout if cfg!(test) => Ok(Box::new(io::sink())),
+            OutputKind::Stdout => Ok(Box::new(io::stdout())),
+        }
+    }
+
+    /// `commit()` When called on an `OutputKind::File` causes the temp file to be renamed (moved)
+    /// to its `path`. When called on an `OutputKind::Stdout` it acts as a noop function.
+    pub(super) fn commit(self) -> Result<()> {
+        match self {
+            OutputKind::File { path, tmp_path, .. } => {
+                fs::rename(&tmp_path, path).map_err(|error| Error::IoError {
+                    context: format!(
+                        "Could not move tmp file {} to destination {}",
+                        tmp_path.display(),
+                        path
+                    ),
+                    error,
+                })
+            }
+            OutputKind::Stdout => Ok(()),
+        }
     }
 }
 
@@ -118,6 +180,16 @@ pub(super) trait DeployExt {
         params: DeployParams,
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
+    ) -> Result<Deploy>;
+
+    /// Constructs a transfer `Deploy`.
+    fn new_transfer(
+        amount: U512,
+        source_purse: Option<URef>,
+        target: TransferTarget,
+        transfer_id: u64,
+        params: DeployParams,
+        payment: ExecutableDeployItem,
     ) -> Result<Deploy>;
 
     /// Writes the `Deploy` to `output`.
@@ -164,6 +236,38 @@ impl DeployExt for Deploy {
         );
         deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
         Ok(deploy)
+    }
+
+    fn new_transfer(
+        amount: U512,
+        source_purse: Option<URef>,
+        target: TransferTarget,
+        transfer_id: u64,
+        params: DeployParams,
+        payment: ExecutableDeployItem,
+    ) -> Result<Deploy> {
+        const TRANSFER_ARG_AMOUNT: &str = "amount";
+        const TRANSFER_ARG_SOURCE: &str = "source";
+        const TRANSFER_ARG_TARGET: &str = "target";
+        const TRANSFER_ARG_ID: &str = "id";
+
+        let mut transfer_args = RuntimeArgs::new();
+        transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
+        if let Some(source_purse) = source_purse {
+            transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
+        }
+        match target {
+            TransferTarget::Account(target_account) => {
+                let target_account_hash = target_account.to_account_hash().value();
+                transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
+            }
+        }
+        let maybe_transfer_id = Some(transfer_id);
+        transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        Deploy::with_payment_and_session(params, payment, session)
     }
 
     fn write_deploy<W>(&self, mut output: W) -> Result<()>

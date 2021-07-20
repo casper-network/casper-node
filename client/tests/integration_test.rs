@@ -1,4 +1,4 @@
-use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
+use std::{convert::Infallible, fs, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{channel::oneshot, future};
 use hyper::{Body, Response, Server};
@@ -162,7 +162,7 @@ impl MockServerHandle {
             0,
             amount,
             maybe_target_account,
-            "",
+            "2",
             deploy_params,
             payment_params,
         )
@@ -194,8 +194,8 @@ impl MockServerHandle {
             .map_err(ErrWrapper)
     }
 
-    fn get_auction_info(&self) -> Result<(), ErrWrapper> {
-        casper_client::get_auction_info("1", &self.url(), 0)
+    fn get_auction_info(&self, maybe_block_id: &str) -> Result<(), ErrWrapper> {
+        casper_client::get_auction_info("1", &self.url(), 0, maybe_block_id)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
@@ -221,9 +221,9 @@ impl PartialEq for ErrWrapper {
     }
 }
 
-impl Into<ErrWrapper> for Error {
-    fn into(self) -> ErrWrapper {
-        ErrWrapper(self)
+impl From<Error> for ErrWrapper {
+    fn from(error: Error) -> Self {
+        ErrWrapper(error)
     }
 }
 
@@ -522,12 +522,12 @@ mod get_deploy {
 mod get_auction_info {
     use super::*;
 
-    use casper_node::rpcs::{state::GetAuctionInfo, RpcWithoutParams};
+    use casper_node::rpcs::state::GetAuctionInfo;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed() {
         let server_handle = MockServerHandle::spawn_without_params(GetAuctionInfo::METHOD);
-        assert_eq!(server_handle.get_auction_info(), Ok(()));
+        assert_eq!(server_handle.get_auction_info(""), Ok(()));
     }
 }
 
@@ -541,7 +541,8 @@ mod make_deploy {
                 "",
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -558,7 +559,57 @@ mod make_deploy {
                 file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_fail_with_existing_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        let contents = "contents of test file";
+        fs::write(file_path.clone(), &contents)
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_deploy(
+                file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Err(Error::FileAlreadyExists(file_path.clone()).into())
+        );
+
+        let contents_after_fail = fs::read_to_string(file_path).unwrap_or_else(|err| {
+            panic!("Failed to read contents of test file with error: {}", err)
+        });
+
+        assert_eq!(contents, contents_after_fail);
+    }
+
+    #[test]
+    fn should_succeed_with_existing_file_with_force() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        fs::write(file_path.clone(), "hi")
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_deploy(
+                file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                true
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -589,7 +640,8 @@ mod send_deploy {
                 file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -616,7 +668,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -626,6 +679,7 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
                 signed_file_path.to_str().unwrap(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -642,7 +696,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -651,7 +706,8 @@ mod sign_deploy {
             casper_client::sign_deploy_file(
                 unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
-                ""
+                "",
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -668,7 +724,8 @@ mod sign_deploy {
                 unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
-                payment_params::test_data_with_name()
+                payment_params::test_data_with_name(),
+                false
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -676,14 +733,199 @@ mod sign_deploy {
         assert!(casper_client::sign_deploy_file(
             unsigned_file_path.to_str().unwrap(),
             "<this is not a path>",
-            ""
+            "",
+            false
         )
         .is_err());
+    }
+
+    #[test]
+    fn should_fail_with_existing_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let unsigned_file_path = temp_dir.path().join("test_deploy.json");
+        let signed_file_path = temp_dir.path().join("signed_test_deploy.json");
+        assert_eq!(
+            casper_client::make_deploy(
+                unsigned_file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+
+        let contents = fs::read_to_string(signed_file_path.clone())
+            .unwrap_or_else(|err| panic!("Failed to read contents of file with error: {}", err));
+
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Err(Error::FileAlreadyExists(signed_file_path.clone()).into())
+        );
+
+        let contents_after_failure = fs::read_to_string(signed_file_path)
+            .unwrap_or_else(|err| panic!("Failed to read contents of file with error: {}", err));
+
+        assert_eq!(contents, contents_after_failure);
+    }
+
+    #[test]
+    fn should_succeed_with_existing_file_with_force() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let unsigned_file_path = temp_dir.path().join("test_deploy.json");
+        let signed_file_path = temp_dir.path().join("signed_test_deploy.json");
+        assert_eq!(
+            casper_client::make_deploy(
+                unsigned_file_path.to_str().unwrap(),
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                unsigned_file_path.to_str().unwrap(),
+                "../resources/local/secret_keys/node-1.pem",
+                signed_file_path.to_str().unwrap(),
+                true
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+}
+
+mod make_transfer {
+    use super::*;
+
+    const AMOUNT: &str = "30000000000";
+    const TARGET_ACCOUNT: &str =
+        "01aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const TRANSFER_ID: &str = "1314";
+
+    #[test]
+    fn should_succeed_for_stdout() {
+        assert_eq!(
+            casper_client::make_transfer(
+                "",
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_succeed_for_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        assert_eq!(
+            casper_client::make_transfer(
+                file_path.to_str().unwrap(),
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_fail_with_existing_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        let contents = "contents of test file";
+        fs::write(file_path.clone(), &contents)
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_transfer(
+                file_path.to_str().unwrap(),
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name(),
+                false
+            )
+            .map_err(ErrWrapper),
+            Err(Error::FileAlreadyExists(file_path.clone()).into())
+        );
+
+        let contents_after_fail = fs::read_to_string(file_path)
+            .unwrap_or_else(|err| panic!("Failed to read from temp file with error: {}", err));
+
+        assert_eq!(contents, contents_after_fail);
+    }
+
+    #[test]
+    fn should_succeed_with_existing_file_with_force() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        fs::write(file_path.clone(), "hi")
+            .unwrap_or_else(|err| panic!("Failed to create temp file with error: {}", err));
+
+        assert_eq!(
+            casper_client::make_transfer(
+                file_path.to_str().unwrap(),
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name(),
+                true
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
     }
 }
 
 mod keygen_generate_files {
-
     use super::*;
 
     #[test]
@@ -862,22 +1104,6 @@ mod transfer {
                 payment_params::test_data_with_name()
             ),
             Ok(())
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn should_fail_if_both_target_purse_and_target_account_are_excluded() {
-        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
-        assert_eq!(
-            server_handle.transfer(
-                "100",
-                "",
-                deploy_params::test_data_valid(),
-                payment_params::test_data_with_name()
-            ),
-            Err(Error::InvalidArgument(
-                "target_account",
-                "Invalid arguments to get_transfer_target - must provide either a target account. account=".to_string()).into())
         );
     }
 }

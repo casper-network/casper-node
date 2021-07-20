@@ -25,12 +25,18 @@ const TRANSFER_ARG_TARGETS: &str = "targets";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_STORED: &str = "transfer_purse_to_accounts_stored.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_SUBCALL: &str = "transfer_purse_to_accounts_subcall.wasm";
 
-static ALICE_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([3; 32]).unwrap().into());
-static BOB_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([5; 32]).unwrap().into());
-static CAROL_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([7; 32]).unwrap().into());
+static ALICE_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([3; 32]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static BOB_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([5; 32]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static CAROL_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([7; 32]).unwrap();
+    PublicKey::from(&secret_key)
+});
 
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE_KEY));
 static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BOB_KEY));
@@ -510,6 +516,6 @@ fn should_record_wasm_transfers_with_subcall() {
 
     const EXPECTED_COUNT: Option<usize> = Some(2);
     for expected in &[expected_alice, expected_bob, expected_carol] {
-        assert_eq!(transfer_counts.get(&expected).cloned(), EXPECTED_COUNT);
+        assert_eq!(transfer_counts.get(expected).cloned(), EXPECTED_COUNT);
     }
 }

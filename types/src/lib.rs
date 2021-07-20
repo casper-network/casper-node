@@ -18,7 +18,9 @@
 )]
 #![warn(missing_docs)]
 
+#[cfg_attr(not(any(feature = "std", test)), macro_use)]
 extern crate alloc;
+
 #[cfg(any(feature = "std", test))]
 #[macro_use]
 extern crate std;
@@ -59,6 +61,7 @@ pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
+#[doc(inline)]
 pub use contracts::{
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
     ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
@@ -71,10 +74,14 @@ pub use execution_result::{
 };
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
-pub use key::{HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
+pub use key::{
+    DictionaryAddr, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+};
 pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
+#[doc(inline)]
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use tagged::Tagged;
