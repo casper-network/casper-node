@@ -824,13 +824,21 @@ impl Storage {
                         return Ok(responder.respond(None).ignore());
                     };
                 // Check that the hash of the block retrieved is correct.
-                debug_assert_eq!(&block_hash, block.hash());
+                if block_hash != *block.hash() {
+                    error!(queried_block_hash = ?block_hash,
+                           actual_block_hash = ?block.hash(),
+                           "block not stored under hash");
+                    debug_assert_eq!(&block_hash, block.hash());
+                }
                 let finality_signatures =
                     match self.get_finality_signatures(&mut txn, &block_hash)? {
                         Some(signatures) => signatures,
                         None => BlockSignatures::new(block_hash, block.header().era_id()),
                     };
-                debug_assert!(finality_signatures.verify().is_ok());
+                if finality_signatures.verify().is_ok() {
+                    error!(?block, "invalid finality signatures for block");
+                    debug_assert!(finality_signatures.verify().is_ok());
+                }
                 responder
                     .respond(Some(BlockWithMetadata {
                         block,
