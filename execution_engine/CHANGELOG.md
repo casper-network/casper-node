@@ -15,8 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Update pinned version of Rust to `nightly-2021-06-17`
-
-
+* Changed price of `create_purse` to 2.5CSPR to discourage people from creating purses in the payment code.
 
 ## [1.2.0] - 2021-05-27
 
