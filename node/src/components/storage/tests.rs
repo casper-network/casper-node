@@ -480,7 +480,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let finality_threshold_fraction = Ratio::new(1, 3);
     let switch_block =
         switch_block_for_block_header(block.header(), genesis_validator_weights.clone());
-    let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block.clone()));
+    let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
     assert!(was_new, "putting switch block should have returned `true`");
 
     {

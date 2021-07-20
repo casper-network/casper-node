@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug, ops::Sub, time::Duration};
+use std::{collections::BTreeMap, fmt::Debug, time::Duration};
 
 use num::rational::Ratio;
 use tracing::{error, info, trace, warn};
@@ -186,8 +186,8 @@ fn validate_finality_signatures(
     )
 }
 
-/// Returns Ok(()) if the finality signatures' total weight exceeds the threshold. Returns an error
-/// if it doesn't, or if one of the signatures does not belong to a validator.
+/// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold. Returns an
+/// error if it doesn't, or if one of the signatures does not belong to a validator.
 ///
 /// This does _not_ cryptographically verify the signatures.
 pub(crate) fn check_sufficient_finality_signatures(
@@ -216,7 +216,7 @@ pub(crate) fn check_sufficient_finality_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = Ratio::from(1u64).sub(finality_threshold_fraction);
+    let lower_bound = Ratio::from(1u64) - finality_threshold_fraction;
     // Verify: signature_weight / total_weight >= lower_bound
     // Equivalent to the following
     if signature_weight * U512::from(*lower_bound.denom())
