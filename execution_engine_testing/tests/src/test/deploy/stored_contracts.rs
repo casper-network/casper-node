@@ -208,7 +208,7 @@ fn should_exec_stored_code_by_hash() {
     assert!(
         modified_balance_bravo < modified_balance_alpha,
         "second modified balance should be less than first modified balance"
-    );989
+    );
 
     let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
 
