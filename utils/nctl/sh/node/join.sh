@@ -38,7 +38,7 @@ fi
 
 # Submit auction bid.
 log "dispatching auction bid deploy"
-source "$NCTL"/sh/contracts-auction/do_bid.sh \
+source "$NCTL/sh/contracts-auction/do_bid.sh" \
     node="$NODE_ID" \
     amount="$BID_AMOUNT" \
     rate="$BID_DELEGATION_RATE"

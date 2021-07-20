@@ -5,7 +5,7 @@ use casper_engine_test_support::{
 use casper_types::{runtime_args, Key, RuntimeArgs};
 
 const CONTRACT_COUNTER_DEFINE: &str = "counter_define.wasm";
-const HASH_KEY_NAME: &str = "counter_package_hash";
+const CONTRACT_NAME: &str = "counter_package_hash";
 const COUNTER_VALUE_UREF: &str = "counter";
 const ENTRYPOINT_COUNTER: &str = "counter";
 const ENTRYPOINT_SESSION: &str = "session";
@@ -43,9 +43,9 @@ fn should_run_counter_example_contract() {
         .get(COUNTER_CONTRACT_HASH_KEY_NAME)
         .expect("should have counter contract hash key");
 
-    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
+    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        HASH_KEY_NAME,
+        CONTRACT_NAME,
         None,
         ENTRYPOINT_SESSION,
         runtime_args! { COUNTER_CONTRACT_HASH_KEY_NAME => counter_contract_hash_key },
@@ -69,9 +69,9 @@ fn should_run_counter_example_contract() {
 
     assert_eq!(value, 1);
 
-    let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
+    let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        HASH_KEY_NAME,
+        CONTRACT_NAME,
         None,
         ENTRYPOINT_SESSION,
         runtime_args! { COUNTER_CONTRACT_HASH_KEY_NAME => counter_contract_hash_key },
@@ -116,9 +116,9 @@ fn should_default_contract_hash_arg() {
         .expect_success()
         .commit();
 
-    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
+    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        HASH_KEY_NAME,
+        CONTRACT_NAME,
         None,
         ENTRYPOINT_SESSION,
         RuntimeArgs::new(),
@@ -173,9 +173,9 @@ fn should_call_counter_contract_directly() {
         .expect_success()
         .commit();
 
-    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
+    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        HASH_KEY_NAME,
+        CONTRACT_NAME,
         None,
         ENTRYPOINT_COUNTER,
         runtime_args! { ARG_COUNTER_METHOD => METHOD_INC },

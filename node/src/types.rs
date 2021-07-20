@@ -10,6 +10,7 @@ pub mod json_compatibility;
 mod node_config;
 mod node_id;
 mod peers_map;
+mod shared_object;
 mod status_feed;
 mod timestamp;
 
@@ -24,15 +25,17 @@ pub use block::{
 pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
+pub use datasize::DataSize;
 pub use deploy::{
-    Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,
-    Error as DeployError,
+    Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployOrTransferHash,
+    DeployValidationFailure, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
 pub use exit_code::ExitCode;
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
+pub(crate) use shared_object::SharedObject;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 

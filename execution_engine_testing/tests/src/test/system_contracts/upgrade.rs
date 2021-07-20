@@ -266,20 +266,21 @@ fn should_not_skip_major_versions() {
 
 #[ignore]
 #[test]
-fn should_not_skip_minor_versions() {
+fn should_allow_skip_minor_versions() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let sem_ver = PROTOCOL_VERSION.value();
 
-    let invalid_version =
+    // can skip minor versions as long as they are higher than current version
+    let valid_new_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor + 2, sem_ver.patch);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(PROTOCOL_VERSION)
-            .with_new_protocol_version(invalid_version)
+            .with_new_protocol_version(valid_new_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build()
     };
@@ -288,7 +289,7 @@ fn should_not_skip_minor_versions() {
 
     let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
-    assert!(maybe_upgrade_result.is_err(), "expected failure");
+    assert!(!maybe_upgrade_result.is_err(), "expected success");
 }
 
 #[ignore]

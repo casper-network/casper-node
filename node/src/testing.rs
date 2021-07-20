@@ -6,6 +6,7 @@
 mod condition_check_reactor;
 mod multi_stage_test_reactor;
 pub mod network;
+pub mod test_clock;
 mod test_rng;
 
 use std::{

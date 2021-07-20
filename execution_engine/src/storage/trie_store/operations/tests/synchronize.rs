@@ -104,7 +104,7 @@ where
                 correlation_id,
                 &source_txn,
                 source_store,
-                &root,
+                root,
                 &key,
             )?;
             assert!(maybe_value.is_found())
@@ -117,15 +117,15 @@ where
     {
         let source_txn: R::ReadTransaction = source_environment.create_read_txn()?;
         let target_txn: R::ReadTransaction = target_environment.create_read_txn()?;
-        let soruce_keys =
+        let source_keys =
             operations::keys::<_, _, _, _>(correlation_id, &source_txn, source_store, root)
                 .collect::<Result<Vec<K>, S::Error>>()?;
-        for key in soruce_keys {
+        for key in source_keys {
             let maybe_value: ReadResult<V> = operations::read::<_, _, _, _, E>(
                 correlation_id,
                 &target_txn,
                 target_store,
-                &root,
+                root,
                 &key,
             )?;
             assert!(maybe_value.is_found())

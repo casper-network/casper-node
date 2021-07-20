@@ -39,7 +39,6 @@ impl<C: Context> BlockContext<C> {
     }
 
     /// The block's relative height, i.e. the number of ancestors in the current era.
-    #[cfg(test)]
     pub(crate) fn height(&self) -> u64 {
         self.ancestor_values.len() as u64
     }
@@ -254,6 +253,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Returns the instance ID of this instance.
     fn instance_id(&self) -> &C::InstanceId;
 
-    // TODO: Make this lees Highway-specific.
+    // TODO: Make this less Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
 }

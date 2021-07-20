@@ -139,7 +139,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
                     Err(error) => return Ok(response_builder.error(error)?),
                 };
 
-            let json_block = JsonBlock::new(block, signatures);
+            let json_block = JsonBlock::new(block, Some(signatures));
 
             // Return the result.
             let result = Self::ResponseResult {
@@ -439,12 +439,10 @@ async fn get_block<REv: ReactorEventT>(
 ) -> Result<Option<Block>, warp_json_rpc::Error> {
     match get_block_with_metadata(maybe_id, effect_builder).await {
         Ok(Some((block, _))) => Ok(Some(block)),
-        Ok(None) => {
-            return Err(warp_json_rpc::Error::custom(
-                ErrorCode::NoSuchBlock as i64,
-                "block not known",
-            ))
-        }
+        Ok(None) => Err(warp_json_rpc::Error::custom(
+            ErrorCode::NoSuchBlock as i64,
+            "block not known",
+        )),
         Err(error) => Err(error),
     }
 }

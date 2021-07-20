@@ -182,6 +182,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
             .expect("should have error message");
         assert!(
             error_msg.contains(&format!("{:?}", ApiError::User(EXPECTED_REVERT_VALUE))),
+            "{}",
             error_msg
         );
     }

@@ -47,7 +47,8 @@ use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     fatal,
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock, TimeDiff,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
+        TimeDiff,
     },
     NodeRng,
 };
@@ -71,11 +72,10 @@ pub(crate) struct LinearChainSync<I> {
     stop_for_upgrade: bool,
     /// Key for storing the linear chain sync state.
     state_key: Vec<u8>,
-    /// Acceptable drift between the block creation and now.
-    /// If less than than this has passed we will consider syncing as finished.
-    acceptable_drift: TimeDiff,
     /// Shortest era that is allowed with the given protocol configuration.
     shortest_era: TimeDiff,
+    /// Minimum round length that is allowed with the given protocol configuration.
+    min_round_length: TimeDiff,
     /// Flag indicating whether we managed to sync at least one block.
     started_syncing: bool,
     /// The protocol version the node is currently running with.
@@ -115,7 +115,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             )?;
             Ok((linear_chain_sync, timeout_event))
         } else {
-            let acceptable_drift = chainspec.highway_config.max_round_length();
             // Shortest era is the maximum of the two.
             let shortest_era: TimeDiff = std::cmp::max(
                 chainspec.highway_config.min_round_length()
@@ -129,7 +128,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ),
                 None => State::Done(highest_block.map(Box::new)),
             };
-            let state_key = create_state_key(&chainspec);
+            let state_key = create_state_key(chainspec);
             let linear_chain_sync = LinearChainSync {
                 peers: PeersState::new(),
                 state,
@@ -137,8 +136,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 next_upgrade_activation_point,
                 stop_for_upgrade: false,
                 state_key,
-                acceptable_drift,
                 shortest_era,
+                min_round_length: chainspec.highway_config.min_round_length(),
                 started_syncing: false,
                 protocol_version,
             };
@@ -156,7 +155,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     ) -> Result<Self, prometheus::Error> {
         let state_key = create_state_key(chainspec);
         info!(?state, "reusing previous state");
-        let acceptable_drift = chainspec.highway_config.max_round_length();
         // Shortest era is the maximum of the two.
         let shortest_era: TimeDiff = std::cmp::max(
             chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
@@ -169,8 +167,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             state_key,
-            acceptable_drift,
             shortest_era,
+            min_round_length: chainspec.highway_config.min_round_length(),
             started_syncing: false,
             protocol_version,
         })
@@ -263,7 +261,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
         if block.header().is_switch_block() {
-            self.state.new_switch_block(&block);
+            self.state.set_last_switch_block_height(block.height());
         }
         if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
             info!(
@@ -313,7 +311,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
-                maybe_switch_block,
+                last_switch_block_height,
                 ..
             } => {
                 assert_eq!(highest_block_seen, block_height);
@@ -336,12 +334,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block, maybe_switch_block);
+                self.state = State::sync_descendants(trusted_hash, block, last_switch_block_height);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
                 ref latest_block,
-                ref maybe_switch_block,
+                last_switch_block_height,
                 ..
             } => {
                 if latest_block.as_ref() != &block {
@@ -351,22 +349,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     );
                     return fatal!(effect_builder, "unexpected block execution result").ignore();
                 }
-                if self.is_recent_block(&block) {
+                if self.is_currently_active_era(latest_block, last_switch_block_height) {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
                         era=block.header().era_id().value(),
-                        "downloaded recent block. finished synchronization"
-                    );
-                    self.mark_done(Some(*latest_block.clone()));
-                    return Effects::new();
-                }
-                if self.is_currently_active_era(&maybe_switch_block) {
-                    info!(
-                        hash=?block.hash(),
-                        height=?block.header().height(),
-                        era=block.header().era_id().value(),
-                        "downloaded switch block of a new era. finished synchronization"
+                        "downloaded a block in the current era. finished synchronization"
                     );
                     self.mark_done(Some(*latest_block.clone()));
                     return Effects::new();
@@ -377,18 +365,25 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    // Returns whether `block` can be considered the tip of the chain.
-    fn is_recent_block(&self, block: &Block) -> bool {
-        // Check if block was created "recently".
-        block.header().timestamp().elapsed() <= self.acceptable_drift
-    }
-
-    // Returns whether we've just downloaded a switch block of a currently active era.
-    fn is_currently_active_era(&self, maybe_switch_block: &Option<Box<Block>>) -> bool {
-        match maybe_switch_block {
-            Some(switch_block) => switch_block.header().timestamp().elapsed() < self.shortest_era,
-            None => false,
-        }
+    // Returns whether we've just downloaded a block in a currently active era.
+    fn is_currently_active_era(
+        &self,
+        block: &Block,
+        last_switch_block_height: Option<u64>,
+    ) -> bool {
+        let last_switch_block_height = last_switch_block_height.unwrap_or(0);
+        // This is the number of blocks that have we already know of from the era the current block
+        // is in.
+        let past_blocks_in_this_era = block.height().saturating_sub(last_switch_block_height);
+        // `self.shortest_era - self.min_round_length * past_blocks_in_this_era` is the estimated
+        // time left to the end of the era the current block is in; if less time than that has
+        // passed since the current block, this is most likely still the current era and we can
+        // return `true`.
+        // We add `min_round_length * past_blocks_in_this_era` to the left side instead of
+        // subtracting it from the right side to avoid underflows (TimeDiffs can't represent values
+        // less than 0).
+        block.header().timestamp().elapsed() + self.min_round_length * past_blocks_in_this_era
+            < self.shortest_era
     }
 
     /// Returns effects for fetching next block's deploys.
@@ -499,6 +494,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
             State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
             State::Done(latest_block) => latest_block.as_deref(),
+            State::None => None,
+        }
+    }
+
+    pub fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
+        match self.state {
+            State::SyncingTrustedHash { latest_block, .. } => latest_block.map(Block::take_header),
+            State::SyncingDescendants { latest_block, .. } => Some(latest_block.take_header()),
+            State::Done(maybe_latest_block) => {
+                maybe_latest_block.map(|latest_block| latest_block.take_header())
+            }
             State::None => None,
         }
     }
@@ -913,7 +919,7 @@ fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
 /// Deserialized vector of bytes into `LinearChainSync::State`.
 /// Panics on deserialization errors.
 fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
-    bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+    bincode::deserialize(serialized_state).unwrap_or_else(|error| {
         // Panicking here should not corrupt the state of any component as it's done in the
         // constructor.
         panic!(
@@ -929,7 +935,7 @@ pub(crate) fn read_init_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<Option<State>, storage::Error> {
-    let key = create_state_key(&chainspec);
+    let key = create_state_key(chainspec);
     if let Some(bytes) = storage.read_state_store(&key)? {
         Ok(deserialize_state(&bytes))
     } else {
@@ -943,6 +949,6 @@ pub(crate) fn clean_linear_chain_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<bool, storage::Error> {
-    let key = create_state_key(&chainspec);
+    let key = create_state_key(chainspec);
     storage.del_state_store(key)
 }

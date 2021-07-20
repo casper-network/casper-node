@@ -85,6 +85,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
+        execution_effect::ExecutionEffect,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
@@ -103,6 +104,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        consensus::{BlockContext, ClContext},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -132,7 +134,7 @@ use requests::{
 use self::announcements::BlocklistAnnouncement;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
-static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
+static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -220,13 +222,24 @@ impl<T> Serialize for Responder<T> {
 
 /// Effect extension for futures, used to convert futures into actual effects.
 pub trait EffectExt: Future + Send {
-    /// Finalizes a future into an effect that returns an event.
+    /// Finalizes a future into an effect that returns a single event.
     ///
     /// The function `f` is used to translate the returned value from an effect into an event.
     fn event<U, F>(self, f: F) -> Effects<U>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
+        Self: Sized;
+
+    /// Finalizes a future into an effect that returns an iterator of events.
+    ///
+    /// The function `f` is used to translate the returned value from an effect into an iterator of
+    /// events.
+    fn events<U, F, I>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Output) -> I + 'static + Send,
+        U: 'static,
+        I: Iterator<Item = U>,
         Self: Sized;
 
     /// Finalizes a future into an effect that runs but drops the result.
@@ -288,6 +301,15 @@ where
         U: 'static,
     {
         smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
+    }
+
+    fn events<U, F, I>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Output) -> I + 'static + Send,
+        U: 'static,
+        I: Iterator<Item = U>,
+    {
+        smallvec![self.map(f).map(|iter| iter.collect()).boxed()]
     }
 
     fn ignore<Ev>(self) -> Effects<Ev> {
@@ -416,8 +438,8 @@ impl<REv> EffectBuilder<REv> {
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
-                let _ = UNOBTAINIUM.acquire().await;
-                panic!("should never obtain unobtainium semaphore");
+                let _ = UNOBTAINABLE.acquire().await;
+                panic!("should never obtain unobtainable semaphore");
             }
         }
     }
@@ -651,6 +673,20 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
+    /// Announces that we have finished gossiping the indicated item.
+    pub(crate) async fn announce_finished_gossiping<T>(self, item_id: T::Id)
+    where
+        REv: From<GossiperAnnouncement<T>>,
+        T: Item,
+    {
+        self.0
+            .schedule(
+                GossiperAnnouncement::FinishedGossiping(item_id),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
     /// Announces that an invalid deploy has been received.
     pub(crate) fn announce_invalid_deploy<I>(
         self,
@@ -690,6 +726,22 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ContractRuntimeAnnouncement::block_already_executed(block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce a committed Step success.
+    pub(crate) async fn announce_step_success(
+        self,
+        era_id: EraId,
+        execution_effect: ExecutionEffect,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
                 QueueKind::Regular,
             )
             .await
@@ -1120,20 +1172,18 @@ impl<REv> EffectBuilder<REv> {
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     pub(crate) async fn request_block_payload(
         self,
-        current_instant: Timestamp,
-        past_deploys: HashSet<DeployHash>,
+        context: BlockContext<ClContext>,
         next_finalized: u64,
         accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> BlockPayload
+    ) -> Arc<BlockPayload>
     where
         REv: From<BlockProposerRequest>,
     {
         self.make_request(
             |responder| {
                 BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                    current_instant,
-                    past_deploys,
+                    context,
                     next_finalized,
                     responder,
                     accusations,
@@ -1536,23 +1586,23 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the correct era validators set for the given era.
-    /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
-    /// and `activation_era_id` parameters.
+    /// Takes emergency restarts into account based on the information from the chainspec loader.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
         let CurrentRunInfo {
-            activation_point,
             protocol_version,
             initial_state_root_hash,
+            last_emergency_restart,
+            ..
         } = self.get_current_run_info().await;
-        let activation_era_id = activation_point.era_id();
-        if era_id < activation_era_id {
-            // we don't support getting the validators from before the last upgrade
+        let cutoff_era_id = last_emergency_restart.unwrap_or_else(|| EraId::new(0));
+        if era_id < cutoff_era_id {
+            // we don't support getting the validators from before the last emergency restart
             return None;
         }
-        if era_id == activation_era_id {
+        if era_id == cutoff_era_id {
             // in the activation era, we read the validators from the global state; we use the
             // global state hash of the first block in the era, if it exists - if we can't get it,
             // we use the initial_state_root_hash passed from the chainspec loader
@@ -1586,9 +1636,27 @@ impl<REv> EffectBuilder<REv> {
                 .and_then(|era_validators| era_validators.get(&era_id).cloned())
         } else {
             // in other eras, we just use the validators from the key block
-            self.get_key_block_header_for_era_id_from_storage(era_id)
+            let key_block_result = self
+                .get_key_block_header_for_era_id_from_storage(era_id)
                 .await
-                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned())
+                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned());
+            if key_block_result.is_some() {
+                // if the key block read was successful, just return it
+                key_block_result
+            } else {
+                // if there was no key block, we might be looking at a future era - in such a case,
+                // read the state root hash from the highest block and check with the contract
+                // runtime
+                let highest_block = self.get_highest_block_from_storage().await?;
+                let req = EraValidatorsRequest::new(
+                    (*highest_block.header().state_root_hash()).into(),
+                    protocol_version,
+                );
+                self.get_era_validators_from_contract_runtime(req)
+                    .await
+                    .ok()
+                    .and_then(|era_validators| era_validators.get(&era_id).cloned())
+            }
         }
     }
 

@@ -24,7 +24,7 @@ function main()
     PATH_TO_CLIENT=$(get_path_to_client)
 
     # Set contract path.
-    PATH_TO_CONTRACT=$(get_path_to_contract "eco/kv-storage.wasm")
+    PATH_TO_CONTRACT=$(get_path_to_contract "eco/kv_storage.wasm")
     if [ ! -f "$PATH_TO_CONTRACT" ]; then
         echo "ERROR: The kv-storage.wasm binary file cannot be found.  Please compile it and move it to the following directory: $(get_path_to_net)"
         return

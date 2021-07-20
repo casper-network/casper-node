@@ -140,7 +140,7 @@ impl Display for FromStrError {
 }
 
 /// A (labelled) "user group". Each method of a versioned contract may be
-/// assoicated with one or more user groups which are allowed to call it.
+/// associated with one or more user groups which are allowed to call it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct Group(String);
@@ -612,7 +612,7 @@ pub struct ContractPackage {
     /// Mapping maintaining the set of URefs associated with each "user
     /// group". This can be used to control access to methods in a particular
     /// version of the contract. A method is callable by any context which
-    /// "knows" any of the URefs assoicated with the mthod's user group.
+    /// "knows" any of the URefs associated with the method's user group.
     groups: Groups,
     /// A flag that determines whether a contract is locked
     lock_status: ContractPackageStatus,
@@ -764,18 +764,12 @@ impl ContractPackage {
 
     /// Return the contract version key for the newest enabled contract version.
     pub fn current_contract_version(&self) -> Option<ContractVersionKey> {
-        match self.enabled_versions().keys().next_back() {
-            Some(contract_version_key) => Some(*contract_version_key),
-            None => None,
-        }
+        self.enabled_versions().keys().next_back().copied()
     }
 
     /// Return the contract hash for the newest enabled contract version.
     pub fn current_contract_hash(&self) -> Option<ContractHash> {
-        match self.enabled_versions().values().next_back() {
-            Some(contract_hash) => Some(*contract_hash),
-            None => None,
-        }
+        self.enabled_versions().values().next_back().copied()
     }
 
     /// Return the lock status of the contract package.
@@ -1023,7 +1017,7 @@ impl Contract {
         self.protocol_version = protocol_version;
     }
 
-    /// Determines if `Contract` is compatibile with a given `ProtocolVersion`.
+    /// Determines if `Contract` is compatible with a given `ProtocolVersion`.
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
         self.protocol_version.value().major == protocol_version.value().major
     }
@@ -1119,7 +1113,7 @@ pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
 /// Default name for an installer entry point
 pub const ENTRY_POINT_NAME_INSTALL: &str = "install";
 
-/// Default name for an upgrader entry point
+/// Default name for an upgrade entry point
 pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
 
 /// Collection of entry point parameters.
@@ -1340,6 +1334,11 @@ impl Parameter {
     /// Get the type of this argument.
     pub fn cl_type(&self) -> &CLType {
         &self.cl_type
+    }
+
+    /// Get a reference to the parameter's name.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 

@@ -50,13 +50,17 @@ pub enum FunctionIndex {
     Blake2b,
     RecordTransfer,
     RecordEraInfo,
+    NewDictionaryFuncIndex,
+    DictionaryGetFuncIndex,
+    DictionaryPutFuncIndex,
+    LoadCallStack,
 }
 
-impl Into<usize> for FunctionIndex {
-    fn into(self) -> usize {
+impl From<FunctionIndex> for usize {
+    fn from(index: FunctionIndex) -> usize {
         // NOTE: This can't fail as `FunctionIndex` is represented by usize,
         // so this serves mostly as a syntax sugar.
-        self.to_usize().unwrap()
+        index.to_usize().unwrap()
     }
 }
 

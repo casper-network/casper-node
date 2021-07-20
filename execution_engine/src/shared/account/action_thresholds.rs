@@ -106,8 +106,8 @@ impl ToBytes for ActionThresholds {
 
 impl FromBytes for ActionThresholds {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (deployment, rem) = Weight::from_bytes(&bytes)?;
-        let (key_management, rem) = Weight::from_bytes(&rem)?;
+        let (deployment, rem) = Weight::from_bytes(bytes)?;
+        let (key_management, rem) = Weight::from_bytes(rem)?;
         let ret = ActionThresholds {
             deployment,
             key_management,

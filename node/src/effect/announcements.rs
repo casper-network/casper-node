@@ -10,7 +10,7 @@ use std::{
 
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
@@ -222,6 +222,13 @@ pub enum ContractRuntimeAnnouncement {
     LinearChainBlock(Box<LinearChainBlock>),
     /// A block was requested to be executed, but it had been executed before.
     BlockAlreadyExecuted(Box<Block>),
+    /// A Step succeeded and has altered global state.
+    StepSuccess {
+        /// The era id in which the step was committed to global state.
+        era_id: EraId,
+        /// The operations and transforms committed to global state.
+        execution_effect: ExecutionEffect,
+    },
 }
 
 impl ContractRuntimeAnnouncement {
@@ -238,6 +245,14 @@ impl ContractRuntimeAnnouncement {
     /// Create a ContractRuntimeAnnouncement::BlockAlreadyExecuted from a Block.
     pub fn block_already_executed(block: Block) -> Self {
         Self::BlockAlreadyExecuted(Box::new(block))
+    }
+
+    /// Create a ContractRuntimeAnnouncement::StepSuccess from an execution effect.
+    pub fn step_success(era_id: EraId, execution_effect: ExecutionEffect) -> Self {
+        Self::StepSuccess {
+            era_id,
+            execution_effect,
+        }
     }
 }
 
@@ -263,6 +278,9 @@ impl Display for ContractRuntimeAnnouncement {
             ContractRuntimeAnnouncement::BlockAlreadyExecuted(block) => {
                 write!(f, "block had been executed before: {}", block.hash())
             }
+            ContractRuntimeAnnouncement::StepSuccess { era_id, .. } => {
+                write!(f, "step completed for {}", era_id)
+            }
         }
     }
 }
@@ -272,12 +290,18 @@ impl Display for ContractRuntimeAnnouncement {
 pub enum GossiperAnnouncement<T: Item> {
     /// A new item has been received, where the item's ID is the complete item.
     NewCompleteItem(T::Id),
+
+    /// Finished gossiping about the indicated item.
+    FinishedGossiping(T::Id),
 }
 
 impl<T: Item> Display for GossiperAnnouncement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
+            GossiperAnnouncement::FinishedGossiping(item_id) => {
+                write!(f, "finished gossiping {}", item_id)
+            }
         }
     }
 }

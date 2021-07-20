@@ -5,11 +5,13 @@ mod common;
 mod deploy;
 mod docs;
 mod generate_completion;
+mod get_account_info;
 mod get_auction_info;
 mod get_balance;
 mod get_era_info_by_switch_block;
 mod get_state_hash;
 mod keygen;
+mod query_dictionary;
 mod query_state;
 
 use std::process;
@@ -22,14 +24,12 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
+    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem as QueryState},
 };
-
-use deploy::{ListDeploys, MakeDeploy, SendDeploy, SignDeploy};
 
 use account_address::GenerateAccountHash as AccountAddress;
 use command::{ClientCommand, Success};
-use deploy::Transfer;
+use deploy::{ListDeploys, MakeDeploy, MakeTransfer, SendDeploy, SignDeploy, Transfer};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
 
@@ -42,6 +42,7 @@ enum DisplayOrder {
     SignDeploy,
     SendDeploy,
     Transfer,
+    MakeTransfer,
     GetDeploy,
     GetBlock,
     GetBlockTransfers,
@@ -49,12 +50,14 @@ enum DisplayOrder {
     GetStateRootHash,
     QueryState,
     GetBalance,
+    GetAccountInfo,
     GetEraInfo,
     GetAuctionInfo,
     Keygen,
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
+    GetDictionaryItem,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -66,6 +69,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(SignDeploy::build(DisplayOrder::SignDeploy as usize))
         .subcommand(SendDeploy::build(DisplayOrder::SendDeploy as usize))
         .subcommand(Transfer::build(DisplayOrder::Transfer as usize))
+        .subcommand(MakeTransfer::build(DisplayOrder::MakeTransfer as usize))
         .subcommand(GetDeploy::build(DisplayOrder::GetDeploy as usize))
         .subcommand(GetBlock::build(DisplayOrder::GetBlock as usize))
         .subcommand(GetBlockTransfers::build(
@@ -73,6 +77,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListDeploys::build(DisplayOrder::ListDeploys as usize))
         .subcommand(GetBalance::build(DisplayOrder::GetBalance as usize))
+        .subcommand(GetAccountInfo::build(DisplayOrder::GetAccountInfo as usize))
         .subcommand(GetStateRootHash::build(
             DisplayOrder::GetStateRootHash as usize,
         ))
@@ -87,6 +92,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
+        .subcommand(GetDictionaryItem::build(
+            DisplayOrder::GetDictionaryItem as usize,
+        ))
 }
 
 #[tokio::main]
@@ -98,11 +106,13 @@ async fn main() {
         (SignDeploy::NAME, Some(matches)) => (SignDeploy::run(matches), matches),
         (SendDeploy::NAME, Some(matches)) => (SendDeploy::run(matches), matches),
         (Transfer::NAME, Some(matches)) => (Transfer::run(matches), matches),
+        (MakeTransfer::NAME, Some(matches)) => (MakeTransfer::run(matches), matches),
         (GetDeploy::NAME, Some(matches)) => (GetDeploy::run(matches), matches),
         (GetBlock::NAME, Some(matches)) => (GetBlock::run(matches), matches),
         (GetBlockTransfers::NAME, Some(matches)) => (GetBlockTransfers::run(matches), matches),
         (ListDeploys::NAME, Some(matches)) => (ListDeploys::run(matches), matches),
         (GetBalance::NAME, Some(matches)) => (GetBalance::run(matches), matches),
+        (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches), matches),
         (GetStateRootHash::NAME, Some(matches)) => (GetStateRootHash::run(matches), matches),
         (QueryState::NAME, Some(matches)) => (QueryState::run(matches), matches),
         (GetEraInfoBySwitchBlock::NAME, Some(matches)) => {
@@ -113,6 +123,7 @@ async fn main() {
         (GenerateCompletion::NAME, Some(matches)) => (GenerateCompletion::run(matches), matches),
         (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches), matches),
         (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches), matches),
+        (GetDictionaryItem::NAME, Some(matches)) => (GetDictionaryItem::run(matches), matches),
         _ => {
             let _ = cli().print_long_help();
             println!();

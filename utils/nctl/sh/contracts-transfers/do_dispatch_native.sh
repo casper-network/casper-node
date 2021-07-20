@@ -10,6 +10,7 @@ source "$NCTL"/sh/utils/main.sh
 #   Count of transfers to be dispatched.
 #   Transfer dispatch interval.
 #   Node ordinal identifier.
+#   Verbosity flag.
 #######################################
 function main()
 {
@@ -18,6 +19,8 @@ function main()
     local TRANSFERS=${3}
     local INTERVAL=${4}
     local NODE_ID=${5}
+    local VERBOSE=${6}
+
     local CHAIN_NAME
     local GAS_PRICE
     local GAS_PAYMENT
@@ -46,13 +49,15 @@ function main()
     CP1_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")
     CP2_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID")
 
-    log "dispatching $TRANSFERS native transfers"
-    log "... chain=$CHAIN_NAME"
-    log "... transfer amount=$AMOUNT"
-    log "... transfer interval=$INTERVAL (s)"
-    log "... counter-party 1 public key=$CP1_ACCOUNT_KEY"
-    log "... counter-party 2 public key=$CP2_ACCOUNT_KEY"
-    log "... dispatched deploys:"
+    if [ $VERBOSE == true ]; then
+        log "dispatching $TRANSFERS native transfers"
+        log "... chain=$CHAIN_NAME"
+        log "... transfer amount=$AMOUNT"
+        log "... transfer interval=$INTERVAL (s)"
+        log "... counter-party 1 public key=$CP1_ACCOUNT_KEY"
+        log "... counter-party 2 public key=$CP2_ACCOUNT_KEY"
+        log "... dispatched deploys:"    
+    fi
 
     DISPATCHED=0
     while [ $DISPATCHED -lt "$TRANSFERS" ];
@@ -68,15 +73,20 @@ function main()
                 --secret-key "$CP1_SECRET_KEY" \
                 --amount "$AMOUNT" \
                 --target-account "$CP2_ACCOUNT_KEY" \
+                --transfer-id $((DISPATCHED + 1)) \
                 | jq '.result.deploy_hash' \
                 | sed -e 's/^"//' -e 's/"$//'
             )
         DISPATCHED=$((DISPATCHED + 1))
-        log "... #$DISPATCHED :: $DISPATCH_NODE_ADDRESS :: $DEPLOY_HASH"
+        if [ $VERBOSE == true ]; then
+            log "... #$DISPATCHED :: $DISPATCH_NODE_ADDRESS :: $DEPLOY_HASH"
+        fi
         sleep "$INTERVAL"
     done
 
-    log "dispatched $TRANSFERS native transfers"
+    if [ $VERBOSE == true ]; then
+        log "dispatched $TRANSFERS native transfers"
+    fi
 }
 
 # ----------------------------------------------------------------
@@ -88,6 +98,7 @@ unset INTERVAL
 unset NODE_ID
 unset TRANSFERS
 unset USER_ID
+unset VERBOSE
 
 for ARGUMENT in "$@"
 do
@@ -99,6 +110,7 @@ do
         node) NODE_ID=${VALUE} ;;        
         transfers) TRANSFERS=${VALUE} ;;
         user) USER_ID=${VALUE} ;;
+        verbose) VERBOSE=${VALUE} ;;
         *)
     esac
 done
@@ -107,4 +119,5 @@ main "${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT}" \
      "${USER_ID:-1}" \
      "${TRANSFERS:-100}" \
      "${INTERVAL:-0.01}" \
-     "${NODE_ID:-"random"}"
+     "${NODE_ID:-"random"}" \
+     ${VERBOSE:-true}

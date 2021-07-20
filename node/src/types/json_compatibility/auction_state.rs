@@ -16,9 +16,8 @@ use casper_types::{
 use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
-    let public_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into();
+    let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+    let public_key_1 = PublicKey::from(&secret_key_1);
 
     let mut validator_weights = BTreeMap::new();
     validator_weights.insert(public_key_1, U512::from(10));
@@ -33,14 +32,12 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
 
-    let validator_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
-    let delegator_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+    let validator_secret_key =
+        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+    let validator_public_key = PublicKey::from(&validator_secret_key);
+    let delegator_secret_key =
+        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
+    let delegator_public_key = PublicKey::from(&delegator_secret_key);
 
     let delegator = Delegator::unlocked(
         delegator_public_key.clone(),

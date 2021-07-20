@@ -82,9 +82,9 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
 
 static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunctionCosts {
     read_value: HostFunction::fixed(0),
-    read_value_local: HostFunction::fixed(0),
+    dictionary_get: HostFunction::fixed(0),
     write: HostFunction::fixed(0),
-    write_local: HostFunction::fixed(0),
+    dictionary_put: HostFunction::fixed(0),
     add: HostFunction::fixed(0),
     new_uref: HostFunction::fixed(0),
     load_named_keys: HostFunction::fixed(0),

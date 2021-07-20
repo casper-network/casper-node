@@ -50,7 +50,7 @@ where
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();
-    state::State::new(weights, params, vec![])
+    state::State::new(weights, params, vec![], vec![])
 }
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
@@ -58,7 +58,7 @@ const STANDSTILL_TIMEOUT: &str = "1min";
 
 pub(crate) fn new_test_highway_protocol<I1, I2, T>(
     weights: I1,
-    init_slashed: I2,
+    init_faulty: I2,
 ) -> Box<dyn ConsensusProtocol<NodeId, ClContext>>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
@@ -73,13 +73,12 @@ where
     let config = Config {
         secret_key_path: Default::default(),
         highway: HighwayConfig {
-            unit_hashes_folder: Default::default(),
             pending_vertex_timeout: "1min".parse().unwrap(),
             standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
+            shutdown_on_standstill: true,
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
-            round_success_meter: Default::default(),
-            request_latest_state_timeout: "10sec".parse().unwrap(),
+            ..HighwayConfig::default()
         },
     };
     // Timestamp of the genesis era start and test start.
@@ -87,7 +86,8 @@ where
     let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
-        &init_slashed.into_iter().collect(),
+        &init_faulty.into_iter().collect(),
+        &None.into_iter().collect(),
         &(&chainspec).into(),
         &config,
         None,
@@ -154,7 +154,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         round_exp: 0,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -200,13 +200,13 @@ fn send_a_valid_wire_unit() {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
-        value: Some(BlockPayload::new(vec![], vec![], vec![], false)),
+        value: Some(Arc::new(BlockPayload::new(vec![], vec![], vec![], false))),
         seq_number,
         timestamp: now,
         round_exp: 14,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -260,7 +260,7 @@ fn detect_doppelganger() {
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let now = Timestamp::zero();
-    let value = BlockPayload::new(vec![], vec![], vec![], false);
+    let value = Arc::new(BlockPayload::new(vec![], vec![], vec![], false));
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
@@ -271,14 +271,14 @@ fn detect_doppelganger() {
         round_exp,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
-    assert_eq!(highway_protocol.is_active(), true);
+    assert!(highway_protocol.is_active());
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.

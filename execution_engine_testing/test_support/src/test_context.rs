@@ -3,7 +3,7 @@ use casper_execution_engine::{
         genesis::{GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::motes::Motes,
+    shared::{motes::Motes, stored_value::StoredValue},
 };
 use casper_types::{AccessRights, Key, PublicKey, URef, U512};
 
@@ -120,6 +120,61 @@ impl TestContext {
             .map_err(Error::from)
     }
 
+    /// Queries for a [`Value`] stored in a dictionary under a given 'name'
+    ///
+    /// Returns an [`Error`] if not found.
+    pub fn query_dictionary_item(
+        &self,
+        key: Key,
+        dictionary_name: Option<String>,
+        dictionary_item_key: String,
+    ) -> Result<Value> {
+        let empty_path = vec![];
+        let dictionary_key_bytes = dictionary_item_key.as_bytes();
+        let address = match key {
+            Key::Account(_) | Key::Hash(_) => {
+                if let Some(name) = dictionary_name {
+                    let stored_value = self.inner.query(None, key, &[]).map_err(Error::from)?;
+
+                    let named_keys = match &stored_value {
+                        StoredValue::Account(account) => account.named_keys(),
+                        StoredValue::Contract(contract) => contract.named_keys(),
+                        _ => {
+                            return Err(Error::from(
+                                "Provided base key is nether an account or a contract".to_string(),
+                            ))
+                        }
+                    };
+
+                    let dictionary_uref =
+                        named_keys
+                            .get(&name)
+                            .and_then(Key::as_uref)
+                            .ok_or_else(|| {
+                                Error::from(
+                                    "No dictionary uref was found in named keys".to_string(),
+                                )
+                            })?;
+
+                    Key::dictionary(*dictionary_uref, dictionary_key_bytes)
+                } else {
+                    return Err(Error::from("No dictionary name was provided".to_string()));
+                }
+            }
+            Key::URef(uref) => Key::dictionary(uref, dictionary_key_bytes),
+            Key::Dictionary(address) => Key::Dictionary(address),
+            _ => {
+                return Err(Error::from(
+                    "Unsupported key type for a query to a dictionary item".to_string(),
+                ))
+            }
+        };
+        self.inner
+            .query(None, address, &empty_path)
+            .map(Value::new)
+            .map_err(Error::from)
+    }
+
     /// Gets the balance of the purse under the given [`URefAddr`].
     ///
     /// Note that this requires performing an earlier query to retrieve `purse_addr`.
@@ -130,19 +185,17 @@ impl TestContext {
 
     /// Gets the main purse [`URef`] from an [`Account`] stored under a [`PublicKey`], or `None`.
     pub fn main_purse_address(&self, account_key: AccountHash) -> Option<URef> {
-        match self.inner.get_account(account_key) {
-            Some(account) => Some(account.main_purse()),
-            None => None,
-        }
+        self.inner
+            .get_account(account_key)
+            .map(|account| account.main_purse())
     }
 
     // TODO: Remove this once test can use query
     /// Gets an [`Account`] stored under a [`PublicKey`], or `None`.
     pub fn get_account(&self, account_key: AccountHash) -> Option<Account> {
-        match self.inner.get_account(account_key) {
-            Some(account) => Some(account.into()),
-            None => None,
-        }
+        self.inner
+            .get_account(account_key)
+            .map(|account| account.into())
     }
 }
 

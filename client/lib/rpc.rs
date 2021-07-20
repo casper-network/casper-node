@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{convert::TryInto, fs::File};
 
 use futures::executor;
 use jsonrpc_lite::{Id, JsonRpc, Params};
@@ -18,17 +18,20 @@ use casper_node::{
         },
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
-        state::{GetAuctionInfo, GetBalance, GetBalanceParams, GetItem, GetItemParams},
+        state::{
+            GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
+            GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams, GetItem, GetItemParams,
+        },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
+use casper_types::{AsymmetricType, Key, PublicKey, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
-    validation,
+    validation, DictionaryItemStrParams,
 };
 
 /// Target for a given transfer.
@@ -120,6 +123,28 @@ impl RpcCall {
         Ok(response)
     }
 
+    pub(crate) fn get_dictionary_item(
+        self,
+        state_root_hash: &str,
+        dictionary_str_params: DictionaryItemStrParams<'_>,
+    ) -> Result<JsonRpc> {
+        let state_root_hash =
+            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
+                context: "state_root_hash",
+                error,
+            })?;
+
+        let dictionary_identifier = dictionary_str_params.try_into()?;
+
+        let params = GetDictionaryItemParams {
+            state_root_hash,
+            dictionary_identifier,
+        };
+
+        let response = GetDictionaryItem::request_with_map_params(self, params)?;
+        Ok(response)
+    }
+
     pub(crate) fn get_state_root_hash(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
         match Self::block_identifier(maybe_block_identifier)? {
             Some(block_identifier) => {
@@ -164,8 +189,15 @@ impl RpcCall {
         Ok(response)
     }
 
-    pub(crate) fn get_auction_info(self) -> Result<JsonRpc> {
-        GetAuctionInfo::request(self)
+    pub(crate) fn get_auction_info(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+        let response = match Self::block_identifier(maybe_block_identifier)? {
+            None => GetAuctionInfo::request(self),
+            Some(block_identifier) => {
+                let params = GetAuctionInfoParams { block_identifier };
+                GetAuctionInfo::request_with_map_params(self, params)
+            }
+        }?;
+        Ok(response)
     }
 
     pub(crate) fn list_rpcs(self) -> Result<JsonRpc> {
@@ -177,31 +209,18 @@ impl RpcCall {
         amount: U512,
         source_purse: Option<URef>,
         target: TransferTarget,
-        id: Option<u64>,
+        transfer_id: u64,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
-        const TRANSFER_ARG_AMOUNT: &str = "amount";
-        const TRANSFER_ARG_SOURCE: &str = "source";
-        const TRANSFER_ARG_TARGET: &str = "target";
-        const TRANSFER_ARG_ID: &str = "id";
-
-        let mut transfer_args = RuntimeArgs::new();
-        transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
-        if let Some(source_purse) = source_purse {
-            transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
-        }
-        match target {
-            TransferTarget::Account(target_account) => {
-                let target_account_hash = target_account.to_account_hash().value();
-                transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
-            }
-        }
-        transfer_args.insert(TRANSFER_ARG_ID, id)?;
-        let session = ExecutableDeployItem::Transfer {
-            args: transfer_args,
-        };
-        let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
+        let deploy = Deploy::new_transfer(
+            amount,
+            source_purse,
+            target,
+            transfer_id,
+            deploy_params,
+            payment,
+        )?;
         let params = PutDeployParams { deploy };
         Transfer::request_with_map_params(self, params)
     }
@@ -244,6 +263,24 @@ impl RpcCall {
             None => GetBlockTransfers::request(self),
         }?;
         Ok(response)
+    }
+
+    pub(crate) fn get_account_info(
+        self,
+        public_key: &str,
+        maybe_block_identifier: &str,
+    ) -> Result<JsonRpc> {
+        let key = if let Ok(public_key) = PublicKey::from_hex(public_key) {
+            public_key
+        } else {
+            return Err(Error::FailedToParseKey);
+        };
+        let block_identifier = Self::block_identifier(maybe_block_identifier)?;
+        let params = GetAccountInfoParams {
+            public_key: key,
+            block_identifier,
+        };
+        GetAccountInfo::request_with_map_params(self, params)
     }
 
     fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {
@@ -370,6 +407,14 @@ impl RpcClient for ListRpcs {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for GetAccountInfo {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
+impl RpcClient for GetDictionaryItem {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 pub(crate) trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
@@ -391,3 +436,6 @@ impl IntoJsonMap for GetBalanceParams {}
 impl IntoJsonMap for GetItemParams {}
 impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}
+impl IntoJsonMap for GetAuctionInfoParams {}
+impl IntoJsonMap for GetAccountInfoParams {}
+impl IntoJsonMap for GetDictionaryItemParams {}

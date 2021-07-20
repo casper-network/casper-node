@@ -21,11 +21,15 @@
 //! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
+mod deploy_getter;
 mod event;
+mod event_indexer;
 mod http_server;
 mod sse_server;
+#[cfg(test)]
+mod tests;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, net::SocketAddr, path::PathBuf};
 
 use datasize::DataSize;
 use tokio::sync::{
@@ -39,12 +43,17 @@ use casper_types::ProtocolVersion;
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
+    reactor::participating::Event as ParticipatingReactorEvent,
+    types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
 };
 pub use config::Config;
+pub(crate) use deploy_getter::DeployGetter;
 pub(crate) use event::Event;
-pub use sse_server::SseData;
+use event_indexer::{EventIndex, EventIndexer};
+use sse_server::ChannelsAndFilter;
+pub(crate) use sse_server::SseData;
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -67,13 +76,18 @@ pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
     // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
     #[data_size(skip)]
-    sse_data_sender: UnboundedSender<SseData>,
+    sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
+    event_indexer: EventIndexer,
+    listening_address: SocketAddr,
+    deploy_getter: DeployGetter,
 }
 
 impl EventStreamServer {
     pub(crate) fn new(
         config: Config,
+        storage_path: PathBuf,
         api_version: ProtocolVersion,
+        deploy_getter: DeployGetter,
     ) -> Result<Self, ListeningError> {
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
             warn!(
@@ -84,17 +98,26 @@ impl EventStreamServer {
             ListeningError::ResolveAddress(error)
         })?;
 
+        let event_indexer = EventIndexer::new(storage_path);
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.
-        let broadcast_channel_size = config.event_stream_buffer_length / 100
-            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE);
-        let (broadcaster, new_subscriber_info_receiver, sse_filter) =
-            sse_server::create_channels_and_filter(broadcast_channel_size as usize);
+        let broadcast_channel_size = config.event_stream_buffer_length
+            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
+            / 100;
+        let ChannelsAndFilter {
+            event_broadcaster,
+            new_subscriber_info_receiver,
+            sse_filter,
+        } = ChannelsAndFilter::new(
+            broadcast_channel_size as usize,
+            config.max_concurrent_subscribers,
+            deploy_getter.clone(),
+        );
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        let (actual_address, server_with_shutdown) = warp::serve(sse_filter)
+        let (listening_address, server_with_shutdown) = warp::serve(sse_filter)
             .try_bind_with_graceful_shutdown(required_address, async {
                 shutdown_receiver.await.ok();
             })
@@ -102,7 +125,7 @@ impl EventStreamServer {
                 address: required_address,
                 error: Box::new(error),
             })?;
-        info!(address=%actual_address, "started event stream server");
+        info!(address=%listening_address, "started event stream server");
 
         tokio::spawn(http_server::run(
             config,
@@ -110,16 +133,30 @@ impl EventStreamServer {
             server_with_shutdown,
             shutdown_sender,
             sse_data_receiver,
-            broadcaster,
+            event_broadcaster,
             new_subscriber_info_receiver,
         ));
 
-        Ok(EventStreamServer { sse_data_sender })
+        Ok(EventStreamServer {
+            sse_data_sender,
+            event_indexer,
+            listening_address,
+            deploy_getter,
+        })
+    }
+
+    pub(crate) fn set_participating_effect_builder(
+        &self,
+        effect_builder: EffectBuilder<ParticipatingReactorEvent>,
+    ) {
+        self.deploy_getter
+            .set_participating_effect_builder(effect_builder);
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
     fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
-        let _ = self.sse_data_sender.send(sse_data);
+        let event_index = self.event_indexer.next_index();
+        let _ = self.sse_data_sender.send((event_index, sse_data));
         Effects::new()
     }
 }
@@ -140,8 +177,9 @@ where
         match event {
             Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                 block_hash: *block.hash(),
-                block: Box::new(*block),
+                block: Box::new(JsonBlock::new(*block, None)),
             }),
+            Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
             Event::DeployProcessed {
                 deploy_hash,
                 deploy_header,
@@ -166,6 +204,10 @@ where
                 timestamp,
             }),
             Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
+            Event::Step { era_id, effect } => self.broadcast(SseData::Step {
+                era_id,
+                execution_effect: effect,
+            }),
         }
     }
 }

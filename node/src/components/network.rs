@@ -154,9 +154,6 @@ pub struct Network<REv, P> {
 
 impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     /// Creates a new small network component instance.
-    ///
-    /// If `notify` is set to `false`, no systemd notifications will be sent, regardless of
-    /// configuration.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
@@ -164,7 +161,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         registry: &Registry,
         network_identity: NetworkIdentity,
         chainspec: &Chainspec,
-        notify: bool,
     ) -> Result<(Network<REv, P>, Effects<Event<P>>), Error> {
         let our_peer_id = PeerId::from(&network_identity);
         let our_id = NodeId::from(&network_identity);
@@ -212,11 +208,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             return Ok((network, Effects::new()));
         }
 
-        let net_metrics = NetworkingMetrics::new(registry).map_err(Error::MetricsError)?;
-
-        if notify {
-            debug!("our node id: {}", our_id);
-        }
+        let net_metrics = NetworkingMetrics::new(registry).map_err(Error::Metrics)?;
 
         // Create a keypair for authenticated encryption of the transport.
         let noise_keys = noise::Keypair::<X25519Spec>::new()
@@ -434,7 +426,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     mut shutdown_receiver: watch::Receiver<()>,
     mut swarm: Swarm<Behavior>,
     known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
-    is_bootsrap_node: bool,
+    is_bootstrap_node: bool,
     queued_messages: IntGauge,
 ) {
     //let our_id = our
@@ -447,7 +439,14 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
                     trace!("{}: {:?}", our_id(&swarm), swarm_event);
-                    handle_swarm_event(&mut swarm, event_queue, swarm_event, &known_addresses_mut, is_bootsrap_node).await;
+                    handle_swarm_event(
+                        &mut swarm,
+                        event_queue,
+                        swarm_event,
+                        &known_addresses_mut,
+                        is_bootstrap_node
+                    )
+                    .await;
                 }
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see
@@ -554,7 +553,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             attempts_remaining,
         },
         SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
-            debug!(%address, %error, "{}: failed to connect", our_id(&swarm));
+            debug!(%address, %error, "{}: failed to connect", our_id(swarm));
             let we_are_isolated = match known_addresses_mut.lock() {
                 Err(err) => {
                     panic!("Could not acquire `known_addresses_mut` mutex: {:?}", err)
@@ -574,7 +573,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                     info!(
                         "{}: failed to bootstrap to any other nodes, but continuing to run as we \
                              are a bootstrap node",
-                        our_id(&swarm)
+                        our_id(swarm)
                     );
                 } else {
                     // (Re)schedule connection attempts to known peers.
@@ -589,7 +588,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                         }
                         Ok(known_addresses) => {
                             for address in known_addresses.keys() {
-                                let our_id = our_id(&swarm);
+                                let our_id = our_id(swarm);
                                 debug!(%our_id, %address, "dialing known address");
                                 Swarm::dial_addr(swarm, address.clone()).unwrap_or_else(|err| {
                                     error!(%our_id, %address,

@@ -71,17 +71,13 @@ impl ProtocolVersion {
 
     /// Checks if next version can be followed.
     pub fn check_next_version(&self, next: &ProtocolVersion) -> VersionCheckResult {
-        if next.0.major < self.0.major || next.0.major > self.0.major + 1 {
-            // Protocol major versions should not go backwards and should increase monotonically by
-            // 1.
+        // Protocol major versions should increase monotonically by 1.
+        let major_bumped = self.0.major.saturating_add(1);
+        if next.0.major < self.0.major || next.0.major > major_bumped {
             return VersionCheckResult::Invalid;
         }
 
-        if next.0.major == self.0.major.saturating_add(1) {
-            // A major version increase resets both the minor and patch versions to ( 0.0 ).
-            if next.0.minor != 0 || next.0.patch != 0 {
-                return VersionCheckResult::Invalid;
-            }
+        if next.0.major == major_bumped {
             return VersionCheckResult::Valid {
                 is_major_version: true,
             };
@@ -90,17 +86,12 @@ impl ProtocolVersion {
         // Covers the equal major versions
         debug_assert_eq!(next.0.major, self.0.major);
 
-        if next.0.minor < self.0.minor || next.0.minor > self.0.minor + 1 {
-            // Protocol minor versions should increase monotonically by 1 within the same major
-            // version and should not go backwards.
+        if next.0.minor < self.0.minor {
+            // Protocol minor versions within the same major version should not go backwards.
             return VersionCheckResult::Invalid;
         }
 
-        if next.0.minor == self.0.minor + 1 {
-            // A minor version increase resets the patch version to ( 0 ).
-            if next.0.patch != 0 {
-                return VersionCheckResult::Invalid;
-            }
+        if next.0.minor > self.0.minor {
             return VersionCheckResult::Valid {
                 is_major_version: false,
             };
@@ -297,34 +288,53 @@ mod tests {
     }
 
     #[test]
-    fn should_check_if_minor_bump_resets_patch() {
-        // A minor version increase resets the patch version to ( 0 ).
+    fn should_not_care_if_minor_bump_resets_patch() {
         let prev = ProtocolVersion::new(SemVer::new(1, 2, 0));
         let next = ProtocolVersion::new(SemVer::new(1, 3, 1));
-        // wrong - patch version should be reset for minor version increase
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid);
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: false
+            }
+        );
 
         let prev = ProtocolVersion::new(SemVer::new(1, 20, 42));
         let next = ProtocolVersion::new(SemVer::new(1, 30, 43));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid);
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: false
+            }
+        );
     }
 
     #[test]
-    fn should_check_if_major_resets_minor_and_patch() {
+    fn should_not_care_if_major_bump_resets_minor_or_patch() {
         // A major version increase resets both the minor and patch versions to ( 0.0 ).
         let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
         let next = ProtocolVersion::new(SemVer::new(2, 1, 0));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid); // wrong - major increase should reset minor
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: true
+            }
+        );
 
         let next = ProtocolVersion::new(SemVer::new(2, 0, 1));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid); // wrong - major increase should reset patch
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: true
+            }
+        );
 
         let next = ProtocolVersion::new(SemVer::new(2, 1, 1));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid);
-        // wrong - major
-        // increase
-        // should reset
-        // minor and patch
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: true
+            }
+        );
     }
 
     #[test]
@@ -370,27 +380,70 @@ mod tests {
     }
 
     #[test]
-    fn should_not_skip_minor_version_within_major_version() {
-        // minor can be updated only by 1
+    fn should_allow_skip_minor_version_within_major_version() {
         let prev = ProtocolVersion::new(SemVer::new(1, 1, 0));
 
         let next = ProtocolVersion::new(SemVer::new(1, 3, 0));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid);
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: false
+            }
+        );
 
         let next = ProtocolVersion::new(SemVer::new(1, 7, 0));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid);
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: false
+            }
+        );
     }
 
     #[test]
-    fn should_reset_minor_and_patch_on_major_bump() {
-        // no upgrade - minor resets patch
-        let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
-        let next = ProtocolVersion::new(SemVer::new(2, 1, 1));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid);
+    fn should_allow_skip_patch_version_within_minor_version() {
+        let prev = ProtocolVersion::new(SemVer::new(1, 1, 0));
 
-        let prev = ProtocolVersion::new(SemVer::new(1, 1, 1));
-        let next = ProtocolVersion::new(SemVer::new(2, 2, 3));
-        assert_eq!(prev.check_next_version(&next), VersionCheckResult::Invalid);
+        let next = ProtocolVersion::new(SemVer::new(1, 1, 2));
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: false
+            }
+        );
+    }
+
+    #[test]
+    fn should_allow_skipped_minor_and_patch_on_major_bump() {
+        // skip minor
+        let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
+        let next = ProtocolVersion::new(SemVer::new(2, 1, 0));
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: true
+            }
+        );
+
+        // skip patch
+        let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
+        let next = ProtocolVersion::new(SemVer::new(2, 0, 1));
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: true
+            }
+        );
+
+        // skip many minors and patches
+        let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
+        let next = ProtocolVersion::new(SemVer::new(2, 3, 10));
+        assert_eq!(
+            prev.check_next_version(&next),
+            VersionCheckResult::Valid {
+                is_major_version: true
+            }
+        );
     }
 
     #[test]
@@ -434,7 +487,7 @@ mod tests {
             ProtocolVersion::from_parts(1, 2, 0),
             ProtocolVersion::from_parts(1, 2, 3),
         ] {
-            assert_eq!(ver.check_next_version(&ver), VersionCheckResult::Invalid);
+            assert_eq!(ver.check_next_version(ver), VersionCheckResult::Invalid);
         }
     }
 

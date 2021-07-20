@@ -92,15 +92,15 @@ impl LinearChain {
     // were waiting for that block.
     fn new_block(&mut self, block: &Block) -> Vec<Signature> {
         let signatures = self.collect_pending_finality_signatures(block.hash());
-        if signatures.is_empty() {
-            return vec![];
-        }
         let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
         for sig in signatures.iter() {
             block_signatures.insert_proof(sig.public_key(), sig.signature());
         }
         // Cache the signatures as we expect more finality signatures for the new block to
         // arrive soon.
+        // If `signatures` was empty, it will serve as a flag that the `block` is already
+        // finalized/known and any incoming signatures should be accepted (given they're
+        // from a bonded validator and valid).
         self.cache_signatures(block_signatures);
         signatures
     }
@@ -170,7 +170,7 @@ impl LinearChain {
         } = fs;
         debug!(%block_hash, %public_key, "removing finality signature from pending collection");
         self.pending_finality_signatures
-            .remove(&public_key, &block_hash)
+            .remove(public_key, block_hash)
     }
 
     /// Caches the signature.
@@ -267,6 +267,8 @@ impl LinearChain {
         match self.get_signatures(&block_hash) {
             // Not found in the cache, look in the storage.
             None => vec![Outcome::LoadSignatures(fs)],
+            // We know about the block but we haven't seen any signatures for it yet.
+            Some(signatures) if signatures.proofs.is_empty() => vec![Outcome::LoadSignatures(fs)],
             Some(signatures) => self.handle_cached_signatures(Some(Box::new(signatures)), fs),
         }
     }
@@ -466,7 +468,7 @@ mod tests {
         T: PartialEq + Eq + Debug,
     {
         for l in left {
-            assert!(right.iter().any(|r| r == l), format!("{:?} not found", l))
+            assert!(right.iter().any(|r| r == l), "{:?} not found", l)
         }
     }
 
@@ -518,6 +520,7 @@ mod tests {
         // Simulate that the `IsValidatorBonded` event for `sig_c` just arrived.
         // When it was created, there was no `known_signatures` yet.
         let outcomes = lc.handle_is_bonded(None, Box::new(sig_c.clone()), true);
+        #[allow(clippy::vec_init_then_push)]
         let expected_outcomes = {
             let mut tmp = vec![];
             tmp.push(Outcome::AnnounceSignature(Box::new(sig_c.clone())));
@@ -610,7 +613,13 @@ mod tests {
         let unbonding_delay = 2;
         let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         // Set the latest known block so that we can trigger the following checks.
-        let block = Block::random_with_specifics(&mut rng, EraId::new(3), 10, false);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(3),
+            10,
+            ProtocolVersion::V1_0_0,
+            false,
+        );
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
         let put_block_outcomes = lc.handle_put_block(Box::new(block.clone()));
@@ -636,5 +645,53 @@ mod tests {
         invalid_sig.public_key = pub_key;
         let outcomes = lc.handle_finality_signature(Box::new(invalid_sig), false);
         assert!(outcomes.is_empty())
+    }
+
+    #[test]
+    fn new_block_then_own_sig() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let auction_delay = 1;
+        let unbonding_delay = 2;
+        let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        // Set the latest known block so that we can trigger the following checks.
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(3),
+            10,
+            ProtocolVersion::V1_0_0,
+            false,
+        );
+        let block_hash = *block.hash();
+        let block_era = block.header().era_id();
+        let put_block_outcomes = lc.handle_new_block(Box::new(block.clone()), HashMap::new());
+        let expected_outcomes = vec![
+            Outcome::StoreBlock(Box::new(block)),
+            Outcome::StoreExecutionResults(block_hash, HashMap::new()),
+        ];
+        // Verify that all outcomes are expected.
+        assert_equal(expected_outcomes, put_block_outcomes);
+        let valid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
+        let outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
+        assert!(matches!(&*outcomes, [Outcome::LoadSignatures(_)]));
+        let cached_sigs_outcomes = lc.handle_cached_signatures(None, Box::new(valid_sig.clone()));
+        assert!(matches!(
+            &*cached_sigs_outcomes,
+            [Outcome::VerifyIfBonded { .. }]
+        ));
+        let outcomes = lc.handle_is_bonded(None, Box::new(valid_sig.clone()), true);
+        assert!(!outcomes.is_empty(), "{:?} should not be empty", outcomes);
+        let expected_outcomes = {
+            let mut block_signatures = BlockSignatures::new(block_hash, block_era);
+            block_signatures.insert_proof(valid_sig.public_key.clone(), valid_sig.signature);
+            vec![
+                Outcome::StoreBlockSignatures(block_signatures),
+                Outcome::Gossip(Box::new(valid_sig.clone())),
+                Outcome::AnnounceSignature(Box::new(valid_sig)),
+            ]
+        };
+        // Verify that all outcomes are expected.
+        assert_equal(expected_outcomes, outcomes);
     }
 }

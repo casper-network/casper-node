@@ -41,9 +41,9 @@ fn ttl(value: &str) -> Result<TimeDiff> {
 }
 
 fn gas_price(value: &str) -> Result<u64> {
-    Ok(value
+    value
         .parse::<u64>()
-        .map_err(|error| Error::FailedToParseInt("gas_price", error))?)
+        .map_err(|error| Error::FailedToParseInt("gas_price", error))
 }
 
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
@@ -106,7 +106,7 @@ mod arg_simple {
                 arg, ARG_VALUE_NAME
             )));
         }
-        let cl_type = cl_type::parse(&parts[1]).map_err(|_| {
+        let cl_type = cl_type::parse(parts[1]).map_err(|_| {
             Error::InvalidCLValue(format!(
                 "unknown variant {}, expected one of {}",
                 parts[1],
@@ -368,7 +368,11 @@ pub(super) fn parse_session_info(
     session_args_complex: &str,
     session_version: &str,
     session_entry_point: &str,
+    session_transfer: bool,
 ) -> Result<ExecutableDeployItem> {
+    // This is to make sure that we're using &str consistently in the macro call below.
+    let is_session_transfer = if session_transfer { "true" } else { "" };
+
     check_exactly_one_not_empty!(
         context: "parse_session_info",
         (session_hash)
@@ -381,6 +385,8 @@ pub(super) fn parse_session_info(
             requires[session_entry_point] requires_empty[],
         (session_path)
             requires[] requires_empty[session_entry_point, session_version],
+        (is_session_transfer)
+            requires[] requires_empty[session_entry_point, session_version]
     );
     if !session_args.is_empty() && !session_args_complex.is_empty() {
         return Err(Error::ConflictingArguments {
@@ -393,6 +399,15 @@ pub(super) fn parse_session_info(
         arg_simple::session::parse(session_args)?,
         args_complex::session::parse(session_args_complex).ok(),
     );
+    if session_transfer {
+        if session_args.is_empty() {
+            return Err(Error::InvalidArgument(
+                "is_session_transfer",
+                "requires --session-arg to be present".to_string(),
+            ));
+        }
+        return Ok(ExecutableDeployItem::Transfer { args: session_args });
+    }
     let invalid_entry_point =
         || Error::InvalidArgument("session_entry_point", session_entry_point.to_string());
     if let Some(session_name) = name(session_name) {
@@ -535,22 +550,14 @@ pub(super) fn parse_payment_info(
 }
 
 pub(crate) fn get_transfer_target(target_account: &str) -> Result<TransferTarget> {
-    if !target_account.is_empty() {
-        let account = account(target_account)?;
-        Ok(TransferTarget::Account(account))
-    } else {
-        Err(Error::InvalidArgument(
+    let account = PublicKey::from_hex(target_account).map_err(|error| {
+        Error::InvalidArgument(
             "target_account",
-            format!(
-                "Invalid arguments to get_transfer_target - must provide either a target account. account={}",
-                target_account
-            ),
-        ))
-    }
-}
+            format!("failed to parse as a public key: {}", error),
+        )
+    })?;
 
-pub(crate) fn output(value: &str) -> Option<&str> {
-    none_if_empty(value)
+    Ok(TransferTarget::Account(account))
 }
 
 fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
@@ -580,21 +587,10 @@ fn version(value: &str) -> Result<u32> {
         .map_err(|error| Error::FailedToParseInt("version", error))
 }
 
-fn account(value: &str) -> Result<PublicKey> {
-    PublicKey::from_hex(value).map_err(|error| Error::CryptoError {
-        context: "account",
-        error: error.into(),
-    })
-}
-
-pub(crate) fn transfer_id(value: &str) -> Result<Option<u64>> {
-    if str::is_empty(value) {
-        return Ok(None);
-    }
-    let value = value
-        .parse::<u64>()
-        .map_err(|error| Error::FailedToParseInt("transfer_id", error))?;
-    Ok(Some(value))
+pub(crate) fn transfer_id(value: &str) -> Result<u64> {
+    value
+        .parse()
+        .map_err(|error| Error::FailedToParseInt("transfer-id", error))
 }
 
 #[cfg(test)]
@@ -619,9 +615,9 @@ mod tests {
         }
     }
 
-    impl Into<ErrWrapper> for Error {
-        fn into(self) -> ErrWrapper {
-            ErrWrapper(self)
+    impl From<Error> for ErrWrapper {
+        fn from(error: Error) -> Self {
+            ErrWrapper(error)
         }
     }
 
@@ -667,6 +663,7 @@ mod tests {
         pub const PATH: &str = "./session.wasm";
         pub const ENTRY_POINT: &str = "entrypoint";
         pub const VERSION: &str = "1.0.0";
+        pub const TRANSFER: bool = true;
     }
 
     fn invalid_simple_args_test(cli_string: &str) {
@@ -883,6 +880,7 @@ mod tests {
                 "path_to/file",
                 "",
                 "entrypoint",
+                false
             )
             .map(|_| ())
             .map_err(ErrWrapper),
@@ -928,6 +926,7 @@ mod tests {
                 "",
                 "",
                 "",
+                false
             )
             .map(|_| ())
             .map_err(ErrWrapper),
@@ -1079,7 +1078,6 @@ mod tests {
         ///     ]
         /// ];
         /// ```
-        /// 
         /// This generates the following test module (with the fn name passed), with one test per line in `session_str_params[]`:
         /// ```
         /// #[cfg(test)]
@@ -1182,29 +1180,34 @@ mod tests {
                 test[session_path => happy::PATH, conflict: session_name =>         happy::HASH,         requires[], path_conflicts_with_name]
                 test[session_path => happy::PATH, conflict: session_version =>      happy::VERSION,      requires[], path_conflicts_with_version]
                 test[session_path => happy::PATH, conflict: session_entry_point =>  happy::ENTRY_POINT,  requires[], path_conflicts_with_entry_point]
+                test[session_path => happy::PATH, conflict: is_session_transfer =>     happy::TRANSFER,     requires[], path_conflicts_with_transfer]
 
                 // name
                 test[session_name => happy::NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_hash]
                 test[session_name => happy::NAME, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_name]
                 test[session_name => happy::NAME, conflict: session_hash =>         happy::HASH,         requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_hash]
-                test[session_name => happy::NAME, conflict: session_version =>      happy::VERSION,         requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_version]
+                test[session_name => happy::NAME, conflict: session_version =>      happy::VERSION,      requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_version]
+                test[session_name => happy::NAME, conflict: is_session_transfer =>     happy::TRANSFER,     requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_transfer]
 
                 // hash
                 test[session_hash => happy::HASH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_hash]
                 test[session_hash => happy::HASH, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_name]
                 test[session_hash => happy::HASH, conflict: session_version =>      happy::VERSION,      requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_version]
+                test[session_hash => happy::HASH, conflict: is_session_transfer =>     happy::TRANSFER,     requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_transfer]
                 // name <-> hash is already checked
                 // name <-> path is already checked
 
                 // package_name
                 // package_name + session_version is optional and allowed
                 test[session_package_name => happy::PACKAGE_NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_package_hash]
+                test[session_package_name => happy::VERSION, conflict: is_session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_transfer]
                 // package_name <-> hash is already checked
                 // package_name <-> name is already checked
                 // package_name <-> path is already checked
 
                 // package_hash
                 // package_hash + session_version is optional and allowed
+                test[session_package_hash => happy::PACKAGE_HASH, conflict: is_session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_hash_conflicts_with_transfer]
                 // package_hash <-> package_name is already checked
                 // package_hash <-> hash is already checked
                 // package_hash <-> name is already checked

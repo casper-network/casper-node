@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
-use core::iter::{self, FromIterator};
+use core::iter;
 
 use rand::{distributions::Alphanumeric, rngs::SmallRng, Rng, SeedableRng};
 
@@ -132,9 +132,8 @@ pub extern "C" fn call() {
 
     // Store large function with no named keys, then execute it to get named keys returned.
     let mut rng = SmallRng::seed_from_u64(seed);
-    let large_function_name = String::from_iter(
-        iter::repeat('l').take(rng.gen_range(MIN_FUNCTION_NAME_LENGTH..=MAX_FUNCTION_NAME_LENGTH)),
-    );
+    let large_function_name: String =
+        "l".repeat(rng.gen_range(MIN_FUNCTION_NAME_LENGTH..=MAX_FUNCTION_NAME_LENGTH));
 
     let entry_point_name = &large_function_name;
     let runtime_args = runtime_args! {
@@ -152,9 +151,8 @@ pub extern "C" fn call() {
     runtime::call_contract::<NamedKeys>(contract_hash, entry_point_name, runtime_args);
 
     // Small function
-    let small_function_name = String::from_iter(
-        iter::repeat('s').take(rng.gen_range(MIN_FUNCTION_NAME_LENGTH..=MAX_FUNCTION_NAME_LENGTH)),
-    );
+    let small_function_name =
+        "s".repeat(rng.gen_range(MIN_FUNCTION_NAME_LENGTH..=MAX_FUNCTION_NAME_LENGTH));
 
     let entry_point_name = &small_function_name;
     let runtime_args = runtime_args! {};

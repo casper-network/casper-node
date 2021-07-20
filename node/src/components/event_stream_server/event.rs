@@ -1,12 +1,13 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
 
 use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp};
 
 #[derive(Debug)]
 pub enum Event {
     BlockAdded(Box<Block>),
+    DeployAccepted(DeployHash),
     DeployProcessed {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
@@ -19,12 +20,19 @@ pub enum Event {
         timestamp: Timestamp,
     },
     FinalitySignature(Box<FinalitySignature>),
+    Step {
+        era_id: EraId,
+        effect: ExecutionEffect,
+    },
 }
 
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Event::BlockAdded(block) => write!(formatter, "block added {}", block.hash()),
+            Event::DeployAccepted(deploy_hash) => {
+                write!(formatter, "deploy accepted {}", deploy_hash)
+            }
             Event::DeployProcessed { deploy_hash, .. } => {
                 write!(formatter, "deploy processed {}", deploy_hash)
             }
@@ -38,6 +46,7 @@ impl Display for Event {
                 public_key, timestamp, era_id,
             ),
             Event::FinalitySignature(fs) => write!(formatter, "finality signature {}", fs),
+            Event::Step { era_id, .. } => write!(formatter, "step committed for {}", era_id),
         }
     }
 }

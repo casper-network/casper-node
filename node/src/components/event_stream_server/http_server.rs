@@ -10,8 +10,8 @@ use wheelbuf::WheelBuf;
 use casper_types::ProtocolVersion;
 
 use super::{
-    sse_server::{BroadcastChannelMessage, NewSubscriberInfo, ServerSentEvent},
-    Config, SseData,
+    sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
+    Config, EventIndex, SseData,
 };
 
 /// Run the HTTP server.
@@ -30,14 +30,13 @@ pub(super) async fn run(
     api_version: ProtocolVersion,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
     server_shutdown_sender: oneshot::Sender<()>,
-    mut data_receiver: mpsc::UnboundedReceiver<SseData>,
+    mut data_receiver: mpsc::UnboundedReceiver<(EventIndex, SseData)>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {
     let server_joiner = task::spawn(server_with_shutdown);
 
     // Initialize the index and buffer for the SSEs.
-    let mut event_index = 0_u32;
     let mut buffer = WheelBuf::new(vec![
         ServerSentEvent::initial_event(api_version);
         config.event_stream_buffer_length as usize
@@ -58,10 +57,30 @@ pub(super) async fn run(
                         // If the client supplied a "start_from" index, provide the buffered events.
                         // If they requested more than is buffered, just provide the whole buffer.
                         if let Some(start_index) = subscriber.start_from {
-                            for event in buffer
+                            // If the buffer's first event ID is in the range [0, buffer size) or
+                            // (Id::MAX - buffer size, Id::MAX], then the events in the buffer are
+                            // considered to have their IDs wrapping round, or that was recently the
+                            // case.  In this case, we add `buffer.capacity()` to `start_index` and
+                            // the buffered events' IDs when considering which events to include in
+                            // the requested initial events, effectively shifting all the IDs past
+                            // the wrapping transition.
+                            let buffer_size = buffer.capacity() as Id;
+                            let in_wraparound_zone = buffer
                                 .iter()
-                                .skip_while(|event| event.id.unwrap() < start_index)
-                            {
+                                .next()
+                                .map(|event| {
+                                    let id = event.id.unwrap();
+                                    id > Id::MAX - buffer_size || id < buffer_size
+                                })
+                                .unwrap_or_default();
+                            for event in buffer.iter().skip_while(|event| {
+                                if in_wraparound_zone {
+                                    event.id.unwrap().wrapping_add(buffer_size)
+                                        < start_index.wrapping_add(buffer_size)
+                                } else {
+                                    event.id.unwrap() < start_index
+                                }
+                            }) {
                                 // As per sending `SSE_INITIAL_EVENT`, we don't care if this errors.
                                 let _ = subscriber.initial_events_sender.send(event.clone());
                             }
@@ -71,7 +90,7 @@ pub(super) async fn run(
 
                 maybe_data = data_receiver.recv() => {
                     match maybe_data {
-                        Some(data) => {
+                        Some((event_index, data)) => {
                             // Buffer the data and broadcast it to subscribed clients.
                             trace!("Event stream server received {:?}", data);
                             let event = ServerSentEvent { id: Some(event_index), data };
@@ -80,7 +99,6 @@ pub(super) async fn run(
                             // This can validly fail if there are no connected clients, so don't log
                             // the error.
                             let _ = broadcaster.send(message);
-                            event_index = event_index.wrapping_add(1);
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.

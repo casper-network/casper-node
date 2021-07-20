@@ -66,69 +66,60 @@ const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
 
 static NON_FOUNDER_VALIDATOR_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static NON_FOUNDER_VALIDATOR_1_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*NON_FOUNDER_VALIDATOR_1_PK));
 
 static NON_FOUNDER_VALIDATOR_2_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static NON_FOUNDER_VALIDATOR_2_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*NON_FOUNDER_VALIDATOR_2_PK));
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
 const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 
 static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PK));
 const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
 static BID_ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static BID_ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_1_PK));
 const BID_ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 static BID_ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static BID_ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_2_PK));
 const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([205; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([205; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
@@ -163,7 +154,7 @@ const WEEK_TIMESTAMPS: [u64; 14] = [
 
 #[ignore]
 #[test]
-fn should_run_add_bid() {
+fn should_add_new_bid() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
@@ -192,18 +183,51 @@ fn should_run_add_bid() {
     )
     .build();
 
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.exec(exec_request_1).expect_success().commit();
 
     let bids: Bids = builder.get_bids();
 
     assert_eq!(bids.len(), 1);
-
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
         builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
+}
+
+#[ignore]
+#[test]
+fn should_increase_existing_bid() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            BID_ACCOUNT_1_PK.clone(),
+            Motes::new(BID_ACCOUNT_1_BALANCE.into()),
+            None,
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).expect_success().commit();
 
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -229,9 +253,42 @@ fn should_run_add_bid() {
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_2);
+}
 
-    // 3. withdraw some amount
-    let exec_request_3 = ExecuteRequestBuilder::standard(
+#[ignore]
+#[test]
+fn should_decrease_existing_bid() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            BID_ACCOUNT_1_PK.clone(),
+            Motes::new(BID_ACCOUNT_1_BALANCE.into()),
+            None,
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let bid_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+    builder.exec(bid_request).expect_success().commit();
+
+    // withdraw some amount
+    let withdraw_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
@@ -240,7 +297,7 @@ fn should_run_add_bid() {
         },
     )
     .build();
-    builder.exec(exec_request_3).commit().expect_success();
+    builder.exec(withdraw_request).commit().expect_success();
 
     let bids: Bids = builder.get_bids();
 
@@ -250,20 +307,20 @@ fn should_run_add_bid() {
     assert_eq!(
         builder.get_purse_balance(*active_bid.bonding_purse()),
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
-        U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
+        U512::from(ADD_BID_AMOUNT_1)
     );
     let unbonding_purses: UnbondingPurses = builder.get_withdraws();
     let unbond_list = unbonding_purses
         .get(&BID_ACCOUNT_1_ADDR)
-        .expect("should have unbond");
+        .expect("should have unbonded");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].unbonder_public_key(), &*BID_ACCOUNT_1_PK);
-    assert_eq!(unbond_list[0].validator_public_key(), &*BID_ACCOUNT_1_PK);
+    let unbonding_purse = unbond_list[0].clone();
+    assert_eq!(unbonding_purse.unbonder_public_key(), &*BID_ACCOUNT_1_PK);
+    assert_eq!(unbonding_purse.validator_public_key(), &*BID_ACCOUNT_1_PK);
+
     // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
-
-    assert_eq!(unbond_list[0].amount(), &U512::from(WITHDRAW_BID_AMOUNT_2),);
-
-    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID,);
+    assert_eq!(unbonding_purse.amount(), &U512::from(WITHDRAW_BID_AMOUNT_2),);
+    assert_eq!(unbonding_purse.era_of_creation(), INITIAL_ERA_ID,);
 }
 
 #[ignore]
@@ -535,7 +592,7 @@ fn should_calculate_era_validators() {
     // elements are
     let eras: Vec<_> = era_validators.keys().copied().collect();
     assert!(!era_validators.is_empty());
-    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definetely more than 1 element
+    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definitely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
     let expected_eras: Vec<EraId> = {
@@ -1739,7 +1796,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         &U512::from(DELEGATOR_2_STAKE)
     );
 
-    // Process unbonding requests to verify delegators recevied their stakes
+    // Process unbonding requests to verify delegators received their stakes
     let validator_1 = builder
         .get_account(*VALIDATOR_1_ADDR)
         .expect("should have validator 1 account");
@@ -1961,7 +2018,8 @@ fn should_handle_evictions() {
 #[ignore]
 #[test]
 fn should_validate_orphaned_genesis_delegators() {
-    let missing_validator = SecretKey::ed25519_from_bytes([123; 32]).unwrap().into();
+    let missing_validator_secret_key = SecretKey::ed25519_from_bytes([123; 32]).unwrap();
+    let missing_validator = PublicKey::from(&missing_validator_secret_key);
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

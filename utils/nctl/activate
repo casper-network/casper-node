@@ -29,13 +29,23 @@ source "$NCTL"/sh/utils/main.sh
 alias nctl-assets-dump='source $NCTL/sh/assets/dump.sh'
 alias nctl-assets-ls='source $NCTL/sh/assets/list.sh'
 alias nctl-assets-setup='source $NCTL/sh/assets/setup.sh'
+alias nctl-assets-setup-from-stage='source $NCTL/sh/assets/setup_from_stage.sh'
 alias nctl-assets-teardown='source $NCTL/sh/assets/teardown.sh'
+alias nctl-assets-upgrade-from-stage='source $NCTL/sh/assets/upgrade_from_stage.sh'
 
 # Binaries.
 alias nctl-compile='source $NCTL/sh/assets/compile.sh'
 alias nctl-compile-client='source $NCTL/sh/assets/compile_client.sh'
 alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 alias nctl-compile-node-launcher='source $NCTL/sh/assets/compile_node_launcher.sh'
+
+# Staging.
+alias nctl-stage-build='source $NCTL/sh/staging/build.sh'
+alias nctl-stage-build-from-settings='source $NCTL/sh/staging/build_from_settings.sh'
+alias nctl-stage-init-settings='source $NCTL/sh/staging/init_settings.sh'
+alias nctl-stage-set-remote='source $NCTL/sh/staging/set_remote.sh'
+alias nctl-stage-set-remotes='source $NCTL/sh/staging/set_remotes.sh'
+alias nctl-stage-teardown='source $NCTL/sh/staging/teardown.sh'
 
 # Node control.
 alias nctl-clean='source $NCTL/sh/node/clean.sh'
@@ -53,6 +63,7 @@ alias nctl-start-after-n-eras='source $NCTL/sh/node/start_after_n_eras.sh'
 alias nctl-status='source $NCTL/sh/node/status.sh'
 alias nctl-stop='source $NCTL/sh/node/stop.sh'
 alias nctl-upgrade-protocol='source $NCTL/sh/node/upgrade.sh'
+alias nctl-emergency-upgrade='source $NCTL/sh/node/emergency_upgrade.sh'
 
 # Blocking commands.
 alias nctl-await-n-blocks='source $NCTL/sh/misc/await_n_blocks.sh'
@@ -104,7 +115,10 @@ alias nctl-view-user-account='source $NCTL/sh/views/view_user_account.sh'
 # Views #6: validator.
 alias nctl-view-validator-account='source $NCTL/sh/views/view_validator_account.sh'
 
-# Contracts #1: Transfers.
+# Contracts #1: KV storage.
+alias nctl-contracts-hello-world-install='source $NCTL/sh/contracts-hello-world/do_install.sh'
+
+# Contracts #2: Transfers.
 alias nctl-transfer='source $NCTL/sh/contracts-transfers/do_dispatch_native.sh'
 alias nctl-transfer-native='source $NCTL/sh/contracts-transfers/do_dispatch_native.sh'
 alias nctl-transfer-native-batch-dispatch='source $NCTL/sh/contracts-transfers/do_dispatch_native_batch.sh'
@@ -113,14 +127,14 @@ alias nctl-transfer-wasm='source $NCTL/sh/contracts-transfers/do_dispatch_wasm.s
 alias nctl-transfer-wasm-batch-dispatch='source $NCTL/sh/contracts-transfers/do_dispatch_wasm_batch.sh'
 alias nctl-transfer-wasm-batch-prepare='source $NCTL/sh/contracts-transfers/do_prepare_wasm_batch.sh'
 
-# Contracts #2: Auction.
+# Contracts #3: Auction.
 alias nctl-auction-activate='source $NCTL/sh/contracts-auction/do_bid_activate.sh'
 alias nctl-auction-bid='source $NCTL/sh/contracts-auction/do_bid.sh'
 alias nctl-auction-withdraw='source $NCTL/sh/contracts-auction/do_bid_withdraw.sh'
 alias nctl-auction-delegate='source $NCTL/sh/contracts-auction/do_delegate.sh'
 alias nctl-auction-undelegate='source $NCTL/sh/contracts-auction/do_delegate_withdraw.sh'
 
-# Contracts #3: ERC-20.
+# Contracts #4: ERC-20.
 alias nctl-erc20-approve='source $NCTL/sh/contracts-erc20/do_approve.sh'
 alias nctl-erc20-install='source $NCTL/sh/contracts-erc20/do_install.sh'
 alias nctl-erc20-fund-users='source $NCTL/sh/contracts-erc20/do_fund_users.sh'
@@ -129,7 +143,12 @@ alias nctl-erc20-view-allowances='source $NCTL/sh/contracts-erc20/view_allowance
 alias nctl-erc20-view-details='source $NCTL/sh/contracts-erc20/view_details.sh'
 alias nctl-erc20-view-balances='source $NCTL/sh/contracts-erc20/view_balances.sh'
 
-# Contracts #4: KV storage.
+# Contracts #5: KV storage.
 alias nctl-kv-storage-get-key='source $NCTL/sh/contracts-kv/get_key.sh'
 alias nctl-kv-storage-install='source $NCTL/sh/contracts-kv/do_install.sh'
 alias nctl-kv-storage-set-key='source $NCTL/sh/contracts-kv/set_key.sh'
+
+# Scenarios #1: Execute protocol upgrade.
+alias nctl-exec-upgrade-scenario-1='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_01.sh'
+alias nctl-exec-upgrade-scenario-2='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_02.sh'
+alias nctl-exec-upgrade-scenario-3='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_03.sh'

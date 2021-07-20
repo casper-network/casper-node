@@ -10,7 +10,7 @@ use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
     crypto,
-    reactor::validator::Config,
+    reactor::participating::Config,
     types::{chainspec, Chainspec},
     utils::{LoadError, Loadable, WithDir},
 };
@@ -135,7 +135,7 @@ fn do_read_post_migration_info(
     crypto::verify(
         &signed_info.serialized_info,
         &signed_info.signature,
-        &public_key,
+        public_key,
     )
     .map_err(|_| Error::InvalidSignatureOfStateHashInfo)?;
 

@@ -11,6 +11,7 @@ use datasize::DataSize;
 use derive_more::{AsRef, From};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use super::Weight;
 use crate::utils::ds;
@@ -33,6 +34,7 @@ pub(crate) struct Validator<VID> {
     weight: Weight,
     id: VID,
     banned: bool,
+    can_propose: bool,
 }
 
 impl<VID, W: Into<Weight>> From<(VID, W)> for Validator<VID> {
@@ -41,6 +43,7 @@ impl<VID, W: Into<Weight>> From<(VID, W)> for Validator<VID> {
             id,
             weight: weight.into(),
             banned: false,
+            can_propose: true,
         }
     }
 }
@@ -63,14 +66,12 @@ where
 {
     index_by_id: HashMap<VID, ValidatorIndex>,
     validators: Vec<Validator<VID>>,
+    total_weight: Weight,
 }
 
 impl<VID: Eq + Hash> Validators<VID> {
     pub(crate) fn total_weight(&self) -> Weight {
-        self.validators.iter().fold(Weight(0), |sum, v| {
-            sum.checked_add(v.weight())
-                .expect("total weight must be < 2^64")
-        })
+        self.total_weight
     }
 
     pub(crate) fn get_index(&self, id: &VID) -> Option<ValidatorIndex> {
@@ -87,10 +88,19 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.validators.iter()
     }
 
-    /// Marks the validator with that ID as banned, if it exists.
+    /// Marks the validator with that ID as banned, if it exists, and excludes it from the leader
+    /// sequence.
     pub(crate) fn ban(&mut self, vid: &VID) {
         if let Some(idx) = self.get_index(vid) {
             self.validators[idx.0 as usize].banned = true;
+            self.validators[idx.0 as usize].can_propose = false;
+        }
+    }
+
+    /// Marks the validator as excluded from the leader sequence.
+    pub(crate) fn set_cannot_propose(&mut self, vid: &VID) {
+        if let Some(idx) = self.get_index(vid) {
+            self.validators[idx.0 as usize].can_propose = false;
         }
     }
 
@@ -102,16 +112,49 @@ impl<VID: Eq + Hash> Validators<VID> {
             .map(|(idx, _)| ValidatorIndex::from(idx as u32))
     }
 
+    /// Returns an iterator of all indices of validators that are not allowed to propose values.
+    pub(crate) fn iter_cannot_propose_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.iter()
+            .enumerate()
+            .filter(|(_, v)| !v.can_propose)
+            .map(|(idx, _)| ValidatorIndex::from(idx as u32))
+    }
+
     pub(crate) fn enumerate_ids<'a>(&'a self) -> impl Iterator<Item = (ValidatorIndex, &'a VID)> {
         let to_idx =
             |(idx, v): (usize, &'a Validator<VID>)| (ValidatorIndex::from(idx as u32), v.id());
         self.iter().enumerate().map(to_idx)
+    }
+
+    pub(crate) fn ensure_nonzero_proposing_stake(&mut self) -> bool {
+        if self.total_weight.is_zero() {
+            return false;
+        }
+        if self.iter().all(|v| v.banned || v.weight.is_zero()) {
+            warn!("everyone is banned; admitting banned validators anyway");
+            for validator in &mut self.validators {
+                validator.can_propose = true;
+                validator.banned = false;
+            }
+        } else if self.iter().all(|v| !v.can_propose || v.weight.is_zero()) {
+            warn!("everyone is excluded; allowing proposers who are currently inactive");
+            for validator in &mut self.validators {
+                if !validator.banned {
+                    validator.can_propose = true;
+                }
+            }
+        }
+        true
     }
 }
 
 impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Validators<VID> {
     fn from_iter<I: IntoIterator<Item = (VID, W)>>(ii: I) -> Validators<VID> {
         let mut validators: Vec<_> = ii.into_iter().map(Validator::from).collect();
+        let total_weight = validators.iter().fold(Weight(0), |sum, v| {
+            sum.checked_add(v.weight())
+                .expect("total weight must be < 2^64")
+        });
         validators.sort_by_cached_key(|val| val.id.clone());
         let index_by_id = validators
             .iter()
@@ -121,6 +164,7 @@ impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Valida
         Validators {
             index_by_id,
             validators,
+            total_weight,
         }
     }
 }
@@ -209,16 +253,27 @@ impl<T> ValidatorMap<T> {
 
     /// Binary searches this sorted `ValidatorMap` for `x`.
     ///
-    /// If the value is found, `Ok` is returned, containing the index, otherwise `Err`, with the
-    /// first index at which the value is greater than `x`.
-    pub fn binary_search(&self, x: &T) -> Result<ValidatorIndex, ValidatorIndex>
+    /// Returns the lowest index of an entry `>= x`, or `None` if `x` is greater than all entries.
+    pub fn binary_search(&self, x: &T) -> Option<ValidatorIndex>
     where
         T: Ord,
     {
-        self.0
-            .binary_search(x)
-            .map(|i| ValidatorIndex(i as u32))
-            .map_err(|i| ValidatorIndex(i as u32))
+        match self.0.binary_search(x) {
+            // The standard library's binary search returns `Ok(i)` if it found `x` at index `i`,
+            // but `i` is not necessarily the lowest such index.
+            Ok(i) => Some(ValidatorIndex(
+                (0..i)
+                    .rev()
+                    .take_while(|j| self.0[*j] == *x)
+                    .last()
+                    .unwrap_or(i) as u32,
+            )),
+            // It returns `Err(i)` if `x` was not found but `i` is the index where `x` would have to
+            // be inserted to keep the list. This is either the lowest index of an entry `>= x`...
+            Err(i) if i < self.len() => Some(ValidatorIndex(i as u32)),
+            // ...or the end of the list if `x` is greater than all entries.
+            Err(_) => None,
+        }
     }
 }
 
@@ -298,5 +353,22 @@ mod tests {
         assert_eq!(ValidatorIndex(0), validators.index_by_id["Alice"]);
         assert_eq!(ValidatorIndex(1), validators.index_by_id["Bob"]);
         assert_eq!(ValidatorIndex(2), validators.index_by_id["Carol"]);
+    }
+
+    #[test]
+    fn binary_search() {
+        let list = ValidatorMap::from(vec![2, 3, 5, 5, 5, 5, 5, 9]);
+        // Searching for 5 returns the first index, even if the standard library doesn't.
+        assert!(
+            list.0.binary_search(&5).expect("5 is in the list") > 2,
+            "test case where the std's search would return a higher index"
+        );
+        assert_eq!(Some(ValidatorIndex(2)), list.binary_search(&5));
+        // Searching for 4 also returns 2, since that is the first index of a value >= 4.
+        assert_eq!(Some(ValidatorIndex(2)), list.binary_search(&4));
+        // 3 is found again, at index 1.
+        assert_eq!(Some(ValidatorIndex(1)), list.binary_search(&3));
+        // 10 is bigger than all entries.
+        assert_eq!(None, list.binary_search(&10));
     }
 }

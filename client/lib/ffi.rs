@@ -39,7 +39,7 @@ pub enum casper_error_t {
     CASPER_FAILED_TO_PARSE_RESPONSE = -8,
     CASPER_FILE_ALREADY_EXISTS = -9,
     CASPER_UNSUPPORTED_ALGORITHM = -10,
-    CASPER_REPSONSE_IS_ERROR = -11,
+    CASPER_RESPONSE_IS_ERROR = -11,
     CASPER_INVALID_JSON = -12,
     CASPER_INVALID_RPC_RESPONSE = -13,
     CASPER_FAILED_SENDING = -14,
@@ -52,6 +52,8 @@ pub enum casper_error_t {
     CASPER_FFI_SETUP_NOT_CALLED = -21,
     CASPER_FFI_PTR_NULL_BUT_REQUIRED = -22,
     CASPER_CONFLICTING_ARGUMENTS = -23,
+    CASPER_DEPLOY_SIZE_TOO_LARGE = -24,
+    CASPER_FAILED_TO_CREATE_DICTIONARY_IDENTIFIER = -25,
 }
 
 trait AsFFIError {
@@ -71,7 +73,7 @@ impl AsFFIError for Error {
             Error::FailedToParseResponse(_) => casper_error_t::CASPER_FAILED_TO_PARSE_RESPONSE,
             Error::FileAlreadyExists(_) => casper_error_t::CASPER_FILE_ALREADY_EXISTS,
             Error::UnsupportedAlgorithm(_) => casper_error_t::CASPER_UNSUPPORTED_ALGORITHM,
-            Error::ResponseIsError(_) => casper_error_t::CASPER_REPSONSE_IS_ERROR,
+            Error::ResponseIsError(_) => casper_error_t::CASPER_RESPONSE_IS_ERROR,
             Error::InvalidJson(_) => casper_error_t::CASPER_INVALID_JSON,
             Error::InvalidRpcResponse(_) => casper_error_t::CASPER_INVALID_RPC_RESPONSE,
             Error::FailedSending(_) => casper_error_t::CASPER_FAILED_SENDING,
@@ -84,6 +86,10 @@ impl AsFFIError for Error {
             Error::FFISetupNotCalled => casper_error_t::CASPER_FFI_SETUP_NOT_CALLED,
             Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
             Error::ConflictingArguments { .. } => casper_error_t::CASPER_CONFLICTING_ARGUMENTS,
+            Error::DeploySizeTooLarge(_) => casper_error_t::CASPER_DEPLOY_SIZE_TOO_LARGE,
+            Error::FailedToParseDictionaryIdentifier => {
+                casper_error_t::CASPER_FAILED_TO_CREATE_DICTIONARY_IDENTIFIER
+            }
         }
     }
 }
@@ -91,7 +97,7 @@ impl AsFFIError for Error {
 /// Private macro for parsing arguments from c strings, (const char *, or *const c_char in rust
 /// terms). The sad path contract here is that we indicate there was an error by returning `false`,
 /// then we store the argument -name- as an Error::InvalidArgument in LAST_ERROR. The happy path is
-/// left up to callsites to define.
+/// left up to call sites to define.
 macro_rules! r#try_unsafe_arg {
     ($arg:expr) => {{
         let result = unsafe_str_arg($arg, stringify!($arg));
@@ -131,7 +137,7 @@ macro_rules! r#try_unwrap_option {
 
 /// Private macro for unwrapping our internal json-rpcs or, optionally, storing the error in
 /// LAST_ERROR and returning `false` to indicate that an error has occurred. Similar to
-/// `try_unsafe_arg!`, this handles the sad path, and the happy path is left up to callsites.
+/// `try_unsafe_arg!`, this handles the sad path, and the happy path is left up to call sites.
 macro_rules! r#try_unwrap_rpc {
     ($rpc:expr) => {{
         let rpc = try_unwrap_result!($rpc.map_err(Into::into));
@@ -144,7 +150,7 @@ macro_rules! r#try_unwrap_rpc {
 }
 
 /// Private macro to wrap TryInto implementing types with a human-readable error message describing
-/// the field name at the callsite.
+/// the field name at the call site.
 macro_rules! r#try_arg_into {
     ($arg:expr) => {{
         try_unwrap_result!(unsafe_try_into($arg, stringify!($arg)))
@@ -250,7 +256,7 @@ pub extern "C" fn casper_get_last_error(buf: *mut c_uchar, len: usize) -> usize 
 
 /// Creates a `Deploy` and sends it to the network for execution.
 ///
-/// See [super::put_deploy](super::put_deploy) for more details
+/// See [super::put_deploy](super::put_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_put_deploy(
     maybe_rpc_id: *const c_char,
@@ -286,13 +292,14 @@ pub extern "C" fn casper_put_deploy(
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
 ///
-/// See [super::make_deploy](super::make_deploy) for more details
+/// See [super::make_deploy](super::make_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_make_deploy(
     maybe_output_path: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     session_params: *const casper_session_params_t,
     payment_params: *const casper_payment_params_t,
+    force: bool,
 ) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let deploy_params = try_arg_into!(deploy_params);
@@ -303,6 +310,7 @@ pub extern "C" fn casper_make_deploy(
         deploy_params,
         session_params,
         payment_params,
+        force,
     );
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS
@@ -317,11 +325,12 @@ pub extern "C" fn casper_sign_deploy_file(
     input_path: *const c_char,
     secret_key: *const c_char,
     maybe_output_path: *const c_char,
+    force: bool,
 ) -> casper_error_t {
     let input_path = try_unsafe_arg!(input_path);
     let secret_key = try_unsafe_arg!(secret_key);
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
-    let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path);
+    let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path, force);
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS
 }
@@ -354,7 +363,7 @@ pub extern "C" fn casper_send_deploy_file(
 
 /// Transfers funds between purses.
 ///
-/// See [super::transfer](super::transfer) for more details
+/// See [super::transfer](super::transfer) for more details.
 #[no_mangle]
 pub extern "C" fn casper_transfer(
     maybe_rpc_id: *const c_char,
@@ -362,7 +371,7 @@ pub extern "C" fn casper_transfer(
     verbosity_level: u64,
     amount: *const c_char,
     maybe_target_account: *const c_char,
-    maybe_id: *const c_char,
+    transfer_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
     response_buf: *mut c_uchar,
@@ -374,7 +383,7 @@ pub extern "C" fn casper_transfer(
     let node_address = try_unsafe_arg!(node_address);
     let amount = try_unsafe_arg!(amount);
     let maybe_target_account = try_unsafe_arg!(maybe_target_account);
-    let maybe_id = try_unsafe_arg!(maybe_id);
+    let transfer_id = try_unsafe_arg!(transfer_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
     runtime.block_on(async move {
@@ -384,7 +393,7 @@ pub extern "C" fn casper_transfer(
             verbosity_level,
             amount,
             maybe_target_account,
-            maybe_id,
+            transfer_id,
             deploy_params,
             payment_params,
         );
@@ -392,6 +401,38 @@ pub extern "C" fn casper_transfer(
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
     })
+}
+
+/// Creates a transfer `Deploy` and outputs it to a file or stdout.
+///
+/// See [super::make_transfer](super::make_transfer) for more details.
+#[no_mangle]
+pub extern "C" fn casper_make_transfer(
+    maybe_output_path: *const c_char,
+    amount: *const c_char,
+    maybe_target_account: *const c_char,
+    transfer_id: *const c_char,
+    deploy_params: *const casper_deploy_params_t,
+    payment_params: *const casper_payment_params_t,
+    force: bool,
+) -> casper_error_t {
+    let maybe_output_path = try_unsafe_arg!(maybe_output_path);
+    let amount = try_unsafe_arg!(amount);
+    let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let transfer_id = try_unsafe_arg!(transfer_id);
+    let deploy_params = try_arg_into!(deploy_params);
+    let payment_params = try_arg_into!(payment_params);
+    let result = super::make_transfer(
+        maybe_output_path,
+        amount,
+        maybe_target_account,
+        transfer_id,
+        deploy_params,
+        payment_params,
+        force,
+    );
+    try_unwrap_result!(result);
+    casper_error_t::CASPER_SUCCESS
 }
 
 /// Retrieves a `Deploy` from the network.
@@ -602,6 +643,7 @@ pub extern "C" fn casper_get_era_info_by_switch_block(
 pub extern "C" fn casper_get_auction_info(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
+    maybe_block_id: *const c_char,
     verbosity_level: u64,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -610,8 +652,10 @@ pub extern "C" fn casper_get_auction_info(
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
     let node_address = try_unsafe_arg!(node_address);
+    let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
-        let result = super::get_auction_info(maybe_rpc_id, node_address, verbosity_level);
+        let result =
+            super::get_auction_info(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -704,7 +748,7 @@ impl TryInto<super::PaymentStrParams<'static>> for casper_payment_params_t {
         let payment_args_simple = unsafe_vec_of_str_arg(
             self.payment_args_simple,
             self.payment_args_simple_len,
-            "caser_payment_params_t.payment_args_simple",
+            "casper_payment_params_t.payment_args_simple",
         )?;
         let payment_args_complex = unsafe_str_arg(
             self.payment_args_complex,
@@ -750,6 +794,7 @@ pub struct casper_session_params_t {
     session_args_complex: *const c_char,
     session_version: *const c_char,
     session_entry_point: *const c_char,
+    is_session_transfer: bool,
 }
 
 impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
@@ -762,7 +807,7 @@ impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
             unsafe_str_arg(self.session_name, "casper_session_params_t.session_name")?;
         let session_package_hash = unsafe_str_arg(
             self.session_package_hash,
-            "casper_session_params_t.sessio_package_hash",
+            "casper_session_params_t.session_package_hash",
         )?;
         let session_package_name = unsafe_str_arg(
             self.session_package_name,
@@ -797,6 +842,7 @@ impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
             session_args_complex,
             session_version,
             session_entry_point,
+            is_session_transfer: self.is_session_transfer,
         })
     }
 }

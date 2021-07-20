@@ -10,7 +10,7 @@ pub struct PeersState<I> {
     // Peers we have not yet requested current block from.
     // NOTE: Maybe use a bitmask to decide which peers were tried?
     peers_to_try: Vec<I>,
-    // Peers we successfuly downloaded data from previously.
+    // Peers we successfully downloaded data from previously.
     // Have higher chance of having the next data.
     succ_peers: VecDeque<I>,
     succ_attempts: u8,
@@ -64,7 +64,8 @@ impl<I: Clone + PartialEq + 'static> PeersState<I> {
 
     /// Adds a new peer.
     pub(crate) fn push(&mut self, peer: I) {
-        self.peers.push(peer)
+        self.peers.push(peer.clone());
+        self.peers_to_try.push(peer);
     }
 
     /// Returns the next peer, if any, that we downloaded data the previous time.

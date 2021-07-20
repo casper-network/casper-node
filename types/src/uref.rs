@@ -31,7 +31,7 @@ pub const UREF_ADDR_LENGTH: usize = 32;
 /// The number of bytes in a serialized [`URef`] where the [`AccessRights`] are not `None`.
 pub const UREF_SERIALIZED_LENGTH: usize = UREF_ADDR_LENGTH + ACCESS_RIGHTS_SERIALIZED_LENGTH;
 
-const FORMATTED_STRING_PREFIX: &str = "uref-";
+pub(super) const UREF_FORMATTED_STRING_PREFIX: &str = "uref-";
 
 /// The address of a `URef` (unforgeable reference) on the network.
 pub type URefAddr = [u8; UREF_ADDR_LENGTH];
@@ -132,10 +132,26 @@ impl URef {
         URef(self.0, AccessRights::READ)
     }
 
+    /// Returns a new [`URef`] with the same address and [`AccessRights::WRITE`] permission.
+    pub fn into_write(self) -> URef {
+        URef(self.0, AccessRights::WRITE)
+    }
+
+    /// Returns a new [`URef`] with the same address and [`AccessRights::ADD`] permission.
+    pub fn into_add(self) -> URef {
+        URef(self.0, AccessRights::ADD)
+    }
+
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_ADD_WRITE`]
     /// permission.
     pub fn into_read_add_write(self) -> URef {
         URef(self.0, AccessRights::READ_ADD_WRITE)
+    }
+
+    /// Returns a new [`URef`] with the same address and [`AccessRights::READ_WRITE`]
+    /// permission.
+    pub fn into_read_write(self) -> URef {
+        URef(self.0, AccessRights::READ_WRITE)
     }
 
     /// Returns `true` if the access rights are `Some` and
@@ -159,7 +175,7 @@ impl URef {
         // be represented as maximum of 3 octal digits.
         format!(
             "{}{}-{:03o}",
-            FORMATTED_STRING_PREFIX,
+            UREF_FORMATTED_STRING_PREFIX,
             base16::encode_lower(&self.addr()),
             access_rights_bits
         )
@@ -168,7 +184,7 @@ impl URef {
     /// Parses a string formatted as per `Self::to_formatted_string()` into a `URef`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(FORMATTED_STRING_PREFIX)
+            .strip_prefix(UREF_FORMATTED_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let parts = remainder.splitn(2, '-').collect::<Vec<_>>();
         if parts.len() != 2 {

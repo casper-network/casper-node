@@ -30,7 +30,7 @@ use crate::{
     CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
-const FORMATTED_STRING_PREFIX: &str = "account-hash-";
+pub(super) const ACCOUNT_HASH_FORMATTED_STRING_PREFIX: &str = "account-hash-";
 
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
@@ -235,7 +235,7 @@ impl AccountHash {
     pub fn to_formatted_string(&self) -> String {
         format!(
             "{}{}",
-            FORMATTED_STRING_PREFIX,
+            ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
             base16::encode_lower(&self.0),
         )
     }
@@ -243,7 +243,7 @@ impl AccountHash {
     /// Parses a string formatted as per `Self::to_formatted_string()` into an `AccountHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(FORMATTED_STRING_PREFIX)
+            .strip_prefix(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
         Ok(AccountHash(bytes))

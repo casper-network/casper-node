@@ -64,7 +64,7 @@ pub extern "C" fn call() {
             .unwrap_or_revert();
         // Removes [43;32] key created in init stage
         account::remove_associated_key(AccountHash::new([44; 32])).unwrap_or_revert();
-        // Sets action threshodl
+        // Sets action threshold
         account::set_action_threshold(ActionType::KeyManagement, Weight::new(100))
             .unwrap_or_revert();
     } else {

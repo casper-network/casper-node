@@ -4,7 +4,7 @@ use humantime::{DurationError, TimestampError};
 use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
-use casper_node::crypto::Error as CryptoError;
+use casper_node::{crypto::Error as CryptoError, types::ExcessiveSizeDeployError};
 use casper_types::{
     bytesrepr::Error as ToBytesError, CLValueError, UIntParseError, URefFromStrError,
 };
@@ -43,6 +43,10 @@ pub enum Error {
     #[error("Failed to parse '{0}' as U128, U256, or U512: {1:?}")]
     FailedToParseUint(&'static str, UIntParseError),
 
+    /// Deploy size too large.
+    #[error("Deploy size too large: {0}")]
+    DeploySizeTooLarge(#[from] ExcessiveSizeDeployError),
+
     /// Failed to get a response from the node.
     #[error("Failed to get RPC response: {0}")]
     FailedToGetResponse(reqwest::Error),
@@ -51,7 +55,7 @@ pub enum Error {
     #[error("Failed to parse as JSON-RPC response: {0}")]
     FailedToParseResponse(reqwest::Error),
 
-    /// Failed to create new key file because it already exists.
+    /// Failed to create new file because it already exists.
     #[error("File at {} already exists", .0.display())]
     FileAlreadyExists(PathBuf),
 
@@ -92,9 +96,9 @@ pub enum Error {
     /// Cryptographic error.
     #[error("Cryptographic error: {context}: {error}")]
     CryptoError {
-        /// Contextual text, such as callsite.
+        /// Contextual text, such as call site.
         context: &'static str,
-        /// Underlying Cryptoerror.
+        /// Underlying crypto error.
         error: CryptoError,
     },
 
@@ -109,7 +113,7 @@ pub enum Error {
     /// Conflicting arguments.
     #[error("Conflicting arguments passed '{context}' {args:?}")]
     ConflictingArguments {
-        /// Contextual text, such as callsite.
+        /// Contextual text, such as call site.
         context: &'static str,
         /// Arguments passed, with their values.
         args: Vec<String>,
@@ -119,7 +123,11 @@ pub enum Error {
     #[error("Invalid response: {0}")]
     InvalidResponse(#[from] ValidateResponseError),
 
-    /// Must call FFI's setup function prior to making ffi calls.
+    /// Failed to create a DictionaryIdentifier
+    #[error("Failed to parse the dictionary identifier")]
+    FailedToParseDictionaryIdentifier,
+
+    /// Must call FFI's setup function prior to making FFI calls.
     #[cfg(feature = "ffi")]
     #[error("Failed to call casper_setup_client()")]
     FFISetupNotCalled,

@@ -12,7 +12,7 @@ use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey,
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
     crypto::AsymmetricKeyExt,
-    reactor::validator,
+    reactor::participating,
     testing::{
         self,
         multi_stage_test_reactor::{InitializerReactorConfigWithChainspec, CONFIG_DIR},
@@ -29,14 +29,14 @@ use crate::{
 
 #[derive(Clone)]
 struct SecretKeyWithStake {
-    secret_key: SecretKey,
+    secret_key: Arc<SecretKey>,
     stake: u64,
 }
 
 impl PartialEq for SecretKeyWithStake {
     fn eq(&self, other: &Self) -> bool {
         self.stake == other.stake
-            && PublicKey::from(&self.secret_key) == PublicKey::from(&other.secret_key)
+            && PublicKey::from(&*self.secret_key) == PublicKey::from(&*other.secret_key)
     }
 }
 
@@ -61,14 +61,14 @@ impl TestChain {
             size
         );
         let first_node_secret_key_with_stake = SecretKeyWithStake {
-            secret_key: SecretKey::random(rng),
+            secret_key: Arc::new(SecretKey::random(rng)),
             stake: rng.gen_range(100..999),
         };
         let other_secret_keys_with_stakes = {
             let mut other_secret_keys_with_stakes = Vec::new();
             for _ in 1..size {
                 let staked_secret_key = SecretKeyWithStake {
-                    secret_key: SecretKey::random(rng),
+                    secret_key: Arc::new(SecretKey::random(rng)),
                     stake: rng.gen_range(100..999),
                 };
                 other_secret_keys_with_stakes.push(staked_secret_key)
@@ -99,7 +99,7 @@ impl TestChain {
         let genesis_accounts = std::iter::once(&first_node_secret_key_with_stake)
             .chain(other_secret_keys_with_stakes.iter())
             .map(|staked_secret_key| {
-                let public_key = PublicKey::from(&staked_secret_key.secret_key);
+                let public_key = PublicKey::from(&*staked_secret_key.secret_key);
                 let validator_config = ValidatorConfig::new(
                     Motes::new(U512::from(staked_secret_key.stake)),
                     DelegationRate::zero(),
@@ -156,7 +156,7 @@ impl TestChain {
     async fn add_node(
         &mut self,
         first_node: bool,
-        secret_key: SecretKey,
+        secret_key: Arc<SecretKey>,
         trusted_hash: Option<BlockHash>,
         rng: &mut NodeRng,
     ) -> NodeId {
@@ -167,27 +167,27 @@ impl TestChain {
             small_network::Config::default_local_net(self.first_node_port)
         };
 
-        let mut validator_config = validator::Config {
+        let mut participating_config = participating::Config {
             network,
             gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
         };
 
         // ...and the secret key for our validator.
-        validator_config.consensus.secret_key_path = External::from_value(secret_key);
+        participating_config.consensus.secret_key_path = External::from_value(secret_key);
 
         // Set a trust hash if one has been provided.
-        validator_config.node.trusted_hash = trusted_hash;
+        participating_config.node.trusted_hash = trusted_hash;
 
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
-        validator_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
+        participating_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
-        validator_config.storage = storage_config;
+        participating_config.storage = storage_config;
 
         // Bundle our config with a chainspec for creating a multi-stage reactor
         let config = InitializerReactorConfigWithChainspec {
-            config: (false, WithDir::new(&*CONFIG_DIR, validator_config)),
+            config: (false, WithDir::new(&*CONFIG_DIR, participating_config)),
             chainspec: Arc::clone(&self.chainspec),
         };
 
@@ -215,7 +215,7 @@ fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
 }
 
 #[tokio::test]
-async fn run_validator_network() {
+async fn run_participating_network() {
     testing::init_logging();
 
     let mut rng = crate::new_rng();
@@ -244,13 +244,16 @@ async fn run_equivocator_network() {
     let mut rng: NodeRng = crate::new_rng();
 
     let first_node_secret_key_with_stake = SecretKeyWithStake {
-        secret_key: SecretKey::random(&mut rng),
+        secret_key: Arc::new(SecretKey::random(&mut rng)),
         stake: 100,
     };
     let alice_sk = SecretKeyWithStake {
-        secret_key: SecretKey::random(&mut rng),
+        secret_key: Arc::new(
+            SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap(),
+        ),
         stake: 1,
     };
+
     let other_secret_keys_with_stakes = vec![alice_sk.clone(), alice_sk];
 
     let mut chain = TestChain::new_with_keys(
@@ -333,7 +336,7 @@ async fn test_joiner() {
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", first_switch_block_hash);
-    let joiner_node_secret_key = SecretKey::random(&mut rng);
+    let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
     chain
         .add_node(
             false,
@@ -380,7 +383,7 @@ async fn test_joiner_network() {
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", first_switch_block_hash);
-    let joiner_node_secret_key = SecretKey::random(&mut rng);
+    let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
     chain
         .add_node(
             false,
