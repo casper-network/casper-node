@@ -966,7 +966,7 @@ where
         environment,
         store,
         states.last().unwrap(),
-        &test_leaves,
+        test_leaves,
     )?
     .into_iter()
     .map(|result| match result {

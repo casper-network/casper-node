@@ -311,7 +311,7 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     for state_root in &trie_keys_to_visit {
-        match store.get(txn, &state_root)? {
+        match store.get(txn, state_root)? {
             Some(Trie::Node { .. }) => {}
             _ => panic!("Should have a pointer block node as state root"),
         }
@@ -793,7 +793,7 @@ where
         // Get the path to this node
         let path_to_node: Vec<u8> = get_parents_path(&parents);
         // Check that the path to the node is a prefix of the current path
-        let current_path = common_prefix(&path_to_leaf, &path_to_node);
+        let current_path = common_prefix(path_to_leaf, &path_to_node);
         assert_eq!(current_path, path_to_node);
         // Get the length
         path_to_node.len()
@@ -834,7 +834,7 @@ where
         _ => panic!("A leaf should have a node for its parent"),
     };
     // Get the path that the new leaf and existing leaf share
-    let shared_path = common_prefix(&new_leaf_path, &existing_leaf_path);
+    let shared_path = common_prefix(new_leaf_path, existing_leaf_path);
     // Assemble a new node to hold the existing leaf. The new leaf will
     // be added later during the add_parent_node and rehash phase.
     let new_node = {
@@ -894,7 +894,7 @@ where
     let existing_extension_path: Vec<u8> =
         parents_path.iter().chain(affix.iter()).cloned().collect();
     // Get the path that the new leaf and existing leaf share
-    let shared_path = common_prefix(&new_leaf_path, &existing_extension_path);
+    let shared_path = common_prefix(new_leaf_path, &existing_extension_path);
     // Create an affix for a possible parent extension above the new
     // node.
     let parent_extension_affix = shared_path[parents_path.len()..].to_vec();

@@ -202,8 +202,8 @@ fn should_add_and_take_deploys() {
     );
     assert!(block.transfer_hashes().is_empty());
     assert_eq!(block.deploy_hashes().len(), 2);
-    assert!(block.deploy_hashes().contains(&deploy1.id()));
-    assert!(block.deploy_hashes().contains(&deploy2.id()));
+    assert!(block.deploy_hashes().contains(deploy1.id()));
+    assert!(block.deploy_hashes().contains(deploy2.id()));
 
     // take the deploys out
     let block = proposer.propose_block_payload(
@@ -243,8 +243,8 @@ fn should_add_and_take_deploys() {
     // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the returned
     assert!(block.transfer_hashes().is_empty());
     assert_eq!(block.deploy_hashes().len(), 2);
-    assert!(block.deploy_hashes().contains(&deploy3.id()));
-    assert!(block.deploy_hashes().contains(&deploy4.id()));
+    assert!(block.deploy_hashes().contains(deploy3.id()));
+    assert!(block.deploy_hashes().contains(deploy4.id()));
 }
 
 #[test]
@@ -307,7 +307,7 @@ fn should_successfully_prune() {
 
     assert_eq!(proposer.sets.pending.len(), 3);
     assert_eq!(proposer.sets.finalized_deploys.len(), 1);
-    assert!(proposer.sets.finalized_deploys.contains_key(&deploy1.id()));
+    assert!(proposer.sets.finalized_deploys.contains_key(deploy1.id()));
 
     // now move the clock to make some things expire
     let pruned = proposer.prune(expired_time);

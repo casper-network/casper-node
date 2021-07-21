@@ -16,8 +16,11 @@ export class PublicKey {
     constructor(private variant: PublicKeyVariant, private bytes: Uint8Array) {
     }
 
+    getBytes(): Uint8Array{
+        return this.bytes;
+    }
+
     getAlgorithmName(): string{
-        const SYSTEM_LOWERCASE: string = "system"; // Not implemented?
         const ED25519_LOWERCASE: string = "ed25519";
         const SECP256K1_LOWERCASE: string = "secp256k1";
         
@@ -26,8 +29,6 @@ export class PublicKey {
                 return ED25519_LOWERCASE;
             case PublicKeyVariant.Secp256k1:
                 return SECP256K1_LOWERCASE;
-            default:
-                // return ""; // Throw error?
         }
     }
 

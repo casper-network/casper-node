@@ -487,7 +487,7 @@ mod tests {
             ProtocolVersion::from_parts(1, 2, 0),
             ProtocolVersion::from_parts(1, 2, 3),
         ] {
-            assert_eq!(ver.check_next_version(&ver), VersionCheckResult::Invalid);
+            assert_eq!(ver.check_next_version(ver), VersionCheckResult::Invalid);
         }
     }
 

@@ -4,9 +4,9 @@ import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
 import {CLValue} from "./clvalue";
 import {Error, ErrorCode} from "./error";
-import {checkTypedArrayEqual, typedToArray} from "./utils";
+import {checkTypedArrayEqual, typedToArray, encodeUTF8} from "./utils";
 import {Ref} from "./ref";
-import {Result, Error as BytesreprError,toBytesString} from "./bytesrepr";
+import {Result, Error as BytesreprError} from "./bytesrepr";
 import {PublicKey} from "./public_key";
 
 const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -45,22 +45,28 @@ export class AccountHash {
     }
 
     static fromPublicKey(publicKey:PublicKey) : AccountHash{
-        let algorithmName = publicKey.getAlgorithmName();
-        let algorithmNameBytes = toBytesString (algorithmName);
-        let publicKeyBytes = publicKey.toBytes();
+
+        let algorithmName:string = publicKey.getAlgorithmName();
+        let algorithmNameBytes = encodeUTF8 (algorithmName);
+        let publicKeyBytes = publicKey.getBytes();
         let dataLength = algorithmNameBytes.length + publicKeyBytes.length +1;
         
         let data = new Array<u8>(dataLength);
         for(let i=0;i<algorithmNameBytes.length;i++){
             data[i]=algorithmNameBytes[i];
         }
+
         data[algorithmNameBytes.length]=0;
         for(let i=algorithmNameBytes.length+1;i<dataLength;i++){
             data[i]=publicKeyBytes[i];
         }
 
         let ret = new Uint8Array(BLAKE2B_DIGEST_LENGTH);
-        externals.casper_blake2b(data.dataStart, data.length, ret.dataStart, ret.length);
+        let error = Error.fromResult( externals.casper_blake2b(data.dataStart, data.length, ret.dataStart, ret.length));
+
+        if(error != null){
+            error.revert();
+        }
         return new AccountHash(ret);
     }
 

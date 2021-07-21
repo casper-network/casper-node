@@ -43,17 +43,13 @@ fn shorten_string_field(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
-    use core::iter::{self, FromIterator};
-
     use super::*;
 
     #[test]
     fn should_shorten_long_strings() {
-        let mut long_strings = vec![];
+        let mut long_strings: Vec<String> = vec![];
         for i in 1..=5 {
-            long_strings.push(String::from_iter(
-                iter::repeat('a').take(MAX_STRING_LEN + i),
-            ));
+            long_strings.push("a".repeat(MAX_STRING_LEN + i));
         }
         let value = json!({
             "field_1": Option::<usize>::None,
@@ -109,7 +105,7 @@ mod tests {
 
     #[test]
     fn should_not_modify_short_strings() {
-        let max_string = String::from_iter(iter::repeat('a').take(MAX_STRING_LEN));
+        let max_string: String = "a".repeat(MAX_STRING_LEN);
         let value = json!({
             "field_1": Option::<usize>::None,
             "field_2": true,
