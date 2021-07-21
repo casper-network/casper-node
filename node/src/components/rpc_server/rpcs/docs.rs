@@ -183,7 +183,7 @@ impl OpenRpcSchema {
         let mut generator = Self::new_generator();
 
         let params_schema = T::OptionalRequestParams::json_schema(&mut generator);
-        let params = Self::make_params(params_schema);
+        let params = Self::make_optional_params(params_schema);
 
         let result_schema = T::ResponseResult::json_schema(&mut generator);
         let result = ResponseResult {
@@ -237,6 +237,26 @@ impl OpenRpcSchema {
         required_params
     }
 
+    /// Convert the schema for the optional params type for T into the OpenRpc-compatible map of
+    /// name, value pairs.
+    ///
+    /// Since all params must be unanimously optional, mark all incorrectly tagged "required" fields
+    /// as false.
+    fn make_optional_params(schema: Schema) -> Vec<SchemaParam> {
+        let schema_object = schema.into_object().object.expect("should be object");
+        let optional_params = schema_object
+            .properties
+            .iter()
+            .filter(|(name, _)| schema_object.required.contains(*name))
+            .map(|(name, schema)| SchemaParam {
+                name: name.clone(),
+                schema: schema.clone(),
+                required: false,
+            })
+            .collect::<Vec<_>>();
+        optional_params
+    }
+
     /// Insert the new entries into the #/components/schemas/ map.  Panic if we try to overwrite an
     /// entry with a different value.
     fn update_schemas<S: JsonSchema>(&mut self) {
@@ -255,6 +275,12 @@ impl OpenRpcSchema {
                 }
             }
         }
+    }
+
+    #[cfg(test)]
+    fn give_params_schema<T: RpcWithOptionalParams>(&self) -> Schema {
+        let mut generator = Self::new_generator();
+        T::OptionalRequestParams::json_schema(&mut generator)
     }
 }
 
@@ -435,5 +461,82 @@ mod tests {
             "DOCS_EXAMPLE_VERSION needs to be updated to match the [protocol.version] in \
             'resources/production/chainspec.toml'"
         );
+    }
+
+    fn check_optional_params_fields<T: RpcWithOptionalParams>() -> Vec<SchemaParam> {
+        let contact = OpenRpcContactField {
+            name: "CasperLabs".to_string(),
+            url: "https://casperlabs.io".to_string(),
+        };
+        let license = OpenRpcLicenseField {
+            name: "CasperLabs Open Source License Version 1.0".to_string(),
+            url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE"
+                .to_string(),
+        };
+        let info = OpenRpcInfoField {
+            version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
+            title: "Client API of Casper Node".to_string(),
+            description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
+                .to_string(),
+            contact,
+            license,
+        };
+
+        let server = OpenRpcServerEntry {
+            name: "any Casper Network node".to_string(),
+            url: "http://IP:PORT/rpc/".to_string(),
+        };
+
+        let schema = OpenRpcSchema {
+            openrpc: "1.0.0-rc1".to_string(),
+            info,
+            servers: vec![server],
+            methods: vec![],
+            components: Components {
+                schemas: Map::new(),
+            },
+        };
+        let params = schema.give_params_schema::<T>();
+        let schema_object = params.into_object().object.expect("should be object");
+        schema_object
+            .properties
+            .iter()
+            .filter(|(name, _)| !schema_object.required.contains(*name))
+            .map(|(name, schema)| SchemaParam {
+                name: name.clone(),
+                schema: schema.clone(),
+                required: false,
+            })
+            .collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn check_chain_get_block_required_fields() {
+        let incorrect_optional_params = check_optional_params_fields::<GetBlock>();
+        assert!(incorrect_optional_params.is_empty())
+    }
+
+    #[test]
+    fn check_chain_get_block_transfers_required_fields() {
+        let incorrect_optional_params = check_optional_params_fields::<GetBlockTransfers>();
+        assert!(incorrect_optional_params.is_empty())
+    }
+
+    #[test]
+    fn check_chain_get_state_root_hash_required_fields() {
+        let incorrect_optional_params = check_optional_params_fields::<GetStateRootHash>();
+        assert!(incorrect_optional_params.is_empty())
+    }
+
+    #[test]
+    fn check_chain_get_era_info_by_switch_block_required_fields() {
+        let incorrect_optional_params = check_optional_params_fields::<GetEraInfoBySwitchBlock>();
+        assert!(incorrect_optional_params.is_empty())
+    }
+
+    #[test]
+    fn check_state_get_auction_info_required_fields() {
+        let incorrect_optional_params = check_optional_params_fields::<GetAuctionInfo>();
+        assert!(incorrect_optional_params.is_empty())
     }
 }
