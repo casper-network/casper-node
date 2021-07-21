@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## [1.3.0] - 2021-07-21
 
 ### Added
 * Add support for retrieving historical auction information via the addition of an optional `--block-identifier` arg in the `get-auction-info` subcommand.
@@ -64,7 +64,7 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.2.0...dev
+[1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
