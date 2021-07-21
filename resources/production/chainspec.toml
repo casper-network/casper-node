@@ -2,7 +2,7 @@
 # Protocol version.
 version = '1.3.0'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
-hard_reset = false
+hard_reset = true
 # This protocol version becomes active at this point.
 #
 # If it is a timestamp string, it represents the timestamp for the genesis block.  This is the beginning of era 0.  By
