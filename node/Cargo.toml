@@ -100,7 +100,7 @@ warp-json-rpc = "0.3.0"
 wheelbuf = "0.2.0"
 
 [build-dependencies]
-vergen = "3"
+vergen = "5"
 
 [dev-dependencies]
 fake_instant = "0.4.0"
