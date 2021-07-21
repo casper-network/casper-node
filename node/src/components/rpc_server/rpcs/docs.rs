@@ -244,7 +244,7 @@ impl OpenRpcSchema {
     /// as false.
     fn make_optional_params(schema: Schema) -> Vec<SchemaParam> {
         let schema_object = schema.into_object().object.expect("should be object");
-        let optional_params = schema_object
+        schema_object
             .properties
             .iter()
             .filter(|(name, _)| schema_object.required.contains(*name))
@@ -253,8 +253,7 @@ impl OpenRpcSchema {
                 schema: schema.clone(),
                 required: false,
             })
-            .collect::<Vec<_>>();
-        optional_params
+            .collect::<Vec<_>>()
     }
 
     /// Insert the new entries into the #/components/schemas/ map.  Panic if we try to overwrite an
