@@ -3,7 +3,7 @@
 use std::{
     convert::TryInto,
     ffi::CStr,
-    os::raw::{c_char, c_uchar},
+    os::raw::{c_char, c_uchar, c_uint},
     slice,
     sync::Mutex,
 };
@@ -735,7 +735,7 @@ pub struct casper_payment_params_t {
     payment_args_simple: *const *const c_char,
     payment_args_simple_len: usize,
     payment_args_complex: *const c_char,
-    payment_version: *const c_char,
+    payment_version: c_uint,
     payment_entry_point: *const c_char,
 }
 
@@ -773,7 +773,8 @@ impl TryInto<super::PaymentStrParams<'static>> for casper_payment_params_t {
         let payment_version = unsafe_str_arg(
             self.payment_version,
             "casper_payment_params_t.payment_version",
-        )?;
+        )?
+        .parse::<u32>()?;
         let payment_entry_point = unsafe_str_arg(
             self.payment_entry_point,
             "casper_payment_params_t.payment_entry_point",
@@ -808,7 +809,7 @@ pub struct casper_session_params_t {
     session_args_simple: *const *const c_char,
     session_args_simple_len: usize,
     session_args_complex: *const c_char,
-    session_version: *const c_char,
+    session_version: *const c_uint,
     session_entry_point: *const c_char,
     is_session_transfer: bool,
 }
@@ -840,10 +841,17 @@ impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
             self.session_args_complex,
             "casper_session_params_t.session_args_complex",
         )?;
-        let session_version = unsafe_str_arg(
+        // let session_version = unsafe_str_arg(
+        //     self.session_version,
+        //     "casper_session_params_t.session_version",
+        // )?
+        // .parse::<u32>()?;
+        let session_version = unsafe_try_into(
             self.session_version,
             "casper_session_params_t.session_version",
-        )?;
+        )
+        .unwrap();
+
         let session_entry_point = unsafe_str_arg(
             self.session_entry_point,
             "casper_session_params_t.session_entry_point",

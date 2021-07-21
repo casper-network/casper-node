@@ -317,7 +317,7 @@ mod tests {
 
     const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const ENTRYPOINT: &str = "entrypoint";
-    const VERSION: &str = "0.1.0";
+    const VERSION: u32 = 10;
     const SAMPLE_DEPLOY: &str = r#"{
       "hash": "4858bbd79ab7b825244c4e6959cbcd588a05608168ef36518bc6590937191d55",
       "header": {

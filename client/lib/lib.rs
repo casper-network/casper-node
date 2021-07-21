@@ -668,7 +668,7 @@ pub struct PaymentStrParams<'a> {
     payment_path: &'a str,
     payment_args_simple: Vec<&'a str>,
     payment_args_complex: &'a str,
-    payment_version: &'a str,
+    payment_version: u32,
     payment_entry_point: &'a str,
 }
 
@@ -790,7 +790,7 @@ impl<'a> PaymentStrParams<'a> {
     ///   [`payment_args_complex`](#payment_args_complex).
     pub fn with_package_name(
         payment_package_name: &'a str,
-        payment_version: &'a str,
+        payment_version: u32,
         payment_entry_point: &'a str,
         payment_args_simple: Vec<&'a str>,
         payment_args_complex: &'a str,
@@ -817,7 +817,7 @@ impl<'a> PaymentStrParams<'a> {
     ///   [`payment_args_complex`](#payment_args_complex).
     pub fn with_package_hash(
         payment_package_hash: &'a str,
-        payment_version: &'a str,
+        payment_version: u32,
         payment_entry_point: &'a str,
         payment_args_simple: Vec<&'a str>,
         payment_args_complex: &'a str,
@@ -894,7 +894,7 @@ pub struct SessionStrParams<'a> {
     session_path: &'a str,
     session_args_simple: Vec<&'a str>,
     session_args_complex: &'a str,
-    session_version: &'a str,
+    session_version: u32,
     session_entry_point: &'a str,
     is_session_transfer: bool,
 }
@@ -974,7 +974,7 @@ impl<'a> SessionStrParams<'a> {
     ///   [`session_args_complex`](#session_args_complex).
     pub fn with_package_name(
         session_package_name: &'a str,
-        session_version: &'a str,
+        session_version: u32,
         session_entry_point: &'a str,
         session_args_simple: Vec<&'a str>,
         session_args_complex: &'a str,
@@ -1001,7 +1001,7 @@ impl<'a> SessionStrParams<'a> {
     ///   [`session_args_complex`](#session_args_complex).
     pub fn with_package_hash(
         session_package_hash: &'a str,
-        session_version: &'a str,
+        session_version: u32,
         session_entry_point: &'a str,
         session_args_simple: Vec<&'a str>,
         session_args_complex: &'a str,
@@ -1146,7 +1146,7 @@ mod param_tests {
     const PKG_NAME: &str = "pkg_name";
     const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const ENTRYPOINT: &str = "entrypoint";
-    const VERSION: &str = "0.1.0";
+    const VERSION: u32 = 10;
 
     fn args_simple() -> Vec<&'static str> {
         vec!["name_01:bool='false'", "name_02:u32='42'"]
