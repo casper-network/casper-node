@@ -613,7 +613,13 @@ mod tests {
         let unbonding_delay = 2;
         let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         // Set the latest known block so that we can trigger the following checks.
-        let block = Block::random_with_specifics(&mut rng, EraId::new(3), 10, false);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(3),
+            10,
+            ProtocolVersion::V1_0_0,
+            false,
+        );
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
         let put_block_outcomes = lc.handle_put_block(Box::new(block.clone()));
@@ -650,7 +656,13 @@ mod tests {
         let unbonding_delay = 2;
         let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         // Set the latest known block so that we can trigger the following checks.
-        let block = Block::random_with_specifics(&mut rng, EraId::new(3), 10, false);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(3),
+            10,
+            ProtocolVersion::V1_0_0,
+            false,
+        );
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
         let put_block_outcomes = lc.handle_new_block(Box::new(block.clone()), HashMap::new());

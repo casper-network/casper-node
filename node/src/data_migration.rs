@@ -10,7 +10,7 @@ use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
     crypto,
-    reactor::validator::Config,
+    reactor::participating::Config,
     types::{chainspec, Chainspec},
     utils::{LoadError, Loadable, WithDir},
 };

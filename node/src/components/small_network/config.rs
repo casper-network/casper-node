@@ -28,10 +28,11 @@ impl Default for Config {
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
-            systemd_support: false,
             isolation_reconnect_delay: TimeDiff::from_seconds(2),
             initial_gossip_delay: TimeDiff::from_seconds(5),
             max_addr_pending_time: TimeDiff::from_seconds(60),
+            max_outgoing_byte_rate_non_validators: 0,
+            max_incoming_message_rate_non_validators: 0,
         }
     }
 }
@@ -52,14 +53,16 @@ pub struct Config {
     /// Interval in milliseconds used for gossiping.
     #[serde(with = "crate::utils::milliseconds")]
     pub gossip_interval: Duration,
-    /// Enable systemd startup notification.
-    pub systemd_support: bool,
     /// Minimum amount of time that has to pass before attempting to reconnect after isolation.
     pub isolation_reconnect_delay: TimeDiff,
     /// Initial delay before the first round of gossip.
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for an address to be kept in the pending set.
     pub max_addr_pending_time: TimeDiff,
+    /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
+    pub max_outgoing_byte_rate_non_validators: u32,
+    /// Maximum of requests answered from non-validating peers. Unlimited if 0.
+    pub max_incoming_message_rate_non_validators: u32,
 }
 
 #[cfg(test)]
@@ -80,7 +83,6 @@ impl Config {
             public_address: bind_address.to_string(),
             known_addresses: vec![bind_address.to_string()],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
-            systemd_support: false,
             ..Default::default()
         }
     }
@@ -99,7 +101,6 @@ impl Config {
                 SocketAddr::from((TEST_BIND_INTERFACE, known_peer_port)).to_string()
             ],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
-            systemd_support: false,
             ..Default::default()
         }
     }

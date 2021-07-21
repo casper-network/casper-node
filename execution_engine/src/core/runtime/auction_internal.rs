@@ -9,7 +9,11 @@ use casper_types::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
             StorageProvider, UnbondingPurse,
         },
+<<<<<<< HEAD
         mint,
+=======
+        mint, CallStackElement,
+>>>>>>> release-1.3.0
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH,
     U512,
@@ -119,6 +123,10 @@ where
         self.context.get_caller()
     }
 
+    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+        Runtime::<'a, R>::get_immediate_caller(self)
+    }
+
     fn named_keys_get(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
     }
@@ -193,6 +201,10 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
+<<<<<<< HEAD
+=======
+        let call_stack = self.call_stack().clone();
+>>>>>>> release-1.3.0
         let cl_value = self
             .call_host_mint(
                 self.context.protocol_version(),
@@ -200,10 +212,15 @@ where
                 &mut NamedKeys::default(),
                 &args_values,
                 &[],
+<<<<<<< HEAD
+=======
+                call_stack,
+>>>>>>> release-1.3.0
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
         self.set_gas_counter(gas_counter);
         cl_value.into_t().map_err(|_| Error::CLValue)
+<<<<<<< HEAD
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
@@ -212,6 +229,16 @@ where
         })
     }
 
+=======
+    }
+
+    fn create_purse(&mut self) -> Result<URef, Error> {
+        Runtime::create_purse(self).map_err(|exec_error| {
+            <Option<Error>>::from(exec_error).unwrap_or(Error::CreatePurseFailed)
+        })
+    }
+
+>>>>>>> release-1.3.0
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
         Runtime::get_balance(self, purse)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))

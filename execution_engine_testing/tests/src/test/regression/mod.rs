@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 mod eco_863;
+=======
+>>>>>>> release-1.3.0
 mod ee_1045;
 mod ee_1071;
 mod ee_1103;
@@ -9,6 +12,8 @@ mod ee_1152;
 mod ee_1160;
 mod ee_1163;
 mod ee_1174;
+mod ee_1217;
+mod ee_1217_mint_proxy;
 mod ee_221;
 mod ee_401;
 mod ee_441;
@@ -29,4 +34,9 @@ mod ee_601;
 mod ee_771;
 mod ee_890;
 mod ee_966;
+<<<<<<< HEAD
+=======
+mod gh_1470;
+mod gh_1688;
+>>>>>>> release-1.3.0
 mod regression_20210707;

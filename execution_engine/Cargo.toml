@@ -1,13 +1,17 @@
 [package]
 name = "casper-execution-engine"
+<<<<<<< HEAD
 version = "1.2.1" # when updating, also update 'html_root_url' in lib.rs
+=======
+version = "1.3.0" # when updating, also update 'html_root_url' in lib.rs
+>>>>>>> release-1.3.0
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
 edition = "2018"
-description = "CasperLabs execution engine crates."
+description = "Casper execution engine crates."
 readme = "README.md"
 documentation = "https://docs.rs/casper-execution-engine"
-homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_engine"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/execution_engine"
 license-file = "../LICENSE"
 
 [dependencies]
@@ -15,10 +19,14 @@ anyhow = "1.0.33"
 base16 = "0.2.1"
 bincode = "1.3.1"
 blake2 = "0.9.0"
+<<<<<<< HEAD
 casper-types = { version = "1.2.1", path = "../types", features = ["std", "gens"] }
+=======
+casper-types = { version = "1.3.0", path = "../types", features = ["std", "gens"] }
+>>>>>>> release-1.3.0
 chrono = "0.4.10"
 datasize = "0.2.4"
-hex = "0.4.2"
+hex = { version = "0.4.2", default-features = false, features = ["serde"] }
 hex-buffer-serde = "0.2.1"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"

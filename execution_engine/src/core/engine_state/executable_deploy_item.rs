@@ -19,9 +19,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
+    account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
-    system::mint::ARG_AMOUNT,
+    system::{mint::ARG_AMOUNT, CallStackElement},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
     EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, U512,
 };
@@ -34,7 +35,7 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::Account, newtypes::CorrelationId, stored_value::StoredValue, wasm_prep,
+        account::Account, newtypes::CorrelationId, stored_value::StoredValue, wasm, wasm_prep,
         wasm_prep::Preprocessor,
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
@@ -92,27 +93,6 @@ pub enum ExecutableDeployItem {
 }
 
 impl ExecutableDeployItem {
-    pub(crate) fn to_contract_hash_key(&self, account: &Account) -> Result<Option<Key>, Error> {
-        match self {
-            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
-                Ok(Some(Key::from(hash.value())))
-            }
-            ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
-                Ok(Some(Key::from(hash.value())))
-            }
-            ExecutableDeployItem::StoredContractByName { name, .. }
-            | ExecutableDeployItem::StoredVersionedContractByName { name, .. } => {
-                let key = account.named_keys().get(name).cloned().ok_or_else(|| {
-                    error::Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
-                })?;
-                Ok(Some(key))
-            }
-            ExecutableDeployItem::ModuleBytes { .. } | ExecutableDeployItem::Transfer { .. } => {
-                Ok(None)
-            }
-        }
-    }
-
     pub fn entry_point_name(&self) -> &str {
         match self {
             ExecutableDeployItem::ModuleBytes { .. } | ExecutableDeployItem::Transfer { .. } => {
@@ -155,25 +135,41 @@ impl ExecutableDeployItem {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        let (contract_package, contract, contract_hash, base_key) = match self {
-            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
-                let is_payment = matches!(phase, Phase::Payment);
-                if is_payment && module_bytes.is_empty() {
-                    return Ok(DeployMetadata::System {
-                        base_key: account.account_hash().into(),
-                        contract: Contract::default(),
-                        contract_package: ContractPackage::default(),
-                        entry_point: EntryPoint::default(),
-                    });
-                }
+        let contract_hash: ContractHash;
+        let contract_package: ContractPackage;
+        let contract: Contract;
+        let base_key: Key;
 
+<<<<<<< HEAD
                 let module = preprocessor.preprocess(module_bytes.as_ref())?;
                 return Ok(DeployMetadata::Session {
+=======
+        let account_hash = account.account_hash();
+
+        match self {
+            ExecutableDeployItem::Transfer { .. } => {
+                return Err(error::Error::InvalidDeployItemVariant("Transfer".into()))
+            }
+            ExecutableDeployItem::ModuleBytes { module_bytes, .. }
+                if module_bytes.is_empty() && phase == Phase::Payment =>
+            {
+                let base_key = account_hash.into();
+                let contract_hash = protocol_data.standard_payment();
+                let module = wasm::do_nothing_module(preprocessor)?;
+                return Ok(DeployMetadata {
+                    kind: DeployKind::System,
+                    account_hash,
+                    base_key,
+>>>>>>> release-1.3.0
                     module,
-                    contract_package: ContractPackage::default(),
-                    entry_point: EntryPoint::default(),
+                    contract_hash,
+                    contract: Default::default(),
+                    contract_package: Default::default(),
+                    entry_point: Default::default(),
+                    is_stored: true,
                 });
             }
+<<<<<<< HEAD
             ExecutableDeployItem::StoredContractByHash { .. }
             | ExecutableDeployItem::StoredContractByName { .. } => {
                 // NOTE: `to_contract_hash_key` ensures it returns valid value only for
@@ -185,8 +181,29 @@ impl ExecutableDeployItem {
                     .ok_or(Error::InvalidKeyVariant)?;
 
                 let contract = tracking_copy
+=======
+            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
+                let base_key = account_hash.into();
+                let module = preprocessor.preprocess(module_bytes.as_ref())?;
+                return Ok(DeployMetadata {
+                    kind: DeployKind::Session,
+                    account_hash,
+                    base_key,
+                    module,
+                    contract_hash: Default::default(),
+                    contract: Default::default(),
+                    contract_package: Default::default(),
+                    entry_point: Default::default(),
+                    is_stored: false,
+                });
+            }
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
+                base_key = Key::Hash(hash.value());
+                contract_hash = *hash;
+                contract = tracking_copy
+>>>>>>> release-1.3.0
                     .borrow_mut()
-                    .get_contract(correlation_id, contract_hash.into())?;
+                    .get_contract(correlation_id, contract_hash)?;
 
                 if !contract.is_compatible_protocol_version(*protocol_version) {
                     let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
@@ -196,17 +213,36 @@ impl ExecutableDeployItem {
                     return Err(error::Error::Exec(exec_error));
                 }
 
-                let contract_package = tracking_copy
+                contract_package = tracking_copy
                     .borrow_mut()
                     .get_contract_package(correlation_id, contract.contract_package_hash())?;
-
-                (
-                    contract_package,
-                    contract,
-                    contract_hash,
-                    stored_contract_key,
-                )
             }
+            ExecutableDeployItem::StoredContractByName { name, .. } => {
+                // `ContractHash` is stored in named keys.
+                base_key = account.named_keys().get(name).cloned().ok_or_else(|| {
+                    error::Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
+                })?;
+
+                contract_hash =
+                    ContractHash::new(base_key.into_hash().ok_or(Error::InvalidKeyVariant)?);
+
+                contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, contract_hash)?;
+
+                if !contract.is_compatible_protocol_version(*protocol_version) {
+                    let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
+                        expected: protocol_version.value().major,
+                        actual: contract.protocol_version().value().major,
+                    };
+                    return Err(error::Error::Exec(exec_error));
+                }
+
+                contract_package = tracking_copy
+                    .borrow_mut()
+                    .get_contract_package(correlation_id, contract.contract_package_hash())?;
+            }
+<<<<<<< HEAD
             ExecutableDeployItem::StoredVersionedContractByName { version, .. }
             | ExecutableDeployItem::StoredVersionedContractByHash { version, .. } => {
                 // NOTE: `to_contract_hash_key` ensures it returns valid value only for
@@ -215,10 +251,64 @@ impl ExecutableDeployItem {
                 let contract_package_hash = contract_package_key
                     .into_hash()
                     .ok_or(Error::InvalidKeyVariant)?;
+=======
+            ExecutableDeployItem::StoredVersionedContractByName { name, version, .. } => {
+                // `ContractPackageHash` is stored in named keys.
+                let contract_package_hash: ContractPackageHash = {
+                    account
+                        .named_keys()
+                        .get(name)
+                        .cloned()
+                        .ok_or_else(|| {
+                            error::Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
+                        })?
+                        .into_hash()
+                        .ok_or(Error::InvalidKeyVariant)?
+                        .into()
+                };
 
-                let contract_package = tracking_copy
+                contract_package = tracking_copy
                     .borrow_mut()
-                    .get_contract_package(correlation_id, contract_package_hash.into())?;
+                    .get_contract_package(correlation_id, contract_package_hash)?;
+
+                let maybe_version_key =
+                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
+>>>>>>> release-1.3.0
+
+                let contract_version_key = maybe_version_key
+                    .or_else(|| contract_package.current_contract_version())
+                    .ok_or(error::Error::Exec(
+                        execution::Error::NoActiveContractVersions(contract_package_hash),
+                    ))?;
+
+                if !contract_package.is_version_enabled(contract_version_key) {
+                    return Err(error::Error::Exec(
+                        execution::Error::InvalidContractVersion(contract_version_key),
+                    ));
+                }
+
+                let looked_up_contract_hash: ContractHash = contract_package
+                    .lookup_contract_hash(contract_version_key)
+                    .ok_or(error::Error::Exec(
+                        execution::Error::InvalidContractVersion(contract_version_key),
+                    ))?
+                    .to_owned();
+
+                contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, looked_up_contract_hash)?;
+
+                base_key = looked_up_contract_hash.into();
+                contract_hash = looked_up_contract_hash;
+            }
+            ExecutableDeployItem::StoredVersionedContractByHash {
+                hash: contract_package_hash,
+                version,
+                ..
+            } => {
+                contract_package = tracking_copy
+                    .borrow_mut()
+                    .get_contract_package(correlation_id, *contract_package_hash)?;
 
                 let maybe_version_key =
                     version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
@@ -227,7 +317,7 @@ impl ExecutableDeployItem {
                     .or_else(|| contract_package.current_contract_version())
                     .ok_or_else(|| {
                         error::Error::Exec(execution::Error::NoActiveContractVersions(
-                            contract_package_hash.into(),
+                            *contract_package_hash,
                         ))
                     })?;
 
@@ -237,27 +327,17 @@ impl ExecutableDeployItem {
                     ));
                 }
 
-                let contract_hash = *contract_package
+                let looked_up_contract_hash = *contract_package
                     .lookup_contract_hash(contract_version_key)
                     .ok_or(error::Error::Exec(
                         execution::Error::InvalidContractVersion(contract_version_key),
                     ))?;
-
-                let contract = tracking_copy
+                contract = tracking_copy
                     .borrow_mut()
-                    .get_contract(correlation_id, contract_hash)?;
+                    .get_contract(correlation_id, looked_up_contract_hash)?;
 
-                (
-                    contract_package,
-                    contract,
-                    contract_hash.value(),
-                    contract_package_key,
-                )
-            }
-            ExecutableDeployItem::Transfer { .. } => {
-                return Err(error::Error::InvalidDeployItemVariant(String::from(
-                    "Transfer",
-                )))
+                base_key = looked_up_contract_hash.into();
+                contract_hash = looked_up_contract_hash;
             }
         };
 
@@ -270,15 +350,18 @@ impl ExecutableDeployItem {
                 error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        if protocol_data
-            .system_contracts()
-            .contains(&contract_hash.into())
-        {
-            return Ok(DeployMetadata::System {
+        if protocol_data.system_contracts().contains(&contract_hash) {
+            let module = wasm::do_nothing_module(preprocessor)?;
+            return Ok(DeployMetadata {
+                kind: DeployKind::System,
+                account_hash,
                 base_key,
+                module,
+                contract_hash,
                 contract,
                 contract_package,
                 entry_point,
+                is_stored: true,
             });
         }
 
@@ -289,17 +372,30 @@ impl ExecutableDeployItem {
         let module = wasm_prep::deserialize(contract_wasm.bytes())?;
 
         match entry_point.entry_point_type() {
-            EntryPointType::Session => Ok(DeployMetadata::Session {
-                module,
-                contract_package,
-                entry_point,
-            }),
-            EntryPointType::Contract => Ok(DeployMetadata::Contract {
-                module,
+            EntryPointType::Session => {
+                let base_key = account.account_hash().into();
+                Ok(DeployMetadata {
+                    kind: DeployKind::Session,
+                    account_hash,
+                    base_key,
+                    module,
+                    contract_hash,
+                    contract,
+                    contract_package,
+                    entry_point,
+                    is_stored: true,
+                })
+            }
+            EntryPointType::Contract => Ok(DeployMetadata {
+                kind: DeployKind::Contract,
+                account_hash,
                 base_key,
+                module,
+                contract_hash,
                 contract,
                 contract_package,
                 entry_point,
+                is_stored: true,
             }),
         }
     }
@@ -678,34 +774,68 @@ impl Distribution<ExecutableDeployItem> for Standard {
 }
 
 #[derive(Clone, Debug)]
-pub enum DeployMetadata {
-    Session {
-        module: Module,
-        contract_package: ContractPackage,
-        entry_point: EntryPoint,
-    },
-    Contract {
-        // Contract hash
-        base_key: Key,
-        module: Module,
-        contract: Contract,
-        contract_package: ContractPackage,
-        entry_point: EntryPoint,
-    },
-    System {
-        base_key: Key,
-        contract: Contract,
-        contract_package: ContractPackage,
-        entry_point: EntryPoint,
-    },
+pub struct DeployMetadata {
+    pub kind: DeployKind,
+    pub account_hash: AccountHash,
+    pub base_key: Key,
+    pub module: Module,
+    pub contract_hash: ContractHash,
+    pub contract: Contract,
+    pub contract_package: ContractPackage,
+    pub entry_point: EntryPoint,
+    pub is_stored: bool,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DeployKind {
+    Session,
+    Contract,
+    System,
 }
 
 impl DeployMetadata {
-    pub fn take_module(self) -> Option<Module> {
-        match self {
-            DeployMetadata::System { .. } => None,
-            DeployMetadata::Session { module, .. } => Some(module),
-            DeployMetadata::Contract { module, .. } => Some(module),
+    pub fn take_module(self) -> Module {
+        self.module
+    }
+
+    pub fn initial_call_stack(&self) -> Result<Vec<CallStackElement>, Error> {
+        match (
+            self.kind,
+            self.entry_point.entry_point_type(),
+            self.is_stored,
+        ) {
+            (DeployKind::Session, EntryPointType::Contract, _) => {
+                Err(Error::InvalidDeployItemVariant(
+                    "Contract deploy item has invalid 'Session' kind".to_string(),
+                ))
+            }
+            (DeployKind::Session, EntryPointType::Session, false) => {
+                Ok(vec![CallStackElement::session(self.account_hash)])
+            }
+            (DeployKind::Session, EntryPointType::Session, true)
+            | (DeployKind::Contract, EntryPointType::Session, true)
+            | (DeployKind::System, EntryPointType::Session, true) => {
+                let account = self
+                    .base_key
+                    .into_account()
+                    .ok_or(Error::InvalidKeyVariant)?;
+                let contract_package_hash = self.contract.contract_package_hash();
+                let contract_hash = self.contract_hash;
+                Ok(vec![
+                    CallStackElement::session(self.account_hash),
+                    CallStackElement::stored_session(account, contract_package_hash, contract_hash),
+                ])
+            }
+            (DeployKind::Contract, EntryPointType::Contract, true)
+            | (DeployKind::System, EntryPointType::Contract, true) => {
+                let contract_package_hash = self.contract.contract_package_hash();
+                let contract_hash = self.contract_hash;
+                Ok(vec![
+                    CallStackElement::session(self.account_hash),
+                    CallStackElement::stored_contract(contract_package_hash, contract_hash),
+                ])
+            }
+            (_, _, _) => Err(Error::Deploy),
         }
     }
 }

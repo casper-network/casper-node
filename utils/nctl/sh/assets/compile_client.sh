@@ -13,6 +13,9 @@ source "$NCTL"/sh/utils/main.sh
 
 pushd "$NCTL_CASPER_HOME" || exit
 
+# Make sure toolchains up to date
+make setup-rs
+
 # Build client utility.
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
     cargo build --package casper-client
@@ -24,6 +27,7 @@ fi
 make build-contract-rs/activate-bid
 make build-contract-rs/add-bid
 make build-contract-rs/delegate
+make build-contract-rs/named-purse-payment
 make build-contract-rs/transfer-to-account-u512
 make build-contract-rs/undelegate
 make build-contract-rs/withdraw-bid

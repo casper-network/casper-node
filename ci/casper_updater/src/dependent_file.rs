@@ -53,6 +53,12 @@ impl DependentFile {
         &self.path
     }
 
+    pub fn relative_path(&self) -> &Path {
+        self.path
+            .strip_prefix(crate::root_dir())
+            .expect("should strip prefix")
+    }
+
     pub fn contents(&self) -> &str {
         &self.contents
     }

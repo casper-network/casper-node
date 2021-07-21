@@ -41,6 +41,8 @@ function main() {
     # 10. Verify that its last finalized block matches other nodes'.
     # nctl-view-chain-root-hash
     do_await_full_synchronization "$NEW_NODE_ID"
+    # 11. Check for equivocators
+    assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
     log "Syncing node complete"

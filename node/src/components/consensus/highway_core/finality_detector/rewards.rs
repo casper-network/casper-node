@@ -214,7 +214,7 @@ mod tests {
             TEST_ENDORSEMENT_EVIDENCE_LIMIT,
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
-        let mut state = State::new(weights, params, vec![]);
+        let mut state = State::new(weights, params, vec![], vec![]);
         let total_weight = state.total_weight().0;
 
         // Round 0: Alice has round length 16, Bob and Carol 8.

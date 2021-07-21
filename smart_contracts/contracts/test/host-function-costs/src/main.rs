@@ -201,8 +201,6 @@ pub extern "C" fn account_function() {
     )
     .unwrap_or_revert();
 
-    system::transfer_to_account(DESTINATION_ACCOUNT_HASH, transfer_amount, None).unwrap_or_revert();
-
     // ========== remaining functions from `runtime` module ========================================
 
     if !runtime::is_valid_uref(main_purse) {

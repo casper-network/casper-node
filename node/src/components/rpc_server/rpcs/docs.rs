@@ -26,21 +26,33 @@ use super::{
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
-use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
+use crate::{
+    effect::EffectBuilder,
+    rpcs::{
+        chain::GetEraInfoBySwitchBlock,
+        state::{GetAccountInfo, GetDictionaryItem},
+    },
+};
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
+<<<<<<< HEAD
     ProtocolVersion::from_parts(1, 2, 1);
+=======
+    ProtocolVersion::from_parts(1, 3, 0);
+
+>>>>>>> release-1.3.0
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
 pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
-        name: "CasperLabs".to_string(),
-        url: "https://casperlabs.io".to_string(),
+        name: "Casper".to_string(),
+        url: "https://casper.network".to_string(),
     };
     let license = OpenRpcLicenseField {
-        name: "CasperLabs Open Source License Version 1.0".to_string(),
-        url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
+        name: "Apache License Version 2.0".to_string(),
+        url: "https://raw.githubusercontent.com/casper-network/casper-node/master/LICENSE"
+            .to_string(),
     };
     let info = OpenRpcInfoField {
         version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
@@ -68,6 +80,8 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
 
     schema.push_with_params::<PutDeploy>("receives a Deploy to be executed by the network");
     schema.push_with_params::<GetDeploy>("returns a Deploy from the network");
+    schema.push_with_params::<GetAccountInfo>("returns an Account from the network");
+    schema.push_with_params::<GetDictionaryItem>("returns an item from a Dictionary");
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
@@ -82,8 +96,8 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
         "returns an EraInfo from the network",
     );
-    schema.push_without_params::<GetAuctionInfo>(
-        "returns the bids and validators as of the most recently added Block",
+    schema.push_with_optional_params::<GetAuctionInfo>(
+        "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block",
     );
 
     schema
@@ -100,7 +114,8 @@ pub trait DocExample {
     fn doc_example() -> &'static Self;
 }
 
-/// The main schema for the casper node's RPC server, compliant with https://spec.open-rpc.org.
+/// The main schema for the casper node's RPC server, compliant with
+/// [the OpenRPC Specification](https://spec.open-rpc.org).
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OpenRpcSchema {
     openrpc: String,

@@ -68,9 +68,8 @@ pub struct Chainspec {
 }
 
 impl Chainspec {
-    /// Checks whether the values set in the config make sense and prints warnings or panics if
-    /// they don't.
-    pub(crate) fn validate_config(&self) {
+    /// Returns `false` and logs errors if the values set in the config don't make sense.
+    pub(crate) fn is_valid(&self) -> bool {
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
@@ -81,7 +80,7 @@ impl Chainspec {
             warn!("era duration is less than minimum era height * round length!");
         }
 
-        self.highway_config.validate_config();
+        self.protocol_config.is_valid() && self.highway_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.
@@ -228,9 +227,9 @@ mod tests {
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
             read_value: HostFunction::new(127, [0, 1, 0]),
-            read_value_local: HostFunction::new(128, [0, 1, 0]),
+            dictionary_get: HostFunction::new(128, [0, 1, 0]),
             write: HostFunction::new(140, [0, 1, 0, 2]),
-            write_local: HostFunction::new(141, [0, 1, 2, 3]),
+            dictionary_put: HostFunction::new(141, [0, 1, 2, 3]),
             add: HostFunction::new(100, [0, 1, 2, 3]),
             new_uref: HostFunction::new(122, [0, 1, 2]),
             load_named_keys: HostFunction::new(121, [0, 1]),

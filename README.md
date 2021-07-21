@@ -1,13 +1,17 @@
-[![LOGO](images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
-Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier, Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our mission at: https://casperlabs.io/company
+Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier, 
+Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes 
+the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and 
+future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to 
+empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our 
+mission at: https://casper.network/network/casper-association
 
 ## Current Development Status
 The status on development is reported during the Community calls and is found [here](https://github.com/CasperLabs/Governance/wiki/Current-Status)
 
-The Casper Testnet is live.
-- Transactions can be sent to: deploy.casperlabs.io via the client or via Clarity.
-- [Clarity Block Explorer](https://clarity.casperlabs.io)
+The Casper MainNet is live.
+- [cspr.live Block Explorer](https://cspr.live)
 
 ## Specification
 
@@ -18,17 +22,16 @@ The Casper Testnet is live.
 - [Writing Smart Contracts](https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
 - [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
-- [AssemblyScript Smart Contract API](https://www.npmjs.com/package/@casperlabs/contract)
+- [AssemblyScript Smart Contract API](https://www.npmjs.com/package/casper-contract)
 
 ## Community
 
 - [Discord Server](https://discord.gg/mpZ9AYD)
-- [CasperLabs Community Forum](https://forums.casperlabs.io/)
-- [Telegram Channel](https://t.me/CasperLabs)
+- [Telegram Channel](https://t.me/casperofficialann)
 
 # casper-node
 
-This is the core application for the Casper blockchain.
+This is the core application for the Casper blockchain. 
 
 ## Running a validator node from Source
 
@@ -40,7 +43,7 @@ This is the core application for the Casper blockchain.
 * pkg-config
 * gcc
 * g++
-* optionally [wasm-strip](https://github.com/WebAssembly/wabt) (used to reduce the size of compiled Wasm)
+* recommended [wasm-strip](https://github.com/WebAssembly/wabt) (used to reduce the size of compiled Wasm)
 
 ### Setup
 
@@ -80,7 +83,7 @@ __The node will not run properly without another node to connect to.  It is reco
 
 ### Running multiple nodes on one machine
 
-There is a [tool](https://github.com/CasperLabs/casper-node/tree/master/utils/nctl) which automates the process of running multiple nodes on a single machine.
+There is a [tool](https://github.com/casper-network/casper-node/tree/dev/utils/nctl) which automates the process of running multiple nodes on a single machine.
 
 Note that running multiple nodes on a single machine is normally only recommended for test purposes.
 
@@ -205,3 +208,8 @@ See [the client README](client/README.md).
 ## Running a local network
 
 See [the nctl utility README](utils/nctl/README.md).
+
+## Running on a existing network
+
+To support upgrades with a network, the casper-node is installed using scripts distributed with the 
+[casper-node-launcher](https://github.com/casper-network/casper-node-launcher).

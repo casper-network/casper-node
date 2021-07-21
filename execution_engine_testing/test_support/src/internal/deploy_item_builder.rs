@@ -5,7 +5,8 @@ use casper_execution_engine::{
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
-    account::AccountHash, ContractHash, ContractVersion, DeployHash, HashAddr, RuntimeArgs,
+    account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash, HashAddr,
+    RuntimeArgs,
 };
 
 use crate::internal::{utils, DEFAULT_GAS_PRICE};
@@ -73,6 +74,36 @@ impl DeployItemBuilder {
     ) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredContractByName {
             name: uref_name.to_owned(),
+            entry_point: entry_point_name.into(),
+            args,
+        });
+        self
+    }
+
+    pub fn with_stored_versioned_payment_hash(
+        mut self,
+        package_hash: ContractPackageHash,
+        entry_point: &str,
+        args: RuntimeArgs,
+    ) -> Self {
+        self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: package_hash,
+            version: None,
+            entry_point: entry_point.into(),
+            args,
+        });
+        self
+    }
+
+    pub fn with_stored_versioned_payment_named_key(
+        mut self,
+        uref_name: &str,
+        entry_point_name: &str,
+        args: RuntimeArgs,
+    ) -> Self {
+        self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredVersionedContractByName {
+            name: uref_name.to_owned(),
+            version: None,
             entry_point: entry_point_name.into(),
             args,
         });

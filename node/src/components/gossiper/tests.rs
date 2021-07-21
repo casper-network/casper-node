@@ -182,8 +182,13 @@ impl reactor::Reactor for Reactor {
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage =
-            Storage::new(&storage_withdir, None, ProtocolVersion::from_parts(1, 0, 0)).unwrap();
+        let storage = Storage::new(
+            &storage_withdir,
+            None,
+            ProtocolVersion::from_parts(1, 0, 0),
+            false,
+        )
+        .unwrap();
 
         let contract_runtime_config = contract_runtime::Config::default();
         let contract_runtime = ContractRuntime::new(
@@ -272,27 +277,20 @@ impl reactor::Reactor for Reactor {
                                 return Effects::new();
                             }
                         };
+
                         match self
                             .storage
-                            .handle_legacy_direct_deploy_request(deploy_hash)
+                            .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
                         {
-                            // This functionality was moved out of the storage component and
-                            // should be refactored ASAP.
-                            Some(deploy) => {
-                                match NodeMessage::new_get_response(&deploy) {
-                                    Ok(message) => {
-                                        return effect_builder
-                                            .send_message(sender, message)
-                                            .ignore();
-                                    }
-                                    Err(error) => {
-                                        error!("failed to create get-response: {}", error);
-                                        return Effects::new();
-                                    }
-                                };
+                            Some(serialized_item) => {
+                                let message = NodeMessage::new_get_response_raw_unchecked::<Deploy>(
+                                    serialized_item,
+                                );
+                                return effect_builder.send_message(sender, message).ignore();
                             }
+
                             None => {
-                                debug!("failed to get {} for {}", deploy_hash, sender);
+                                debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
                                 return Effects::new();
                             }
                         }
@@ -354,7 +352,8 @@ impl reactor::Reactor for Reactor {
                 source: _,
             }) => Effects::new(),
             Event::DeployGossiperAnnouncement(_ann) => {
-                unreachable!("the deploy gossiper should never make an announcement")
+                // We do not care about deploy gossiper announcements in the gossiper test.
+                Effects::new()
             }
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,

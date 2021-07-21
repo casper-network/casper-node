@@ -9,6 +9,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use derive_more::Display;
 use hex::FromHexError;
 use itertools::Itertools;
 use num_traits::Zero;
@@ -35,7 +36,7 @@ use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::block_proposer::DeployType,
+    components::block_proposer::DeployInfo,
     crypto,
     crypto::{
         hash::{self, Digest},
@@ -291,6 +292,56 @@ impl ToBytes for DeployHash {
 impl FromBytes for DeployHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         Digest::from_bytes(bytes).map(|(inner, remainder)| (DeployHash(inner), remainder))
+    }
+}
+
+/// The [`DeployHash`](struct.DeployHash.html) stored in a way distinguishing between WASM deploys
+/// and transfers.
+#[derive(
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    Display,
+    JsonSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub enum DeployOrTransferHash {
+    /// Hash of a deploy.
+    #[display(fmt = "deploy {}", _0)]
+    Deploy(DeployHash),
+    /// Hash of a transfer.
+    #[display(fmt = "transfer {}", _0)]
+    Transfer(DeployHash),
+}
+
+impl DeployOrTransferHash {
+    /// Gets the inner `DeployHash`.
+    pub fn deploy_hash(&self) -> &DeployHash {
+        match self {
+            DeployOrTransferHash::Deploy(hash) | DeployOrTransferHash::Transfer(hash) => hash,
+        }
+    }
+
+    /// Returns `true` if this is a transfer hash.
+    pub fn is_transfer(&self) -> bool {
+        matches!(self, DeployOrTransferHash::Transfer(_))
+    }
+}
+
+impl From<DeployOrTransferHash> for DeployHash {
+    fn from(dt_hash: DeployOrTransferHash) -> DeployHash {
+        match dt_hash {
+            DeployOrTransferHash::Deploy(hash) => hash,
+            DeployOrTransferHash::Transfer(hash) => hash,
+        }
     }
 }
 
@@ -577,41 +628,44 @@ impl Deploy {
         &self.approvals
     }
 
-    /// Returns the `DeployType`.
-    pub fn deploy_type(&self) -> Result<DeployType, Error> {
+    /// Returns the hash of this deploy wrapped in `DeployOrTransferHash`.
+    pub fn deploy_or_transfer_hash(&self) -> DeployOrTransferHash {
+        if self.session.is_transfer() {
+            DeployOrTransferHash::Transfer(self.hash)
+        } else {
+            DeployOrTransferHash::Deploy(self.hash)
+        }
+    }
+
+    /// Returns the `DeployInfo`.
+    pub fn deploy_info(&self) -> Result<DeployInfo, Error> {
         let header = self.header().clone();
         let size = self.serialized_length();
-        if self.session().is_transfer() {
+        let payment_amount = if self.session().is_transfer() {
             // TODO: we need a non-zero value constant for wasm-less transfer cost.
-            let payment_amount = Motes::zero();
-            Ok(DeployType::Transfer {
-                header,
-                payment_amount,
-                size,
-            })
+            Motes::zero()
         } else {
             let payment_item = self.payment().clone();
-            let payment_amount = {
-                // In the happy path for a payment we expect:
-                // - args to exist
-                // - contain "amount"
-                // - be a valid U512 value.
-                let value = payment_item
-                    .args()
-                    .get(ARG_AMOUNT)
-                    .ok_or(Error::InvalidPayment)?;
-                let value = value
-                    .clone()
-                    .into_t::<U512>()
-                    .map_err(|_| Error::InvalidPayment)?;
-                Motes::new(value)
-            };
-            Ok(DeployType::Other {
-                header,
-                payment_amount,
-                size,
-            })
-        }
+
+            // In the happy path for a payment we expect:
+            // - args to exist
+            // - contain "amount"
+            // - be a valid U512 value.
+            let value = payment_item
+                .args()
+                .get(ARG_AMOUNT)
+                .ok_or(Error::InvalidPayment)?;
+            let value = value
+                .clone()
+                .into_t::<U512>()
+                .map_err(|_| Error::InvalidPayment)?;
+            Motes::new(value)
+        };
+        Ok(DeployInfo {
+            header,
+            size,
+            payment_amount,
+        })
     }
 
     /// Returns true if the serialized size of the deploy is not greater than `max_deploy_size`.

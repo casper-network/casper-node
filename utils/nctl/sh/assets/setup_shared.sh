@@ -151,8 +151,12 @@ function setup_asset_accounts_from_template()
 #######################################
 # Sets network binaries.
 # Arguments:
+#   Version of protocol being run.
 #   Count of nodes to setup (default=5).
-#   Path to folder containing staged files.
+#   Path to casper-client binary.
+#   Path to casper-node binary.
+#   Path to casper-node-launcher binary.
+#   Path to folder containing wasm binaries.
 #######################################
 function setup_asset_binaries()
 {
@@ -173,26 +177,41 @@ function setup_asset_binaries()
     for IDX in $(seq 1 "$COUNT_NODES")
     do
         PATH_TO_BIN="$(get_path_to_node_bin "$IDX")"
-        if [ $PROTOCOL_VERSION == "1_0_0" ]; then
-            cp "$PATH_TO_NODE_LAUNCHER" \
-            "$PATH_TO_BIN"
+        if [ ! -f "$PATH_TO_BIN/casper-node-launcher" ]; then
+            cp "$PATH_TO_NODE_LAUNCHER" "$PATH_TO_BIN"
         fi
-        cp "$PATH_TO_NODE" \
-           "$PATH_TO_BIN/$PROTOCOL_VERSION"
+        cp "$PATH_TO_NODE" "$PATH_TO_BIN/$PROTOCOL_VERSION"
     done
 
-    # Set client binaries.
+    # Set client-side binary.
     PATH_TO_BIN="$(get_path_to_net)/bin"
     cp "$PATH_TO_CLIENT" "$PATH_TO_BIN"
+
+    # Set client-side auction contracts;
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
     do
-        cp "$PATH_TO_WASM/$CONTRACT" \
-           "$PATH_TO_BIN/auction"
+        if [ -f "$PATH_TO_WASM/$CONTRACT" ]; then
+            cp "$PATH_TO_WASM/$CONTRACT" \
+               "$PATH_TO_BIN/auction"
+        fi
     done  
+
+    # Set client-side shared contracts;
+    for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
+    do
+        if [ -f "$PATH_TO_WASM/$CONTRACT" ]; then
+            cp "$PATH_TO_WASM/$CONTRACT" \
+            "$PATH_TO_BIN/shared"
+        fi
+    done  
+
+    # Set client-side transfer contracts;
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
-        cp "$PATH_TO_WASM/$CONTRACT" \
-           "$PATH_TO_BIN/transfers"
+        if [ -f "$PATH_TO_WASM/$CONTRACT" ]; then
+            cp "$PATH_TO_WASM/$CONTRACT" \
+            "$PATH_TO_BIN/transfers"
+        fi
     done
 }
 
@@ -203,6 +222,7 @@ function setup_asset_binaries()
 #   Point (timestamp | era-id) when chainspec is considered live.
 #   Delay in seconds to apply to genesis timestamp.
 #   Path to chainspec template file.
+#   Flag indicating whether chainspec pertains to genesis.
 #######################################
 function setup_asset_chainspec()
 {
@@ -212,6 +232,7 @@ function setup_asset_chainspec()
     local PROTOCOL_VERSION=${2}
     local ACTIVATION_POINT=${3}
     local PATH_TO_CHAINSPEC_TEMPLATE=${4}
+    local IS_GENESIS=${5}
     local PATH_TO_CHAINSPEC
     local SCRIPT
 
@@ -220,7 +241,7 @@ function setup_asset_chainspec()
     cp "$PATH_TO_CHAINSPEC_TEMPLATE" "$PATH_TO_CHAINSPEC"
 
     # Set contents.
-    if [ "$PROTOCOL_VERSION" == "1.0.0" ]; then
+    if [ $IS_GENESIS == true ]; then
         SCRIPT=(
             "import toml;"
             "cfg=toml.load('$PATH_TO_CHAINSPEC');"
@@ -265,6 +286,7 @@ function setup_asset_daemon()
 # Arguments:
 #   Count of nodes to setup (default=5).
 #   Count of users to setup (default=5).
+#   Initial protocol version under which network will spinup.
 #######################################
 function setup_asset_directories()
 {
@@ -272,37 +294,39 @@ function setup_asset_directories()
 
     local COUNT_NODES=${1}
     local COUNT_USERS=${2}
+    local PROTOCOL_VERSION_INITIAL=${3}
     local PATH_TO_NET
     local PATH_TO_NODE
     local IDX
 
     PATH_TO_NET="$(get_path_to_net)"
 
-    mkdir "$PATH_TO_NET"/bin 
-    mkdir "$PATH_TO_NET"/bin/auction
-    mkdir "$PATH_TO_NET"/bin/eco
-    mkdir "$PATH_TO_NET"/bin/transfers
-    mkdir "$PATH_TO_NET"/chainspec
-    mkdir "$PATH_TO_NET"/daemon
-    mkdir "$PATH_TO_NET"/daemon/config
-    mkdir "$PATH_TO_NET"/daemon/logs
-    mkdir "$PATH_TO_NET"/daemon/socket
-    mkdir "$PATH_TO_NET"/faucet 
-    mkdir "$PATH_TO_NET"/nodes 
-    mkdir "$PATH_TO_NET"/users
+    mkdir "$PATH_TO_NET/bin"
+    mkdir "$PATH_TO_NET/bin/auction"
+    mkdir "$PATH_TO_NET/bin/eco"
+    mkdir "$PATH_TO_NET/bin/shared"
+    mkdir "$PATH_TO_NET/bin/transfers"
+    mkdir "$PATH_TO_NET/chainspec"
+    mkdir "$PATH_TO_NET/daemon"
+    mkdir "$PATH_TO_NET/daemon/config"
+    mkdir "$PATH_TO_NET/daemon/logs"
+    mkdir "$PATH_TO_NET/daemon/socket"
+    mkdir "$PATH_TO_NET/faucet" 
+    mkdir "$PATH_TO_NET/nodes"
+    mkdir "$PATH_TO_NET/users"
 
     for IDX in $(seq 1 "$COUNT_NODES")
     do
         PATH_TO_NODE="$PATH_TO_NET"/nodes/node-"$IDX"
         mkdir "$PATH_TO_NODE"
-        mkdir "$PATH_TO_NODE"/bin
-        mkdir "$PATH_TO_NODE"/bin/1_0_0
-        mkdir "$PATH_TO_NODE"/config
-        mkdir "$PATH_TO_NODE"/config/1_0_0
-        mkdir "$PATH_TO_NODE"/keys
-        mkdir "$PATH_TO_NODE"/logs
-        mkdir "$PATH_TO_NODE"/storage
-        mkdir "$PATH_TO_NODE"/storage-consensus
+        mkdir "$PATH_TO_NODE/bin"
+        mkdir "$PATH_TO_NODE/bin/$PROTOCOL_VERSION_INITIAL"
+        mkdir "$PATH_TO_NODE/config"
+        mkdir "$PATH_TO_NODE/config/$PROTOCOL_VERSION_INITIAL"
+        mkdir "$PATH_TO_NODE/keys"
+        mkdir "$PATH_TO_NODE/logs"
+        mkdir "$PATH_TO_NODE/storage"
+        mkdir "$PATH_TO_NODE/storage-consensus"
     done
      
     for IDX in $(seq 1 "$COUNT_USERS")
@@ -347,7 +371,9 @@ function setup_asset_keys()
 # Sets node confgiuration files.
 # Arguments:
 #   Count of nodes to setup (default=5).
+#   Version of protocol being ran.
 #   Path to node configuration template file.
+#   Flag indicating whether chainspec pertains to genesis.
 #######################################
 function setup_asset_node_configs()
 {
@@ -356,6 +382,7 @@ function setup_asset_node_configs()
     local COUNT_NODES=${1}
     local PROTOCOL_VERSION=${2}
     local PATH_TO_TEMPLATE=${3}
+    local IS_GENESIS=${4}
 
     local IDX
     local PATH_TO_NET
@@ -372,7 +399,7 @@ function setup_asset_node_configs()
         PATH_TO_CONFIG_FILE="$PATH_TO_CONFIG/config.toml"
 
         # Set node configuration.
-        if [ "$PROTOCOL_VERSION" == "1_0_0" ]; then
+        if [ $IS_GENESIS == true ]; then
             cp "$PATH_TO_NET/chainspec/accounts.toml" "$PATH_TO_CONFIG"
         fi
         cp "$PATH_TO_NET/chainspec/chainspec.toml" "$PATH_TO_CONFIG"
@@ -414,7 +441,7 @@ function setup_asset_node_config_workaround_1()
     local HAS_HIGHWAY
     local SCRIPT
 
-    HAS_HIGHWAY=$(grep -R "consensus.highway" "$PATH_TO_CONFIG_FILE")
+    HAS_HIGHWAY=$(grep -R "consensus.highway" "$PATH_TO_CONFIG_FILE" || true)
     if [ "$HAS_HIGHWAY" != "" ]; then
         SCRIPT=(
             "import toml;"

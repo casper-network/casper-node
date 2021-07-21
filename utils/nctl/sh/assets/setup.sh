@@ -41,6 +41,7 @@ do
         nodes) NODE_COUNT=${VALUE} ;;
         chainspec_path) PATH_TO_CHAINSPEC=${VALUE} ;;
         accounts_path) PATH_TO_ACCOUNTS=${VALUE} ;;
+        config_path) PATH_TO_CONFIG_TOML=${VALUE} ;;
         *)
     esac
 done
@@ -50,6 +51,7 @@ GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
 NODE_COUNT=${NODE_COUNT:-5}
 PATH_TO_CHAINSPEC=${PATH_TO_CHAINSPEC:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
 PATH_TO_ACCOUNTS=${PATH_TO_ACCOUNTS:-""}
+PATH_TO_CONFIG_TOML=${PATH_TO_CONFIG_TOML:-"${NCTL_CASPER_HOME}/resources/local/config.toml"}
 
 
 #######################################
@@ -67,7 +69,7 @@ function _set_nodes()
         PATH_TO_CFG=$(get_path_to_node "$IDX")/config/1_0_0
         PATH_TO_FILE="$PATH_TO_CFG"/config.toml
 
-        cp "$NCTL_CASPER_HOME"/resources/local/config.toml "$PATH_TO_CFG"
+        cp "$PATH_TO_CONFIG_TOML" "$PATH_TO_CFG"
         cp "$(get_path_to_net)"/chainspec/* "$PATH_TO_CFG"
 
         local SCRIPT=(
@@ -119,7 +121,7 @@ function _main()
     log "asset setup begins ... please wait"
 
     # Setup new.
-    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS"
+    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "1_0_0"
 
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         setup_asset_binaries "1_0_0" \
@@ -144,7 +146,8 @@ function _main()
     setup_asset_chainspec "$COUNT_NODES" \
                           "1.0.0" \
                           $(get_genesis_timestamp "$GENESIS_DELAY") \
-                          "$PATH_TO_CHAINSPEC"
+                          "$PATH_TO_CHAINSPEC" \
+                          true
 
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
         setup_asset_accounts "$COUNT_NODES" "$COUNT_NODES_AT_GENESIS" "$COUNT_USERS"
@@ -154,7 +157,8 @@ function _main()
 
     setup_asset_node_configs "$COUNT_NODES" \
                              "1_0_0" \
-                             "$NCTL_CASPER_HOME/resources/local/config.toml"
+                             "$PATH_TO_CONFIG_TOML" \
+                             true
 
     log "asset setup complete"
 }

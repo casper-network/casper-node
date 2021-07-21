@@ -18,7 +18,6 @@ pub(super) use unit::Unit;
 use std::{
     borrow::Borrow,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    convert::identity,
     iter,
 };
 
@@ -47,7 +46,7 @@ use tallies::Tallies;
 
 // TODO: The restart mechanism only persists and loads our own latest unit, so that we don't
 // equivocate after a restart. It doesn't yet persist our latest endorsed units, so we could
-// accidentally endorse conflicting votes. Fix this and enable slashing for conflicting
+// accidentally endorse conflicting votes. Fix this and enable detecting conflicting
 // endorsements again.
 pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 
@@ -116,8 +115,8 @@ pub(crate) enum Fault<C>
 where
     C: Context,
 {
-    /// The validator was known to be faulty from the beginning. All their messages are considered
-    /// invalid in this Highway instance.
+    /// The validator was known to be malicious from the beginning. All their messages are
+    /// considered invalid in this Highway instance.
     Banned,
     /// We have direct evidence of the validator's fault.
     Direct(Evidence<C>),
@@ -151,6 +150,8 @@ where
     /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
     /// through `i`.
     cumulative_w: ValidatorMap<Weight>,
+    /// Cumulative validator weights, but with the weight of banned validators set to `0`.
+    cumulative_w_leaders: ValidatorMap<Weight>,
     /// All units imported so far, by hash.
     /// This is a downward closed set: A unit must only be added here once all of its dependencies
     /// have been added as well, and it has been fully validated.
@@ -164,6 +165,9 @@ where
     /// Every validator that has an equivocation in `units` must have an entry here, but there can
     /// be additional entries for other kinds of faults.
     faults: HashMap<ValidatorIndex, Fault<C>>,
+    /// A map with `true` for all validators that should be assign slots as leaders, and are
+    /// allowed to propose blocks.
+    can_propose: ValidatorMap<bool>,
     /// The full panorama, corresponding to the complete protocol state.
     /// This points to the latest unit of every honest validator.
     panorama: Panorama<C>,
@@ -184,25 +188,42 @@ where
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I, IB>(weights: I, params: Params, banned: IB) -> State<C>
+    pub(crate) fn new<I, IB, IB2>(
+        weights: I,
+        params: Params,
+        banned: IB,
+        cannot_propose: IB2,
+    ) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
         IB: IntoIterator<Item = ValidatorIndex>,
+        IB2: IntoIterator<Item = ValidatorIndex>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         assert!(
             weights.len() > 0,
             "cannot initialize Highway with no validators"
         );
-        let mut sum = Weight(0);
-        let add = |w: &Weight| {
-            sum = sum.checked_add(*w).expect("total weight must be < 2^64");
-            sum
+        let sums = |mut sums: Vec<Weight>, w: Weight| {
+            let sum = sums.last().copied().unwrap_or(Weight(0));
+            sums.push(sum.checked_add(w).expect("total weight must be < 2^64"));
+            sums
         };
-        let cumulative_w = weights.iter().map(add).collect();
-        assert!(sum > Weight(0), "total weight must not be zero");
+        let cumulative_w = ValidatorMap::from(weights.iter().copied().fold(vec![], sums));
+        assert!(
+            *cumulative_w.as_ref().last().unwrap() > Weight(0),
+            "total weight must not be zero"
+        );
         let mut panorama = Panorama::new(weights.len());
+        let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
+        for idx in cannot_propose {
+            assert!(
+                idx.0 < weights.len() as u32,
+                "invalid validator index for exclusion from leader sequence"
+            );
+            can_propose[idx] = false;
+        }
         let faults: HashMap<_, _> = banned.into_iter().map(|idx| (idx, Fault::Banned)).collect();
         for idx in faults.keys() {
             assert!(
@@ -211,6 +232,11 @@ impl<C: Context> State<C> {
             );
             panorama[*idx] = Observation::Faulty;
         }
+        let cumulative_w_leaders = weights
+            .enumerate()
+            .map(|(idx, weight)| can_propose[idx].then(|| *weight).unwrap_or(Weight(0)))
+            .fold(vec![], sums)
+            .into();
         let pings = iter::repeat(params.start_timestamp())
             .take(weights.len())
             .collect();
@@ -218,9 +244,11 @@ impl<C: Context> State<C> {
             params,
             weights,
             cumulative_w,
+            cumulative_w_leaders,
             units: HashMap::new(),
             blocks: HashMap::new(),
             faults,
+            can_propose,
             panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
@@ -384,7 +412,23 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the leader in the specified time slot.
+    ///
+    /// First the assignment is computed ignoring the `can_propose` flags. Only if the selected
+    /// leader's entry is `false`, the computation is repeated, this time with the flagged
+    /// validators excluded. This ensures that once the validator set has been decided, correct
+    /// validators' slots never get reassigned to someone else, even if after the fact someone is
+    /// excluded as a leader.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
+        // The binary search cannot return None; if it does, it's a programming error. In that case,
+        // we want the tests to panic but production to pick a default.
+        let panic_or_0 = || {
+            if cfg!(test) {
+                panic!("random number out of range");
+            } else {
+                error!("random number out of range");
+                ValidatorIndex(0)
+            }
+        };
         let seed = self.params.seed().wrapping_add(timestamp.millis());
         // We select a random one out of the `total_weight` weight units, starting numbering at 1.
         let r = Weight(leader_prng(self.total_weight().0, seed));
@@ -392,7 +436,20 @@ impl<C: Context> State<C> {
         // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
         // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
         // who owns the randomly selected weight unit.
-        self.cumulative_w.binary_search(&r).unwrap_or_else(identity)
+        let leader_index = self
+            .cumulative_w
+            .binary_search(&r)
+            .unwrap_or_else(panic_or_0);
+        if self.can_propose[leader_index] {
+            return leader_index;
+        }
+        // If the selected leader is excluded, we reassign the slot to someone else. This time we
+        // consider only the non-banned validators.
+        let total_w_leaders = *self.cumulative_w_leaders.as_ref().last().unwrap();
+        let r = Weight(leader_prng(total_w_leaders.0, seed.wrapping_add(1)));
+        self.cumulative_w_leaders
+            .binary_search(&r)
+            .unwrap_or_else(panic_or_0)
     }
 
     /// Adds the unit to the protocol state.
