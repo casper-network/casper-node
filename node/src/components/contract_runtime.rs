@@ -561,15 +561,13 @@ impl ContractRuntime {
     }
 
     /// Retrieve trie keys for the integrity check.
-    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
+    pub fn trie_store_check(
+        &self,
+        trie_keys: Vec<Blake2bHash>,
+    ) -> Result<Vec<Blake2bHash>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
-        match self
-            .engine_state
+        self.engine_state
             .missing_trie_keys(correlation_id, trie_keys)
-        {
-            Ok(keys) => keys,
-            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
-        }
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {

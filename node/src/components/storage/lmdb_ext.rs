@@ -14,13 +14,6 @@ use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
-use crate::{
-    crypto::hash::Digest,
-    types::{
-        error::BlockValidationError, BlockBody, BlockHash, BlockHeader, HashingAlgorithmVersion,
-    },
-};
-
 /// Error wrapper for lower-level storage errors.
 ///
 /// Used to classify storage errors, allowing more accurate reporting on potential issues and
@@ -43,57 +36,6 @@ pub enum LmdbExtError {
     /// Error neither corruption nor resource exhaustion occurred, likely a programming error.
     #[error("unknown LMDB or serialization error, likely from a bug: {0}")]
     Other(Box<dyn std::error::Error + Send + Sync>),
-    /// The internal database is corrupted and can probably not be salvaged.
-    #[error(
-        "Block header not stored under its hash. \
-         Queried block hash: {queried_block_hash}, \
-         Found block header hash: {found_block_header_hash}, \
-         Block header: {block_header}"
-    )]
-    BlockHeaderNotStoredUnderItsHash {
-        queried_block_hash: BlockHash,
-        found_block_header_hash: BlockHash,
-        block_header: Box<BlockHeader>,
-    },
-    #[error(
-        "No block header corresponding to block body found in LMDB. \
-         Block body hash: {block_body_hash:?}, \
-         Hashing algorithm version: {hashing_algorithm_version:?}, \
-         Block body: {block_body:?}"
-    )]
-    NoBlockHeaderForBlockBody {
-        block_body_hash: Digest,
-        hashing_algorithm_version: HashingAlgorithmVersion,
-        block_body: Box<BlockBody>,
-    },
-    #[error(
-        "Unexpected hashing algorithm version. \
-         Expected: {expected_hashing_algorithm_version:?}, \
-         Actual: {actual_hashing_algorithm_version:?}"
-    )]
-    UnexpectedHashingAlgorithmVersion {
-        expected_hashing_algorithm_version: HashingAlgorithmVersion,
-        actual_hashing_algorithm_version: HashingAlgorithmVersion,
-    },
-    #[error(transparent)]
-    BlockValidationError(#[from] BlockValidationError),
-    #[error(
-        "Block body does not have correct Merkle root for its hash. \
-         Block body hash: {block_body_hash}, \
-         Merkle root: {merkle_root}"
-    )]
-    IncorrectBlockBodyMerkleRoot {
-        block_body_hash: Digest,
-        merkle_root: Digest,
-    },
-    #[error(
-        "Could not find block body part with Merkle linked list node hash: \
-         {merkle_linked_list_node_hash:?}"
-    )]
-    CouldNotFindBlockBodyPart {
-        block_hash: BlockHash,
-        merkle_linked_list_node_hash: Digest,
-    },
 }
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a

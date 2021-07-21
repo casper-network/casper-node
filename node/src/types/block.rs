@@ -16,6 +16,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use derive_more::Into;
 use hex::FromHexError;
 use hex_fmt::HexList;
 use itertools::Itertools;
@@ -519,6 +520,7 @@ impl Display for FinalizedBlock {
     Deserialize,
     Debug,
     JsonSchema,
+    Into,
 )]
 #[serde(deny_unknown_fields)]
 pub struct BlockHash(Digest);

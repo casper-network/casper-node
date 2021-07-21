@@ -239,7 +239,8 @@ async fn run_equivocator_network() {
         for runner in net.nodes().values() {
             let storage = runner.reactor().inner().storage();
             let header = storage
-                .transactional_get_switch_block_by_era_id(era_number - 1)
+                .read_switch_block_by_era_id(EraId::from(era_number - 1))
+                .expect("lmdb error")
                 .expect("missing switch block")
                 .take_header();
             assert_eq!(era_number - 1, header.era_id().value());
