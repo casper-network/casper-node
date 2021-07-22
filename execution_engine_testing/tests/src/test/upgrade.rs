@@ -12,7 +12,7 @@ const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
 const DO_NOTHING_STORED_UPGRADER_CONTRACT_NAME: &str = "do_nothing_stored_upgrader";
 const DO_NOTHING_STORED_CALLER_CONTRACT_NAME: &str = "do_nothing_stored_caller";
 const ENTRY_FUNCTION_NAME: &str = "delegate";
-const DO_NOTHING_PACKAGE_HASH_KEY_NAME: &str = "do_nothing_package_hash";
+const DO_NOTHING_CONTRACT_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
 const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
 const UPGRADED_VERSION: ContractVersion = INITIAL_VERSION + 1;
@@ -59,9 +59,9 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
     // Calling initial version from contract package hash, should have no effects
     {
         let exec_request = {
-            ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
+            ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
-                DO_NOTHING_PACKAGE_HASH_KEY_NAME,
+                DO_NOTHING_CONTRACT_NAME,
                 Some(INITIAL_VERSION),
                 ENTRY_FUNCTION_NAME,
                 RuntimeArgs::new(),
@@ -102,9 +102,9 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
             PURSE_NAME_ARG_NAME => PURSE_1,
         };
         let exec_request = {
-            ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
+            ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
-                DO_NOTHING_PACKAGE_HASH_KEY_NAME,
+                DO_NOTHING_CONTRACT_NAME,
                 Some(UPGRADED_VERSION),
                 ENTRY_FUNCTION_NAME,
                 args,
@@ -161,7 +161,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
 
     let stored_contract_package_hash = account_1
         .named_keys()
-        .get(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
+        .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
         .into_hash()
         .expect("should have hash");
@@ -207,7 +207,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
 
     let stored_contract_package_hash = account_1
         .named_keys()
-        .get(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
+        .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
         .into_hash()
         .expect("should have hash");
@@ -578,10 +578,8 @@ fn should_maintain_named_keys_across_upgrade() {
         let purse_name: &str = &format!("purse_{}", index);
         assert!(
             contract.named_keys().contains_key(purse_name),
-            format!(
-                "{} uref should still exist in contract's named_keys after upgrade",
-                index
-            )
+            "{} uref should still exist in contract's named_keys after upgrade",
+            index
         );
     }
 }

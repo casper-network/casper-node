@@ -30,12 +30,12 @@ use casper_types::{
         handle_payment::{self, HandlePayment},
         mint::{self, Mint},
         standard_payment::{self, StandardPayment},
-        SystemContractType,
+        CallStackElement, SystemContractType,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, NamedArg, Parameter,
     Phase, ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef,
-    U128, U256, U512,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
 };
 
 use crate::{
@@ -64,6 +64,7 @@ pub struct Runtime<'a, R> {
     module: Module,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
+    call_stack: Vec<CallStackElement>,
 }
 
 pub fn instance_and_memory(
@@ -973,6 +974,7 @@ where
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
+        call_stack: Vec<CallStackElement>,
     ) -> Self {
         Runtime {
             config,
@@ -981,6 +983,7 @@ where
             module,
             host_buffer: None,
             context,
+            call_stack,
         }
     }
 
@@ -1017,6 +1020,10 @@ where
         T: Into<Gas>,
     {
         self.context.charge_system_contract_call(amount)
+    }
+
+    pub fn call_stack(&self) -> &Vec<CallStackElement> {
+        &self.call_stack
     }
 
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
@@ -1063,11 +1070,10 @@ where
         let maybe_missing_name: Option<String> = entry_point_names
             .iter()
             .find(|name| {
-                export_section
+                !export_section
                     .entries()
                     .iter()
-                    .find(|export_entry| export_entry.field() == **name)
-                    .is_none()
+                    .any(|export_entry| export_entry.field() == **name)
             })
             .map(|s| String::from(*s));
 
@@ -1187,6 +1193,14 @@ where
         Ok(Ok(()))
     }
 
+    /// Gets the immediate caller of the current execution
+    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+        let call_stack = self.call_stack();
+        let mut call_stack_iter = call_stack.iter().rev();
+        call_stack_iter.next()?;
+        call_stack_iter.next()
+    }
+
     /// Writes runtime context's phase to dest_ptr in the Wasm memory.
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();
@@ -1206,6 +1220,49 @@ where
         self.memory
             .set(dest_ptr, &blocktime)
             .map_err(|e| Error::Interpreter(e.into()).into())
+    }
+
+    /// Load the uref known by the given name into the Wasm memory
+    fn load_call_stack(
+        &mut self,
+        // (Output) Pointer to number of elements in the call stack.
+        call_stack_len_ptr: u32,
+        // (Output) Pointer to size in bytes of the serialized call stack.
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+        let call_stack = self.call_stack();
+        let call_stack_len = call_stack.len() as u32;
+        let call_stack_len_bytes = call_stack_len.to_le_bytes();
+
+        if let Err(error) = self.memory.set(call_stack_len_ptr, &call_stack_len_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        if call_stack_len == 0 {
+            return Ok(Ok(()));
+        }
+
+        let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
+
+        let call_stack_cl_value_bytes_len = call_stack_cl_value.inner_bytes().len() as u32;
+        if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
+            return Ok(Err(error));
+        }
+
+        let call_stack_cl_value_bytes_len_bytes = call_stack_cl_value_bytes_len.to_le_bytes();
+
+        if let Err(error) = self
+            .memory
+            .set(result_size_ptr, &call_stack_cl_value_bytes_len_bytes)
+        {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
     }
 
     /// Return some bytes from the memory and terminate the current `sub_call`. Note that the return
@@ -1304,6 +1361,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
+        call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1356,6 +1414,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             mint_context,
+            call_stack,
         );
 
         let system_config = protocol_data.system_config();
@@ -1366,7 +1425,7 @@ where
             mint::METHOD_MINT => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.mint)?;
 
-                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
                 if let Err(mint::Error::GasLimit) = result {
                     return Err(execution::Error::GasLimit);
@@ -1376,7 +1435,7 @@ where
             mint::METHOD_REDUCE_TOTAL_SUPPLY => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.reduce_total_supply)?;
 
-                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<(), mint::Error> = mint_runtime.reduce_total_supply(amount);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -1391,7 +1450,7 @@ where
             mint::METHOD_BALANCE => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.balance)?;
 
-                let uref: URef = Self::get_named_argument(&runtime_args, mint::ARG_PURSE)?;
+                let uref: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
                 let maybe_balance: Option<U512> =
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)
@@ -1402,11 +1461,11 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.transfer)?;
 
                 let maybe_to: Option<AccountHash> =
-                    Self::get_named_argument(&runtime_args, mint::ARG_TO)?;
-                let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
-                let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
-                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
-                let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
+                    Self::get_named_argument(runtime_args, mint::ARG_TO)?;
+                let source: URef = Self::get_named_argument(runtime_args, mint::ARG_SOURCE)?;
+                let target: URef = Self::get_named_argument(runtime_args, mint::ARG_TARGET)?;
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
+                let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
                 let result: Result<(), mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1449,6 +1508,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
+        call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1501,6 +1561,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
+            call_stack,
         );
 
         let system_config = protocol_data.system_config();
@@ -1518,7 +1579,7 @@ where
                 runtime.charge_system_contract_call(handle_payment_costs.set_refund_purse)?;
 
                 let purse: URef =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_PURSE)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_PURSE)?;
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
@@ -1532,11 +1593,11 @@ where
                 runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
 
                 let amount_spent: U512 =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_AMOUNT)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_AMOUNT)?;
                 let account: AccountHash =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_ACCOUNT)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_ACCOUNT)?;
                 let target: URef =
-                    Self::get_named_argument(&runtime_args, handle_payment::ARG_TARGET)?;
+                    Self::get_named_argument(runtime_args, handle_payment::ARG_TARGET)?;
                 runtime
                     .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
@@ -1563,7 +1624,7 @@ where
         // context.
         let gas_counter = self.gas_counter();
         let amount: U512 =
-            Self::get_named_argument(&self.context.args(), standard_payment::ARG_AMOUNT)?;
+            Self::get_named_argument(self.context.args(), standard_payment::ARG_AMOUNT)?;
         let result = self.pay(amount).map_err(Self::reverter);
         self.set_gas_counter(gas_counter);
         result
@@ -1576,6 +1637,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
+        call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1628,6 +1690,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
+            call_stack,
         );
 
         let system_config = protocol_data.system_config();
@@ -1645,11 +1708,10 @@ where
             auction::METHOD_ADD_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.add_bid)?;
 
-                let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let delegation_rate =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .add_bid(account_hash, delegation_rate, amount)
@@ -1661,9 +1723,8 @@ where
             auction::METHOD_WITHDRAW_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.withdraw_bid)?;
 
-                let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .withdraw_bid(account_hash, amount)
@@ -1674,9 +1735,9 @@ where
             auction::METHOD_DELEGATE => (|| {
                 runtime.charge_system_contract_call(auction_costs.delegate)?;
 
-                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
-                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .delegate(delegator, validator, amount)
@@ -1688,9 +1749,9 @@ where
             auction::METHOD_UNDELEGATE => (|| {
                 runtime.charge_system_contract_call(auction_costs.undelegate)?;
 
-                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
-                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
-                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
                     .undelegate(delegator, validator, amount)
@@ -1703,9 +1764,9 @@ where
                 runtime.charge_system_contract_call(auction_costs.run_auction)?;
 
                 let era_end_timestamp_millis =
-                    Self::get_named_argument(&runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
                 let evicted_validators =
-                    Self::get_named_argument(&runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
 
                 runtime
                     .run_auction(era_end_timestamp_millis, evicted_validators)
@@ -1719,7 +1780,7 @@ where
                 runtime.charge_system_contract_call(auction_costs.slash)?;
 
                 let validator_public_keys =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
                 runtime
                     .slash(validator_public_keys)
                     .map_err(Self::reverter)?;
@@ -1731,7 +1792,7 @@ where
                 runtime.charge_system_contract_call(auction_costs.distribute)?;
 
                 let reward_factors: BTreeMap<PublicKey, u64> =
-                    Self::get_named_argument(&runtime_args, auction::ARG_REWARD_FACTORS)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_REWARD_FACTORS)?;
                 runtime.distribute(reward_factors).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
@@ -1748,7 +1809,7 @@ where
                 runtime.charge_system_contract_call(auction_costs.read_era_id)?;
 
                 let validator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
+                    Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
 
                 runtime
                     .activate_bid(validator_public_key)
@@ -1793,7 +1854,7 @@ where
             None => return Err(Error::KeyNotFound(key)),
         };
 
-        let entry_point = contract
+        let contract_entry_point = contract
             .entry_point(entry_point_name)
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
@@ -1808,7 +1869,13 @@ where
             None => return Err(Error::KeyNotFound(key)),
         };
 
-        self.call_contract_checked(contract_package, contract_hash, contract, entry_point, args)
+        self.call_contract_checked(
+            contract_package,
+            contract_hash,
+            contract,
+            contract_entry_point,
+            args,
+        )
     }
 
     /// Calls `version` of the contract living at `key`, invoking `method` with
@@ -1856,12 +1923,18 @@ where
             None => return Err(Error::KeyNotFound(contract_key)),
         };
 
-        let entry_point = contract
+        let contract_entry_point = contract
             .entry_point(&entry_point_name)
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
-        self.call_contract_checked(contract_package, contract_hash, contract, entry_point, args)
+        self.call_contract_checked(
+            contract_package,
+            contract_hash,
+            contract,
+            contract_entry_point,
+            args,
+        )
     }
 
     /// Calls contract if caller has access, and args match entry point definition
@@ -1924,6 +1997,7 @@ where
         self.execute_contract(
             context_key,
             context_key,
+            contract_hash,
             contract,
             args,
             entry_point,
@@ -1936,26 +2010,28 @@ where
         contract_hash: ContractHash,
         entry_point: &EntryPoint,
     ) -> Result<Key, Error> {
-        match entry_point.entry_point_type() {
-            EntryPointType::Session
-                if self.context.entry_point_type() == EntryPointType::Contract =>
-            {
+        let current = self.context.entry_point_type();
+        let next = entry_point.entry_point_type();
+        match (current, next) {
+            (EntryPointType::Contract, EntryPointType::Session) => {
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
-            EntryPointType::Session => {
-                assert_eq!(self.context.entry_point_type(), EntryPointType::Session);
+            (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
                 Ok(self.context.base_key())
             }
-            EntryPointType::Contract => Ok(contract_hash.into()),
+            (EntryPointType::Session, EntryPointType::Contract)
+            | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_contract(
         &mut self,
         key: Key,
         base_key: Key,
+        contract_hash: ContractHash,
         contract: Contract,
         args: RuntimeArgs,
         entry_point: EntryPoint,
@@ -1986,38 +2062,56 @@ where
                 );
             }
             for key in &extra_keys {
-                if let Err(Error::ForgedReference(maybe_forged_uref)) =
-                    self.context.validate_key(key)
-                {
-                    if !extra_keys.contains(&Key::from(maybe_forged_uref)) {
-                        return Err(Error::ForgedReference(maybe_forged_uref));
-                    }
-                }
+                self.context.validate_key(key)?;
             }
 
             if self.is_mint(key) {
+                let mut call_stack = self.call_stack.to_owned();
+                let call_stack_element = CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                );
+                call_stack.push(call_stack_element);
+
                 return self.call_host_mint(
                     self.context.protocol_version(),
                     entry_point.name(),
                     &mut named_keys,
                     &args,
                     &extra_keys,
+                    call_stack,
                 );
             } else if self.is_handle_payment(key) {
+                let mut call_stack = self.call_stack.to_owned();
+                let call_stack_element = CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                );
+                call_stack.push(call_stack_element);
+
                 return self.call_host_handle_payment(
                     self.context.protocol_version(),
                     entry_point.name(),
                     &mut named_keys,
                     &args,
                     &extra_keys,
+                    call_stack,
                 );
             } else if self.is_auction(key) {
+                let mut call_stack = self.call_stack.to_owned();
+                let call_stack_element = CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                );
+                call_stack.push(call_stack_element);
+
                 return self.call_host_auction(
                     self.context.protocol_version(),
                     entry_point.name(),
                     &mut named_keys,
                     &args,
                     &extra_keys,
+                    call_stack,
                 );
             }
 
@@ -2070,7 +2164,7 @@ where
             access_rights,
             args,
             self.context.authorization_keys().clone(),
-            &self.context.account(),
+            self.context.account(),
             base_key,
             self.context.get_blocktime(),
             self.context.get_deploy_hash(),
@@ -2086,6 +2180,21 @@ where
             self.context.transfers().to_owned(),
         );
 
+        let mut call_stack = self.call_stack.to_owned();
+
+        let call_stack_element = match entry_point.entry_point_type() {
+            EntryPointType::Session => CallStackElement::stored_session(
+                self.context.account().account_hash(),
+                contract.contract_package_hash(),
+                contract_hash,
+            ),
+            EntryPointType::Contract => {
+                CallStackElement::stored_contract(contract.contract_package_hash(), contract_hash)
+            }
+        };
+
+        call_stack.push(call_stack_element);
+
         let mut runtime = Runtime {
             system_contract_cache,
             config,
@@ -2093,6 +2202,7 @@ where
             module,
             host_buffer,
             context,
+            call_stack,
         };
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
@@ -3409,8 +3519,8 @@ where
         &mut self,
         uref_ptr: u32,
         uref_size: u32,
-        key_bytes_ptr: u32,
-        key_bytes_size: u32,
+        dictionary_item_key_bytes_ptr: u32,
+        dictionary_item_key_bytes_size: u32,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
         // check we can write to the host buffer
@@ -3419,9 +3529,19 @@ where
         }
 
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let key_bytes = self.bytes_from_mem(key_bytes_ptr, key_bytes_size as usize)?;
+        let dictionary_item_key_bytes = self.bytes_from_mem(
+            dictionary_item_key_bytes_ptr,
+            dictionary_item_key_bytes_size as usize,
+        )?;
 
-        let cl_value = match self.context.dictionary_get(uref, &key_bytes)? {
+        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
+        {
+            item_key
+        } else {
+            return Ok(Err(ApiError::InvalidDictionaryItemKey));
+        };
+
+        let cl_value = match self.context.dictionary_get(uref, &dictionary_item_key)? {
             Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
@@ -3448,13 +3568,26 @@ where
         key_size: u32,
         value_ptr: u32,
         value_size: u32,
-    ) -> Result<(), Trap> {
+    ) -> Result<Result<(), ApiError>, Trap> {
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
+        let dictionary_item_key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
+        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+            return Ok(Err(ApiError::DictionaryItemKeyExceedsLength));
+        }
+        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
+        {
+            item_key
+        } else {
+            return Ok(Err(ApiError::InvalidDictionaryItemKey));
+        };
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
-        self.context
-            .dictionary_put(uref, &key_bytes, cl_value)
-            .map_err(Into::into)
+        if let Err(e) = self
+            .context
+            .dictionary_put(uref, &dictionary_item_key, cl_value)
+        {
+            return Err(Trap::from(e));
+        }
+        Ok(Ok(()))
     }
 }
 

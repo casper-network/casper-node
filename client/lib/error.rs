@@ -55,7 +55,7 @@ pub enum Error {
     #[error("Failed to parse as JSON-RPC response: {0}")]
     FailedToParseResponse(reqwest::Error),
 
-    /// Failed to create new key file because it already exists.
+    /// Failed to create new file because it already exists.
     #[error("File at {} already exists", .0.display())]
     FileAlreadyExists(PathBuf),
 
@@ -122,6 +122,10 @@ pub enum Error {
     /// Failed to validate response.
     #[error("Invalid response: {0}")]
     InvalidResponse(#[from] ValidateResponseError),
+
+    /// Failed to create a DictionaryIdentifier
+    #[error("Failed to parse the dictionary identifier")]
+    FailedToParseDictionaryIdentifier,
 
     /// Failed to identify the hash as either block hash or state root hash.
     #[error("Failed to determine state identifier")]

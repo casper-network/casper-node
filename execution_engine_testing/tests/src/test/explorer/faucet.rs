@@ -71,6 +71,7 @@ fn should_fail_if_already_funded() {
         .expect("should have error message");
     assert!(
         error_msg.contains(&format!("{:?}", ApiError::User(1))),
+        "{}",
         error_msg
     );
 }

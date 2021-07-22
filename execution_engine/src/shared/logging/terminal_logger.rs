@@ -27,7 +27,7 @@ impl TerminalLogger {
     }
 
     pub fn prepare_log_line(&self, record: &Record) -> Option<String> {
-        if !self.enabled(&record.metadata()) {
+        if !self.enabled(record.metadata()) {
             return None;
         }
 
@@ -58,7 +58,7 @@ impl TerminalLogger {
                 format!(
                     "{timestamp} {level} [{file}:{line}] {msg}{space}{formatted_properties}",
                     timestamp = TimestampRfc3999::default(),
-                    level = level_to_str(&record).to_uppercase(),
+                    level = level_to_str(record).to_uppercase(),
                     file = record.file().unwrap_or("unknown-file"),
                     line = record.line().unwrap_or_default(),
                     msg = msg,

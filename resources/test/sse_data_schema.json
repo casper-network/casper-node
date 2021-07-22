@@ -42,6 +42,32 @@
       "additionalProperties": false
     },
     {
+      "description": "The given deploy has been newly-accepted by this node.",
+      "type": "object",
+      "required": [
+        "DeployAccepted"
+      ],
+      "properties": {
+        "DeployAccepted": {
+          "type": "object",
+          "required": [
+            "deploy"
+          ],
+          "properties": {
+            "deploy": {
+              "description": "a deploy",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Deploy"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "The given deploy has been executed, committed and forms part of the given block.",
       "type": "object",
       "required": [
@@ -417,11 +443,498 @@
       "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
       "type": "string"
     },
+    "Deploy": {
+      "description": "A deploy; an item containing a smart contract along with the requester's signature(s).",
+      "type": "object",
+      "required": [
+        "approvals",
+        "hash",
+        "header",
+        "payment",
+        "session"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/definitions/DeployHash"
+        },
+        "header": {
+          "$ref": "#/definitions/DeployHeader"
+        },
+        "payment": {
+          "$ref": "#/definitions/ExecutableDeployItem"
+        },
+        "session": {
+          "$ref": "#/definitions/ExecutableDeployItem"
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Approval"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeployHeader": {
+      "description": "The header portion of a [`Deploy`](struct.Deploy.html).",
+      "type": "object",
+      "required": [
+        "account",
+        "body_hash",
+        "chain_name",
+        "dependencies",
+        "gas_price",
+        "timestamp",
+        "ttl"
+      ],
+      "properties": {
+        "account": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "ttl": {
+          "$ref": "#/definitions/TimeDiff"
+        },
+        "gas_price": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "body_hash": {
+          "$ref": "#/definitions/Digest"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
+        },
+        "chain_name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "TimeDiff": {
       "description": "Human-readable duration.",
       "type": "integer",
       "format": "uint64",
       "minimum": 0.0
+    },
+    "ExecutableDeployItem": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "ModuleBytes"
+          ],
+          "properties": {
+            "ModuleBytes": {
+              "type": "object",
+              "required": [
+                "args",
+                "module_bytes"
+              ],
+              "properties": {
+                "module_bytes": {
+                  "description": "Hex-encoded raw Wasm bytes.",
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredContractByHash"
+          ],
+          "properties": {
+            "StoredContractByHash": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "hash"
+              ],
+              "properties": {
+                "hash": {
+                  "description": "Hex-encoded hash.",
+                  "type": "string"
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredContractByName"
+          ],
+          "properties": {
+            "StoredContractByName": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredVersionedContractByHash"
+          ],
+          "properties": {
+            "StoredVersionedContractByHash": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "hash"
+              ],
+              "properties": {
+                "hash": {
+                  "description": "Hex-encoded hash.",
+                  "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredVersionedContractByName"
+          ],
+          "properties": {
+            "StoredVersionedContractByName": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Transfer"
+          ],
+          "properties": {
+            "Transfer": {
+              "type": "object",
+              "required": [
+                "args"
+              ],
+              "properties": {
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RuntimeArgs": {
+      "description": "Represents a collection of arguments passed to a smart contract.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NamedArg"
+      }
+    },
+    "NamedArg": {
+      "description": "Named arguments to a contract",
+      "type": "array",
+      "items": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/CLValue"
+        }
+      ],
+      "maxItems": 2,
+      "minItems": 2
+    },
+    "CLValue": {
+      "description": "A Casper value, i.e. a value which can be stored and manipulated by smart contracts.\n\nIt holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the CLType of the underlying data as a separate member.\n\nThe `parsed` field, representing the original value, is a convenience only available when a CLValue is encoded to JSON, and can always be set to null if preferred.",
+      "type": "object",
+      "required": [
+        "bytes",
+        "cl_type"
+      ],
+      "properties": {
+        "cl_type": {
+          "$ref": "#/definitions/CLType"
+        },
+        "bytes": {
+          "type": "string"
+        },
+        "parsed": true
+      },
+      "additionalProperties": false
+    },
+    "CLType": {
+      "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Bool",
+            "I32",
+            "I64",
+            "U8",
+            "U32",
+            "U64",
+            "U128",
+            "U256",
+            "U512",
+            "Unit",
+            "String",
+            "Key",
+            "URef",
+            "PublicKey",
+            "Any"
+          ]
+        },
+        {
+          "description": "`Option` of a `CLType`.",
+          "type": "object",
+          "required": [
+            "Option"
+          ],
+          "properties": {
+            "Option": {
+              "$ref": "#/definitions/CLType"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Variable-length list of a single `CLType` (comparable to a `Vec`).",
+          "type": "object",
+          "required": [
+            "List"
+          ],
+          "properties": {
+            "List": {
+              "$ref": "#/definitions/CLType"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Fixed-length list of a single `CLType` (comparable to a Rust array).",
+          "type": "object",
+          "required": [
+            "ByteArray"
+          ],
+          "properties": {
+            "ByteArray": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "`Result` with `Ok` and `Err` variants of `CLType`s.",
+          "type": "object",
+          "required": [
+            "Result"
+          ],
+          "properties": {
+            "Result": {
+              "type": "object",
+              "required": [
+                "err",
+                "ok"
+              ],
+              "properties": {
+                "ok": {
+                  "$ref": "#/definitions/CLType"
+                },
+                "err": {
+                  "$ref": "#/definitions/CLType"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Map with keys of a single `CLType` and values of a single `CLType`.",
+          "type": "object",
+          "required": [
+            "Map"
+          ],
+          "properties": {
+            "Map": {
+              "type": "object",
+              "required": [
+                "key",
+                "value"
+              ],
+              "properties": {
+                "key": {
+                  "$ref": "#/definitions/CLType"
+                },
+                "value": {
+                  "$ref": "#/definitions/CLType"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "1-ary tuple of a `CLType`.",
+          "type": "object",
+          "required": [
+            "Tuple1"
+          ],
+          "properties": {
+            "Tuple1": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CLType"
+              },
+              "maxItems": 1,
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "2-ary tuple of `CLType`s.",
+          "type": "object",
+          "required": [
+            "Tuple2"
+          ],
+          "properties": {
+            "Tuple2": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CLType"
+              },
+              "maxItems": 2,
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "3-ary tuple of `CLType`s.",
+          "type": "object",
+          "required": [
+            "Tuple3"
+          ],
+          "properties": {
+            "Tuple3": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CLType"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Approval": {
+      "description": "A struct containing a signature and the public key of the signer.",
+      "type": "object",
+      "required": [
+        "signature",
+        "signer"
+      ],
+      "properties": {
+        "signer": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "signature": {
+          "$ref": "#/definitions/Signature"
+        }
+      },
+      "additionalProperties": false
     },
     "ExecutionResult": {
       "description": "The result of executing a single deploy.",
@@ -801,196 +1314,6 @@
           "properties": {
             "Failure": {
               "type": "string"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "CLValue": {
-      "description": "A Casper value, i.e. a value which can be stored and manipulated by smart contracts.\n\nIt holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the CLType of the underlying data as a separate member.\n\nThe `parsed` field, representing the original value, is a convenience only available when a CLValue is encoded to JSON, and can always be set to null if preferred.",
-      "type": "object",
-      "required": [
-        "bytes",
-        "cl_type"
-      ],
-      "properties": {
-        "cl_type": {
-          "$ref": "#/definitions/CLType"
-        },
-        "bytes": {
-          "type": "string"
-        },
-        "parsed": true
-      },
-      "additionalProperties": false
-    },
-    "CLType": {
-      "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
-      "anyOf": [
-        {
-          "type": "string",
-          "enum": [
-            "Bool",
-            "I32",
-            "I64",
-            "U8",
-            "U32",
-            "U64",
-            "U128",
-            "U256",
-            "U512",
-            "Unit",
-            "String",
-            "Key",
-            "URef",
-            "PublicKey",
-            "Any"
-          ]
-        },
-        {
-          "description": "`Option` of a `CLType`.",
-          "type": "object",
-          "required": [
-            "Option"
-          ],
-          "properties": {
-            "Option": {
-              "$ref": "#/definitions/CLType"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Variable-length list of a single `CLType` (comparable to a `Vec`).",
-          "type": "object",
-          "required": [
-            "List"
-          ],
-          "properties": {
-            "List": {
-              "$ref": "#/definitions/CLType"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Fixed-length list of a single `CLType` (comparable to a Rust array).",
-          "type": "object",
-          "required": [
-            "ByteArray"
-          ],
-          "properties": {
-            "ByteArray": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "`Result` with `Ok` and `Err` variants of `CLType`s.",
-          "type": "object",
-          "required": [
-            "Result"
-          ],
-          "properties": {
-            "Result": {
-              "type": "object",
-              "required": [
-                "err",
-                "ok"
-              ],
-              "properties": {
-                "ok": {
-                  "$ref": "#/definitions/CLType"
-                },
-                "err": {
-                  "$ref": "#/definitions/CLType"
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Map with keys of a single `CLType` and values of a single `CLType`.",
-          "type": "object",
-          "required": [
-            "Map"
-          ],
-          "properties": {
-            "Map": {
-              "type": "object",
-              "required": [
-                "key",
-                "value"
-              ],
-              "properties": {
-                "key": {
-                  "$ref": "#/definitions/CLType"
-                },
-                "value": {
-                  "$ref": "#/definitions/CLType"
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "1-ary tuple of a `CLType`.",
-          "type": "object",
-          "required": [
-            "Tuple1"
-          ],
-          "properties": {
-            "Tuple1": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/CLType"
-              },
-              "maxItems": 1,
-              "minItems": 1
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "2-ary tuple of `CLType`s.",
-          "type": "object",
-          "required": [
-            "Tuple2"
-          ],
-          "properties": {
-            "Tuple2": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/CLType"
-              },
-              "maxItems": 2,
-              "minItems": 2
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "3-ary tuple of `CLType`s.",
-          "type": "object",
-          "required": [
-            "Tuple3"
-          ],
-          "properties": {
-            "Tuple3": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/CLType"
-              },
-              "maxItems": 3,
-              "minItems": 3
             }
           },
           "additionalProperties": false

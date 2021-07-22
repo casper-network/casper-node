@@ -12,6 +12,7 @@ mod get_era_info_by_switch_block;
 mod get_state_hash;
 mod global_state_query;
 mod keygen;
+mod query_dictionary;
 mod query_state;
 
 use std::process;
@@ -24,7 +25,10 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetItem as QueryState, QueryGlobalState},
+    state::{
+        GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem as QueryState,
+        QueryGlobalState,
+    },
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
@@ -57,6 +61,7 @@ enum DisplayOrder {
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
+    GetDictionaryItem,
     QueryGlobalState,
 }
 
@@ -92,6 +97,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
+        .subcommand(GetDictionaryItem::build(
+            DisplayOrder::GetDictionaryItem as usize,
+        ))
         .subcommand(QueryGlobalState::build(
             DisplayOrder::QueryGlobalState as usize,
         ))
@@ -123,6 +131,7 @@ async fn main() {
         (GenerateCompletion::NAME, Some(matches)) => (GenerateCompletion::run(matches), matches),
         (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches), matches),
         (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches), matches),
+        (GetDictionaryItem::NAME, Some(matches)) => (GetDictionaryItem::run(matches), matches),
         (QueryGlobalState::NAME, Some(matches)) => (QueryGlobalState::run(matches), matches),
         _ => {
             let _ = cli().print_long_help();

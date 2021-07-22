@@ -71,7 +71,7 @@ impl StoredValue {
 
     pub fn as_contract_package(&self) -> Option<&ContractPackage> {
         match self {
-            StoredValue::ContractPackage(contract_package) => Some(&contract_package),
+            StoredValue::ContractPackage(contract_package) => Some(contract_package),
             _ => None,
         }
     }
@@ -108,7 +108,7 @@ impl StoredValue {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
             StoredValue::Account(_) => "Account".to_string(),
-            StoredValue::ContractWasm(_) => "Contract".to_string(),
+            StoredValue::ContractWasm(_) => "ContractWasm".to_string(),
             StoredValue::Contract(_) => "Contract".to_string(),
             StoredValue::ContractPackage(_) => "ContractPackage".to_string(),
             StoredValue::Transfer(_) => "Transfer".to_string(),
@@ -354,8 +354,8 @@ impl Serialize for StoredValue {
 impl<'de> Deserialize<'de> for StoredValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
-        Ok(bytesrepr::deserialize::<StoredValue>(bytes)
-            .map_err(|error| de::Error::custom(format!("{:?}", error)))?)
+        bytesrepr::deserialize::<StoredValue>(bytes)
+            .map_err(|error| de::Error::custom(format!("{:?}", error)))
     }
 }
 

@@ -53,7 +53,8 @@ pub enum casper_error_t {
     CASPER_FFI_PTR_NULL_BUT_REQUIRED = -22,
     CASPER_CONFLICTING_ARGUMENTS = -23,
     CASPER_DEPLOY_SIZE_TOO_LARGE = -24,
-    CASPER_FAILED_TO_PARSE_STATE_IDENTIFIER = -25,
+    CASPER_FAILED_TO_CREATE_DICTIONARY_IDENTIFIER = -25,
+    CASPER_FAILED_TO_PARSE_STATE_IDENTIFIER = -26,
 }
 
 trait AsFFIError {
@@ -87,6 +88,9 @@ impl AsFFIError for Error {
             Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
             Error::ConflictingArguments { .. } => casper_error_t::CASPER_CONFLICTING_ARGUMENTS,
             Error::DeploySizeTooLarge(_) => casper_error_t::CASPER_DEPLOY_SIZE_TOO_LARGE,
+            Error::FailedToParseDictionaryIdentifier => {
+                casper_error_t::CASPER_FAILED_TO_CREATE_DICTIONARY_IDENTIFIER
+            }
             Error::FailedToParseStateIdentifier => {
                 casper_error_t::CASPER_FAILED_TO_PARSE_STATE_IDENTIFIER
             }
@@ -299,6 +303,7 @@ pub extern "C" fn casper_make_deploy(
     deploy_params: *const casper_deploy_params_t,
     session_params: *const casper_session_params_t,
     payment_params: *const casper_payment_params_t,
+    force: bool,
 ) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let deploy_params = try_arg_into!(deploy_params);
@@ -309,6 +314,7 @@ pub extern "C" fn casper_make_deploy(
         deploy_params,
         session_params,
         payment_params,
+        force,
     );
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS
@@ -323,11 +329,12 @@ pub extern "C" fn casper_sign_deploy_file(
     input_path: *const c_char,
     secret_key: *const c_char,
     maybe_output_path: *const c_char,
+    force: bool,
 ) -> casper_error_t {
     let input_path = try_unsafe_arg!(input_path);
     let secret_key = try_unsafe_arg!(secret_key);
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
-    let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path);
+    let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path, force);
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS
 }
@@ -411,6 +418,7 @@ pub extern "C" fn casper_make_transfer(
     transfer_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
+    force: bool,
 ) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let amount = try_unsafe_arg!(amount);
@@ -425,6 +433,7 @@ pub extern "C" fn casper_make_transfer(
         transfer_id,
         deploy_params,
         payment_params,
+        force,
     );
     try_unwrap_result!(result);
     casper_error_t::CASPER_SUCCESS
@@ -655,6 +664,22 @@ pub extern "C" fn casper_get_auction_info(
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
     })
+}
+
+/// Generates key files.
+///
+/// See [super::keygen::generate_files](super::keygen::generate_files) for more details.
+#[no_mangle]
+pub extern "C" fn casper_keygen(
+    output_dir: *const c_char,
+    algorithm: *const c_char,
+    force: bool,
+) -> casper_error_t {
+    let output_dir = try_unsafe_arg!(output_dir);
+    let algorithm = try_unsafe_arg!(algorithm);
+    let result = super::keygen::generate_files(output_dir, algorithm, force);
+    try_unwrap_result!(result);
+    casper_error_t::CASPER_SUCCESS
 }
 
 /// Container for `Deploy` construction options.

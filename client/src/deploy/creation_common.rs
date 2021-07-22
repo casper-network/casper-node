@@ -46,6 +46,7 @@ pub(super) enum DisplayOrder {
     PaymentPackageName,
     PaymentEntryPoint,
     PaymentVersion,
+    Force,
 }
 
 /// Handles providing the arg for and executing the show-arg-examples option.

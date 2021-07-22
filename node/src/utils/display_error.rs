@@ -1,8 +1,8 @@
 //! Error formatting workaround.
 //!
 //! This module can be removed once/if the tracing issue
-//! https://github.com/tokio-rs/tracing/issues/1308 has been resolved, which adds a special syntax
-//! for this case and the known issue https://github.com/tokio-rs/tracing/issues/1308 has been
+//! <https://github.com/tokio-rs/tracing/issues/1308> has been resolved, which adds a special syntax
+//! for this case and the known issue <https://github.com/tokio-rs/tracing/issues/1308> has been
 //! fixed, which cuts traces short after the first cause.
 //!
 //! In the meantime, the `display_error` function should be used to format errors in log messages.

@@ -43,8 +43,12 @@ unit_hashes_folder = "../node-storage"
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '1min'
 
-# If the current era's protocol state has not progressed for this long, shut down.
+# If the current era's protocol state has not progressed for this long, request the latest state
+# from peers.
 standstill_timeout = '5min'
+
+# If after another `standstill_timeout` there still was no progress, shut down.
+shutdown_on_standstill = false
 
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
@@ -182,9 +186,8 @@ address = '0.0.0.0:9999'
 # The number of event stream events to buffer.
 event_stream_buffer_length = 5000
 
-# The global max rate of requests (per second) before they are limited.
-# Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 100
+# The maximum number of subscribers across all event streams the server will permit at any one time.
+max_concurrent_subscribers = 100
 
 
 # ===============================================

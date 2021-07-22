@@ -9,7 +9,7 @@ export declare function dictionary_get(uref_ptr: usize, uref_ptr_size: usize, ke
 export declare function write(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
 /** @hidden */
 @external("env", "casper_dictionary_put")
-export declare function dictionary_put(uref_ptr: usize, uref_ptr_size: usize, key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
+export declare function dictionary_put(uref_ptr: usize, uref_ptr_size: usize, key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): i32;
 /** @hidden */
 @external("env", "casper_add")
 export declare function add(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;

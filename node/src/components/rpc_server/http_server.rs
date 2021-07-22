@@ -72,6 +72,8 @@ pub(super) async fn run<REv: ReactorEventT>(
     let rpc_get_auction_info =
         rpcs::state::GetAuctionInfo::create_filter(effect_builder, api_version);
     let rpc_get_rpcs = rpcs::docs::ListRpcs::create_filter(effect_builder, api_version);
+    let rpc_get_dictionary_item =
+        rpcs::state::GetDictionaryItem::create_filter(effect_builder, api_version);
 
     // Catch requests where the method is not one we handle.
     let unknown_method = warp::path(RPC_API_PATH)
@@ -106,6 +108,7 @@ pub(super) async fn run<REv: ReactorEventT>(
             .or(rpc_get_auction_info)
             .or(rpc_get_account_info)
             .or(rpc_get_rpcs)
+            .or(rpc_get_dictionary_item)
             .or(unknown_method)
             .or(parse_failure),
     );
