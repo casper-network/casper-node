@@ -485,6 +485,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.after_upgrade(),
             maybe_next_activation_point,
             chainspec_loader.initial_execution_pre_state(),
+            config.linear_chain_sync,
         )?;
 
         effects.extend(reactor::wrap_effects(
