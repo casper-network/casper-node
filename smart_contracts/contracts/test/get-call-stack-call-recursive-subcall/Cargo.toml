@@ -12,6 +12,6 @@ doctest = false
 test = false
 
 [dependencies]
-casper-contract = { path = "../../../contract", features = ["test-support"] }
+casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }
 get-call-stack-recursive-subcall = { path = "../get-call-stack-recursive-subcall" }

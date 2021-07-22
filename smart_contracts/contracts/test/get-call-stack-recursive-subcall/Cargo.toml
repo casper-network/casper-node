@@ -17,5 +17,5 @@ no-std = ["casper-contract/no-std", "casper-contract/provide-allocator", "casper
 std = ["casper-contract/std", "casper-types/std"]
 
 [dependencies]
-casper-contract = { path = "../../../contract", default-features = false, features = ["test-support"] }
+casper-contract = { path = "../../../contract", default-features = false }
 casper-types = { path = "../../../../types", default-features = false }

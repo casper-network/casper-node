@@ -1607,7 +1607,7 @@ impl FinalitySignature {
         secret_key: &SecretKey,
         public_key: PublicKey,
     ) -> Self {
-        let mut bytes = block_hash.inner().to_vec();
+        let mut bytes = block_hash.inner().into_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
         let signature = crypto::sign(bytes, secret_key, &public_key);
         FinalitySignature {
@@ -1621,7 +1621,7 @@ impl FinalitySignature {
     /// Verifies whether the signature is correct.
     pub fn verify(&self) -> crypto::Result<()> {
         // NOTE: This needs to be in sync with the `new` constructor.
-        let mut bytes = self.block_hash.inner().to_vec();
+        let mut bytes = self.block_hash.inner().into_vec();
         bytes.extend_from_slice(&self.era_id.to_le_bytes());
         crypto::verify(bytes, &self.signature, &self.public_key)
     }

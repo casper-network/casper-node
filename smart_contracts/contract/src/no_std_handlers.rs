@@ -4,8 +4,6 @@
 #[panic_handler]
 #[no_mangle]
 pub fn panic(_info: &core::panic::PanicInfo) -> ! {
-    #[cfg(feature = "test-support")]
-    crate::contract_api::runtime::print(&alloc::format!("Panic: {}", _info));
     core::intrinsics::abort();
 }
 
