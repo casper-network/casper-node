@@ -1253,7 +1253,8 @@ pub enum HashingAlgorithmVersion {
 }
 
 impl HashingAlgorithmVersion {
-    const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 0);
+    pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
+        ProtocolVersion::from_parts(1, 4, 0);
     fn from_protocol_version(protocol_version: &ProtocolVersion) -> Self {
         if *protocol_version < Self::HASH_V2_PROTOCOL_VERSION {
             HashingAlgorithmVersion::V1
@@ -2020,5 +2021,40 @@ mod tests {
         };
         // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
         assert!(fs_manufactured.verify().is_err());
+    }
+
+    #[test]
+    fn block_body_merkle_proof_should_be_correct() {
+        let mut rng = TestRng::new();
+        let era_id = rng.gen_range(0..10).into();
+        let height = rng.gen_range(0..100);
+        let is_switch = rng.gen();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            era_id,
+            height,
+            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            is_switch,
+        );
+
+        let merkle_block_body = block.body().merklize();
+
+        let hashes = [
+            *merkle_block_body.deploy_hashes.value_hash(),
+            *merkle_block_body.transfer_hashes.value_hash(),
+            *merkle_block_body.proposer.value_hash(),
+        ];
+
+        assert_eq!(
+            block.header().body_hash(),
+            merkle_block_body
+                .deploy_hashes
+                .merkle_linked_list_node_hash()
+        );
+
+        assert_eq!(
+            *block.header().body_hash(),
+            hash::hash_slice_rfold(&hashes[..])
+        );
     }
 }
