@@ -90,8 +90,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
         chainspec: &Chainspec,
         storage: &Storage,
-        init_hash: Option<BlockHash>,
+        trusted_hash: Option<BlockHash>,
         highest_block: Option<Block>,
+        after_upgrade: bool,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<(Self, Effects<Event<I>>), Err>
     where
@@ -122,6 +123,24 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             );
 
             let state = match trusted_hash {
+                Some(hash) => {
+                    State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
+                }
+                None if after_upgrade => {
+                    // Right after upgrade, no linear chain to synchronize.
+                    State::Done(highest_block.map(Box::new))
+                }
+                None => {
+                    if let Some(highest_block) = highest_block {
+                        // No trusted hash, not immediately after upgrade.
+                        // We will synchronize starting from the highest block we have.
+                        // NOTE: This is unsafe and should only use the highest block if it can
+                        // still be trusted – i.e. it's within the unbonding period.
+                        State::sync_descendants(*highest_block.hash(), highest_block, None)
+                    } else {
+                        State::Done(None)
+                    }
+                }
             };
             let state_key = create_state_key(chainspec);
             let linear_chain_sync = LinearChainSync {

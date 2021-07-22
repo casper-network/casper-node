@@ -492,6 +492,7 @@ impl reactor::Reactor for Reactor {
             &storage,
             trusted_hash,
             chainspec_loader.initial_block().cloned(),
+            chainspec_loader.after_upgrade(),
             maybe_next_activation_point,
         )?;
 
