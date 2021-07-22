@@ -29,7 +29,7 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
-use casper_types::{Key, U512};
+use casper_types::Key;
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
@@ -1244,7 +1244,7 @@ mod param_tests {
     mod payment_params {
         use std::collections::BTreeMap;
 
-        use casper_types::CLValue;
+        use casper_types::{CLValue, U512};
 
         use super::*;
 
