@@ -4,7 +4,7 @@ import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
 import {CLValue} from "./clvalue";
 import {Error, ErrorCode} from "./error";
-import {checkTypedArrayEqual, typedToArray,encodeUTF8} from "./utils";
+import {checkTypedArrayEqual, typedToArray, encodeUTF8} from "./utils";
 import {Ref} from "./ref";
 import {Result, Error as BytesreprError} from "./bytesrepr";
 
