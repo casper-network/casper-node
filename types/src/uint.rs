@@ -31,7 +31,7 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
     clippy::manual_range_contains,
     clippy::range_plus_one,
     clippy::transmute_ptr_to_ptr,
-    clippy::clippy::reversed_empty_ranges
+    clippy::reversed_empty_ranges
 )]
 mod macro_code {
     use uint::construct_uint;
@@ -152,8 +152,8 @@ macro_rules! impl_traits_for_uint {
 
                 if deserializer.is_human_readable() {
                     let decimal_string = String::deserialize(deserializer)?;
-                    return Ok(Self::from_dec_str(&decimal_string)
-                        .map_err(|error| de::Error::custom(format!("{:?}", error)))?);
+                    return Self::from_dec_str(&decimal_string)
+                        .map_err(|error| de::Error::custom(format!("{:?}", error)));
                 }
 
                 deserializer.deserialize_struct("bigint", FIELDS, BigNumVisitor)

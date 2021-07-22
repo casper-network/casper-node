@@ -39,9 +39,9 @@ enum ContractError {
     InvalidDelegateMethod = 0,
 }
 
-impl Into<ApiError> for ContractError {
-    fn into(self) -> ApiError {
-        ApiError::User(self as u16)
+impl From<ContractError> for ApiError {
+    fn from(error: ContractError) -> Self {
+        ApiError::User(error as u16)
     }
 }
 

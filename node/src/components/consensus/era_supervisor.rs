@@ -27,6 +27,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
+use smallvec::SmallVec;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
@@ -46,12 +47,13 @@ use crate::{
     },
     crypto::hash::Digest,
     effect::{
-        requests::{BlockValidationRequest, StorageRequest},
+        announcements::ControlAnnouncement,
+        requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, DeployHash, DeployOrTransferHash,
+        ActivationPoint, BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash,
         FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
@@ -65,20 +67,21 @@ pub use self::era::Era;
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
 type ConsensusConstructor<I> = dyn Fn(
-    Digest,                                       // the era's unique instance ID
-    BTreeMap<PublicKey, U512>,                    // validator weights
-    &HashSet<PublicKey>,                          // faulty validators that are banned in this era
-    &HashSet<PublicKey>,                          // inactive validators that can't be leaders
-    &ProtocolConfig,                              // the network's chainspec
-    &Config,                                      // The consensus part of the node config.
-    Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
-    Timestamp,                                    // start time for this era
-    u64,                                          // random seed
-    Timestamp,                                    // now timestamp
-) -> (
-    Box<dyn ConsensusProtocol<I, ClContext>>,
-    Vec<ProtocolOutcome<I, ClContext>>,
-) + Send;
+        Digest,                    // the era's unique instance ID
+        BTreeMap<PublicKey, U512>, // validator weights
+        &HashSet<PublicKey>,       /* faulty validators that are banned in
+                                    * this era */
+        &HashSet<PublicKey>, // inactive validators that can't be leaders
+        &ProtocolConfig,     // the network's chainspec
+        &Config,             // The consensus part of the node config.
+        Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
+        Timestamp,           // start time for this era
+        u64,                 // random seed
+        Timestamp,           // now timestamp
+    ) -> (
+        Box<dyn ConsensusProtocol<I, ClContext>>,
+        Vec<ProtocolOutcome<I, ClContext>>,
+    ) + Send;
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
@@ -89,7 +92,7 @@ pub struct EraSupervisor<I> {
     /// current one.
     active_eras: HashMap<EraId, Era<I>>,
     secret_signing_key: Arc<SecretKey>,
-    pub(super) public_signing_key: PublicKey,
+    public_signing_key: PublicKey,
     current_era: EraId,
     protocol_config: ProtocolConfig,
     config: Config,
@@ -114,10 +117,8 @@ pub struct EraSupervisor<I> {
     next_upgrade_activation_point: Option<ActivationPoint>,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
-    /// Set to true when InitializeEras is handled.
-    /// TODO: A temporary field. Shouldn't be needed once the Joiner doesn't have a consensus
-    /// component.
-    is_initialized: bool,
+    /// The era that was current when this node joined the network.
+    era_where_we_joined: EraId,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -175,7 +176,7 @@ where
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             next_executed_height: next_height,
-            is_initialized: false,
+            era_where_we_joined: current_era,
         };
 
         let bonded_eras = era_supervisor.bonded_eras();
@@ -319,7 +320,7 @@ where
                 "not voting; initializing past era"
             );
             false
-        } else if !validators.contains_key(&our_id) {
+        } else if !validators.contains_key(our_id) {
             info!(era = era_id.value(), %our_id, "not voting; not a validator");
             false
         } else {
@@ -371,7 +372,7 @@ where
         for e_id in self.iter_past_other(era_id, self.bonded_eras()) {
             if let Some(old_era) = self.active_eras.get_mut(&e_id) {
                 for pub_key in old_era.consensus.validators_with_evidence() {
-                    let proposed_blocks = era.resolve_evidence_and_mark_faulty(&pub_key);
+                    let proposed_blocks = era.resolve_evidence_and_mark_faulty(pub_key);
                     if !proposed_blocks.is_empty() {
                         error!(
                             ?proposed_blocks,
@@ -421,7 +422,7 @@ where
 
     /// Returns whether the validator with the given public key is bonded in that era.
     fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
-        let has_validator = |era: &Era<I>| era.validators().contains_key(&pub_key);
+        let has_validator = |era: &Era<I>| era.validators().contains_key(pub_key);
         self.active_eras.get(&era_id).map_or(false, has_validator)
     }
 
@@ -542,7 +543,6 @@ where
             .entry(self.current_era)
             .or_default()
             .extend(active_era_outcomes);
-        self.is_initialized = true;
         self.next_block_height = self.active_eras[&self.current_era].start_height;
         result_map
     }
@@ -1118,7 +1118,8 @@ where
                     effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
                 }
                 // Request execution of the finalized block.
-                effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
+                let effect_builder = self.effect_builder;
+                effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());
                 self.era_supervisor.update_consensus_pause();
                 effects
             }
@@ -1213,10 +1214,15 @@ where
                     .ignore()
             }
             ProtocolOutcome::StandstillAlert => {
-                if era_id == self.era_supervisor.current_era {
+                if era_id == self.era_supervisor.current_era
+                    && era_id == self.era_supervisor.era_where_we_joined
+                {
                     warn!(era = %era_id.value(), "current era is stalled; shutting down");
                     fatal!(self.effect_builder, "current era is stalled; please retry").ignore()
                 } else {
+                    if era_id == self.era_supervisor.current_era {
+                        warn!(era = %era_id.value(), "current era is stalled");
+                    }
                     Effects::new()
                 }
             }
@@ -1255,9 +1261,41 @@ where
     pub(super) fn should_upgrade_after(&self, era_id: &EraId) -> bool {
         match self.era_supervisor.next_upgrade_activation_point {
             None => false,
-            Some(upgrade_point) => upgrade_point.should_upgrade(&era_id),
+            Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
+}
+
+async fn execute_finalized_block<REv>(
+    effect_builder: EffectBuilder<REv>,
+    finalized_block: FinalizedBlock,
+) where
+    REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
+{
+    // Get the deploy hashes for the finalized block.
+    let deploy_hashes = finalized_block
+        .deploys_and_transfers_iter()
+        .map(DeployHash::from)
+        .collect::<SmallVec<_>>();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
+    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
+        if let Some(deploy) = maybe_deploy {
+            deploys.push(deploy)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
+    effect_builder
+        .enqueue_block_for_execution(finalized_block, deploys)
+        .await
 }
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.

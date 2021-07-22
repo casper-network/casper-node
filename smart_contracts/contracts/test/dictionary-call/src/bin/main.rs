@@ -12,10 +12,13 @@ use casper_contract::{
 };
 use casper_types::{bytesrepr::FromBytes, CLTyped, ContractHash, RuntimeArgs, URef};
 
-use dictionary::{DEFAULT_DICTIONARY_NAME, DEFAULT_DICTIONARY_VALUE};
+use dictionary::{
+    DEFAULT_DICTIONARY_NAME, DEFAULT_DICTIONARY_VALUE, INVALID_GET_DICTIONARY_ITEM_KEY_ENTRYPOINT,
+    INVALID_PUT_DICTIONARY_ITEM_KEY_ENTRYPOINT,
+};
 use dictionary_call::{
     Operation, ARG_CONTRACT_HASH, ARG_FORGED_UREF, ARG_OPERATION, ARG_SHARE_UREF_ENTRYPOINT,
-    NEW_DICTIONARY_NAME, NEW_DICTIONARY_VALUE,
+    NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE,
 };
 
 /// Calls dictionary contract by hash as passed by `ARG_CONTRACT_HASH` argument and returns a
@@ -37,7 +40,7 @@ pub extern "C" fn call() {
             let entrypoint: String = runtime::get_named_arg(ARG_SHARE_UREF_ENTRYPOINT);
             let uref = call_dictionary_contract(&entrypoint);
             let value: String = NEW_DICTIONARY_VALUE.to_string();
-            storage::dictionary_put(uref, NEW_DICTIONARY_NAME, value);
+            storage::dictionary_put(uref, NEW_DICTIONARY_ITEM_KEY, value);
         }
         Operation::Read => {
             let entrypoint: String = runtime::get_named_arg(ARG_SHARE_UREF_ENTRYPOINT);
@@ -52,7 +55,23 @@ pub extern "C" fn call() {
         Operation::ForgedURefWrite => {
             let uref: URef = runtime::get_named_arg(ARG_FORGED_UREF);
             let value: String = NEW_DICTIONARY_VALUE.to_string();
-            storage::dictionary_put(uref, NEW_DICTIONARY_NAME, value);
+            storage::dictionary_put(uref, NEW_DICTIONARY_ITEM_KEY, value);
+        }
+        Operation::InvalidPutDictionaryItemKey => {
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            runtime::call_contract(
+                contract_hash,
+                INVALID_PUT_DICTIONARY_ITEM_KEY_ENTRYPOINT,
+                RuntimeArgs::default(),
+            )
+        }
+        Operation::InvalidGetDictionaryItemKey => {
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            runtime::call_contract(
+                contract_hash,
+                INVALID_GET_DICTIONARY_ITEM_KEY_ENTRYPOINT,
+                RuntimeArgs::default(),
+            )
         }
     }
 }

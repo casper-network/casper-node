@@ -22,9 +22,9 @@ impl BlockTime {
     }
 }
 
-impl Into<u64> for BlockTime {
-    fn into(self) -> u64 {
-        self.0
+impl From<BlockTime> for u64 {
+    fn from(blocktime: BlockTime) -> Self {
+        blocktime.0
     }
 }
 

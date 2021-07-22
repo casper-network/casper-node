@@ -182,7 +182,7 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
 /// Returns the bids at the given block.
 fn get_bids(nodes: &Nodes, header: &BlockHeader) -> Bids {
     let correlation_id = Default::default();
-    let request = GetBidsRequest::new(header.state_root_hash().clone().into());
+    let request = GetBidsRequest::new((*header.state_root_hash()).into());
 
     let runner = nodes.values().next().expect("missing nodes");
     let engine_state = runner.reactor().inner().contract_runtime().engine_state();

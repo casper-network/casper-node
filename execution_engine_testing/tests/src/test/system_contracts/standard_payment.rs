@@ -305,7 +305,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let success_result = utils::get_success_result(&response);
+    let success_result = utils::get_success_result(response);
     let gas = success_result.cost();
     let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 

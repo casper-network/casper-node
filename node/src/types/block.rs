@@ -46,7 +46,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
+    types::{error::BlockCreationError, Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
     utils::DisplayIter,
 };
 
@@ -149,6 +149,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         next_era_validator_weights,
         protocol_version,
     )
+    .expect("could not construct block")
 });
 static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let block = Block::doc_example().clone();
@@ -157,7 +158,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key);
+    let signature = crypto::sign(block.hash.inner(), secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, Some(block_signature))
@@ -733,7 +734,7 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
+        let serialized_header = Self::serialize(self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(hash::hash(&serialized_header))
     }
@@ -1034,7 +1035,7 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
-    ) -> Self {
+    ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
             finalized_block.proposer.clone(),
             finalized_block.deploy_hashes,
@@ -1042,14 +1043,22 @@ impl Block {
         );
         let body_hash = body.hash();
 
-        let era_end = match finalized_block.era_report {
-            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
-            None => None,
+        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
+            (None, None) => None,
+            (Some(era_report), Some(next_era_validator_weights)) => {
+                Some(EraEnd::new(era_report, next_era_validator_weights))
+            }
+            (maybe_era_report, maybe_next_era_validator_weights) => {
+                return Err(BlockCreationError::CouldNotCreateEraEnd {
+                    maybe_era_report,
+                    maybe_next_era_validator_weights,
+                })
+            }
         };
 
         let mut accumulated_seed = [0; Digest::LENGTH];
 
-        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
+        let mut hasher = VarBlake2b::new(Digest::LENGTH)?;
         hasher.update(parent_seed);
         hasher.update([finalized_block.random_bit as u8]);
         hasher.finalize_variable(|slice| {
@@ -1069,7 +1078,7 @@ impl Block {
             protocol_version,
         };
 
-        Self::new_from_header_and_body(header, body)
+        Ok(Self::new_from_header_and_body(header, body))
     }
 
     pub(crate) fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
@@ -1190,10 +1199,10 @@ impl Block {
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = Digest::random(rng);
-        let next_era_validator_weights = match finalized_block.era_report {
-            Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
-            None => None,
-        };
+        let next_era_validator_weights = finalized_block
+            .era_report
+            .as_ref()
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
             parent_hash,
@@ -1203,6 +1212,7 @@ impl Block {
             next_era_validator_weights,
             protocol_version,
         )
+        .expect("Could not create random block with specifics")
     }
 }
 
@@ -1610,7 +1620,7 @@ impl FinalitySignature {
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
-        let signature = crypto::sign(bytes, &secret_key, &public_key);
+        let signature = crypto::sign(bytes, secret_key, &public_key);
         FinalitySignature {
             block_hash,
             era_id,

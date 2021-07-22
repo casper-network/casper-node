@@ -70,7 +70,7 @@ where
         .await
         .map_err(ConnectionError::TcpConnection)?;
 
-    let mut transport = tls::create_tls_connector(&context.our_cert.as_x509(), &context.secret_key)
+    let mut transport = tls::create_tls_connector(context.our_cert.as_x509(), &context.secret_key)
         .and_then(|connector| connector.configure())
         .and_then(|mut config| {
             config.set_verify_hostname(false);
@@ -260,7 +260,7 @@ pub(super) async fn server_setup_tls(
     cert: &TlsCert,
     secret_key: &PKey<Private>,
 ) -> Result<(NodeId, Transport), ConnectionError> {
-    let mut tls_stream = tls::create_tls_acceptor(&cert.as_x509().as_ref(), &secret_key.as_ref())
+    let mut tls_stream = tls::create_tls_acceptor(cert.as_x509().as_ref(), secret_key.as_ref())
         .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
         .and_then(|ssl| SslStream::new(ssl, stream))
         .map_err(ConnectionError::TlsInitialization)?;
