@@ -97,7 +97,7 @@ function _step_03()
     if [ "$(get_node_is_up "$NODE_ID")" == false ]; then
         source "$NCTL/sh/contracts-auction/do_bid.sh" \
                 node="$NODE_ID" \
-                amount="$(get_node_staking_weight "$NODE_ID")" \
+                amount="2" \
                 rate="0" \
                 quiet="FALSE"
 
@@ -111,7 +111,7 @@ function _step_04()
 {
     local NODE_ID=${1:-'5'}
     local ACCOUNT_ID=${2:-'7'}
-    local AMOUNT=${3:-'1000'}
+    local AMOUNT=${3:-'1'}
 
     log_step_upgrades 4 "Delegating $AMOUNT from account-$ACCOUNT_ID to validator-$NODE_ID"
 
@@ -125,7 +125,7 @@ function _step_04()
 function _step_05()
 {
     log_step_upgrades 5 "Awaiting Auction_Delay = 3"
-    await_n_eras '3' 'true' '5.0'
+    await_n_eras '4' 'true' '5.0'
 }
 
 # Step 06: Assert NODE_ID is a validator
@@ -276,7 +276,7 @@ function _step_11()
     if [ "$(get_node_is_up "$NODE_ID")" == true ]; then
         source "$NCTL/sh/contracts-auction/do_bid_withdraw.sh" \
                 node="$NODE_ID" \
-                amount="$(get_node_staking_weight "$NODE_ID")" \
+                amount="2" \
                 quiet="FALSE"
     fi
 }
@@ -286,7 +286,7 @@ function _step_12()
 {
     local NODE_ID=${1:-'5'}
     local ACCOUNT_ID=${2:-'7'}
-    local AMOUNT=${3:-'1000'}
+    local AMOUNT=${3:-'1'}
 
     log_step_upgrades 12 "Undelegating $AMOUNT to account-$ACCOUNT_ID from validator-$NODE_ID"
 
@@ -300,7 +300,7 @@ function _step_12()
 function _step_13()
 {
     log_step_upgrades 13 "Awaiting Auction_Delay = 3"
-    await_n_eras '3' 'true' '5.0'
+    await_n_eras '4' 'true' '5.0'
 }
 
 # Step 14: Assert NODE_ID is NOT a validator

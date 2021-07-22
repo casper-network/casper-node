@@ -1,6 +1,10 @@
 use casper_engine_test_support::{
-    internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
-    AccountHash, DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    internal::{
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY,
+        DEFAULT_RUN_GENESIS_REQUEST,
+    },
+    AccountHash, Code, SessionBuilder, TestContextBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
@@ -487,4 +491,104 @@ fn dictionary_get_should_fail_with_large_item_key() {
         "Received error {:?}",
         error
     );
+}
+
+#[ignore]
+#[test]
+fn should_query_dictionary_items_with_test_context() {
+    let mut test_context = TestContextBuilder::new()
+        .with_public_key(
+            DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+        )
+        .build();
+
+    let dictionary_code = Code::from(DICTIONARY_WASM);
+    let install_session = SessionBuilder::new(dictionary_code, RuntimeArgs::new())
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .build();
+
+    test_context.run(install_session);
+
+    let default_account = test_context
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+    let contract_hash = default_account
+        .named_keys()
+        .get(dictionary::CONTRACT_HASH_NAME)
+        .expect("should have contract")
+        .into_hash()
+        .map(ContractHash::new)
+        .expect("should have hash");
+    let dictionary_uref = default_account
+        .named_keys()
+        .get(dictionary::DICTIONARY_REF)
+        .expect("should have dictionary uref")
+        .into_uref()
+        .expect("should have URef");
+
+    {
+        // Query through account's named keys
+        let queried_value = test_context
+            .query_dictionary_item(
+                Key::from(*DEFAULT_ACCOUNT_ADDR),
+                Some(dictionary::DICTIONARY_REF.to_string()),
+                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+            )
+            .expect("should query");
+        let value: String = queried_value.into_t().expect("should be string");
+        assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
+    }
+
+    {
+        // Query through account's named keys
+        let queried_value = test_context
+            .query_dictionary_item(
+                Key::from(*DEFAULT_ACCOUNT_ADDR),
+                Some(dictionary::DICTIONARY_REF.to_string()),
+                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+            )
+            .expect("should query");
+        let value: String = queried_value.into_t().expect("should be string");
+        assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
+    }
+
+    {
+        // Query through contract's named keys
+        let queried_value = test_context
+            .query_dictionary_item(
+                Key::from(contract_hash),
+                Some(dictionary::DICTIONARY_NAME.to_string()),
+                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+            )
+            .expect("should query");
+        let value: String = queried_value.into_t().expect("should be string");
+        assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
+    }
+
+    {
+        // Query through dictionary URef itself
+        let queried_value = test_context
+            .query_dictionary_item(
+                Key::from(dictionary_uref),
+                None,
+                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+            )
+            .expect("should query");
+        let value: String = queried_value.into_t().expect("should be string");
+        assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
+    }
+
+    {
+        // Query by computed dictionary item key
+        let dictionary_item_name = dictionary::DEFAULT_DICTIONARY_NAME.as_bytes();
+        let dictionary_item_key = Key::dictionary(dictionary_uref, dictionary_item_name);
+
+        let queried_value = test_context
+            .query_dictionary_item(dictionary_item_key, None, String::new())
+            .expect("should query");
+        let value: String = queried_value.into_t().expect("should be string");
+        assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
+    }
 }
