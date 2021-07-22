@@ -69,14 +69,14 @@ pub struct ExecutionPreState {
 
 impl ExecutionPreState {
     pub(crate) fn new(
-        pre_state_root_hash: Digest,
         next_block_height: u64,
+        pre_state_root_hash: Digest,
         parent_hash: BlockHash,
         parent_seed: Digest,
     ) -> Self {
         ExecutionPreState {
-            pre_state_root_hash,
             next_block_height,
+            pre_state_root_hash,
             parent_hash,
             parent_seed,
         }

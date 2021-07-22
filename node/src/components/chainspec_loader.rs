@@ -324,14 +324,14 @@ impl ChainspecLoader {
     pub(crate) fn initial_execution_pre_state(&self) -> ExecutionPreState {
         match self.initial_block() {
             None => ExecutionPreState::new(
-                self.initial_state_root_hash(),
                 0,
+                self.initial_state_root_hash(),
                 BlockHash::new(Digest::from([0u8; Digest::LENGTH])),
                 Digest::from([0u8; Digest::LENGTH]),
             ),
             Some(block) => ExecutionPreState::new(
-                self.initial_state_root_hash(),
                 block.height() + 1,
+                self.initial_state_root_hash(),
                 *block.hash(),
                 block.header().accumulated_seed(),
             ),
