@@ -51,7 +51,7 @@ use crate::{
     reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, Block, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -322,10 +322,6 @@ impl ChainspecLoader {
 
     pub(crate) fn initial_block(&self) -> Option<&Block> {
         self.initial_block.as_ref()
-    }
-
-    pub(crate) fn initial_block_hash(&self) -> Option<BlockHash> {
-        self.initial_block_header().map(|hdr| hdr.hash())
     }
 
     /// This returns the era at which we will be starting the operation, assuming the highest known
