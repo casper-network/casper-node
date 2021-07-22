@@ -232,7 +232,7 @@ mod session_params {
 
     const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const ENTRYPOINT: &str = "entrypoint";
-    const VERSION: &str = "0.1.0";
+    const VERSION: u32 = 10;
 
     fn args_simple() -> Vec<&'static str> {
         vec!["name_01:bool='false'", "name_02:i32='42'"]

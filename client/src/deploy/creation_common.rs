@@ -110,7 +110,9 @@ pub(super) fn session_str_params<'a>(matches: &'a ArgMatches) -> SessionStrParam
             session_args_complex,
         );
     }
-    let session_version = session_version::get(matches);
+    let session_version = session_version::get(matches)
+        .parse::<u32>()
+        .unwrap_or_default();
     if let Some(session_package_hash) = session_package_hash::get(matches) {
         return SessionStrParams::with_package_hash(
             session_package_hash,
@@ -162,7 +164,9 @@ pub(super) fn payment_str_params<'a>(matches: &'a ArgMatches) -> PaymentStrParam
             payment_args_complex,
         );
     }
-    let payment_version = payment_version::get(matches);
+    let payment_version = payment_version::get(matches)
+        .parse::<u32>()
+        .unwrap_or_default();
     if let Some(payment_package_hash) = payment_package_hash::get(matches) {
         return PaymentStrParams::with_package_hash(
             payment_package_hash,

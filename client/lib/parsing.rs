@@ -366,27 +366,33 @@ pub(super) fn parse_session_info(
     session_path: &str,
     session_args: &[&str],
     session_args_complex: &str,
-    session_version: &str,
+    session_version: u32,
     session_entry_point: &str,
     session_transfer: bool,
 ) -> Result<ExecutableDeployItem> {
     // This is to make sure that we're using &str consistently in the macro call below.
     let is_session_transfer = if session_transfer { "true" } else { "" };
+    let session_version_string = session_version.to_string();
+    let session_version_str = if session_version == 0 {
+        ""
+    } else {
+        session_version_string.as_str()
+    };
 
     check_exactly_one_not_empty!(
         context: "parse_session_info",
         (session_hash)
-            requires[session_entry_point] requires_empty[session_version],
+            requires[session_entry_point] requires_empty[session_version_str],
         (session_name)
-            requires[session_entry_point] requires_empty[session_version],
+            requires[session_entry_point] requires_empty[session_version_str],
         (session_package_hash)
             requires[session_entry_point] requires_empty[],
         (session_package_name)
             requires[session_entry_point] requires_empty[],
         (session_path)
-            requires[] requires_empty[session_entry_point, session_version],
+            requires[] requires_empty[session_entry_point, session_version_str],
         (is_session_transfer)
-            requires[] requires_empty[session_entry_point, session_version]
+            requires[] requires_empty[session_entry_point, session_version_str]
     );
     if !session_args.is_empty() && !session_args_complex.is_empty() {
         return Err(Error::ConflictingArguments {
@@ -426,11 +432,11 @@ pub(super) fn parse_session_info(
         });
     }
 
-    let version = version(session_version).ok();
+    // let version = version(session_version).ok();
     if let Some(package_name) = name(session_package_name) {
         return Ok(ExecutableDeployItem::StoredVersionedContractByName {
             name: package_name,
-            version, // defaults to highest enabled version
+            version: Some(session_version), // defaults to highest enabled version
             entry_point: entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             args: session_args,
         });
@@ -439,7 +445,7 @@ pub(super) fn parse_session_info(
     if let Some(package_hash) = parse_contract_hash(session_package_hash)? {
         return Ok(ExecutableDeployItem::StoredVersionedContractByHash {
             hash: package_hash.into(),
-            version, // defaults to highest enabled version
+            version: Some(session_version), // defaults to highest enabled version
             entry_point: entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             args: session_args,
         });
@@ -465,22 +471,28 @@ pub(super) fn parse_payment_info(
     payment_path: &str,
     payment_args: &[&str],
     payment_args_complex: &str,
-    payment_version: &str,
+    payment_version: u32,
     payment_entry_point: &str,
 ) -> Result<ExecutableDeployItem> {
+    let payment_version_str = payment_version.to_string();
+    let payment_version_str = if payment_version == 0 {
+        ""
+    } else {
+        payment_version_str.as_str()
+    };
     check_exactly_one_not_empty!(
         context: "parse_payment_info",
         (payment_amount)
-            requires[] requires_empty[payment_entry_point, payment_version],
+            requires[] requires_empty[payment_entry_point, payment_version_str],
         (payment_hash)
-            requires[payment_entry_point] requires_empty[payment_version],
+            requires[payment_entry_point] requires_empty[payment_version_str],
         (payment_name)
-            requires[payment_entry_point] requires_empty[payment_version],
+            requires[payment_entry_point] requires_empty[payment_version_str],
         (payment_package_hash)
             requires[payment_entry_point] requires_empty[],
         (payment_package_name)
             requires[payment_entry_point] requires_empty[],
-        (payment_path) requires[] requires_empty[payment_entry_point, payment_version],
+        (payment_path) requires[] requires_empty[payment_entry_point, payment_version_str],
     );
     if !payment_args.is_empty() && !payment_args_complex.is_empty() {
         return Err(Error::ConflictingArguments {
@@ -520,11 +532,12 @@ pub(super) fn parse_payment_info(
         });
     }
 
-    let version = version(payment_version).ok();
+    // let version = version(payment_version).ok();
+
     if let Some(package_name) = name(payment_package_name) {
         return Ok(ExecutableDeployItem::StoredVersionedContractByName {
             name: package_name,
-            version, // defaults to highest enabled version
+            version: Some(payment_version), // defaults to highest enabled version
             entry_point: entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             args: payment_args,
         });
@@ -533,7 +546,7 @@ pub(super) fn parse_payment_info(
     if let Some(package_hash) = parse_contract_hash(payment_package_hash)? {
         return Ok(ExecutableDeployItem::StoredVersionedContractByHash {
             hash: package_hash.into(),
-            version, // defaults to highest enabled version
+            version: Some(payment_version), // defaults to highest enabled version
             entry_point: entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             args: payment_args,
         });
@@ -579,12 +592,6 @@ fn name(value: &str) -> Option<String> {
 
 fn entry_point(value: &str) -> Option<String> {
     none_if_empty(value).map(str::to_string)
-}
-
-fn version(value: &str) -> Result<u32> {
-    value
-        .parse::<u32>()
-        .map_err(|error| Error::FailedToParseInt("version", error))
 }
 
 pub(crate) fn transfer_id(value: &str) -> Result<u64> {
@@ -647,7 +654,8 @@ mod tests {
         pub const PACKAGE_NAME: &str = "package_name";
         pub const PATH: &str = "./session.wasm";
         pub const ENTRY_POINT: &str = "entrypoint";
-        pub const VERSION: &str = "1.0.0";
+        pub const VERSION: u32 = 100;
+        pub const VERSION_STR: &str = "100";
         pub const TRANSFER: bool = true;
         pub const PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFAr+JLnFaRwpqsAEbcYLfaDixKHGdBfFsPrLKS9VTMH\n-----END PRIVATE KEY-----";
     }
@@ -860,7 +868,7 @@ mod tests {
                 "",
                 &["something:u32='0'"],
                 "path_to/file",
-                "",
+                0,
                 "entrypoint",
                 false
             ),
@@ -880,7 +888,7 @@ mod tests {
                 "",
                 &["something:u32='0'"],
                 "path_to/file",
-                "",
+                0,
                 "entrypoint",
             ),
             Err(Error::ConflictingArguments {
@@ -901,7 +909,7 @@ mod tests {
                 happy::PATH,
                 &[],
                 "",
-                "",
+                0,
                 "",
                 false
             ),
@@ -924,7 +932,7 @@ mod tests {
                 happy::PATH,
                 &[],
                 "",
-                "",
+                0,
                 "",
             ),
             Err(Error::ConflictingArguments {
@@ -1267,7 +1275,7 @@ mod tests {
                 // package_name
                 // package_name + session_version is optional and allowed
                 test[session_package_name => happy::PACKAGE_NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_package_hash]
-                test[session_package_name => happy::VERSION, conflict: is_session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_transfer]
+                test[session_package_name => happy::VERSION_STR, conflict: is_session_transfer => happy::TRANSFER, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_transfer]
                 // package_name <-> hash is already checked
                 // package_name <-> name is already checked
                 // package_name <-> path is already checked
