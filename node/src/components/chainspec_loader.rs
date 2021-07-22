@@ -51,7 +51,7 @@ use crate::{
     reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, Block, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -176,6 +176,7 @@ pub struct ChainspecLoader {
     initial_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
     initial_block: Option<Block>,
+    after_upgrade: bool,
 }
 
 impl ChainspecLoader {
@@ -231,6 +232,7 @@ impl ChainspecLoader {
                 initial_state_root_hash: Digest::default(),
                 next_upgrade: None,
                 initial_block: None,
+                after_upgrade: false,
             };
             return (chainspec_loader, Effects::new());
         }
@@ -278,6 +280,7 @@ impl ChainspecLoader {
             initial_state_root_hash: Digest::default(),
             next_upgrade,
             initial_block: None,
+            after_upgrade: false,
         };
 
         (chainspec_loader, effects)
@@ -299,6 +302,12 @@ impl ChainspecLoader {
 
     pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
         self.reactor_exit
+    }
+
+    /// Returns whether the current node instance is started immediately after an upgrade –
+    /// i.e. whether the last/highest block stored is a block that triggerred the upgrade.
+    pub(crate) fn after_upgrade(&self) -> bool {
+        self.after_upgrade
     }
 
     /// The state root hash with which this session is starting.  It will be the result of running
@@ -352,10 +361,6 @@ impl ChainspecLoader {
 
     pub(crate) fn initial_block(&self) -> Option<&Block> {
         self.initial_block.as_ref()
-    }
-
-    pub(crate) fn initial_block_hash(&self) -> Option<BlockHash> {
-        self.initial_block_header().map(|hdr| hdr.hash())
     }
 
     /// This returns the era at which we will be starting the operation, assuming the highest known
@@ -425,6 +430,7 @@ impl ChainspecLoader {
                 trace!("valid run immediately after upgrade");
                 let upgrade_config =
                     self.new_upgrade_config(&highest_block, previous_protocol_version);
+                self.after_upgrade = true;
                 return effect_builder
                     .upgrade_contract_runtime(upgrade_config)
                     .event(Event::UpgradeResult);
@@ -1035,6 +1041,7 @@ mod tests {
                 initial_state_root_hash: Digest::default(),
                 next_upgrade: None,
                 initial_block: None,
+                after_upgrade: false,
             };
 
             let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
