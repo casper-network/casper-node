@@ -3,7 +3,6 @@
 mod memory_metrics;
 
 use std::{
-    collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
     path::PathBuf,
@@ -67,7 +66,6 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-use casper_types::{PublicKey, U512};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -487,13 +485,6 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec().core_config.unbonding_delay,
         )?;
 
-        let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
-            .chainspec()
-            .network_config
-            .chainspec_validator_stakes()
-            .into_iter()
-            .map(|(pk, motes)| (pk, motes.value()))
-            .collect();
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
@@ -504,7 +495,6 @@ impl reactor::Reactor for Reactor {
             &storage,
             init_hash,
             chainspec_loader.initial_block().cloned(),
-            validator_weights,
             maybe_next_activation_point,
         )?;
 

@@ -29,14 +29,14 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem, str::FromStr};
+use std::{convert::Infallible, fmt::Display, mem, str::FromStr};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
 use self::event::{BlockByHashResult, DeploysResult};
-use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
+use casper_types::{EraId, ProtocolVersion};
 
 use super::{
     fetcher::FetchResult,
@@ -92,7 +92,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         storage: &Storage,
         init_hash: Option<BlockHash>,
         highest_block: Option<Block>,
-        _genesis_validator_weights: BTreeMap<PublicKey, U512>,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<(Self, Effects<Event<I>>), Err>
     where
