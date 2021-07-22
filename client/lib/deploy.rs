@@ -319,79 +319,79 @@ mod tests {
     const ENTRYPOINT: &str = "entrypoint";
     const VERSION: u32 = 10;
     const SAMPLE_DEPLOY: &str = r#"{
-      "hash": "4858bbd79ab7b825244c4e6959cbcd588a05608168ef36518bc6590937191d55",
-      "header": {
-        "account": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
-        "timestamp": "2021-01-19T01:18:19.120Z",
-        "ttl": "10s",
-        "gas_price": 1,
-        "body_hash": "95f2f2358c4864f01f8b073ae6f5ae67baeaf7747fc0799d0078743c513bc1de",
-        "dependencies": [
-          "be5fdeea0240e999e376f8ecbce1bd4fd9336f58dae4a5842558a4da6ad35aa8",
-          "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41"
-        ],
-        "chain_name": "casper-test-chain-name-1"
-      },
-      "payment": {
-        "StoredVersionedContractByHash": {
-          "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
-          "version": null,
-          "entry_point": "entrypoint",
-          "args": [
-            [
-              "name_01",
-              {
-                "cl_type": "Bool",
-                "bytes": "00",
-                "parsed": false
-              }
+        "hash": "5e7763788281ddd6c5c404d0fb6010491703ccf497de6dcd2a6f893321de6b61",
+        "header": {
+            "account": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
+            "timestamp": "2021-07-22T16:40:08.250Z",
+            "ttl": "10s",
+            "gas_price": 1,
+            "body_hash": "c3bee9451ed6d78ebc91387c18ff3c2013ec02c56cf5cd867ba32987850b78a8",
+            "dependencies": [
+            "be5fdeea0240e999e376f8ecbce1bd4fd9336f58dae4a5842558a4da6ad35aa8",
+            "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41"
             ],
-            [
-              "name_02",
-              {
-                "cl_type": "I32",
-                "bytes": "2a000000",
-                "parsed": 42
-              }
-            ]
-          ]
-        }
-      },
-      "session": {
-        "StoredVersionedContractByHash": {
-          "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
-          "version": null,
-          "entry_point": "entrypoint",
-          "args": [
-            [
-              "name_01",
-              {
-                "cl_type": "Bool",
-                "bytes": "00",
-                "parsed": false
-              }
-            ],
-            [
-              "name_02",
-              {
-                "cl_type": "I32",
-                "bytes": "2a000000",
-                "parsed": 42
-              }
-            ]
-          ]
-        }
-      },
-      "approvals": [
-        {
-          "signer": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
-          "signature": "010f538ef188770cdbf608bc2d7aa9460108b419b2b629f5e0714204a7f29149809a1d52776b0c514e3320494fdf6f9e9747f06f2c14ddf6f924ce218148e2840a"
+            "chain_name": "casper-test-chain-name-1"
         },
-        {
-          "signer": "01e67d6e56ae07eca98b07ecec8cfbe826b4d5bc51f3a86590c0882cdafbd72fcc",
-          "signature": "01c4f58d7f6145c1e4397efce766149cde5450cbe74991269161e5e1f30a397e6bc4c484f3c72a645cefd42c55cfde0294bfd91de55ca977798c3c8d2a7e43a40c"
-        }
-      ]
+        "payment": {
+            "StoredVersionedContractByHash": {
+            "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+            "version": 10,
+            "entry_point": "entrypoint",
+            "args": [
+                [
+                "name_01",
+                {
+                    "cl_type": "Bool",
+                    "bytes": "00",
+                    "parsed": false
+                }
+                ],
+                [
+                "name_02",
+                {
+                    "cl_type": "I32",
+                    "bytes": "2a000000",
+                    "parsed": 42
+                }
+                ]
+            ]
+            }
+        },
+        "session": {
+            "StoredVersionedContractByHash": {
+            "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+            "version": 10,
+            "entry_point": "entrypoint",
+            "args": [
+                [
+                "name_01",
+                {
+                    "cl_type": "Bool",
+                    "bytes": "00",
+                    "parsed": false
+                }
+                ],
+                [
+                "name_02",
+                {
+                    "cl_type": "I32",
+                    "bytes": "2a000000",
+                    "parsed": 42
+                }
+                ]
+            ]
+            }
+        },
+        "approvals": [
+            {
+            "signer": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
+            "signature": "013b214df155e9b4a5180c801a9d08fdf4d03c5bafeb32e901c4d785bdcba5d862d039d2f335b192d9eedf71f79deb797c006006993175515531d69ebe9dbcef0a"
+            },
+            {
+            "signer": "0148c2b17e1108f709c65aea7ed741f272b93adfe366584eadc4909bd666c2e0ce",
+            "signature": "0179695d45022b5768a6de880db9add1b8590f7ca92da758b2c7c80bf6d876041657440b0cb5cd06707338a7de60c304a48eb1a7dd84e3ac3e9636a5c7fab29d01"
+            }
+        ]
     }"#;
 
     pub fn deploy_params() -> DeployStrParams<'static> {
