@@ -1760,7 +1760,7 @@ fn garbage_collect_block_body_v2_db(
     // databases (we're basically doing a mark-and-sweep below).
     // The entries correspond to: the block_body_v2_db, deploy_hashes_db, transfer_hashes_db,
     // proposer_db respectively.
-    let mut live_digests = [
+    let mut live_digests: [HashSet<Digest>; BlockBody::PARTS_COUNT + 1] = [
         HashSet::new(),
         HashSet::new(),
         HashSet::new(),
@@ -1799,7 +1799,7 @@ fn garbage_collect_block_body_v2_db(
         }
     }
 
-    let databases_to_clean = vec![
+    let databases_to_clean: [(&Database, &str); BlockBody::PARTS_COUNT + 1] = [
         (block_body_v2_db, "deleting v2 block body part"),
         (deploy_hashes_db, "deleting v2 deploy hashes entry"),
         (transfer_hashes_db, "deleting v2 transfer hashes entry"),
@@ -1807,8 +1807,8 @@ fn garbage_collect_block_body_v2_db(
     ];
 
     // Clean dead entries from all the databases
-    for (index, (database, info_text)) in databases_to_clean.into_iter().enumerate() {
-        let mut cursor = txn.open_rw_cursor(*database)?;
+    for (index, (database, info_text)) in databases_to_clean.iter().enumerate() {
+        let mut cursor = txn.open_rw_cursor(**database)?;
         for (raw_key, _raw_val) in cursor.iter() {
             let key = Digest::try_from(raw_key)
                 .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
