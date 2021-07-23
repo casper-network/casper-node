@@ -322,6 +322,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // validator. Continue processing the unit so that it can be added to the state.
         if self.highway.is_doppelganger_vertex(pending_vertex.vertex()) {
             error!(
+                vertex = ?pending_vertex.vertex(),
                 "received vertex from a doppelganger. \
                  Are you running multiple nodes with the same validator key?",
             );
