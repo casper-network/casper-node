@@ -32,7 +32,6 @@ All notable changes to this project will be documented in this file.  The format
 * Persist event stream event index across node restarts.
 * Separate transfers from other deploys in the block proposer.
 * Enable getting validators for future eras in `EffectBuilder::get_era_validators()`.
-* Replace config option `[block_propser][deploy_delay]` (which specified a fixed delay before proposing a deploy) with a gossip-finished announcement.
 * Improve logging around stalled consensus detection.
 * Skip storage integrity checks if the node didn't previously crash.
 * Update pinned version of Rust to `nightly-2021-06-17`
