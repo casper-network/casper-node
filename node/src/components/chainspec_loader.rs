@@ -51,7 +51,7 @@ use crate::{
     reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Block, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
