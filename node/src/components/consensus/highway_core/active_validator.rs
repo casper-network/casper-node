@@ -597,17 +597,9 @@ impl<C: Context> ActiveValidator<C> {
                     && !state.has_endorsement(endorsements.unit(), self.vidx)
             }
             Vertex::Ping(ping) => {
-                if ping.creator() != self.vidx {
-                    return false; // Ping is from another validator.
-                }
                 // If we get a ping from ourselves with a later timestamp than the latest one we
                 // know of, another node must be signing with our key.
-                if let Some(known_ping_time) = state.maybe_ping(self.vidx) {
-                    known_ping_time < ping.timestamp()
-                } else {
-                    error!(index = self.vidx.0, "missing ping entry for ourselves");
-                    false
-                }
+                ping.creator() == self.vidx && !state.has_ping(self.vidx, ping.timestamp())
             }
             Vertex::Evidence(_) => false,
         }
@@ -973,6 +965,31 @@ mod tests {
                 other
             ),
         }
+    }
+
+    #[test]
+    fn detects_doppelganger_ping() {
+        let mut state = State::new_test(&[Weight(3)], 0);
+        let (active_validator, _init_effects) = ActiveValidator::new(
+            ALICE,
+            ALICE_SEC.clone(),
+            410.into(),
+            410.into(),
+            &state,
+            None,
+            Weight(2),
+            TEST_INSTANCE_ID,
+        );
+
+        let ping = Vertex::Ping(Ping::new(ALICE, 500.into(), TEST_INSTANCE_ID, &ALICE_SEC));
+
+        // The ping is suspicious if it is newer than the latest ping (or unit) that has been added
+        // to the state.
+        assert!(active_validator.is_doppelganger_vertex(&ping, &state));
+        state.add_ping(ALICE, 499.into());
+        assert!(active_validator.is_doppelganger_vertex(&ping, &state));
+        state.add_ping(ALICE, 500.into());
+        assert!(!active_validator.is_doppelganger_vertex(&ping, &state));
     }
 
     #[test]

@@ -997,4 +997,27 @@ pub(crate) mod tests {
         // Verify that sending a Ping from a non-existing validator does not panic.
         assert!(!highway.has_vertex(&ping));
     }
+
+    #[test]
+    fn own_initial_ping_is_not_from_doppelganger() {
+        let now: Timestamp = 500.into();
+        let later = 501.into();
+
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
+        let target_ftt = state.total_weight() / 3;
+        let mut highway = Highway {
+            instance_id: TEST_INSTANCE_ID,
+            validators: test_validators(),
+            state,
+            active_validator: None,
+        };
+
+        let _effects =
+            highway.activate_validator(ALICE.0, ALICE_SEC.clone(), now, None, target_ftt);
+
+        let ping = Vertex::Ping(Ping::new(ALICE, now, TEST_INSTANCE_ID, &ALICE_SEC));
+        assert!(!highway.is_doppelganger_vertex(&ping));
+        let ping = Vertex::Ping(Ping::new(ALICE, later, TEST_INSTANCE_ID, &ALICE_SEC));
+        assert!(highway.is_doppelganger_vertex(&ping));
+    }
 }

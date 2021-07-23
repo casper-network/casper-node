@@ -568,22 +568,11 @@ impl<C: Context> State<C> {
         self.pings[creator] = self.pings[creator].max(timestamp);
     }
 
-    /// Returns `true` if the latest timestamp we have is less than one maximum round length older
-    /// than the given timestamp.
-    ///
-    /// This is to prevent ping spam: If the incoming ping is only slightly newer than a unit or
-    /// ping we have already received, we drop it without forwarding it to our peers.
+    /// Returns `true` if the latest timestamp we have is older than the given timestamp.
     pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
-        self.maybe_ping(creator).map_or(false, |ping_time| {
-            ping_time + self.params.max_round_length() > timestamp
-        })
-    }
-
-    /// Returns the latest timestamp of a unit or ping by that validator.
-    ///
-    /// Returns `None` if the validator index is invalid.
-    pub(crate) fn maybe_ping(&self, creator: ValidatorIndex) -> Option<Timestamp> {
-        self.pings.get(creator).cloned()
+        self.pings
+            .get(creator)
+            .map_or(false, |ping_time| *ping_time >= timestamp)
     }
 
     /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
