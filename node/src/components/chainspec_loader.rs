@@ -305,7 +305,7 @@ impl ChainspecLoader {
     }
 
     /// Returns whether the current node instance is started immediately after an upgrade –
-    /// i.e. whether the last/highest block stored is a block that triggerred the upgrade.
+    /// i.e. whether the last/highest block stored is a block that triggered the upgrade.
     pub(crate) fn after_upgrade(&self) -> bool {
         self.after_upgrade
     }
