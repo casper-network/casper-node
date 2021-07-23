@@ -370,7 +370,7 @@ pub extern "C" fn casper_transfer(
     node_address: *const c_char,
     verbosity_level: u64,
     amount: *const c_char,
-    maybe_target_account: *const c_char,
+    target_account: *const c_char,
     transfer_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
@@ -382,7 +382,7 @@ pub extern "C" fn casper_transfer(
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
     let node_address = try_unsafe_arg!(node_address);
     let amount = try_unsafe_arg!(amount);
-    let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let target_account = try_unsafe_arg!(target_account);
     let transfer_id = try_unsafe_arg!(transfer_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
@@ -392,7 +392,7 @@ pub extern "C" fn casper_transfer(
             node_address,
             verbosity_level,
             amount,
-            maybe_target_account,
+            target_account,
             transfer_id,
             deploy_params,
             payment_params,
@@ -410,7 +410,7 @@ pub extern "C" fn casper_transfer(
 pub extern "C" fn casper_make_transfer(
     maybe_output_path: *const c_char,
     amount: *const c_char,
-    maybe_target_account: *const c_char,
+    target_account: *const c_char,
     transfer_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
@@ -418,14 +418,14 @@ pub extern "C" fn casper_make_transfer(
 ) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let amount = try_unsafe_arg!(amount);
-    let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let target_account = try_unsafe_arg!(target_account);
     let transfer_id = try_unsafe_arg!(transfer_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
     let result = super::make_transfer(
         maybe_output_path,
         amount,
-        maybe_target_account,
+        target_account,
         transfer_id,
         deploy_params,
         payment_params,

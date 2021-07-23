@@ -142,7 +142,7 @@ impl MockServerHandle {
     fn transfer(
         &self,
         amount: &str,
-        maybe_target_account: &str,
+        target_account: &str,
         deploy_params: DeployStrParams,
         payment_params: PaymentStrParams,
     ) -> Result<(), Error> {
@@ -151,7 +151,7 @@ impl MockServerHandle {
             &self.url(),
             0,
             amount,
-            maybe_target_account,
+            target_account,
             "2",
             deploy_params,
             payment_params,
@@ -985,7 +985,7 @@ mod rate_limit {
         // Our default is 1 req/s, so this will hit the threshold
         for _ in 0..3u32 {
             let amount = "100";
-            let maybe_target_account =
+            let target_account =
                 "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
 
             // If you remove the tokio::task::spawn_blocking call wrapping the call to transfer,
@@ -996,7 +996,7 @@ mod rate_limit {
             let join_handle = task::spawn_blocking(move || {
                 server_handle.transfer(
                     amount,
-                    maybe_target_account,
+                    target_account,
                     deploy_params::test_data_valid(),
                     payment_params::test_data_with_name(),
                 )
@@ -1026,12 +1026,11 @@ mod transfer {
         // // Transfer uses PutDeployParams + PutDeploy
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         let amount = "100";
-        let maybe_target_account =
-            "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
+        let target_account = "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
         assert!(matches!(
             server_handle.transfer(
                 amount,
-                maybe_target_account,
+                target_account,
                 deploy_params::test_data_valid(),
                 payment_params::test_data_with_name()
             ),
