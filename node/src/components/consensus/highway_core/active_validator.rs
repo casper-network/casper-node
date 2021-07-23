@@ -211,8 +211,10 @@ impl<C: Context> ActiveValidator<C> {
                 }
             }
         }
-        // We are not creating a new unit. Send a ping if necessary, to show that we're online.
-        if !state.has_ping(self.vidx, timestamp) {
+        // We are not creating a new unit. Send a ping once per maximum-length round, to show that
+        // we're online.
+        let one_max_round_ago = timestamp.saturating_sub(state.params().max_round_length());
+        if !state.has_ping(self.vidx, one_max_round_ago + 1.into()) {
             warn!(%timestamp, "too many validators offline, sending ping");
             effects.push(self.send_ping(timestamp, instance_id));
         }
@@ -692,7 +694,7 @@ mod tests {
 
     impl TestState {
         fn new(
-            state: State<TestContext>,
+            mut state: State<TestContext>,
             start_time: Timestamp,
             instance_id: u64,
             fd: FinalityDetector<TestContext>,
@@ -706,55 +708,54 @@ mod tests {
                 current_round_id + state::round_len(state.params().init_round_exp())
             };
             let target_ftt = state.total_weight() / 3;
-            let active_validators = validators
-                .into_iter()
-                .map(|vidx| {
-                    let secret = TestSecret(vidx.0);
-                    let (av, effects) = ActiveValidator::new(
-                        vidx,
-                        secret,
-                        start_time,
-                        start_time,
-                        &state,
-                        None,
-                        target_ftt,
-                        TEST_INSTANCE_ID,
-                    );
+            let mut active_validators = Vec::with_capacity(validators.len());
+            for vidx in validators {
+                let secret = TestSecret(vidx.0);
+                let (av, effects) = ActiveValidator::new(
+                    vidx,
+                    secret,
+                    start_time,
+                    start_time,
+                    &state,
+                    None,
+                    target_ftt,
+                    TEST_INSTANCE_ID,
+                );
 
-                    let timestamp = match &*effects {
-                        [
-                            Effect::ScheduleTimer(timer),
-                            Effect::NewVertex(ValidVertex(Vertex::Ping(_)))
-                        ] => { *timer }
-                        other => panic!("expected timer and ping effects, got={:?}", other),
-                    };
-
-                    if state.leader(earliest_round_start) == vidx {
-                        assert_eq!(
-                            timestamp, earliest_round_start,
-                            "Invalid initial timer scheduled for {:?}.",
-                            vidx,
-                        )
-                    } else {
-                        let witness_offset =
-                            av.witness_offset(state::round_len(state.params().init_round_exp()));
-                        let witness_timestamp = earliest_round_start + witness_offset;
-                        assert_eq!(
-                            timestamp, witness_timestamp,
-                            "Invalid initial timer scheduled for {:?}.",
-                            vidx,
-                        )
+                let (timestamp, ping) = match &*effects {
+                    [Effect::ScheduleTimer(timestamp), Effect::NewVertex(ValidVertex(Vertex::Ping(ping)))] => {
+                        (*timestamp, ping)
                     }
-                    timers.insert((timestamp, vidx));
-                    av
-                })
-                .collect();
+                    other => panic!("expected timer and ping effects, got={:?}", other),
+                };
+
+                state.add_ping(ping.creator(), ping.timestamp());
+
+                if state.leader(earliest_round_start) == vidx {
+                    assert_eq!(
+                        timestamp, earliest_round_start,
+                        "Invalid initial timer scheduled for {:?}.",
+                        vidx,
+                    )
+                } else {
+                    let witness_offset =
+                        av.witness_offset(state::round_len(state.params().init_round_exp()));
+                    let witness_timestamp = earliest_round_start + witness_offset;
+                    assert_eq!(
+                        timestamp, witness_timestamp,
+                        "Invalid initial timer scheduled for {:?}.",
+                        vidx,
+                    )
+                }
+                timers.insert((timestamp, vidx));
+                active_validators.push(av);
+            }
 
             TestState {
                 state,
                 instance_id,
                 fd,
-                active_validators,
+                active_validators: active_validators.into_iter().collect(),
                 timers,
             }
         }
