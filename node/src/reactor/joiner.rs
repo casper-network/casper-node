@@ -3,7 +3,6 @@
 mod memory_metrics;
 
 use std::{
-    collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
     path::PathBuf,
@@ -67,7 +66,6 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-use casper_types::{PublicKey, U512};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -405,12 +403,9 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let init_hash = config
-            .node
-            .trusted_hash
-            .or_else(|| chainspec_loader.initial_block_hash());
+        let trusted_hash = config.node.trusted_hash;
 
-        match init_hash {
+        match trusted_hash {
             None => {
                 let chainspec = chainspec_loader.chainspec();
                 let era_duration = chainspec.core_config.era_duration;
@@ -432,7 +427,7 @@ impl reactor::Reactor for Reactor {
                 }
                 info!("No synchronization of the linear chain will be done.")
             }
-            Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
+            Some(hash) => info!(trusted_hash=%hash, "synchronizing linear chain"),
         }
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
@@ -477,13 +472,6 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec().core_config.unbonding_delay,
         )?;
 
-        let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
-            .chainspec()
-            .network_config
-            .chainspec_validator_stakes()
-            .into_iter()
-            .map(|(pk, motes)| (pk, motes.value()))
-            .collect();
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
@@ -492,9 +480,9 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             chainspec_loader.chainspec(),
             &storage,
-            init_hash,
+            trusted_hash,
             chainspec_loader.initial_block().cloned(),
-            validator_weights,
+            chainspec_loader.after_upgrade(),
             maybe_next_activation_point,
             chainspec_loader.initial_execution_pre_state(),
         )?;

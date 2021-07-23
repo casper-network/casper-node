@@ -26,6 +26,7 @@ pub struct NetworkConfig {
 }
 
 impl NetworkConfig {
+    #[allow(unused)]
     /// Returns a vector of chainspec validators' public key and their stake.
     pub fn chainspec_validator_stakes(&self) -> Vec<(PublicKey, Motes)> {
         self.accounts_config
