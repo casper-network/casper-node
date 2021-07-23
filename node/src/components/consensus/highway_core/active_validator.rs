@@ -505,14 +505,17 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
         state
             .panorama()
-            .get(self.vidx)
+            .get(self.vidx)?
             .correct()
             .map(|vh| state.unit(vh))
     }
 
     /// Checks if validator knows it's faulty.
     fn is_faulty(&self, state: &State<C>) -> bool {
-        state.panorama().get(self.vidx).is_faulty()
+        state
+            .panorama()
+            .get(self.vidx)
+            .map_or(false, |obs| obs.is_faulty())
     }
 
     /// Returns the duration after the beginning of a round when the witness units are sent.
@@ -594,7 +597,17 @@ impl<C: Context> ActiveValidator<C> {
                     && !state.has_endorsement(endorsements.unit(), self.vidx)
             }
             Vertex::Ping(ping) => {
-                ping.creator() == self.vidx && !state.has_ping(self.vidx, ping.timestamp())
+                if ping.creator() != self.vidx {
+                    return false; // Ping is from another validator.
+                }
+                // If we get a ping from ourselves with a later timestamp than the latest one we
+                // know of, another node must be signing with our key.
+                if let Some(known_ping_time) = state.maybe_ping(self.vidx) {
+                    known_ping_time < ping.timestamp()
+                } else {
+                    error!(index = self.vidx.0, "missing ping entry for ourselves");
+                    false
+                }
             }
             Vertex::Evidence(_) => false,
         }

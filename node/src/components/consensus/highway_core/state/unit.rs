@@ -78,7 +78,7 @@ impl<C: Context> Unit<C> {
                 .expect("nonempty panorama has nonempty fork choice")
         };
         let mut skip_idx = Vec::new();
-        if let Some(hash) = wunit.panorama.get(wunit.creator).correct() {
+        if let Some(hash) = wunit.panorama[wunit.creator].correct() {
             skip_idx.push(*hash);
             for i in 0..wunit.seq_number.trailing_zeros() as usize {
                 let old_unit = state.unit(&skip_idx[i]);
