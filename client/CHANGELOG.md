@@ -18,7 +18,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [1.3.0] - 2021-07-19
+## [1.3.0] - 2021-07-21
 
 ### Added
 * Add support for retrieving historical auction information via the addition of an optional `--block-identifier` arg in the `get-auction-info` subcommand.

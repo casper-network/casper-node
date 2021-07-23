@@ -85,13 +85,13 @@ export function createPurse(): URef {
     let error = Error.fromResult(<u32>ret);
     if (error !== null){
         error.revert();
-        return <URef>unreachable();
+        unreachable();
     }
 
     let urefResult = URef.fromBytes(bytes);
     if (urefResult.hasError()) {
         Error.fromErrorCode(ErrorCode.PurseNotCreated).revert();
-        return <URef>unreachable();
+        unreachable();
     }
 
     return urefResult.value;
@@ -119,7 +119,7 @@ export function getPurseBalance(purse: URef): U512 | null {
             return null;
         }
         error.revert();
-        return <U512>unreachable();
+        unreachable();
     }
 
     let balanceBytes = readHostBuffer(balanceSize[0]);

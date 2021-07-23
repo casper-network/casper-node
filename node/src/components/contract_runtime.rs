@@ -648,4 +648,10 @@ impl ContractRuntime {
             .observe(start.elapsed().as_secs_f64());
         result
     }
+
+    /// Returns the engine state, for testing only.
+    #[cfg(test)]
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+        &self.engine_state
+    }
 }
