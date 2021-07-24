@@ -20,9 +20,6 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
-#![feature(test)]
-
-extern crate test;
 
 pub mod components;
 mod config_migration;

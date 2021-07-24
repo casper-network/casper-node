@@ -1,9 +1,7 @@
 //! Functions for interacting with the current runtime.
 
-// Can be removed once https://github.com/rust-lang/rustfmt/issues/3362 is resolved.
-#[rustfmt::skip]
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(feature = "no-std")]
+use alloc::{vec, vec::Vec};
 use core::mem::MaybeUninit;
 
 use casper_types::{
