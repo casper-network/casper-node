@@ -16,7 +16,7 @@
     "assemblyscript": "^0.10.0",
     "ava": "^3.12.1",
     "concat-md": "^0.3.5",
-    "ts-loader": "^6.2.1",
+    "ts-loader": "^9.2.4",
     "ts-node": "^8.5.4",
     "typedoc": "^0.19.1",
     "typedoc-plugin-markdown": "^2.2.17",
