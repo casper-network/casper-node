@@ -482,7 +482,12 @@ impl reactor::Reactor for Reactor {
         ));
 
         let execution_pre_state = match maybe_latest_block_header {
-            Some(latest_block_header) if !chainspec_loader.after_upgrade() => {
+            Some(latest_block_header)
+                if chainspec_loader
+                    .initial_execution_pre_state()
+                    .next_block_height()
+                    <= latest_block_header.height() =>
+            {
                 ExecutionPreState::from(&latest_block_header)
             }
             _ => chainspec_loader.initial_execution_pre_state(),
