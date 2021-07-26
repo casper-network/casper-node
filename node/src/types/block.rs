@@ -1032,6 +1032,28 @@ pub struct MerkleBlockBody<'a> {
     pub proposer: MerkleBlockBodyPart<'a, PublicKey>,
 }
 
+impl<'a> MerkleBlockBody<'a> {
+    /// Takes the hashes and Merkle proofs for a [`MerkleBlockBody`].
+    pub fn take_hashes_and_proofs(self) -> [(Digest, Digest); BlockBody::PARTS_COUNT] {
+        let MerkleBlockBody {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
+        } = self;
+        [
+            (
+                deploy_hashes.value_hash,
+                deploy_hashes.merkle_linked_list_node_hash,
+            ),
+            (
+                transfer_hashes.value_hash,
+                transfer_hashes.merkle_linked_list_node_hash,
+            ),
+            (proposer.value_hash, proposer.merkle_linked_list_node_hash),
+        ]
+    }
+}
+
 /// The body portion of a block.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
@@ -1041,6 +1063,9 @@ pub struct BlockBody {
 }
 
 impl BlockBody {
+    /// The number of parts of a block body.
+    pub const PARTS_COUNT: usize = 3;
+
     /// Creates a new body from deploy and transfer hashes.
     pub(crate) fn new(
         proposer: PublicKey,
@@ -1077,7 +1102,7 @@ impl BlockBody {
         hash::hash(&serialized_body)
     }
 
-    /// Construct the
+    /// Constructs the block body hashes for the block body.
     pub fn merklize(&self) -> MerkleBlockBody {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let BlockBody {
@@ -1111,8 +1136,7 @@ impl BlockBody {
         }
     }
 
-    /// Computes the body hash by taking the root of the Merkle tree representation of the block
-    /// body.
+    /// Computes the block body hash.
     fn hash_v2(&self) -> Digest {
         self.merklize().deploy_hashes.merkle_linked_list_node_hash
     }

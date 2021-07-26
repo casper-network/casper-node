@@ -260,6 +260,17 @@ pub enum Error {
     /// Non-existent block header
     #[error("Non-existent block header. Block hash: {0:?}")]
     NonExistentBlockHeader(BlockHash),
+    /// A block body was found to have more parts than expected.
+    #[error(
+        "Found an unexpected part of a block body in the database: \
+        {part_hash:?}"
+    )]
+    UnexpectedBlockBodyPart {
+        /// The block body with the issue.
+        block_body_hash: Digest,
+        /// The hash of the superfluous body part.
+        part_hash: Digest,
+    },
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -454,15 +465,26 @@ impl Storage {
             )?;
 
             let mut body_txn = env.begin_ro_txn()?;
-            let block_body: BlockBody =
-                match body_txn.get_value(block_body_v1_db, block_header.body_hash())? {
-                    Some(block_body) => block_body,
-                    None => {
-                        return Err(Error::NonExistentBlockBodyReferredToByHeader(Box::new(
-                            block_header,
-                        )))
-                    }
-                };
+            let block_body: BlockBody = match block_header.hashing_algorithm_version() {
+                HashingAlgorithmVersion::V1 => body_txn
+                    .get_value(block_body_v1_db, block_header.body_hash())?
+                    .ok_or_else(|| {
+                        Error::NonExistentBlockBodyReferredToByHeader(Box::new(
+                            block_header.clone(),
+                        ))
+                    })?,
+                HashingAlgorithmVersion::V2 => get_single_block_body_v2(
+                    &mut body_txn,
+                    block_body_v2_db,
+                    deploy_hashes_db,
+                    transfer_hashes_db,
+                    proposer_db,
+                    block_header.body_hash(),
+                )?
+                .ok_or_else(|| {
+                    Error::NonExistentBlockBodyReferredToByHeader(Box::new(block_header.clone()))
+                })?,
+            };
 
             if should_check_integrity {
                 Block::new_from_header_and_body(block_header.clone(), block_body.clone())?;
@@ -1724,6 +1746,8 @@ fn get_single_block_body_v2<Tx: Transaction>(
     Ok(Some(block_body))
 }
 
+// TODO: remove once we run the garbage collection again
+#[allow(dead_code)]
 fn garbage_collect_block_body_v2_db(
     txn: &mut RwTransaction,
     block_body_v2_db: &Database,
@@ -1734,7 +1758,14 @@ fn garbage_collect_block_body_v2_db(
 ) -> Result<(), Error> {
     // This will store all the keys that are reachable from a block header, in all the parts
     // databases (we're basically doing a mark-and-sweep below).
-    let mut live_digests = HashSet::new();
+    // The entries correspond to: the block_body_v2_db, deploy_hashes_db, transfer_hashes_db,
+    // proposer_db respectively.
+    let mut live_digests: [HashSet<Digest>; BlockBody::PARTS_COUNT + 1] = [
+        HashSet::new(),
+        HashSet::new(),
+        HashSet::new(),
+        HashSet::new(),
+    ];
 
     for (body_hash, header) in block_body_hash_to_header_map {
         if header.hashing_algorithm_version() != HashingAlgorithmVersion::V2 {
@@ -1742,8 +1773,9 @@ fn garbage_collect_block_body_v2_db(
             continue;
         }
         let mut current_digest = *body_hash;
-        while current_digest != hash::SENTINEL1 && !live_digests.contains(&current_digest) {
-            live_digests.insert(current_digest);
+        let mut live_digests_index = 1;
+        while current_digest != hash::SENTINEL1 && !live_digests[0].contains(&current_digest) {
+            live_digests[0].insert(current_digest);
             let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
                 match txn.get_value(*block_body_v2_db, &current_digest)? {
                     Some(slice) => slice,
@@ -1754,12 +1786,20 @@ fn garbage_collect_block_body_v2_db(
                         })
                     }
                 };
-            live_digests.insert(key_to_part_db);
+            if live_digests_index < live_digests.len() {
+                live_digests[live_digests_index].insert(key_to_part_db);
+            } else {
+                return Err(Error::UnexpectedBlockBodyPart {
+                    block_body_hash: *body_hash,
+                    part_hash: key_to_part_db,
+                });
+            }
+            live_digests_index += 1;
             current_digest = merkle_proof_of_rest;
         }
     }
 
-    let databases_to_clean = vec![
+    let databases_to_clean: [(&Database, &str); BlockBody::PARTS_COUNT + 1] = [
         (block_body_v2_db, "deleting v2 block body part"),
         (deploy_hashes_db, "deleting v2 deploy hashes entry"),
         (transfer_hashes_db, "deleting v2 transfer hashes entry"),
@@ -1767,12 +1807,12 @@ fn garbage_collect_block_body_v2_db(
     ];
 
     // Clean dead entries from all the databases
-    for (database, info_text) in databases_to_clean {
-        let mut cursor = txn.open_rw_cursor(*database)?;
+    for (index, (database, info_text)) in databases_to_clean.iter().enumerate() {
+        let mut cursor = txn.open_rw_cursor(**database)?;
         for (raw_key, _raw_val) in cursor.iter() {
             let key = Digest::try_from(raw_key)
                 .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-            if !live_digests.contains(&key) {
+            if !live_digests[index].contains(&key) {
                 info!(?raw_key, info_text);
                 cursor.del(WriteFlags::empty())?;
             }
@@ -1798,24 +1838,13 @@ fn initialize_block_body_v2_db(
 ) -> Result<(), Error> {
     info!("initializing v2 block body database");
 
-    let mut txn = env.begin_rw_txn()?;
+    let txn = env.begin_rw_txn()?;
 
     let block_body_hash_to_header_map = if any_v2_block_deleted || should_check_integrity {
         construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?
     } else {
         BTreeMap::new()
     };
-
-    if any_v2_block_deleted {
-        garbage_collect_block_body_v2_db(
-            &mut txn,
-            block_body_v2_db,
-            deploy_hashes_db,
-            transfer_hashes_db,
-            proposer_db,
-            &block_body_hash_to_header_map,
-        )?;
-    }
 
     if should_check_integrity {
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V2;
