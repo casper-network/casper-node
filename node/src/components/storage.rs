@@ -1023,7 +1023,7 @@ impl Storage {
     }
 
     /// Retrieves a block by hash.
-    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, LmdbExtError> {
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
