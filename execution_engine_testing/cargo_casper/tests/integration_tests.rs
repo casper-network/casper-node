@@ -60,9 +60,20 @@ fn run_tool_and_resulting_tests() {
     assert_eq!(SUCCESS_EXIT_CODE, tool_output.status.code().unwrap());
 
     // Run 'cargo test' in the 'tests' folder of the generated project.  This builds the Wasm
-    // contract as well as the tests.
-    let mut test_cmd = Command::new(env!("CARGO"));
-    test_cmd.arg("test").current_dir(test_dir.join("tests"));
+    // contract as well as the tests.  This requires the use of a nightly version of Rust, so we use
+    // rustup to execute the appropriate cargo version.
+    let mut test_cmd = Command::new("rustup");
+    let nightly_version = fs::read_to_string(format!(
+        "{}/../../smart_contracts/rust-toolchain",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    test_cmd
+        .arg("run")
+        .arg(nightly_version.trim())
+        .arg("cargo")
+        .arg("test")
+        .current_dir(test_dir.join("tests"));
     let test_output = output_from_command(test_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, test_output.status.code().unwrap());
 

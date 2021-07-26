@@ -55,8 +55,8 @@ impl NetworkConfig {
 
         NetworkConfig {
             name,
-            accounts_config,
             maximum_net_message_size,
+            accounts_config,
         }
     }
 }
@@ -84,8 +84,8 @@ impl FromBytes for NetworkConfig {
         let (maximum_net_message_size, remainder) = FromBytes::from_bytes(remainder)?;
         let config = NetworkConfig {
             name,
-            accounts_config,
             maximum_net_message_size,
+            accounts_config,
         };
         Ok((config, remainder))
     }

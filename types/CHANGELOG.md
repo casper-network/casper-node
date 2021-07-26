@@ -13,7 +13,11 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-No changes.
+### Added
+* Add explicit `no-std` feature, enabled by default and which causes a compiler error if enabled along with `std`.
+
+### Changed
+* Support building and testing using stable Rust.
 
 
 
@@ -21,7 +25,7 @@ No changes.
 
 ### Changed
 * Restrict summarization when JSON pretty-printing to contiguous long hex strings.
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
 
 ### Removed
 * Remove ability to clone `SecretKey`s.

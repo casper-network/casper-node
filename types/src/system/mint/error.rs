@@ -1,4 +1,4 @@
-//! Home of the Mint contract's [`Error`] type.
+//! Home of the Mint contract's [`enum@Error`] type.
 
 use alloc::vec::Vec;
 use core::convert::{TryFrom, TryInto};

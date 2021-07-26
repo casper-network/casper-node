@@ -269,7 +269,7 @@ impl TransferAddr {
     }
 
     /// Formats the `TransferAddr` as a prefixed, hex-encoded string.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         format!(
             "{}{}",
             TRANSFER_ADDR_FORMATTED_STRING_PREFIX,

@@ -13,7 +13,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-No changes.
+### Changed
+* Support building and testing using stable Rust.
 
 
 
@@ -28,7 +29,8 @@ No changes.
 * Change `put-deploy` and `make-deploy` subcommands to support transfers.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to not overwrite files unless `--force` is passed.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to use transactional file writing for enhanced safety and reliability.
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
+
 
 
 ## [1.2.0] - 2021-05-27

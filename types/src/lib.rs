@@ -6,10 +6,6 @@
 //! the crate's `std` feature.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(
-    not(feature = "no-unstable-features"),
-    feature(min_specialization, try_reserve)
-)]
 #![doc(html_root_url = "https://docs.rs/casper-types/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
@@ -96,3 +92,12 @@ pub use crate::{
     era_id::EraId,
     uint::{UIntParseError, U128, U256, U512},
 };
+
+#[cfg(not(any(feature = "std", feature = "no-std")))]
+compile_error!(
+    "casper-types requires one of 'std' (enabled by default) or 'no-std' features to be enabled"
+);
+#[cfg(all(feature = "std", feature = "no-std"))]
+compile_error!(
+    "casper-types features 'std' (enabled by default) and 'no-std' should not both be enabled"
+);
