@@ -57,6 +57,7 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
+use num::rational::Ratio;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -65,10 +66,13 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform, U512};
 
 use crate::{
-    components::Component,
+    components::{
+        linear_chain_sync::{self, FinalitySignatureError},
+        Component,
+    },
     crypto,
     crypto::hash::{self, Digest},
     effect::{
@@ -260,6 +264,12 @@ pub enum Error {
     /// Non-existent block header
     #[error("Non-existent block header. Block hash: {0:?}")]
     NonExistentBlockHeader(BlockHash),
+    /// Switch block does not contain era end.
+    #[error("switch block does not contain era end: {0:?}")]
+    InvalidSwitchBlock(Box<BlockHeader>),
+    /// Insufficient or wrong finality signatures.
+    #[error(transparent)]
+    FinalitySignature(#[from] FinalitySignatureError),
     /// A block body was found to have more parts than expected.
     #[error(
         "Found an unexpected part of a block body in the database: \
@@ -669,9 +679,7 @@ impl Storage {
             StorageRequest::GetBlock {
                 block_hash,
                 responder,
-            } => responder
-                .respond(self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?)
-                .ignore(),
+            } => responder.respond(self.read_block(&block_hash)?).ignore(),
             StorageRequest::GetBlockHeaderAtHeight { height, responder } => responder
                 .respond(self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
@@ -1014,16 +1022,55 @@ impl Storage {
         }))
     }
 
-    // Retrieves a block header to handle a network request.
-    pub fn read_block_header_and_finality_signatures_by_height(
+    /// Retrieves a block by hash.
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
+        self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
+    }
+
+    /// Retrieves a block header by height.
+    /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    pub fn read_block_header_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_header_and_finality_signatures =
-            self.get_block_header_and_metadata_by_height(&mut txn, height)?;
+        let maybe_block_header_and_finality_signatures = self
+            .get_block_header_and_sufficient_finality_signatures_by_height(
+                &mut txn,
+                height,
+                genesis_validator_weights,
+                finality_threshold_fraction,
+                last_emergency_restart,
+            )?;
         drop(txn);
         Ok(maybe_block_header_and_finality_signatures)
+    }
+
+    /// Retrieves a block by height.
+    /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    pub fn read_block_and_sufficient_finality_signatures_by_height(
+        &self,
+        height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockWithMetadata>, Error> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_and_finality_signatures = self
+            .get_block_and_sufficient_finality_signatures_by_height(
+                &mut txn,
+                height,
+                genesis_validator_weights,
+                finality_threshold_fraction,
+                last_emergency_restart,
+            )?;
+        drop(txn);
+        Ok(maybe_block_and_finality_signatures)
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it.
@@ -1286,7 +1333,7 @@ impl Storage {
         Ok(true)
     }
 
-    // Retrieves a block header to handle a network request.
+    // Retrieves a block header by hash.
     pub fn get_block_header_by_hash(
         &self,
         block_hash: &BlockHash,
@@ -1307,14 +1354,7 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let maybe_block_body: Option<BlockBody> = match block_header.hashing_algorithm_version() {
-            HashingAlgorithmVersion::V1 => {
-                self.get_single_v1_block_body(tx, block_header.body_hash())?
-            }
-            HashingAlgorithmVersion::V2 => {
-                self.get_single_block_body_v2(tx, block_header.body_hash())?
-            }
-        };
+        let maybe_block_body = self.get_body_for_block_header(tx, &block_header)?;
         let block_body = match maybe_block_body {
             Some(block_body) => block_body,
             None => {
@@ -1329,7 +1369,22 @@ impl Storage {
         Ok(Some(block))
     }
 
-    fn get_single_v1_block_body<Tx: Transaction>(
+    fn get_body_for_block_header<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_header: &BlockHeader,
+    ) -> Result<Option<BlockBody>, LmdbExtError> {
+        match block_header.hashing_algorithm_version() {
+            HashingAlgorithmVersion::V1 => {
+                self.get_single_block_body_v1(tx, block_header.body_hash())
+            }
+            HashingAlgorithmVersion::V2 => {
+                self.get_single_block_body_v2(tx, block_header.body_hash())
+            }
+        }
+    }
+
+    fn get_single_block_body_v1<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_body_hash: &Digest,
@@ -1390,6 +1445,142 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
+    }
+
+    /// Retrieves single block header by height by looking it up in the index and returning it;
+    /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    fn get_block_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockWithMetadata>, Error> {
+        let BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        } = match self.get_block_header_and_sufficient_finality_signatures_by_height(
+            tx,
+            height,
+            genesis_validator_weights,
+            finality_threshold_fraction,
+            last_emergency_restart,
+        )? {
+            None => return Ok(None),
+            Some(block_header_with_metadata) => block_header_with_metadata,
+        };
+        if let Some(block_body) = self.get_body_for_block_header(tx, &block_header)? {
+            Ok(Some(BlockWithMetadata {
+                block: Block::new_from_header_and_body(block_header, block_body)?,
+                finality_signatures: block_signatures,
+            }))
+        } else {
+            debug!(?block_header, "Missing block body for header");
+            Ok(None)
+        }
+    }
+
+    /// Retrieves single block header by height by looking it up in the index and returning it;
+    /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    fn get_block_header_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+        let block_hash = match self.block_height_index.get(&height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+        let block_header = match self.get_single_block_header(tx, block_hash)? {
+            None => return Ok(None),
+            Some(block_header) => block_header,
+        };
+        let block_signatures = match self.get_sufficient_finality_signatures(
+            tx,
+            &block_header,
+            genesis_validator_weights,
+            finality_threshold_fraction,
+            last_emergency_restart,
+        )? {
+            None => BlockSignatures::new(*block_hash, block_header.era_id()),
+            Some(signatures) => signatures,
+        };
+        Ok(Some(BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        }))
+    }
+
+    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
+    fn get_sufficient_finality_signatures<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_header: &BlockHeader,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockSignatures>, Error> {
+        if let Some(last_emergency_restart) = last_emergency_restart {
+            if block_header.era_id() <= last_emergency_restart {
+                debug!(
+                    ?block_header,
+                    ?last_emergency_restart,
+                    "finality signatures from before last emergency restart requested"
+                );
+                return Ok(None);
+            }
+        }
+        let block_signatures = match self.get_finality_signatures(tx, &block_header.hash())? {
+            None => return Ok(None),
+            Some(block_signatures) => block_signatures,
+        };
+        let finality_check_result = if block_header.era_id().is_genesis() {
+            linear_chain_sync::check_sufficient_finality_signatures(
+                genesis_validator_weights,
+                finality_threshold_fraction,
+                &block_signatures,
+            )
+        } else {
+            let switch_block_hash = match self
+                .switch_block_era_id_index
+                .get(&(block_header.era_id() - 1))
+            {
+                None => return Ok(None),
+                Some(switch_block_hash) => switch_block_hash,
+            };
+            let switch_block_header = match self.get_single_block_header(tx, switch_block_hash)? {
+                None => return Ok(None),
+                Some(switch_block_header) => switch_block_header,
+            };
+            match switch_block_header.next_era_validator_weights() {
+                None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
+                Some(validator_weights) => linear_chain_sync::check_sufficient_finality_signatures(
+                    validator_weights,
+                    finality_threshold_fraction,
+                    &block_signatures,
+                ),
+            }
+        };
+        match finality_check_result {
+            Err(err @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
+                info!(
+                    ?err,
+                    ?block_header,
+                    "insufficient finality signatures for block header read from storage"
+                );
+                Ok(None)
+            }
+            Err(err) => Err(err.into()),
+            Ok(()) => Ok(Some(block_signatures)),
+        }
     }
 
     /// Get the lmdb environment

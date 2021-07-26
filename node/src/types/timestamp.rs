@@ -73,11 +73,18 @@ impl Timestamp {
     pub fn trailing_zeros(&self) -> u8 {
         self.0.trailing_zeros() as u8
     }
+}
 
+#[cfg(test)]
+impl Timestamp {
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         Timestamp(1_596_763_000_000 + rng.gen_range(200_000..1_000_000))
+    }
+
+    /// Checked subtraction for timestamps
+    pub fn checked_sub(self, other: TimeDiff) -> Option<Timestamp> {
+        self.0.checked_sub(other.0).map(Timestamp)
     }
 }
 

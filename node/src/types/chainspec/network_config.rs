@@ -1,12 +1,13 @@
+use std::collections::BTreeMap;
+
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
 use serde::Serialize;
 
-use casper_execution_engine::shared::motes::Motes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey,
+    PublicKey, U512,
 };
 
 use super::AccountsConfig;
@@ -27,13 +28,16 @@ pub struct NetworkConfig {
 
 impl NetworkConfig {
     /// Returns a vector of chainspec validators' public key and their stake.
-    pub fn chainspec_validator_stakes(&self) -> Vec<(PublicKey, Motes)> {
+    pub fn chainspec_validator_stakes(&self) -> BTreeMap<PublicKey, U512> {
         self.accounts_config
             .accounts()
             .iter()
             .filter_map(|account_config| {
                 if account_config.is_genesis_validator() {
-                    Some((account_config.public_key(), account_config.bonded_amount()))
+                    Some((
+                        account_config.public_key(),
+                        account_config.bonded_amount().value(),
+                    ))
                 } else {
                     None
                 }
