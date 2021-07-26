@@ -81,4 +81,4 @@ start_run_teardown "emergency_upgrade_test.sh"
 start_run_teardown "emergency_upgrade_test_balances.sh"
 start_run_teardown "sync_test.sh node=6 timeout=500"
 # Keep this test last
-# start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
+start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
