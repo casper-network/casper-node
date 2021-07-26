@@ -108,7 +108,7 @@ pub struct ContractRuntime {
     protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
-    exec_queue: VecDeque<(FinalizedBlock, Vec<Deploy>)>,
+    exec_queue: VecDeque<(FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>,
 }
 
 impl Debug for ContractRuntime {
@@ -412,6 +412,7 @@ where
                 execution_pre_state,
                 finalized_block,
                 deploys,
+                transfers,
                 responder,
             } => {
                 trace!(
@@ -431,6 +432,7 @@ where
                         execution_pre_state,
                         finalized_block,
                         deploys,
+                        transfers,
                     );
                     trace!(?result, "execute block response");
                     responder.respond(result).await
@@ -440,6 +442,7 @@ where
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
+                transfers,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 if self.execution_pre_state.next_block_height == finalized_block.height() {
@@ -449,9 +452,11 @@ where
                         self.execution_pre_state.clone(),
                         finalized_block,
                         deploys,
+                        transfers,
                     )
                 } else {
-                    self.exec_queue.push_back((finalized_block, deploys));
+                    self.exec_queue
+                        .push_back((finalized_block, deploys, transfers));
                     Effects::new()
                 }
             }
@@ -581,6 +586,7 @@ impl ContractRuntime {
         execution_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) -> Effects<ContractRuntimeRequest>
     where
         REv: From<ContractRuntimeRequest>
@@ -599,6 +605,7 @@ impl ContractRuntime {
             execution_pre_state,
             finalized_block,
             deploys,
+            transfers,
         ) {
             Ok(block_and_execution_effects) => block_and_execution_effects,
             Err(error) => return fatal!(effect_builder, "{}", error).ignore(),
@@ -619,10 +626,10 @@ impl ContractRuntime {
         }
 
         // If the child is already finalized, start execution.
-        if let Some((finalized_block, deploys)) = self.exec_queue.pop_front() {
+        if let Some((finalized_block, deploys, transfers)) = self.exec_queue.pop_front() {
             effects.extend(
                 effect_builder
-                    .enqueue_block_for_execution(finalized_block, deploys)
+                    .enqueue_block_for_execution(finalized_block, deploys, transfers)
                     .ignore(),
             );
         }

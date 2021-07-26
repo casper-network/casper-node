@@ -92,3 +92,16 @@ pub struct BlockAndExecutionEffects {
     /// An [`ExecutionEffect`] created if an era ended.
     pub maybe_step_execution_effect: Option<ExecutionEffect>,
 }
+
+impl BlockAndExecutionEffects {
+    /// Gets the block.
+    pub fn block(&self) -> &Block {
+        &self.block
+    }
+}
+
+impl From<BlockAndExecutionEffects> for Block {
+    fn from(block_and_execution_effects: BlockAndExecutionEffects) -> Self {
+        block_and_execution_effects.block
+    }
+}

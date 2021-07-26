@@ -379,20 +379,16 @@ impl FinalizedBlock {
         self.proposer.clone()
     }
 
-    /// Returns an iterator over all deploy and transfer hashes.
-    pub(crate) fn deploys_and_transfers_iter(
-        &self,
-    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
-        self.deploy_hashes
-            .iter()
-            .copied()
-            .map(DeployOrTransferHash::Deploy)
-            .chain(
-                self.transfer_hashes
-                    .iter()
-                    .copied()
-                    .map(DeployOrTransferHash::Transfer),
-            )
+    /// Returns the WebAssembly-deploy hashes for the finalized block. These correspond to complex
+    /// smart contract operations that require a WebAssembly VM in the execution engine.
+    pub(crate) fn deploy_hashes(&self) -> &[DeployHash] {
+        &self.deploy_hashes
+    }
+
+    /// Returns the transfer hashes for the finalized block. These correspond to simple token
+    /// transfers that do not require a VM as part of their execution.
+    pub(crate) fn transfer_hashes(&self) -> &[DeployHash] {
+        &self.transfer_hashes
     }
 
     /// Generates a random instance using a `TestRng`.
