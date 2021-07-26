@@ -1380,7 +1380,7 @@ mod param_tests {
             params.gas_price = "fifteen";
             let result: StdResult<DeployParams, Error> = params.try_into();
             let result = result.map(|_| ());
-            if let Err(Error::FailedToParseInt(context, _)) = result {
+            if let Err(Error::FailedToParseInt { context, error: _ }) = result {
                 assert_eq!(context, "gas_price");
             } else {
                 panic!("should be an error");

@@ -43,7 +43,10 @@ fn ttl(value: &str) -> Result<TimeDiff> {
 fn gas_price(value: &str) -> Result<u64> {
     value
         .parse::<u64>()
-        .map_err(|error| Error::FailedToParseInt("gas_price", error))
+        .map_err(|error| Error::FailedToParseInt {
+            context: "gas_price",
+            error,
+        })
 }
 
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
@@ -584,13 +587,17 @@ fn entry_point(value: &str) -> Option<String> {
 fn version(value: &str) -> Result<u32> {
     value
         .parse::<u32>()
-        .map_err(|error| Error::FailedToParseInt("version", error))
+        .map_err(|error| Error::FailedToParseInt {
+            context: "version",
+            error,
+        })
 }
 
 pub(crate) fn transfer_id(value: &str) -> Result<u64> {
-    value
-        .parse()
-        .map_err(|error| Error::FailedToParseInt("transfer-id", error))
+    value.parse().map_err(|error| Error::FailedToParseInt {
+        context: "transfer-id",
+        error,
+    })
 }
 
 #[cfg(test)]
@@ -1026,7 +1033,7 @@ mod tests {
         // failed to parse gas price.
         assert!(matches!(
             result.err().expect("Result should be an Err."),
-            Error::FailedToParseInt(_, _)
+            Error::FailedToParseInt { .. }
         ));
 
         let result = parse_deploy_params(

@@ -64,8 +64,8 @@ impl AsFFIError for Error {
     fn as_ffi_error(&self) -> casper_error_t {
         match self {
             Error::FailedToParseKey => casper_error_t::CASPER_FAILED_TO_PARSE_KEY,
-            Error::FailedToParseURef(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_UREF,
-            Error::FailedToParseInt(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_INT,
+            Error::FailedToParseURef { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_UREF,
+            Error::FailedToParseInt { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_INT,
             Error::FailedToParseTimeDiff(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIME_DIFF,
             Error::FailedToParseTimestamp(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIMESTAMP,
             Error::FailedToParseUint(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_UINT,

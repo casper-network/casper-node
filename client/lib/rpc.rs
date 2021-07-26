@@ -155,8 +155,11 @@ impl RpcCall {
                 context: "state_root_hash",
                 error,
             })?;
-        let uref = URef::from_formatted_str(purse_uref)
-            .map_err(|error| Error::FailedToParseURef("purse_uref", error))?;
+        let uref =
+            URef::from_formatted_str(purse_uref).map_err(|error| Error::FailedToParseURef {
+                context: "purse_uref",
+                error: error.into(),
+            })?;
         let key = Key::from(uref);
 
         let params = GetBalanceParams {
@@ -290,9 +293,13 @@ impl RpcCall {
                 })?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
-            let height = maybe_block_identifier
-                .parse()
-                .map_err(|error| Error::FailedToParseInt("block_identifier", error))?;
+            let height =
+                maybe_block_identifier
+                    .parse()
+                    .map_err(|error| Error::FailedToParseInt {
+                        context: "block_identifier",
+                        error,
+                    })?;
             Ok(Some(BlockIdentifier::Height(height)))
         }
     }

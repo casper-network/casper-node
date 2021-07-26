@@ -24,12 +24,24 @@ pub enum Error {
     FailedToParseKey,
 
     /// Failed to parse a `URef` from a formatted string.
-    #[error("Failed to parse '{0}' as a uref: {1:?}")]
-    FailedToParseURef(&'static str, URefFromStrError),
+    #[error("Failed to parse '{context}' as a uref: {error}")]
+    FailedToParseURef {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// The actual error raised.
+        error: URefFromStrError,
+    },
 
     /// Failed to parse an integer from a string.
-    #[error("Failed to parse '{0}' as an integer: {1:?}")]
-    FailedToParseInt(&'static str, ParseIntError),
+    #[error("Failed to parse '{context}' as an integer: {error}")]
+    FailedToParseInt {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// The actual error raised.
+        error: ParseIntError,
+    },
 
     /// Failed to parse a `TimeDiff` from a formatted string.
     #[error("Failed to parse '{0}' as a time diff: {1}")]

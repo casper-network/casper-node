@@ -293,10 +293,10 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert!(matches!(
             server_handle.get_balance(VALID_STATE_ROOT_HASH, ""),
-            Err(Error::FailedToParseURef(
-                "purse_uref",
-                URefFromStrError::InvalidPrefix
-            ))
+            Err(Error::FailedToParseURef {
+                context: "purse_uref",
+                error: URefFromStrError::InvalidPrefix
+            })
         ));
     }
 
@@ -399,7 +399,10 @@ mod get_block {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert!(matches!(
             server_handle.get_block("<not a valid hash>"),
-            Err(Error::FailedToParseInt("block_identifier", _))
+            Err(Error::FailedToParseInt {
+                context: "block_identifier",
+                error: _
+            })
         ))
     }
 }
