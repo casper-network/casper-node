@@ -71,7 +71,6 @@ use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer,
 use crate::{
     components::{
         linear_chain_sync::{self, FinalitySignatureError},
-        storage::lmdb_ext::LmdbExtError::CouldNotFindBlockBodyPart,
         Component,
     },
     crypto,
@@ -1474,10 +1473,6 @@ impl Storage {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
-        let switch_block_hash = match self.switch_block_era_id_index.get(&block_header.era_id()) {
-            None => return Ok(None),
-            Some(switch_block_hash) => switch_block_hash,
-        };
         let finality_check_result = if block_header.era_id().is_genesis() {
             linear_chain_sync::check_sufficient_finality_signatures(
                 genesis_validator_weights,
@@ -1485,6 +1480,13 @@ impl Storage {
                 &block_signatures,
             )
         } else {
+            let switch_block_hash = match self
+                .switch_block_era_id_index
+                .get(&(block_header.era_id() - 1))
+            {
+                None => return Ok(None),
+                Some(switch_block_hash) => switch_block_hash,
+            };
             let switch_block_header = match self.get_single_block_header(tx, switch_block_hash)? {
                 None => return Ok(None),
                 Some(switch_block_header) => switch_block_header,

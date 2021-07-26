@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fmt::Debug,
-    ops::{Add, Div},
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt::Debug, ops::Sub, time::Duration};
 
 use num::rational::Ratio;
 use tracing::{error, info, trace, warn};
@@ -222,7 +217,7 @@ pub(crate) fn check_sufficient_finality_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = finality_threshold_fraction.add(1).div(2);
+    let lower_bound = Ratio::from(1u64).sub(finality_threshold_fraction);
     // Verify: signature_weight / total_weight >= lower_bound
     // Equivalent to the following
     if signature_weight * U512::from(*lower_bound.denom())

@@ -2,23 +2,24 @@
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
 };
 
 use lmdb::{Cursor, Transaction};
+use num::rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::{
     construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db, Config,
     Storage,
 };
 use crate::{
-    components::storage::lmdb_ext::WriteTransactionExt,
+    components::{consensus::EraReport, storage::lmdb_ext::WriteTransactionExt},
     crypto::{hash::Digest, AsymmetricKeyExt},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
@@ -26,8 +27,8 @@ use crate::{
     },
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployMetadata,
-        FinalitySignature,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
+        DeployMetadata, FinalitySignature, FinalizedBlock,
     },
     utils::WithDir,
 };
@@ -385,6 +386,43 @@ fn can_put_and_get_block() {
     assert_eq!(response.as_ref(), Some(block.header()));
 }
 
+/// Creates a switch block immediately before block header.
+fn switch_block_for_block_header(
+    block_header: &BlockHeader,
+    validator_weights: BTreeMap<PublicKey, U512>,
+) -> Block {
+    let finalized_block = FinalizedBlock::new(
+        BlockPayload::new(vec![], vec![], vec![], false),
+        Some(EraReport {
+            equivocators: vec![],
+            rewards: BTreeMap::default(),
+            inactive_validators: vec![],
+        }),
+        block_header
+            .timestamp()
+            .checked_sub(1.into())
+            .expect("Time must not be epoch"),
+        block_header
+            .era_id()
+            .checked_sub(1)
+            .expect("EraId must not be 0"),
+        block_header
+            .height()
+            .checked_sub(1)
+            .expect("Height must not be 0"),
+        PublicKey::System,
+    );
+    Block::new(
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        finalized_block,
+        Some(validator_weights),
+        block_header.protocol_version(),
+    )
+    .expect("Could not create block")
+}
+
 #[test]
 fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let mut harness = ComponentHarness::default();
@@ -394,9 +432,13 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let block = Block::random(&mut harness.rng);
     let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
 
+    // Secret and Public Keys
+    let alice_secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
+    let alice_public_key = PublicKey::from(&alice_secret_key);
+    let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
+    let bob_public_key = PublicKey::from(&bob_secret_key);
+
     {
-        let alice_secret_key =
-            SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,
@@ -405,13 +447,12 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
             block.header().hash(),
             block.header().era_id(),
             &alice_secret_key,
-            PublicKey::from(&alice_secret_key),
+            alice_public_key.clone(),
         );
         block_signatures.insert_proof(public_key, signature);
     }
 
     {
-        let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,
@@ -420,7 +461,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
             block.header().hash(),
             block.header().era_id(),
             &bob_secret_key,
-            PublicKey::from(&bob_secret_key),
+            bob_public_key.clone(),
         );
         block_signatures.insert_proof(public_key, signature);
     }
@@ -458,14 +499,21 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
         );
     }
 
-    let genesis_validator_weights = todo!();
-    let finality_threshold_fraction = todo!();
+    let genesis_validator_weights: BTreeMap<PublicKey, U512> =
+        vec![(alice_public_key, 123.into()), (bob_public_key, 123.into())]
+            .into_iter()
+            .collect();
+    let finality_threshold_fraction = Ratio::new(1, 3);
+    let switch_block =
+        switch_block_for_block_header(block.header(), genesis_validator_weights.clone());
+    let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block.clone()));
+    assert!(was_new, "putting switch block should have returned `true`");
 
     {
         let block_header_with_metadata = storage
             .read_block_header_and_sufficient_finality_signatures_by_height(
                 block.header().height(),
-                genesis_validator_weights,
+                &genesis_validator_weights,
                 finality_threshold_fraction,
                 None, // last emergency restart
             )
