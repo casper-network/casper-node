@@ -124,16 +124,6 @@ where
     Ok(deploy)
 }
 
-/// Returns the genesis validator weights, by public key.
-fn get_genesis_validators(chainspec: &Chainspec) -> BTreeMap<PublicKey, U512> {
-    chainspec
-        .network_config
-        .chainspec_validator_stakes()
-        .into_iter()
-        .map(|(pub_key, motes)| (pub_key, motes.value()))
-        .collect()
-}
-
 /// Get trusted switch block; returns `None` if we are still in the first era.
 async fn maybe_get_trusted_switch_block<REv, I>(
     effect_builder: EffectBuilder<REv>,
@@ -195,6 +185,22 @@ fn validate_finality_signatures(
     // Cryptographically verify block signatures
     block_signatures.verify()?;
 
+    check_sufficient_finality_signatures(
+        trusted_validator_weights,
+        finality_threshold_fraction,
+        block_signatures,
+    )
+}
+
+/// Returns Ok(()) if the finality signatures' total weight exceeds the threshold. Returns an error
+/// if it doesn't, or if one of the signatures does not belong to a validator.
+///
+/// This does _not_ cryptographically verify the signatures.
+pub(crate) fn check_sufficient_finality_signatures(
+    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
+    block_signatures: &BlockSignatures,
+) -> Result<(), FinalitySignatureError> {
     // Calculate the weight of the signatures
     let mut signature_weight: U512 = U512::zero();
     for (public_key, _) in block_signatures.proofs.iter() {
@@ -204,11 +210,9 @@ fn validate_finality_signatures(
                     trusted_validator_weights: trusted_validator_weights.clone(),
                     block_signatures: Box::new(block_signatures.clone()),
                     bogus_validator_public_key: Box::new(public_key.clone()),
-                })
+                });
             }
-            Some(validator_weight) => {
-                signature_weight += *validator_weight;
-            }
+            Some(validator_weight) => signature_weight += *validator_weight,
         }
     }
 
@@ -232,7 +236,6 @@ fn validate_finality_signatures(
             finality_threshold_fraction,
         });
     }
-
     Ok(())
 }
 
@@ -448,7 +451,7 @@ where
         maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_header).await?;
 
     let mut trusted_validator_weights = maybe_trusted_switch_block.as_ref().map_or_else(
-        || get_genesis_validators(&chainspec),
+        || chainspec.network_config.chainspec_validator_stakes(),
         |switch_block| switch_block.next_era_validator_weights().unwrap().clone(),
     );
 

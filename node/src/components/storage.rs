@@ -57,6 +57,7 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
+use num::rational::Ratio;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -65,10 +66,14 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform, U512};
 
 use crate::{
-    components::Component,
+    components::{
+        linear_chain_sync::{self, FinalitySignatureError},
+        storage::lmdb_ext::LmdbExtError::CouldNotFindBlockBodyPart,
+        Component,
+    },
     crypto,
     crypto::hash::{self, Digest},
     effect::{
@@ -260,6 +265,12 @@ pub enum Error {
     /// Non-existent block header
     #[error("Non-existent block header. Block hash: {0:?}")]
     NonExistentBlockHeader(BlockHash),
+    /// Switch block does not contain era end.
+    #[error("switch block does not contain era end: {0:?}")]
+    InvalidSwitchBlock(Box<BlockHeader>),
+    /// Insufficient or wrong finality signatures.
+    #[error(transparent)]
+    FinalitySignature(#[from] FinalitySignatureError),
     /// A block body was found to have more parts than expected.
     #[error(
         "Found an unexpected part of a block body in the database: \
@@ -1014,14 +1025,25 @@ impl Storage {
         }))
     }
 
-    // Retrieves a block header to handle a network request.
-    pub fn read_block_header_and_finality_signatures_by_height(
+    /// Retrieves a block header to handle a network request.
+    /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    pub fn read_block_header_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_header_and_finality_signatures =
-            self.get_block_header_and_metadata_by_height(&mut txn, height)?;
+        let maybe_block_header_and_finality_signatures = self
+            .get_block_header_and_sufficient_finality_signatures_by_height(
+                &mut txn,
+                height,
+                genesis_validator_weights,
+                finality_threshold_fraction,
+                last_emergency_restart,
+            )?;
         drop(txn);
         Ok(maybe_block_header_and_finality_signatures)
     }
@@ -1390,6 +1412,104 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
+    }
+
+    /// Retrieves single block header by height by looking it up in the index and returning it;
+    /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
+    /// before the most recent emergency upgrade.
+    fn get_block_header_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+        let block_hash = match self.block_height_index.get(&height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+        let block_header = match self.get_single_block_header(tx, block_hash)? {
+            None => return Ok(None),
+            Some(block_header) => block_header,
+        };
+        let block_signatures = match self.get_sufficient_finality_signatures(
+            tx,
+            &block_header,
+            genesis_validator_weights,
+            finality_threshold_fraction,
+            last_emergency_restart,
+        )? {
+            None => BlockSignatures::new(*block_hash, block_header.era_id()),
+            Some(signatures) => signatures,
+        };
+        Ok(Some(BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        }))
+    }
+
+    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
+    fn get_sufficient_finality_signatures<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_header: &BlockHeader,
+        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+    ) -> Result<Option<BlockSignatures>, Error> {
+        if let Some(last_emergency_restart) = last_emergency_restart {
+            if block_header.era_id() <= last_emergency_restart {
+                debug!(
+                    ?block_header,
+                    ?last_emergency_restart,
+                    "finality signatures from before last emergency restart requested"
+                );
+                return Ok(None);
+            }
+        }
+        let block_signatures = match self.get_finality_signatures(tx, &block_header.hash())? {
+            None => return Ok(None),
+            Some(block_signatures) => block_signatures,
+        };
+        let switch_block_hash = match self.switch_block_era_id_index.get(&block_header.era_id()) {
+            None => return Ok(None),
+            Some(switch_block_hash) => switch_block_hash,
+        };
+        let finality_check_result = if block_header.era_id().is_genesis() {
+            linear_chain_sync::check_sufficient_finality_signatures(
+                genesis_validator_weights,
+                finality_threshold_fraction,
+                &block_signatures,
+            )
+        } else {
+            let switch_block_header = match self.get_single_block_header(tx, switch_block_hash)? {
+                None => return Ok(None),
+                Some(switch_block_header) => switch_block_header,
+            };
+            match switch_block_header.next_era_validator_weights() {
+                None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
+                Some(validator_weights) => linear_chain_sync::check_sufficient_finality_signatures(
+                    validator_weights,
+                    finality_threshold_fraction,
+                    &block_signatures,
+                ),
+            }
+        };
+        match finality_check_result {
+            Err(err @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
+                info!(
+                    ?err,
+                    ?block_header,
+                    "insufficient finality signatures for block header read from storage"
+                );
+                Ok(None)
+            }
+            Err(err) => Err(err.into()),
+            Ok(()) => Ok(Some(block_signatures)),
+        }
     }
 
     /// Get the lmdb environment
