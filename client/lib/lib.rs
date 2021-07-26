@@ -201,8 +201,10 @@ pub fn transfer(
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
+    let amount = U512::from_dec_str(amount).map_err(|err| Error::FailedToParseUint {
+        context: "amount",
+        error: UIntParseError::FromDecStr(err),
+    })?;
     let source_purse = None;
     let target_account = parsing::get_target_account(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
@@ -246,8 +248,10 @@ pub fn make_transfer(
     payment_params: PaymentStrParams<'_>,
     force: bool,
 ) -> Result<()> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
+    let amount = U512::from_dec_str(amount).map_err(|err| Error::FailedToParseUint {
+        context: "amount",
+        error: UIntParseError::FromDecStr(err),
+    })?;
     let source_purse = None;
     let target_account = parsing::get_target_account(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
@@ -1367,10 +1371,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimestamp(
-                    "timestamp",
-                    TimestampError::InvalidFormat
-                ))
+                Err(Error::FailedToParseTimestamp {
+                    context: "timestamp",
+                    error: TimestampError::InvalidFormat
+                })
             ));
         }
 
@@ -1402,10 +1406,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimeDiff(
-                    "ttl",
-                    DurationError::NumberExpected(0)
-                ))
+                Err(Error::FailedToParseTimeDiff {
+                    context: "ttl",
+                    error: DurationError::NumberExpected(0)
+                })
             ));
         }
 

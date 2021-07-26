@@ -33,11 +33,17 @@ fn timestamp(value: &str) -> Result<Timestamp> {
     if value.is_empty() {
         return Ok(Timestamp::now());
     }
-    Timestamp::from_str(value).map_err(|error| Error::FailedToParseTimestamp("timestamp", error))
+    Timestamp::from_str(value).map_err(|error| Error::FailedToParseTimestamp {
+        context: "timestamp",
+        error,
+    })
 }
 
 fn ttl(value: &str) -> Result<TimeDiff> {
-    TimeDiff::from_str(value).map_err(|error| Error::FailedToParseTimeDiff("ttl", error))
+    TimeDiff::from_str(value).map_err(|error| Error::FailedToParseTimeDiff {
+        context: "ttl",
+        error,
+    })
 }
 
 fn gas_price(value: &str) -> Result<u64> {
@@ -176,7 +182,10 @@ mod args_complex {
 
         pub fn parse(path: &str) -> Result<RuntimeArgs> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument("session_path", path.to_string()));
+                return Err(Error::InvalidArgument {
+                    context: "session_path",
+                    error: path.to_string(),
+                });
             }
             get(path).map_err(|error| Error::IoError {
                 context: format!("error reading session file at '{}'", path),
@@ -190,7 +199,10 @@ mod args_complex {
 
         pub fn parse(path: &str) -> Result<RuntimeArgs> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument("payment_path", path.to_string()));
+                return Err(Error::InvalidArgument {
+                    context: "payment_path",
+                    error: path.to_string(),
+                });
             }
             get(path).map_err(|error| Error::IoError {
                 context: format!("error reading payment file at '{}'", path),
@@ -217,8 +229,10 @@ fn standard_payment(value: &str) -> Result<RuntimeArgs> {
     if value.is_empty() {
         return Err(Error::InvalidCLValue(value.to_string()));
     }
-    let arg = U512::from_dec_str(value)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
+    let arg = U512::from_dec_str(value).map_err(|err| Error::FailedToParseUint {
+        context: "amount",
+        error: UIntParseError::FromDecStr(err),
+    })?;
     let mut runtime_args = RuntimeArgs::new();
     runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg)?;
     Ok(runtime_args)
@@ -268,10 +282,10 @@ macro_rules! check_exactly_one_not_empty {
 
         if required_arguments.is_empty() {
             let required_param_names = vec![$((stringify!($x))),+];
-            return Err(Error::InvalidArgument(
-                $site,
-                format!("Missing a required arg - exactly one of the following must be provided: {:?}", required_param_names),
-            ));
+            return Err(Error::InvalidArgument {
+                context: $site,
+                error: format!("Missing a required arg - exactly one of the following must be provided: {:?}", required_param_names),
+            });
         }
         if required_arguments.len() == 1 {
             let name = &required_arguments[0];
@@ -298,10 +312,10 @@ macro_rules! check_exactly_one_not_empty {
                     .iter()
                     .map(|(requirement_name, _)| requirement_name)
                     .collect::<Vec<_>>();
-                return Err(Error::InvalidArgument(
-                    $site,
-                    format!("Field {} also requires following fields to be provided: {:?}", name, required_param_names),
-                ));
+                return Err(Error::InvalidArgument {
+                    context: $site,
+                    error: format!("Field {} also requires following fields to be provided: {:?}", name, required_param_names),
+                });
             }
 
             let mut conflicting_fields = required_empty
@@ -404,15 +418,17 @@ pub(super) fn parse_session_info(
     );
     if session_transfer {
         if session_args.is_empty() {
-            return Err(Error::InvalidArgument(
-                "is_session_transfer",
-                "requires --session-arg to be present".to_string(),
-            ));
+            return Err(Error::InvalidArgument {
+                context: "is_session_transfer",
+                error: "requires --session-arg to be present".to_string(),
+            });
         }
         return Ok(ExecutableDeployItem::Transfer { args: session_args });
     }
-    let invalid_entry_point =
-        || Error::InvalidArgument("session_entry_point", session_entry_point.to_string());
+    let invalid_entry_point = || Error::InvalidArgument {
+        context: "session_entry_point",
+        error: session_entry_point.to_string(),
+    };
     if let Some(session_name) = name(session_name) {
         return Ok(ExecutableDeployItem::StoredContractByName {
             name: session_name,
@@ -499,8 +515,10 @@ pub(super) fn parse_payment_info(
         });
     }
 
-    let invalid_entry_point =
-        || Error::InvalidArgument("payment_entry_point", payment_entry_point.to_string());
+    let invalid_entry_point = || Error::InvalidArgument {
+        context: "payment_entry_point",
+        error: payment_entry_point.to_string(),
+    };
 
     let payment_args = args_from_simple_or_complex(
         arg_simple::payment::parse(payment_args)?,
@@ -553,11 +571,9 @@ pub(super) fn parse_payment_info(
 }
 
 pub(crate) fn get_target_account(target_account: &str) -> Result<PublicKey> {
-    let account = PublicKey::from_hex(target_account).map_err(|error| {
-        Error::InvalidArgument(
-            "target_account",
-            format!("failed to parse as a public key: {}", error),
-        )
+    let account = PublicKey::from_hex(target_account).map_err(|error| Error::InvalidArgument {
+        context: "target_account",
+        error: format!("failed to parse as a public key: {}", error),
     })?;
 
     Ok(account)
@@ -1003,7 +1019,7 @@ mod tests {
         // failed to parse timestamp.
         assert!(matches!(
             result.err().expect("Result should be an Err."),
-            Error::FailedToParseTimestamp(_, _)
+            Error::FailedToParseTimestamp { .. }
         ));
 
         let result = parse_deploy_params(
@@ -1018,7 +1034,7 @@ mod tests {
         // failed to parse ttl.
         assert!(matches!(
             result.err().expect("Result should be an Err."),
-            Error::FailedToParseTimeDiff(_, _)
+            Error::FailedToParseTimeDiff { .. }
         ));
 
         let result = parse_deploy_params(
@@ -1067,7 +1083,13 @@ mod tests {
                     }
                     .try_into();
 
-                    assert!(matches!(info, Err(Error::InvalidArgument($context, _msg))));
+                    assert!(matches!(
+                        info,
+                        Err(Error::InvalidArgument {
+                            context: $context,
+                            error: _msg
+                        })
+                    ));
                 }
             };
         }

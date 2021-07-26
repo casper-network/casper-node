@@ -66,9 +66,11 @@ impl AsFFIError for Error {
             Error::FailedToParseKey => casper_error_t::CASPER_FAILED_TO_PARSE_KEY,
             Error::FailedToParseURef { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_UREF,
             Error::FailedToParseInt { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_INT,
-            Error::FailedToParseTimeDiff(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIME_DIFF,
-            Error::FailedToParseTimestamp(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIMESTAMP,
-            Error::FailedToParseUint(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_UINT,
+            Error::FailedToParseTimeDiff { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_TIME_DIFF,
+            Error::FailedToParseTimestamp { .. } => {
+                casper_error_t::CASPER_FAILED_TO_PARSE_TIMESTAMP
+            }
+            Error::FailedToParseUint { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_UINT,
             Error::FailedToGetResponse(_) => casper_error_t::CASPER_FAILED_TO_GET_RESPONSE,
             Error::FailedToParseResponse(_) => casper_error_t::CASPER_FAILED_TO_PARSE_RESPONSE,
             Error::FileAlreadyExists(_) => casper_error_t::CASPER_FILE_ALREADY_EXISTS,
@@ -81,7 +83,7 @@ impl AsFFIError for Error {
             Error::ToBytesError(_) => casper_error_t::CASPER_TO_BYTES_ERROR,
             Error::CryptoError { .. } => casper_error_t::CASPER_CRYPTO_ERROR,
             Error::InvalidCLValue(_) => casper_error_t::CASPER_INVALID_CL_VALUE,
-            Error::InvalidArgument(_, _) => casper_error_t::CASPER_INVALID_ARGUMENT,
+            Error::InvalidArgument { .. } => casper_error_t::CASPER_INVALID_ARGUMENT,
             Error::InvalidResponse(_) => casper_error_t::CASPER_INVALID_RESPONSE,
             Error::FFISetupNotCalled => casper_error_t::CASPER_FFI_SETUP_NOT_CALLED,
             Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
@@ -166,15 +168,13 @@ fn unsafe_str_arg(arg: *const c_char, arg_name: &'static str) -> Result<&'static
         }
         CStr::from_ptr(arg).to_str()
     }
-    .map_err(|error| {
-        Error::InvalidArgument(
-            arg_name,
-            format!(
-                "invalid utf8 value passed for arg '{}': {:?}",
-                stringify!($arg),
-                error,
-            ),
-        )
+    .map_err(|error| Error::InvalidArgument {
+        context: arg_name,
+        error: format!(
+            "invalid utf8 value passed for arg '{}': {:?}",
+            stringify!($arg),
+            error,
+        ),
     })
 }
 

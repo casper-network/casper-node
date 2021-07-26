@@ -952,7 +952,7 @@ mod keygen_generate_files {
         let path = "";
         let result =
             casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true);
-        assert!(matches!(result, Err(Error::InvalidArgument(_, _))))
+        assert!(matches!(result, Err(Error::InvalidArgument { .. })))
     }
 }
 
