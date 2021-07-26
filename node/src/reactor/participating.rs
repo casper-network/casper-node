@@ -481,10 +481,18 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(maybe_latest_block_header.map_or_else(
-            || chainspec_loader.initial_execution_pre_state(),
-            |latest_block_header| ExecutionPreState::from(&latest_block_header),
-        ));
+        let execution_pre_state = match maybe_latest_block_header {
+            Some(latest_block_header)
+                if chainspec_loader
+                    .initial_execution_pre_state()
+                    .next_block_height()
+                    <= latest_block_header.height() =>
+            {
+                ExecutionPreState::from(&latest_block_header)
+            }
+            _ => chainspec_loader.initial_execution_pre_state(),
+        };
+        contract_runtime.set_initial_state(execution_pre_state);
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
