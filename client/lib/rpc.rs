@@ -158,7 +158,7 @@ impl RpcCall {
         let uref =
             URef::from_formatted_str(purse_uref).map_err(|error| Error::FailedToParseURef {
                 context: "purse_uref",
-                error: error.into(),
+                error,
             })?;
         let key = Key::from(uref);
 

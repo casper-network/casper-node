@@ -24,7 +24,7 @@ fn set_last_error(error: Error) {
 /// FFI representation of [super::Error](super::Error)
 ///
 /// The full error can be extracted with get_last_error.
-/// See [super::Error](super::Error) for more details on what these mean.
+/// See [Error](super::Error) for more details on what these mean.
 #[allow(non_snake_case, non_camel_case_types, missing_docs)]
 #[repr(C)]
 pub enum casper_error_t {
@@ -256,7 +256,7 @@ pub extern "C" fn casper_get_last_error(buf: *mut c_uchar, len: usize) -> usize 
 
 /// Creates a `Deploy` and sends it to the network for execution.
 ///
-/// See [super::put_deploy](super::put_deploy) for more details.
+/// See [put_deploy](super::put_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_put_deploy(
     maybe_rpc_id: *const c_char,
@@ -292,7 +292,7 @@ pub extern "C" fn casper_put_deploy(
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
 ///
-/// See [super::make_deploy](super::make_deploy) for more details.
+/// See [make_deploy](super::make_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_make_deploy(
     maybe_output_path: *const c_char,
@@ -319,7 +319,7 @@ pub extern "C" fn casper_make_deploy(
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
 /// file or stdout.
 ///
-/// See [super::sign_deploy_file](super::sign_deploy_file) for more details.
+/// See [sign_deploy_file](super::sign_deploy_file) for more details.
 #[no_mangle]
 pub extern "C" fn casper_sign_deploy_file(
     input_path: *const c_char,
@@ -337,7 +337,7 @@ pub extern "C" fn casper_sign_deploy_file(
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
 ///
-/// See [super::send_deploy_file](super::send_deploy_file) for more details.
+/// See [send_deploy_file](super::send_deploy_file) for more details.
 #[no_mangle]
 pub extern "C" fn casper_send_deploy_file(
     maybe_rpc_id: *const c_char,
@@ -363,7 +363,7 @@ pub extern "C" fn casper_send_deploy_file(
 
 /// Transfers funds between purses.
 ///
-/// See [super::transfer](super::transfer) for more details.
+/// See [transfer](super::transfer) for more details.
 #[no_mangle]
 pub extern "C" fn casper_transfer(
     maybe_rpc_id: *const c_char,
@@ -405,7 +405,7 @@ pub extern "C" fn casper_transfer(
 
 /// Creates a transfer `Deploy` and outputs it to a file or stdout.
 ///
-/// See [super::make_transfer](super::make_transfer) for more details.
+/// See [make_transfer](super::make_transfer) for more details.
 #[no_mangle]
 pub extern "C" fn casper_make_transfer(
     maybe_output_path: *const c_char,
@@ -437,7 +437,7 @@ pub extern "C" fn casper_make_transfer(
 
 /// Retrieves a `Deploy` from the network.
 ///
-/// See [super::get_deploy](super::get_deploy) for more details.
+/// See [get_deploy](super::get_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_deploy(
     maybe_rpc_id: *const c_char,
@@ -462,7 +462,7 @@ pub extern "C" fn casper_get_deploy(
 
 /// Retrieves a `Block` from the network.
 ///
-/// See [super::get_block](super::get_block) for more details.
+/// See [get_block](super::get_block) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block(
     maybe_rpc_id: *const c_char,
@@ -487,7 +487,7 @@ pub extern "C" fn casper_get_block(
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
 ///
-/// See [super::get_block_transfers](super::get_block_transfers) for more details.
+/// See [get_block_transfers](super::get_block_transfers) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block_transfers(
     maybe_rpc_id: *const c_char,
@@ -513,7 +513,7 @@ pub extern "C" fn casper_get_block_transfers(
 
 /// Retrieves a state root hash at a given `Block`.
 ///
-/// See [super::get_state_root_hash](super::get_state_root_hash) for more details.
+/// See [get_state_root_hash](super::get_state_root_hash) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_state_root_hash(
     maybe_rpc_id: *const c_char,
@@ -539,7 +539,7 @@ pub extern "C" fn casper_get_state_root_hash(
 
 /// Retrieves a stored value from the network.
 ///
-/// See [super::get_item](super::get_item) for more details.
+/// See [get_item](super::get_item) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_item(
     maybe_rpc_id: *const c_char,
@@ -575,7 +575,7 @@ pub extern "C" fn casper_get_item(
 
 /// Retrieves a purse's balance from the network.
 ///
-/// See [super::get_balance](super::get_balance) for more details.
+/// See [get_balance](super::get_balance) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_balance(
     maybe_rpc_id: *const c_char,
@@ -608,7 +608,7 @@ pub extern "C" fn casper_get_balance(
 
 /// Retrieves era information from the network.
 ///
-/// See [super::get_era_info_by_switch_block](super::get_era_info_by_switch_block) for more details.
+/// See [get_era_info_by_switch_block](super::get_era_info_by_switch_block) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_era_info_by_switch_block(
     maybe_rpc_id: *const c_char,
@@ -638,7 +638,7 @@ pub extern "C" fn casper_get_era_info_by_switch_block(
 
 /// Retrieves the bids and validators as of the most recently added `Block`.
 ///
-/// See [super::get_auction_info](super::get_auction_info) for more details.
+/// See [get_auction_info](super::get_auction_info) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_auction_info(
     maybe_rpc_id: *const c_char,
@@ -664,7 +664,7 @@ pub extern "C" fn casper_get_auction_info(
 
 /// Generates key files.
 ///
-/// See [super::keygen::generate_files](super::keygen::generate_files) for more details.
+/// See [keygen::generate_files](super::keygen::generate_files) for more details.
 #[no_mangle]
 pub extern "C" fn casper_keygen(
     output_dir: *const c_char,
