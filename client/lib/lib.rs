@@ -36,7 +36,7 @@ pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
-use rpc::{RpcCall, TransferTarget};
+use rpc::RpcCall;
 pub use validation::ValidateResponseError;
 
 /// Creates a `Deploy` and sends it to the network for execution.
@@ -204,13 +204,13 @@ pub fn transfer(
     let amount = U512::from_dec_str(amount)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
+    let target_account = parsing::get_target_account(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).transfer(
         amount,
         source_purse,
-        target,
+        target_account,
         transfer_id,
         deploy_params.try_into()?,
         payment_params.try_into()?,
@@ -249,7 +249,7 @@ pub fn make_transfer(
     let amount = U512::from_dec_str(amount)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
+    let target_account = parsing::get_target_account(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
     let output = if maybe_output_path.is_empty() {
@@ -261,7 +261,7 @@ pub fn make_transfer(
     Deploy::new_transfer(
         amount,
         source_purse,
-        target,
+        target_account,
         transfer_id,
         deploy_params.try_into()?,
         payment_params.try_into()?,

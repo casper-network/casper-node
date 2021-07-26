@@ -34,12 +34,6 @@ use crate::{
     validation, DictionaryItemStrParams,
 };
 
-/// Target for a given transfer.
-pub(crate) enum TransferTarget {
-    /// Transfer to another account.
-    Account(PublicKey),
-}
-
 /// Struct representing a single JSON-RPC call to the casper node.
 #[derive(Debug)]
 pub(crate) struct RpcCall {
@@ -208,7 +202,7 @@ impl RpcCall {
         self,
         amount: U512,
         source_purse: Option<URef>,
-        target: TransferTarget,
+        target_account: PublicKey,
         transfer_id: u64,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
@@ -216,7 +210,7 @@ impl RpcCall {
         let deploy = Deploy::new_transfer(
             amount,
             source_purse,
-            target,
+            target_account,
             transfer_id,
             deploy_params,
             payment,

@@ -11,11 +11,11 @@ use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, URef, U512};
+use casper_types::{ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512};
 
 use crate::{
     error::{Error, Result},
-    rpc::{RpcClient, TransferTarget},
+    rpc::RpcClient,
 };
 
 /// The maximum permissible size in bytes of a Deploy when serialized via `ToBytes`.
@@ -186,7 +186,7 @@ pub(super) trait DeployExt {
     fn new_transfer(
         amount: U512,
         source_purse: Option<URef>,
-        target: TransferTarget,
+        target_account: PublicKey,
         transfer_id: u64,
         params: DeployParams,
         payment: ExecutableDeployItem,
@@ -241,7 +241,7 @@ impl DeployExt for Deploy {
     fn new_transfer(
         amount: U512,
         source_purse: Option<URef>,
-        target: TransferTarget,
+        target_account: PublicKey,
         transfer_id: u64,
         params: DeployParams,
         payment: ExecutableDeployItem,
@@ -253,20 +253,21 @@ impl DeployExt for Deploy {
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
+
         if let Some(source_purse) = source_purse {
             transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
         }
-        match target {
-            TransferTarget::Account(target_account) => {
-                let target_account_hash = target_account.to_account_hash().value();
-                transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
-            }
-        }
+
+        let target_account_hash = target_account.to_account_hash().value();
+        transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
+
         let maybe_transfer_id = Some(transfer_id);
         transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
+
         let session = ExecutableDeployItem::Transfer {
             args: transfer_args,
         };
+
         Deploy::with_payment_and_session(params, payment, session)
     }
 

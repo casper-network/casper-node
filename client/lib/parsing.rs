@@ -19,7 +19,7 @@ use crate::{
     cl_type,
     deploy::DeployParams,
     error::{Error, Result},
-    help, TransferTarget,
+    help,
 };
 
 pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
@@ -549,7 +549,7 @@ pub(super) fn parse_payment_info(
     })
 }
 
-pub(crate) fn get_transfer_target(target_account: &str) -> Result<TransferTarget> {
+pub(crate) fn get_target_account(target_account: &str) -> Result<PublicKey> {
     let account = PublicKey::from_hex(target_account).map_err(|error| {
         Error::InvalidArgument(
             "target_account",
@@ -557,7 +557,7 @@ pub(crate) fn get_transfer_target(target_account: &str) -> Result<TransferTarget
         )
     })?;
 
-    Ok(TransferTarget::Account(account))
+    Ok(account)
 }
 
 fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
