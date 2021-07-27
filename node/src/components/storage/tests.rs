@@ -1421,19 +1421,15 @@ fn can_put_and_get_blocks_v2() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let block_body_merkle = block.body().merklize();
 
-        for hash in [
-            *block_body_merkle
-                .deploy_hashes
-                .merkle_linked_list_node_hash(),
-            *block_body_merkle
-                .transfer_hashes
-                .merkle_linked_list_node_hash(),
-            *block_body_merkle.proposer.merkle_linked_list_node_hash(),
-        ] {
-            assert!(matches!(
-                txn.get_value::<_, [Digest; 2]>(storage.block_body_v2_db, &hash),
-                Ok(Some(_))
-            ));
+        for (node_hash, value_hash, proof_of_rest) in
+            block_body_merkle.clone().take_hashes_and_proofs()
+        {
+            assert_eq!(
+                txn.get_value::<_, [Digest; 2]>(storage.block_body_v2_db, &node_hash)
+                    .unwrap()
+                    .unwrap(),
+                [value_hash, proof_of_rest]
+            );
         }
 
         assert_eq!(
