@@ -68,7 +68,7 @@ pub(crate) struct ProtocolConfig {
     /// The chainspec hash: All nodes in the network agree on it, and it's unique to this network.
     pub(crate) chainspec_hash: Digest,
     /// The last emergency restart [`EraId`] (if there was one)
-    pub(crate) last_emergency_restart: Optin<EraId>,
+    pub(crate) last_emergency_restart: Option<EraId>,
 }
 
 impl From<&Chainspec> for ProtocolConfig {
