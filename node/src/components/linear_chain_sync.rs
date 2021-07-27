@@ -23,13 +23,14 @@
 //! execute (as we do in the first, SynchronizeTrustedHash, phase) it would have taken more time and
 //! we might miss more eras.
 
+mod config;
 mod event;
 mod metrics;
 mod peers;
 mod state;
 mod traits;
 
-use std::{convert::Infallible, fmt::Display, mem, str::FromStr};
+use std::{convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -57,6 +58,7 @@ use crate::{
     },
     NodeRng,
 };
+pub use config::Config;
 use event::BlockByHeightResult;
 pub use event::Event;
 pub use metrics::LinearChainSyncMetrics;
@@ -102,15 +104,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         after_upgrade: bool,
         next_upgrade_activation_point: Option<ActivationPoint>,
         initial_execution_pre_state: ExecutionPreState,
+        config: Config,
     ) -> Result<(Self, Effects<Event<I>>), Err>
     where
         REv: From<Event<I>> + Send,
         Err: From<prometheus::Error> + From<storage::Error>,
     {
-        // set timeout to 5 minutes after now.
-        let five_minutes = TimeDiff::from_str("5minutes").unwrap();
         let timeout_event = effect_builder
-            .set_timeout(five_minutes.into())
+            .set_timeout(config.get_sync_timeout().into())
             .event(|_| Event::InitializeTimeout);
         let protocol_version = chainspec.protocol_config.version;
         if let Some(state) = read_init_state(storage, chainspec)? {
