@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.  The format
 * Improve logging around stalled consensus detection.
 * Skip storage integrity checks if the node didn't previously crash.
 * Update pinned version of Rust to `nightly-2021-06-17`
+* A switch block is created immediately after genesis or an upgrade.
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.

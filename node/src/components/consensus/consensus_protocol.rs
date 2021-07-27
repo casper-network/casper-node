@@ -111,6 +111,19 @@ pub struct EraReport<VID> {
     pub(crate) inactive_validators: Vec<VID>,
 }
 
+impl<VID> Default for EraReport<VID>
+where
+    VID: Ord,
+{
+    fn default() -> Self {
+        EraReport {
+            equivocators: vec![],
+            rewards: BTreeMap::new(),
+            inactive_validators: vec![],
+        }
+    }
+}
+
 impl<VID> EraReport<VID> {
     pub fn hash(&self) -> Digest
     where

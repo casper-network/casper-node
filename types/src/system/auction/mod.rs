@@ -506,10 +506,6 @@ pub trait Auction:
         let base_round_reward = self.read_base_round_reward()?;
         let era_id = detail::get_era_id(self)?;
 
-        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
-            return Err(Error::MismatchedEraValidators);
-        }
-
         let mut era_info = EraInfo::new();
         let mut seigniorage_allocations = era_info.seigniorage_allocations_mut();
 

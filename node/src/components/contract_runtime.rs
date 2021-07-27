@@ -24,7 +24,7 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-        GetEraValidatorsRequest,
+        GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
     },
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
@@ -46,7 +46,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    types::{Block, BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     utils::WithDir,
     NodeRng, StorageConfig,
 };
@@ -55,11 +55,11 @@ use crate::{
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
 pub struct ExecutionPreState {
+    /// The state root to use when executing deploys.
+    pre_state_root_hash: Digest,
     /// The height of the next `Block` to be constructed. Note that this must match the height of
     /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
-    /// The state root to use when executing deploys.
-    pre_state_root_hash: Digest,
     /// The parent hash of the next `Block`.
     parent_hash: BlockHash,
     /// The accumulated seed for the pseudo-random number generator to be incorporated into the
@@ -265,28 +265,15 @@ where
                 chainspec,
                 responder,
             } => {
-                let result = self.commit_genesis(chainspec);
+                let result = self.commit_genesis(&chainspec);
                 responder.respond(result).ignore()
             }
             ContractRuntimeRequest::Upgrade {
                 upgrade_config,
                 responder,
-            } => {
-                debug!(?upgrade_config, "upgrade");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.commit_upgrade(correlation_id, *upgrade_config);
-                    metrics
-                        .commit_upgrade
-                        .observe(start.elapsed().as_secs_f64());
-                    debug!(?result, "upgrade result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
+            } => responder
+                .respond(self.commit_upgrade(*upgrade_config))
+                .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,
@@ -446,14 +433,17 @@ where
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 if self.execution_pre_state.next_block_height == finalized_block.height() {
-                    self.execute_finalized_block(
+                    match self.execute_finalized_block(
                         effect_builder,
                         self.protocol_version,
                         self.execution_pre_state.clone(),
                         finalized_block,
                         deploys,
                         transfers,
-                    )
+                    ) {
+                        Ok((_, effects)) => effects,
+                        Err(error) => fatal!(effect_builder, "{}", error).ignore(),
+                    }
                 } else {
                     self.exec_queue
                         .push_back((finalized_block, deploys, transfers));
@@ -548,9 +538,9 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis using a chainspec
-    fn commit_genesis(
+    pub(crate) fn commit_genesis(
         &self,
-        chainspec: Arc<Chainspec>,
+        chainspec: &Arc<Chainspec>,
     ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
@@ -563,6 +553,22 @@ impl ContractRuntime {
             protocol_version,
             &ee_config,
         )
+    }
+
+    pub(crate) fn commit_upgrade(
+        &self,
+        upgrade_config: UpgradeConfig,
+    ) -> Result<UpgradeSuccess, engine_state::Error> {
+        debug!(?upgrade_config, "upgrade");
+        let start = Instant::now();
+        let result = self
+            .engine_state
+            .commit_upgrade(CorrelationId::new(), upgrade_config);
+        self.metrics
+            .commit_upgrade
+            .observe(start.elapsed().as_secs_f64());
+        debug!(?result, "upgrade result");
+        result
     }
 
     /// Retrieve trie keys for the integrity check.
@@ -579,7 +585,7 @@ impl ContractRuntime {
         self.execution_pre_state = sequential_block_state;
     }
 
-    fn execute_finalized_block<REv>(
+    pub(crate) fn execute_finalized_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
@@ -587,7 +593,7 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-    ) -> Effects<ContractRuntimeRequest>
+    ) -> Result<(Block, Effects<ContractRuntimeRequest>), BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -598,7 +604,7 @@ impl ContractRuntime {
             block,
             execution_results,
             maybe_step_execution_effect,
-        } = match operations::execute_finalized_block(
+        } = operations::execute_finalized_block(
             self.engine_state.as_ref(),
             self.metrics.as_ref(),
             protocol_version,
@@ -606,16 +612,13 @@ impl ContractRuntime {
             finalized_block,
             deploys,
             transfers,
-        ) {
-            Ok(block_and_execution_effects) => block_and_execution_effects,
-            Err(error) => return fatal!(effect_builder, "{}", error).ignore(),
-        };
+        )?;
 
         self.execution_pre_state = ExecutionPreState::from(block.header());
 
         let era_id = block.header().era_id();
         let mut effects = effect_builder
-            .announce_linear_chain_block(block, execution_results)
+            .announce_linear_chain_block(block.clone(), execution_results)
             .ignore();
         if let Some(step_execution_effect) = maybe_step_execution_effect {
             effects.extend(
@@ -633,7 +636,7 @@ impl ContractRuntime {
                     .ignore(),
             );
         }
-        effects
+        Ok((block, effects))
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.

@@ -199,7 +199,9 @@ impl From<TryFromSliceError> for Error {
 /// From the view of the consensus protocol this is the "consensus value": The protocol deals with
 /// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
 /// deploys actually get executed, and the executed block gets signed.
-#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
+)]
 pub struct BlockPayload {
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,

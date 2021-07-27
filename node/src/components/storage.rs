@@ -636,45 +636,7 @@ impl Storage {
         // average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
-                // Validate the block prior to inserting it into the database
-                block.verify()?;
-                let mut txn = self.env.begin_rw_txn()?;
-
-                {
-                    let block_body_hash = block.header().body_hash();
-                    let block_body = block.body();
-                    let success = match block.header().hashing_algorithm_version() {
-                        HashingAlgorithmVersion::V1 => {
-                            self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
-                        }
-                        HashingAlgorithmVersion::V2 => {
-                            self.put_single_block_body_v2(&mut txn, block_body)?
-                        }
-                    };
-                    if !success {
-                        error!("Could not insert body for: {}", block);
-                        txn.abort();
-                        return Ok(responder.respond(false).ignore());
-                    }
-                }
-
-                if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
-                    error!("Could not insert block header for block: {}", block);
-                    txn.abort();
-                    return Ok(responder.respond(false).ignore());
-                }
-                insert_to_block_header_indices(
-                    &mut self.block_height_index,
-                    &mut self.switch_block_era_id_index,
-                    block.header(),
-                )?;
-                insert_to_deploy_index(
-                    &mut self.deploy_hash_index,
-                    block.header().hash(),
-                    block.body(),
-                )?;
-                txn.commit()?;
-                responder.respond(true).ignore()
+                responder.respond(self.write_block(&*block)?).ignore()
             }
             StorageRequest::GetBlock {
                 block_hash,
@@ -1027,6 +989,57 @@ impl Storage {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
+    /// Write a block to storage, updating indices as necessary
+    pub fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
+        // Validate the block prior to inserting it into the database
+        block.verify()?;
+        let mut txn = self.env.begin_rw_txn()?;
+        // Write the block body
+        {
+            let block_body_hash = block.header().body_hash();
+            let block_body = block.body();
+            let success = match block.header().hashing_algorithm_version() {
+                HashingAlgorithmVersion::V1 => {
+                    self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
+                }
+                HashingAlgorithmVersion::V2 => {
+                    self.put_single_block_body_v2(&mut txn, block_body)?
+                }
+            };
+            if !success {
+                error!("Could not insert body for: {}", block);
+                txn.abort();
+                return Ok(false);
+            }
+        }
+
+        if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
+            error!("Could not insert block header for block: {}", block);
+            txn.abort();
+            return Ok(false);
+        }
+        insert_to_block_header_indices(
+            &mut self.block_height_index,
+            &mut self.switch_block_era_id_index,
+            block.header(),
+        )?;
+        insert_to_deploy_index(
+            &mut self.deploy_hash_index,
+            block.header().hash(),
+            block.body(),
+        )?;
+        txn.commit()?;
+        Ok(true)
+    }
+
+    /// Get the switch block header for a specified [`EraID`].
+    pub fn read_switch_block_header_by_era_id(
+        &self,
+        switch_block_era_id: EraId,
+    ) -> Result<Option<BlockHeader>, Error> {
+        self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, switch_block_era_id)
+    }
+
     /// Retrieves a block header by height.
     /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
     /// before the most recent emergency upgrade.
@@ -1083,6 +1096,11 @@ impl Storage {
             .get(&height)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
+    }
+
+    /// Retrieves a block header to handle a network request.
+    pub fn read_block_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, Error> {
+        self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1583,12 +1601,6 @@ impl Storage {
         }
     }
 
-    /// Get the lmdb environment
-    #[cfg(test)]
-    pub(crate) fn env(&self) -> &Environment {
-        &self.env
-    }
-
     /// Retrieves a deploy from the deploy store.
     pub fn get_deploy(&self, deploy_hash: DeployHash) -> Result<Option<Deploy>, LmdbExtError> {
         self.env
@@ -1745,6 +1757,14 @@ impl Display for Event {
 // only ever be used when writing tests.
 #[cfg(test)]
 impl Storage {
+    /// Get the switch block for a specified [`EraID`].
+    pub fn read_switch_block_by_era_id(
+        &self,
+        switch_block_era_id: EraId,
+    ) -> Result<Option<Block>, Error> {
+        self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, switch_block_era_id)
+    }
+
     /// Directly returns a deploy from internal store.
     ///
     /// # Panics
@@ -1780,14 +1800,6 @@ impl Storage {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
             .collect()
-    }
-
-    /// Get the switch block for a specified [`EraID`].
-    pub fn read_switch_block_by_era_id(
-        &self,
-        switch_block_era_id: EraId,
-    ) -> Result<Option<Block>, Error> {
-        self.get_switch_block_by_era_id(&mut self.env().begin_ro_txn()?, switch_block_era_id)
     }
 }
 
