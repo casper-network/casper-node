@@ -104,3 +104,7 @@ impl TryFrom<i32> for SetThresholdFailure {
         }
     }
 }
+
+/// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`](super::AccountHash).
+#[derive(Debug)]
+pub struct TryFromSliceForAccountHashError(pub ());

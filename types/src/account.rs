@@ -19,12 +19,9 @@ use rand::{
 use thiserror::Error;
 
 pub use self::{
-    account_hash::{
-        AccountHash, AccountHashBytes, TryFromSliceForAccountHashError,
-        ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH,
-    },
+    account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
     action_type::ActionType,
-    error::{FromStrError, SetThresholdFailure, TryFromIntError},
+    error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 

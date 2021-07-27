@@ -5,7 +5,7 @@ use crate::{
 };
 use alloc::{string::String, vec::Vec};
 use core::{
-    convert::TryFrom,
+    convert::{From, TryFrom},
     fmt::{Debug, Display, Formatter},
 };
 use datasize::DataSize;
@@ -18,22 +18,19 @@ pub const ACCOUNT_HASH_LENGTH: usize = 32;
 /// TODO: Document this.
 pub const ACCOUNT_HASH_FORMATTED_STRING_PREFIX: &str = "account-hash-";
 
-/// A type alias for the raw bytes of an Account Hash.
-pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
-
-/// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
+/// A newtype wrapping an array which contains the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct AccountHash(pub AccountHashBytes);
+pub struct AccountHash(pub [u8; ACCOUNT_HASH_LENGTH]);
 
 impl AccountHash {
     /// Constructs a new `AccountHash` instance from the raw bytes of an Public Key Account Hash.
-    pub const fn new(value: AccountHashBytes) -> AccountHash {
+    pub const fn new(value: [u8; ACCOUNT_HASH_LENGTH]) -> AccountHash {
         AccountHash(value)
     }
 
     /// Returns the raw bytes of the account hash as an array.
-    pub fn value(&self) -> AccountHashBytes {
+    pub fn value(&self) -> [u8; ACCOUNT_HASH_LENGTH] {
         self.0
     }
 
@@ -56,7 +53,7 @@ impl AccountHash {
         let remainder = input
             .strip_prefix(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
+        let bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(base16::decode(remainder)?.as_ref())?;
         Ok(AccountHash(bytes))
     }
 
@@ -120,7 +117,7 @@ impl<'de> Deserialize<'de> for AccountHash {
             let formatted_string = String::deserialize(deserializer)?;
             AccountHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
-            let bytes = AccountHashBytes::deserialize(deserializer)?;
+            let bytes = <[u8; ACCOUNT_HASH_LENGTH]>::deserialize(deserializer)?;
             Ok(AccountHash(bytes))
         }
     }
@@ -130,7 +127,7 @@ impl TryFrom<&[u8]> for AccountHash {
     type Error = TryFromSliceForAccountHashError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForAccountHashError> {
-        AccountHashBytes::try_from(bytes)
+        <[u8; ACCOUNT_HASH_LENGTH]>::try_from(bytes)
             .map(AccountHash::new)
             .map_err(|_| TryFromSliceForAccountHashError(()))
     }
@@ -140,7 +137,7 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
     type Error = TryFromSliceForAccountHashError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        AccountHashBytes::try_from(bytes as &[u8])
+        <[u8; ACCOUNT_HASH_LENGTH]>::try_from(bytes as &[u8])
             .map(AccountHash::new)
             .map_err(|_| TryFromSliceForAccountHashError(()))
     }

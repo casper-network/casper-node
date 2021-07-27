@@ -22,7 +22,7 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account::{self, AccountHash, AccountHashBytes},
+    account::{self, AccountHash, ACCOUNT_HASH_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
@@ -288,7 +288,7 @@ impl Key {
 
         if let Some(hex) = input.strip_prefix(BID_PREFIX) {
             let hash = base16::decode(hex).map_err(|error| FromStrError::Bid(error.to_string()))?;
-            let account_hash = AccountHashBytes::try_from(hash.as_ref())
+            let account_hash = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::Bid(error.to_string()))?;
             return Ok(Key::Bid(AccountHash::new(account_hash)));
         }
@@ -296,7 +296,7 @@ impl Key {
         if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
             let hash =
                 base16::decode(hex).map_err(|error| FromStrError::Withdraw(error.to_string()))?;
-            let account_hash = AccountHashBytes::try_from(hash.as_ref())
+            let account_hash = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::Withdraw(error.to_string()))?;
             return Ok(Key::Withdraw(AccountHash::new(account_hash)));
         }
