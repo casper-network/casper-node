@@ -693,18 +693,18 @@ impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
             payment_entry_point,
         } = self;
 
-        parsing::parse_payment_info(
+        parsing::parse_payment_info(PaymentStrParams {
             payment_amount,
             payment_hash,
             payment_name,
             payment_package_hash,
             payment_package_name,
             payment_path,
-            &payment_args_simple,
+            payment_args_simple,
             payment_args_complex,
             payment_version,
             payment_entry_point,
-        )
+        })
     }
 }
 

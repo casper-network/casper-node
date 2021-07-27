@@ -19,7 +19,7 @@ use crate::{
     cl_type,
     deploy::DeployParams,
     error::{Error, Result},
-    help,
+    help, PaymentStrParams,
 };
 
 pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
@@ -474,19 +474,19 @@ pub(super) fn parse_session_info(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn parse_payment_info(
-    payment_amount: &str,
-    payment_hash: &str,
-    payment_name: &str,
-    payment_package_hash: &str,
-    payment_package_name: &str,
-    payment_path: &str,
-    payment_args: &[&str],
-    payment_args_complex: &str,
-    payment_version: &str,
-    payment_entry_point: &str,
-) -> Result<ExecutableDeployItem> {
+pub(super) fn parse_payment_info(params: PaymentStrParams) -> Result<ExecutableDeployItem> {
+    let PaymentStrParams {
+        payment_amount,
+        payment_hash,
+        payment_name,
+        payment_package_hash,
+        payment_package_name,
+        payment_path,
+        ref payment_args_simple,
+        payment_args_complex,
+        payment_version,
+        payment_entry_point,
+    } = params;
     check_exactly_one_not_empty!(
         context: "parse_payment_info",
         (payment_amount)
@@ -501,10 +501,13 @@ pub(super) fn parse_payment_info(
             requires[payment_entry_point] requires_empty[],
         (payment_path) requires[] requires_empty[payment_entry_point, payment_version],
     );
-    if !payment_args.is_empty() && !payment_args_complex.is_empty() {
+    if !payment_args_simple.is_empty() && !payment_args_complex.is_empty() {
         return Err(Error::ConflictingArguments {
             context: "parse_payment_info",
-            args: vec!["payment_args".to_owned(), "payment_args_complex".to_owned()],
+            args: vec![
+                "payment_args_simple".to_owned(),
+                "payment_args_complex".to_owned(),
+            ],
         });
     }
 
@@ -521,7 +524,7 @@ pub(super) fn parse_payment_info(
     };
 
     let payment_args = args_from_simple_or_complex(
-        arg_simple::payment::parse(payment_args)?,
+        arg_simple::payment::parse(payment_args_simple)?,
         args_complex::payment::parse(payment_args_complex).ok(),
     );
 
@@ -894,18 +897,18 @@ mod tests {
         ));
 
         assert!(matches!(
-            parse_payment_info(
-                "",
-                "name",
-                "",
-                "",
-                "",
-                "",
-                &["something:u32='0'"],
-                "path_to/file",
-                "",
-                "entrypoint",
-            ),
+            parse_payment_info(PaymentStrParams {
+                payment_amount: "",
+                payment_hash: "name",
+                payment_name: "",
+                payment_package_hash: "",
+                payment_package_name: "",
+                payment_path: "",
+                payment_args_simple: vec!["something:u32='0'"],
+                payment_args_complex: "path_to/file",
+                payment_version: "",
+                payment_entry_point: "entrypoint",
+            }),
             Err(Error::ConflictingArguments {
                 context: "parse_payment_info",
                 ..
@@ -938,18 +941,18 @@ mod tests {
     #[test]
     fn should_fail_to_parse_conflicting_payment_parameters() {
         assert!(matches!(
-            parse_payment_info(
-                "12345",
-                happy::HASH,
-                happy::NAME,
-                happy::PACKAGE_HASH,
-                happy::PACKAGE_NAME,
-                happy::PATH,
-                &[],
-                "",
-                "",
-                "",
-            ),
+            parse_payment_info(PaymentStrParams {
+                payment_amount: "12345",
+                payment_hash: happy::HASH,
+                payment_name: happy::NAME,
+                payment_package_hash: happy::PACKAGE_HASH,
+                payment_package_name: happy::PACKAGE_NAME,
+                payment_path: happy::PATH,
+                payment_args_simple: vec![],
+                payment_args_complex: "",
+                payment_version: "",
+                payment_entry_point: "",
+            }),
             Err(Error::ConflictingArguments {
                 context: "parse_payment_info",
                 ..
