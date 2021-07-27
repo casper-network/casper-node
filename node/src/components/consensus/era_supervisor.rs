@@ -186,6 +186,7 @@ where
             .iter_past(current_era, bonded_eras.saturating_mul(3))
             .collect();
 
+        // Collect the information needed to initialize all recent eras.
         let mut key_blocks = HashMap::new();
         let mut booking_blocks = HashMap::new();
         for era_id in era_ids {
@@ -223,43 +224,6 @@ where
                 handling_era_supervisor.handle_consensus_outcomes(era_id, results)
             })
             .collect();
-
-        // Asynchronously collect the information needed to initialize all recent eras.
-        // let effects = async move {
-        //     let key_blocks = effect_builder
-        //         .collect_key_block_headers(era_ids.iter().cloned())
-        //         .await
-        //         .expect("should have all the key blocks in storage");
-
-        //     let booking_blocks = collect_booking_block_hashes(
-        //         effect_builder,
-        //         era_ids.clone(),
-        //         auction_delay,
-        //         activation_era_id,
-        //     )
-        //     .await;
-
-        //     info!(keys=?booking_blocks.keys().collect::<Vec<_>>(), "booking blocks keys");
-
-        //     if current_era >
-        // activation_era_id.saturating_add(bonded_eras.saturating_mul(2).into())     {
-        //         // All eras can be initialized using the key blocks only.
-        //         (key_blocks, booking_blocks, Default::default())
-        //     } else {
-        //         let activation_era_validators = effect_builder
-        //             .get_era_validators(activation_era_id)
-        //             .await
-        //             .unwrap_or_default();
-        //         (key_blocks, booking_blocks, activation_era_validators)
-        //     }
-        // }
-        // .event(
-        //     move |(key_blocks, booking_blocks, validators)| Event::InitializeEras {
-        //         key_blocks,
-        //         booking_blocks,
-        //         validators,
-        //     },
-        // );
 
         Ok((era_supervisor, effects))
     }
