@@ -425,7 +425,6 @@ impl reactor::Reactor for Reactor {
                         panic!("should have trusted hash after genesis era")
                     }
                 }
-                info!("No synchronization of the linear chain will be done.")
             }
             Some(hash) => info!(trusted_hash=%hash, "synchronizing linear chain"),
         }

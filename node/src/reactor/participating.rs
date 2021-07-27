@@ -482,11 +482,14 @@ impl reactor::Reactor for Reactor {
         ));
 
         let execution_pre_state = match maybe_latest_block_header {
+            // if there is a latest block header and it's later than the block that was highest
+            // when the node was started up, we should use its post-state-hash as the initial state
+            // hash
             Some(latest_block_header)
-                if chainspec_loader
-                    .initial_execution_pre_state()
-                    .next_block_height()
-                    <= latest_block_header.height() =>
+                if latest_block_header.height()
+                    >= chainspec_loader
+                        .initial_execution_pre_state()
+                        .next_block_height() =>
             {
                 ExecutionPreState::from(&latest_block_header)
             }

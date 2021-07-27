@@ -136,6 +136,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
                 }
                 None if after_upgrade => {
+                    info!("No synchronization of the linear chain will be done.");
                     // Right after upgrade, no linear chain to synchronize.
                     State::Done(highest_block.map(Box::new))
                 }
@@ -147,6 +148,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         // still be trusted – i.e. it's within the unbonding period.
                         State::sync_descendants(*highest_block.hash(), highest_block, None)
                     } else {
+                        info!("No synchronization of the linear chain will be done.");
                         State::Done(None)
                     }
                 }
@@ -185,6 +187,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
             chainspec.core_config.era_duration,
         );
+        if matches!(state, State::None | State::Done(_)) {
+            info!("No synchronization of the linear chain will be done.");
+        }
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
