@@ -854,18 +854,18 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
             is_session_transfer,
         } = self;
 
-        parsing::parse_session_info(
+        parsing::parse_session_info(SessionStrParams {
             session_hash,
             session_name,
             session_package_hash,
             session_package_name,
             session_path,
-            &session_args_simple,
+            session_args_simple,
             session_args_complex,
             session_version,
             session_entry_point,
             is_session_transfer,
-        )
+        })
     }
 }
 

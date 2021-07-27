@@ -19,7 +19,7 @@ use crate::{
     cl_type,
     deploy::DeployParams,
     error::{Error, Result},
-    help, PaymentStrParams,
+    help, PaymentStrParams, SessionStrParams,
 };
 
 pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
@@ -374,19 +374,19 @@ pub(super) fn parse_deploy_params(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn parse_session_info(
-    session_hash: &str,
-    session_name: &str,
-    session_package_hash: &str,
-    session_package_name: &str,
-    session_path: &str,
-    session_args: &[&str],
-    session_args_complex: &str,
-    session_version: &str,
-    session_entry_point: &str,
-    session_transfer: bool,
-) -> Result<ExecutableDeployItem> {
+pub(super) fn parse_session_info(params: SessionStrParams) -> Result<ExecutableDeployItem> {
+    let SessionStrParams {
+        session_hash,
+        session_name,
+        session_package_hash,
+        session_package_name,
+        session_path,
+        ref session_args_simple,
+        session_args_complex,
+        session_version,
+        session_entry_point,
+        is_session_transfer: session_transfer,
+    } = params;
     // This is to make sure that we're using &str consistently in the macro call below.
     let is_session_transfer = if session_transfer { "true" } else { "" };
 
@@ -405,7 +405,7 @@ pub(super) fn parse_session_info(
         (is_session_transfer)
             requires[] requires_empty[session_entry_point, session_version]
     );
-    if !session_args.is_empty() && !session_args_complex.is_empty() {
+    if !session_args_simple.is_empty() && !session_args_complex.is_empty() {
         return Err(Error::ConflictingArguments {
             context: "parse_session_info",
             args: vec!["session_args".to_owned(), "session_args_complex".to_owned()],
@@ -413,7 +413,7 @@ pub(super) fn parse_session_info(
     }
 
     let session_args = args_from_simple_or_complex(
-        arg_simple::session::parse(session_args)?,
+        arg_simple::session::parse(session_args_simple)?,
         args_complex::session::parse(session_args_complex).ok(),
     );
     if session_transfer {
@@ -878,18 +878,18 @@ mod tests {
     #[test]
     fn should_fail_to_parse_conflicting_arg_types() {
         assert!(matches!(
-            parse_session_info(
-                "",
-                "name",
-                "",
-                "",
-                "",
-                &["something:u32='0'"],
-                "path_to/file",
-                "",
-                "entrypoint",
-                false
-            ),
+            parse_session_info(SessionStrParams {
+                session_hash: "",
+                session_name: "name",
+                session_package_hash: "",
+                session_package_name: "",
+                session_path: "",
+                session_args_simple: vec!["something:u32='0'"],
+                session_args_complex: "path_to/file",
+                session_version: "",
+                session_entry_point: "entrypoint",
+                is_session_transfer: false
+            }),
             Err(Error::ConflictingArguments {
                 context: "parse_session_info",
                 ..
@@ -919,18 +919,18 @@ mod tests {
     #[test]
     fn should_fail_to_parse_conflicting_session_parameters() {
         assert!(matches!(
-            parse_session_info(
-                happy::HASH,
-                happy::NAME,
-                happy::PACKAGE_HASH,
-                happy::PACKAGE_NAME,
-                happy::PATH,
-                &[],
-                "",
-                "",
-                "",
-                false
-            ),
+            parse_session_info(SessionStrParams {
+                session_hash: happy::HASH,
+                session_name: happy::NAME,
+                session_package_hash: happy::PACKAGE_HASH,
+                session_package_name: happy::PACKAGE_NAME,
+                session_path: happy::PATH,
+                session_args_simple: vec![],
+                session_args_complex: "",
+                session_version: "",
+                session_entry_point: "",
+                is_session_transfer: false
+            }),
             Err(Error::ConflictingArguments {
                 context: "parse_session_info",
                 ..
