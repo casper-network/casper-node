@@ -189,16 +189,22 @@ where
         let mut key_blocks = HashMap::new();
         let mut booking_blocks = HashMap::new();
         for era_id in era_ids {
+            let key_block_era_id = era_id.saturating_sub(1);
+            if key_block_era_id <= era_supervisor.protocol_config.last_emergency_restart {
+                continue;
+            }
             let block_header = storage
-                .read_switch_block_header_by_era_id(era_id.saturating_sub(1))?
+                .read_switch_block_header_by_era_id(key_block_era_id)?
                 .ok_or_else(|| anyhow::Error::msg("No such switch block"))?;
             key_blocks.insert(era_id, block_header);
+            let booking_block_era_id = era_id
+                .saturating_sub(era_supervisor.protocol_config.auction_delay)
+                .saturating_sub(1);
+            if booking_block_era_id <= era_supervisor.protocol_config.last_emergency_restart {
+                continue;
+            }
             let block_header_hash = storage
-                .read_switch_block_header_by_era_id(
-                    era_id
-                        .saturating_sub(era_supervisor.protocol_config.auction_delay)
-                        .saturating_sub(1),
-                )?
+                .read_switch_block_header_by_era_id(booking_block_era_id)?
                 .ok_or_else(|| anyhow::Error::msg("No such switch block"))?
                 .hash();
             booking_blocks.insert(era_id, block_header_hash);
