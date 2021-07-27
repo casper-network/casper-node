@@ -438,12 +438,28 @@ where
     I: Eq + Debug + Clone + Send + 'static,
 {
     // Fetch the trusted header
-    let trusted_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
+    let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
+
+    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
+    match maybe_last_emergency_restart_era_id {
+        Some(last_emergency_restart_era)
+            if last_emergency_restart_era >= trusted_block_header.era_id() =>
+        {
+            return Err(
+                LinearChainSyncError::TryingToJoinBeforeLastEmergencyRestartEra {
+                    last_emergency_restart_era,
+                    trusted_hash,
+                    trusted_block_header,
+                },
+            )
+        }
+        _ => {}
+    }
 
     // TODO: This will get the pre-upgrade switch block even after an emergency restart. Use the
     //       post-upgrade validator set instead.
     let mut maybe_trusted_switch_block =
-        maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_header).await?;
+        maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_block_header).await?;
 
     let mut trusted_validator_weights = maybe_trusted_switch_block.as_ref().map_or_else(
         || chainspec.network_config.chainspec_validator_stakes(),
@@ -453,8 +469,8 @@ where
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height, or we reach
     // a current era.
-    let trusted_header_output = *trusted_header.clone();
-    let mut most_recent_block_header = *trusted_header;
+    let trusted_header_output = *trusted_block_header.clone();
+    let mut most_recent_block_header = *trusted_block_header;
     let current_version = chainspec.protocol_config.version;
     loop {
         // If we encounter a block header of a version which is newer than ours we return an error
@@ -520,7 +536,6 @@ where
     // The era supervisor requires at least to 3*delay + 1 eras back to be stored in the database.
     let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
 
-    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     match maybe_last_emergency_restart_era_id {
         Some(last_emergency_restart_era_id)
             if last_emergency_restart_era_id
