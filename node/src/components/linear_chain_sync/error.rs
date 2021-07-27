@@ -121,4 +121,17 @@ where
 
     #[error(transparent)]
     BlockExecutionError(#[from] BlockExecutionError),
+
+    #[error(
+        "Joining with trusted hash before emergency restart not supported. \
+         Find a more recent hash from after the restart. \
+         Last emergency restart era: {last_emergency_restart_era}, \
+         Trusted hash: {trusted_hash:?}, \
+         Trusted block header: {trusted_block_header:?}"
+    )]
+    TryingToJoinBeforeLastEmergencyRestartEra {
+        last_emergency_restart_era: EraId,
+        trusted_hash: BlockHash,
+        trusted_block_header: Box<BlockHeader>,
+    },
 }
