@@ -1,7 +1,13 @@
-use super::FromStrError;
-use crate::{PublicKey, BLAKE2B_DIGEST_LENGTH};
+use super::{blake2b, FromStrError};
+use crate::{
+    bytesrepr::{Error, FromBytes, ToBytes},
+    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+};
 use alloc::{string::String, vec::Vec};
-use core::convert::TryFrom;
+use core::{
+    convert::TryFrom,
+    fmt::{Debug, Display, Formatter},
+};
 use datasize::DataSize;
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
@@ -119,3 +125,76 @@ impl<'de> Deserialize<'de> for AccountHash {
         }
     }
 }
+
+impl TryFrom<&[u8]> for AccountHash {
+    type Error = TryFromSliceForAccountHashError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForAccountHashError> {
+        AccountHashBytes::try_from(bytes)
+            .map(AccountHash::new)
+            .map_err(|_| TryFromSliceForAccountHashError(()))
+    }
+}
+
+impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
+    type Error = TryFromSliceForAccountHashError;
+
+    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
+        AccountHashBytes::try_from(bytes as &[u8])
+            .map(AccountHash::new)
+            .map_err(|_| TryFromSliceForAccountHashError(()))
+    }
+}
+
+impl From<&PublicKey> for AccountHash {
+    fn from(public_key: &PublicKey) -> Self {
+        AccountHash::from_public_key(public_key, blake2b)
+    }
+}
+
+impl Display for AccountHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", base16::encode_lower(&self.0))
+    }
+}
+
+impl Debug for AccountHash {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        write!(f, "AccountHash({})", base16::encode_lower(&self.0))
+    }
+}
+
+impl CLTyped for AccountHash {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
+    }
+}
+
+impl ToBytes for AccountHash {
+    #[inline(always)]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        self.0.to_bytes()
+    }
+
+    #[inline(always)]
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for AccountHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((AccountHash::new(bytes), rem))
+    }
+}
+
+impl AsRef<[u8]> for AccountHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+/// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`].
+#[derive(Debug)]
+pub struct TryFromSliceForAccountHashError(());

@@ -1,12 +1,9 @@
 //! Contains types and constants associated with user accounts.
 
 mod account_hash;
+mod weight;
 
-use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
-};
-use alloc::vec::Vec;
+use crate::BLAKE2B_DIGEST_LENGTH;
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -20,22 +17,21 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use thiserror::Error;
 
-pub use self::account_hash::{
-    AccountHash, AccountHashBytes, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH,
+pub use self::{
+    account_hash::{
+        AccountHash, AccountHashBytes, TryFromSliceForAccountHashError,
+        ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH,
+    },
+    weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
 #[derive(Debug, Eq, PartialEq)]
 pub struct TryFromIntError(());
-
-/// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`].
-#[derive(Debug)]
-pub struct TryFromSliceForAccountHashError(());
 
 /// Error returned when decoding an `AccountHash` from a formatted string.
 #[derive(Debug)]
@@ -162,48 +158,6 @@ impl TryFrom<i32> for SetThresholdFailure {
 /// account.
 pub const MAX_ASSOCIATED_KEYS: usize = 10;
 
-/// The number of bytes in a serialized [`Weight`].
-pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
-
-/// The weight attributed to a given [`AccountHash`] in an account's associated keys.
-#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct Weight(u8);
-
-impl Weight {
-    /// Constructs a new `Weight`.
-    pub fn new(weight: u8) -> Weight {
-        Weight(weight)
-    }
-
-    /// Returns the value of `self` as a `u8`.
-    pub fn value(self) -> u8 {
-        self.0
-    }
-}
-
-impl ToBytes for Weight {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        WEIGHT_SERIALIZED_LENGTH
-    }
-}
-
-impl FromBytes for Weight {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (byte, rem) = u8::from_bytes(bytes)?;
-        Ok((Weight::new(byte), rem))
-    }
-}
-
-impl CLTyped for Weight {
-    fn cl_type() -> CLType {
-        CLType::U8
-    }
-}
-
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let mut result = [0; BLAKE2B_DIGEST_LENGTH];
@@ -215,75 +169,6 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         result.copy_from_slice(slice);
     });
     result
-}
-
-impl TryFrom<&[u8]> for AccountHash {
-    type Error = TryFromSliceForAccountHashError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForAccountHashError> {
-        AccountHashBytes::try_from(bytes)
-            .map(AccountHash::new)
-            .map_err(|_| TryFromSliceForAccountHashError(()))
-    }
-}
-
-impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
-    type Error = TryFromSliceForAccountHashError;
-
-    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        AccountHashBytes::try_from(bytes as &[u8])
-            .map(AccountHash::new)
-            .map_err(|_| TryFromSliceForAccountHashError(()))
-    }
-}
-
-impl From<&PublicKey> for AccountHash {
-    fn from(public_key: &PublicKey) -> Self {
-        AccountHash::from_public_key(public_key, blake2b)
-    }
-}
-
-impl Display for AccountHash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", base16::encode_lower(&self.0))
-    }
-}
-
-impl Debug for AccountHash {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "AccountHash({})", base16::encode_lower(&self.0))
-    }
-}
-
-impl CLTyped for AccountHash {
-    fn cl_type() -> CLType {
-        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
-    }
-}
-
-impl ToBytes for AccountHash {
-    #[inline(always)]
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.0.to_bytes()
-    }
-
-    #[inline(always)]
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for AccountHash {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((AccountHash::new(bytes), rem))
-    }
-}
-
-impl AsRef<[u8]> for AccountHash {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
 }
 
 impl Distribution<AccountHash> for Standard {
