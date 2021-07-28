@@ -140,7 +140,7 @@ steps:
   commands:
     - make rpm
 
-- name: put-drone-s3-cache
+- name: put-drone-s3-cache-rpm
   image: plugins/s3-sync:latest
   settings:
     bucket:
@@ -177,7 +177,7 @@ steps:
     - "apt update"
     - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
 
-- name: put-drone-s3-cache
+- name: put-drone-s3-cache-deb
   image: plugins/s3-sync:latest
   settings:
     bucket:
@@ -515,10 +515,10 @@ type: docker
 name: release-by-tag
 
 steps:
-  - name: build-rpm
-    image: casperlabs/rpm-package
-    commands:
-      - make rpm
+- name: build-rpm
+  image: casperlabs/rpm-package
+  commands:
+    - make rpm
 
 - name: build-deb
   image: casperlabs/node-build-u1804
