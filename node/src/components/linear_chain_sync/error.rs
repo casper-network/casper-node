@@ -106,9 +106,6 @@ where
     #[error(transparent)]
     TrieFetcherError(#[from] FetcherError<Trie<Key, StoredValue>, I>),
 
-    #[error("config error: missing genesis timestamp")]
-    MissingGenesisTimestamp,
-
     #[error(
         "Executed block is not the same as downloaded block. \
          Executed block: {executed_block:?}, \
@@ -133,5 +130,13 @@ where
         last_emergency_restart_era: EraId,
         trusted_hash: BlockHash,
         trusted_block_header: Box<BlockHeader>,
+    },
+
+    #[error(
+        "Can't download block before genesis. \
+         Genesis block header: {genesis_block_header}"
+    )]
+    CantDownloadBlockBeforeGenesis {
+        genesis_block_header: Box<BlockHeader>,
     },
 }

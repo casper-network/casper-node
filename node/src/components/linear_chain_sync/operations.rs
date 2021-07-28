@@ -1,13 +1,13 @@
 use std::{collections::BTreeMap, fmt::Debug, time::Duration};
 
 use num::rational::Ratio;
-use tracing::{error, info, trace, warn};
+use tracing::{info, trace, warn};
 
 use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
 };
-use casper_types::{EraId, Key, PublicKey, U512};
+use casper_types::{Key, PublicKey, U512};
 
 use crate::{
     components::{
@@ -119,45 +119,6 @@ where
     Ok(deploy)
 }
 
-/// Get trusted switch block; returns `None` if we are still in the first era.
-async fn maybe_get_trusted_switch_block<REv, I>(
-    effect_builder: EffectBuilder<REv>,
-    chainspec: &Chainspec,
-    trusted_header: &BlockHeader,
-) -> Result<Option<BlockHeader>, LinearChainSyncError<I>>
-where
-    REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
-    I: Eq + Debug + Clone + Send + 'static,
-{
-    // If we are still in the first era, there is no switch block.
-    if trusted_header.era_id().is_genesis() {
-        return Ok(None);
-    }
-
-    // Check that we are not restarting right after an emergency restart, which is too early
-    // Consider emitting a switch block after an emergency restart to make this simpler...
-    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
-
-    let min_era = maybe_last_emergency_restart_era_id.unwrap_or_else(|| EraId::new(0));
-    if min_era >= trusted_header.era_id() {
-        return Err(LinearChainSyncError::TrustedHeaderEraTooEarly {
-            trusted_header: Box::new(trusted_header.clone()),
-            maybe_last_emergency_restart_era_id,
-        });
-    };
-
-    // Fetch each parent hash one by one until we have the trusted validator weights
-    let mut current_header_to_walk_back_from = trusted_header.clone();
-    while !current_header_to_walk_back_from.is_switch_block() {
-        current_header_to_walk_back_from = *fetch_and_store_block_header(
-            effect_builder,
-            *current_header_to_walk_back_from.parent_hash(),
-        )
-        .await?;
-    }
-    Ok(Some(current_header_to_walk_back_from))
-}
-
 /// Verifies finality signatures for a block header
 fn validate_finality_signatures(
     block_header: &BlockHeader,
@@ -205,9 +166,11 @@ pub(crate) fn check_sufficient_finality_signatures(
                     trusted_validator_weights: trusted_validator_weights.clone(),
                     block_signatures: Box::new(block_signatures.clone()),
                     bogus_validator_public_key: Box::new(public_key.clone()),
-                });
+                })
             }
-            Some(validator_weight) => signature_weight += *validator_weight,
+            Some(validator_weight) => {
+                signature_weight += *validator_weight;
+            }
         }
     }
 
@@ -217,7 +180,7 @@ pub(crate) fn check_sufficient_finality_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = Ratio::from(1u64) - finality_threshold_fraction;
+    let lower_bound = (Ratio::from(1u64) + finality_threshold_fraction) / Ratio::from(2u64);
     // Verify: signature_weight / total_weight >= lower_bound
     // Equivalent to the following
     if signature_weight * U512::from(*lower_bound.denom())
@@ -231,6 +194,7 @@ pub(crate) fn check_sufficient_finality_signatures(
             finality_threshold_fraction,
         });
     }
+
     Ok(())
 }
 
@@ -312,6 +276,72 @@ where
     Ok(None)
 }
 
+pub(super) struct SwitchBlockInfo {
+    validator_weights: BTreeMap<PublicKey, U512>,
+    era_start: Timestamp,
+    switch_block_height: u64,
+}
+
+impl SwitchBlockInfo {
+    pub(super) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<SwitchBlockInfo> {
+        block_header
+            .next_era_validator_weights()
+            .map(|next_era_validator_weights| SwitchBlockInfo {
+                validator_weights: next_era_validator_weights.clone(),
+                era_start: block_header.timestamp(),
+                switch_block_height: block_header.height(),
+            })
+    }
+}
+
+/// Get trusted switch block; returns `None` if we are still in the first era.
+async fn get_trusted_switch_block_info<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    chainspec: &Chainspec,
+    trusted_header: &BlockHeader,
+) -> Result<SwitchBlockInfo, LinearChainSyncError<I>>
+where
+    REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
+    I: Eq + Debug + Clone + Send + 'static,
+{
+    // Fetch each parent hash one by one until we have the switch block info
+    // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
+    let mut current_header_to_walk_back_from = trusted_header.clone();
+    loop {
+        // Check that we are not restarting right after an emergency restart, which is too early
+        match chainspec.protocol_config.last_emergency_restart {
+            Some(last_emergency_restart)
+                if last_emergency_restart > current_header_to_walk_back_from.era_id() =>
+            {
+                return Err(LinearChainSyncError::TrustedHeaderEraTooEarly {
+                    trusted_header: Box::new(trusted_header.clone()),
+                    maybe_last_emergency_restart_era_id: chainspec
+                        .protocol_config
+                        .last_emergency_restart,
+                })
+            }
+            _ => {}
+        }
+
+        if let Some(switch_block_info) =
+            SwitchBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
+        {
+            break Ok(switch_block_info);
+        }
+
+        if current_header_to_walk_back_from.height() == 0 {
+            return Err(LinearChainSyncError::CantDownloadBlockBeforeGenesis {
+                genesis_block_header: Box::new(current_header_to_walk_back_from),
+            });
+        }
+        current_header_to_walk_back_from = *fetch_and_store_block_header(
+            effect_builder,
+            *current_header_to_walk_back_from.parent_hash(),
+        )
+        .await?;
+    }
+}
+
 /// Fetches a block from the network by height.
 async fn fetch_and_store_block_by_height<REv, I>(
     effect_builder: EffectBuilder<REv>,
@@ -341,7 +371,7 @@ where
                     warn!(
                         ?error,
                         ?peer,
-                        "Error validating finality signatures from peer.",
+                        "Error validating block from peer; banning peer.",
                     );
                     // TODO: ban peer
                     continue;
@@ -456,20 +486,12 @@ where
         _ => {}
     }
 
-    // TODO: This will get the pre-upgrade switch block even after an emergency restart. Use the
-    //       post-upgrade validator set instead.
-    let mut maybe_trusted_switch_block =
-        maybe_get_trusted_switch_block(effect_builder, &chainspec, &trusted_block_header).await?;
-
-    let mut trusted_validator_weights = maybe_trusted_switch_block.as_ref().map_or_else(
-        || chainspec.network_config.chainspec_validator_stakes(),
-        |switch_block| switch_block.next_era_validator_weights().unwrap().clone(),
-    );
+    let mut trusted_switch_block_info =
+        get_trusted_switch_block_info(effect_builder, &chainspec, &trusted_block_header).await?;
 
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height, or we reach
     // a current era.
-    let trusted_header_output = *trusted_block_header.clone();
     let mut most_recent_block_header = *trusted_block_header;
     let current_version = chainspec.protocol_config.version;
     loop {
@@ -485,83 +507,58 @@ where
         let maybe_fetched_block = fetch_and_store_block_header_by_height(
             effect_builder,
             most_recent_block_header.height() + 1,
-            &trusted_validator_weights,
+            &trusted_switch_block_info.validator_weights,
             chainspec.highway_config.finality_threshold_fraction,
         )
         .await?;
         match maybe_fetched_block {
             Some(more_recent_block_header_with_metadata) => {
                 most_recent_block_header = more_recent_block_header_with_metadata.block_header;
-                // If the new block is a switch block, update the validator weights
-                if let Some(new_trusted_validator_weights) =
-                    most_recent_block_header.next_era_validator_weights()
+                // If the new block is a switch block, update the validator weights, etc...
+                if let Some(switch_block_info) =
+                    SwitchBlockInfo::maybe_from_block_header(&most_recent_block_header)
                 {
-                    trusted_validator_weights = new_trusted_validator_weights.clone();
-                    maybe_trusted_switch_block = Some(most_recent_block_header.clone());
+                    trusted_switch_block_info = switch_block_info;
                 }
-
-                if is_current_era(
+            }
+            // If we could not fetch, we can stop when the most recent header:
+            // 1. has our protocol version
+            // 2. is in the current era
+            None if most_recent_block_header.protocol_version() == current_version
+                && is_current_era(
                     &most_recent_block_header,
-                    maybe_trusted_switch_block.as_ref(),
+                    &trusted_switch_block_info,
                     &chainspec,
-                    Timestamp::now(),
-                )? {
-                    info!(
-                        era = most_recent_block_header.era_id().value(),
-                        timestamp = %most_recent_block_header.timestamp(),
-                        height = most_recent_block_header.height(),
-                        "Reached a block in the current era",
-                    );
-                    break;
-                }
+                ) =>
+            {
+                break
             }
-            // If we could not fetch, we can stop if the most recent has our protocol version
-            None if most_recent_block_header.protocol_version() == current_version => break,
             // Otherwise keep trying to fetch until we get a block with our version
-            None => {
-                tokio::time::sleep(TIMEOUT_DURATION).await;
-            }
+            None => tokio::time::sleep(TIMEOUT_DURATION).await,
         }
     }
 
-    // Synchronize the trie store for the most recent block header.
-
-    // Corner case: if an emergency restart happened recently, it is necessary to synchronize the
-    // state for the block right after the emergency restart.  This is needed for the EraSupervisor.
-
-    // The era supervisor needs validator information from previous eras it may potentially slash.
+    // The era supervisor needs validator information from previous eras.
     // The number of previous eras is determined by a *delay* in which consensus participants become
     // bonded validators or unbond.
     let delay = consensus::bonded_eras(&(&chainspec).into());
     // The era supervisor requires at least to 3*delay + 1 eras back to be stored in the database.
     let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
-
-    match maybe_last_emergency_restart_era_id {
-        Some(last_emergency_restart_era_id)
-            if last_emergency_restart_era_id
-                > most_recent_block_header
-                    .era_id()
-                    .saturating_sub(historical_eras_needed) =>
-        {
-            // Walk backwards until we have the first block after the emergency upgrade
-            loop {
-                let previous_block_header = fetch_and_store_block_header(
-                    effect_builder,
-                    *most_recent_block_header.parent_hash(),
-                )
-                .await?;
-                if previous_block_header.era_id() == last_emergency_restart_era_id.saturating_sub(1)
-                    && previous_block_header.is_switch_block()
-                {
-                    break;
-                }
-                most_recent_block_header = *previous_block_header;
-            }
+    let earliest_era_needed_by_era_supervisor = most_recent_block_header
+        .era_id()
+        .saturating_sub(historical_eras_needed);
+    {
+        let mut current_walk_back_header = most_recent_block_header.clone();
+        while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
+            current_walk_back_header = *fetch_and_store_block_header(
+                effect_builder,
+                *current_walk_back_header.parent_hash(),
+            )
+            .await?;
         }
-        _ => {}
     }
 
-    // Use the state root to synchronize the trie.
+    // Synchronize the trie store for the most recent block header.
     info!(
         state_root_hash = ?most_recent_block_header.state_root_hash(),
         "Syncing trie store",
@@ -575,24 +572,44 @@ where
         outstanding_trie_keys.extend(missing_descendant_trie_keys);
     }
 
+    // Execute blocks to get to current.
     let mut execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
-
     info!(
-        most_recent_block_hash = ?most_recent_block_header.hash(),
-        "Syncing blocks to current",
+        era_id = ?most_recent_block_header.era_id(),
+        height = most_recent_block_header.height(),
+        now = %Timestamp::now(),
+        block_timestamp = %most_recent_block_header.timestamp(),
+        "Fetching and executing blocks to synchronize to current",
     );
-    while let Some(BlockWithMetadata {
-        block,
-        finality_signatures: _,
-    }) = fetch_and_store_block_by_height(
-        effect_builder,
-        most_recent_block_header.height() + 1,
-        &trusted_validator_weights,
-        chainspec.highway_config.finality_threshold_fraction,
-    )
-    .await?
-    .map(|boxed_block_with_metadata| *boxed_block_with_metadata)
-    {
+    loop {
+        let block = match fetch_and_store_block_by_height(
+            effect_builder,
+            most_recent_block_header.height() + 1,
+            &trusted_switch_block_info.validator_weights,
+            chainspec.highway_config.finality_threshold_fraction,
+        )
+        .await?
+        {
+            None => {
+                if is_current_era(
+                    &most_recent_block_header,
+                    &trusted_switch_block_info,
+                    &chainspec,
+                ) {
+                    info!(
+                        era = most_recent_block_header.era_id().value(),
+                        height = most_recent_block_header.height(),
+                        timestamp = %most_recent_block_header.timestamp(),
+                        "Finished executing blocks; synchronized to current era",
+                    );
+                    break;
+                } else {
+                    tokio::time::sleep(TIMEOUT_DURATION).await;
+                    continue;
+                }
+            }
+            Some(block_with_metadata) => block_with_metadata.block,
+        };
         if block.protocol_version() > current_version {
             return Err(
                 LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
@@ -611,6 +628,13 @@ where
             transfers.push(*fetch_and_store_deploy(effect_builder, *transfer_hash).await?);
         }
 
+        info!(
+            era_id = ?block.header().era_id(),
+            height = block.height(),
+            now = %Timestamp::now(),
+            block_timestamp = %block.timestamp(),
+            "Executing block",
+        );
         let block_and_execution_effects = effect_builder
             .execute_finalized_block(
                 block.protocol_version(),
@@ -633,61 +657,64 @@ where
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
 
-        if let Some(new_trusted_validator_weights) =
-            most_recent_block_header.next_era_validator_weights()
+        if let Some(switch_block_info) =
+            SwitchBlockInfo::maybe_from_block_header(&most_recent_block_header)
         {
-            trusted_validator_weights = new_trusted_validator_weights.clone();
+            trusted_switch_block_info = switch_block_info;
         }
     }
 
-    Ok(trusted_header_output)
+    info!(
+        era_id = ?most_recent_block_header.era_id(),
+        height = most_recent_block_header.height(),
+        now = %Timestamp::now(),
+        block_timestamp = %most_recent_block_header.timestamp(),
+        "Finished synchronizing",
+    );
+
+    Ok(most_recent_block_header)
 }
 
 /// Returns `true` if `most_recent_block` belongs to an era that is still ongoing.
-pub(crate) fn is_current_era<I>(
+pub(super) fn is_current_era(
     most_recent_block: &BlockHeader,
-    maybe_switch_block: Option<&BlockHeader>,
+    trusted_switch_block_info: &SwitchBlockInfo,
     chainspec: &Chainspec,
-    now: Timestamp,
-) -> Result<bool, LinearChainSyncError<I>>
-where
-    I: Eq + Debug,
-{
-    // Compute the start timestamp of the current era, and the number of blocks so far.
-    let (blocks_in_this_era, era_start) = match maybe_switch_block {
-        Some(switch_block) => (
-            most_recent_block.height() - switch_block.height(),
-            switch_block.timestamp(),
-        ),
-        None => (
-            most_recent_block.height() + 1,
-            chainspec
-                .protocol_config
-                .activation_point
-                .genesis_timestamp()
-                .ok_or_else(|| {
-                    error!(
-                        ?most_recent_block,
-                        "no recent switch block and no genesis timestamp"
-                    );
-                    LinearChainSyncError::MissingGenesisTimestamp
-                })?,
-        ),
-    };
+) -> bool {
+    is_current_era_given_current_timestamp(
+        most_recent_block,
+        trusted_switch_block_info,
+        chainspec,
+        Timestamp::now(),
+    )
+}
+
+fn is_current_era_given_current_timestamp(
+    most_recent_block: &BlockHeader,
+    trusted_switch_block_info: &SwitchBlockInfo,
+    chainspec: &Chainspec,
+    current_timestamp: Timestamp,
+) -> bool {
+    let SwitchBlockInfo {
+        era_start,
+        switch_block_height,
+        validator_weights: _,
+    } = trusted_switch_block_info;
 
     // If the minimum era duration has not yet run out, the era is still current.
-    if now.saturating_diff(era_start) < chainspec.core_config.era_duration {
-        return Ok(true);
+    if current_timestamp.saturating_diff(*era_start) < chainspec.core_config.era_duration {
+        return true;
     }
 
     // Otherwise estimate the earliest possible end of this era based on how many blocks remain.
     let remaining_blocks_in_this_era = chainspec
         .core_config
         .minimum_era_height
-        .saturating_sub(blocks_in_this_era);
+        .saturating_sub(most_recent_block.height() - *switch_block_height);
     let min_round_length = chainspec.highway_config.min_round_length();
-    let time_since_most_recent_block = now.saturating_diff(most_recent_block.timestamp());
-    Ok(time_since_most_recent_block < min_round_length * remaining_blocks_in_this_era)
+    let time_since_most_recent_block =
+        current_timestamp.saturating_diff(most_recent_block.timestamp());
+    time_since_most_recent_block < min_round_length * remaining_blocks_in_this_era
 }
 
 #[cfg(test)]
@@ -696,7 +723,7 @@ mod tests {
 
     use super::*;
 
-    use casper_types::{PublicKey, SecretKey};
+    use casper_types::{EraId, PublicKey, SecretKey};
 
     use crate::{
         components::consensus::EraReport,
@@ -772,13 +799,20 @@ mod tests {
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
         let switch_block5 = create_block(era6_start, EraId::from(5), 100, true);
+        let trusted_switch_block_info5 = SwitchBlockInfo::maybe_from_block_header(&switch_block5)
+            .expect("no switch block info for switch block");
 
         // If we are still within the minimum era duration the era is current, even if we have the
         // required number of blocks (115 - 100 > 10).
         let block_time = era6_start + era_duration - 10.into();
         let now = block_time + 5.into();
         let block = create_block(block_time, EraId::from(6), 115, false);
-        assert!(is_current_era::<()>(&block, Some(&switch_block5), &chainspec, now).unwrap());
+        assert!(is_current_era_given_current_timestamp(
+            &block,
+            &trusted_switch_block_info5,
+            &chainspec,
+            now
+        ));
 
         // If the minimum duration has passed but we we know we don't have all blocks yet, it's
         // also still current. There are still five blocks missing but only four rounds have
@@ -786,35 +820,22 @@ mod tests {
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 4;
         let block = create_block(block_time, EraId::from(6), 105, false);
-        assert!(is_current_era::<()>(&block, Some(&switch_block5), &chainspec, now).unwrap());
+        assert!(is_current_era_given_current_timestamp(
+            &block,
+            &trusted_switch_block_info5,
+            &chainspec,
+            now
+        ));
 
         // If both criteria are satisfied, the era could have ended.
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 5;
         let block = create_block(block_time, EraId::from(6), 105, false);
-        assert!(!is_current_era::<()>(&block, Some(&switch_block5), &chainspec, now).unwrap());
-
-        // Now we do the same tests in era 0. In that case, the switch block is None.
-
-        // If we are still within the minimum era duration the era is current, even if we have the
-        // required number of blocks (14 > 10).
-        let block_time = genesis_time + era_duration - 10.into();
-        let now = block_time + 5.into();
-        let block = create_block(block_time, EraId::from(0), 14, false);
-        assert!(is_current_era::<()>(&block, None, &chainspec, now).unwrap());
-
-        // If the minimum duration has passed but we we know we don't have all blocks yet, it's
-        // also still current. There are still five blocks missing but only three rounds have
-        // passed. (Block 4 is the fifth block.)
-        let block_time = genesis_time + era_duration * 2;
-        let now = block_time + min_round_length * 4;
-        let block = create_block(block_time, EraId::from(0), 4, false);
-        assert!(is_current_era::<()>(&block, None, &chainspec, now).unwrap());
-
-        // If both criteria are satisfied, the era could have ended.
-        let block_time = genesis_time + era_duration * 2;
-        let now = block_time + min_round_length * 5;
-        let block = create_block(block_time, EraId::from(0), 4, false);
-        assert!(!is_current_era::<()>(&block, None, &chainspec, now).unwrap());
+        assert!(!is_current_era_given_current_timestamp(
+            &block,
+            &trusted_switch_block_info5,
+            &chainspec,
+            now
+        ));
     }
 }
