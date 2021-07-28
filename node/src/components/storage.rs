@@ -66,7 +66,7 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform, U512};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
 
 use crate::{
     components::{
@@ -1046,7 +1046,6 @@ impl Storage {
     pub fn read_block_header_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
@@ -1055,7 +1054,6 @@ impl Storage {
             .get_block_header_and_sufficient_finality_signatures_by_height(
                 &mut txn,
                 height,
-                genesis_validator_weights,
                 finality_threshold_fraction,
                 last_emergency_restart,
             )?;
@@ -1069,7 +1067,6 @@ impl Storage {
     pub fn read_block_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockWithMetadata>, Error> {
@@ -1078,7 +1075,6 @@ impl Storage {
             .get_block_and_sufficient_finality_signatures_by_height(
                 &mut txn,
                 height,
-                genesis_validator_weights,
                 finality_threshold_fraction,
                 last_emergency_restart,
             )?;
@@ -1472,7 +1468,6 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockWithMetadata>, Error> {
@@ -1482,7 +1477,6 @@ impl Storage {
         } = match self.get_block_header_and_sufficient_finality_signatures_by_height(
             tx,
             height,
-            genesis_validator_weights,
             finality_threshold_fraction,
             last_emergency_restart,
         )? {
@@ -1507,7 +1501,6 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
@@ -1522,7 +1515,6 @@ impl Storage {
         let block_signatures = match self.get_sufficient_finality_signatures(
             tx,
             &block_header,
-            genesis_validator_weights,
             finality_threshold_fraction,
             last_emergency_restart,
         )? {
@@ -1542,7 +1534,6 @@ impl Storage {
         &self,
         tx: &mut Tx,
         block_header: &BlockHeader,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockSignatures>, Error> {
@@ -1560,32 +1551,24 @@ impl Storage {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
-        let finality_check_result = if block_header.era_id().is_genesis() {
-            linear_chain_sync::check_sufficient_finality_signatures(
-                genesis_validator_weights,
+        let switch_block_hash = match self
+            .switch_block_era_id_index
+            .get(&(block_header.era_id() - 1))
+        {
+            None => return Ok(None),
+            Some(switch_block_hash) => switch_block_hash,
+        };
+        let switch_block_header = match self.get_single_block_header(tx, switch_block_hash)? {
+            None => return Ok(None),
+            Some(switch_block_header) => switch_block_header,
+        };
+        let finality_check_result = match switch_block_header.next_era_validator_weights() {
+            None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
+            Some(validator_weights) => linear_chain_sync::check_sufficient_finality_signatures(
+                validator_weights,
                 finality_threshold_fraction,
                 &block_signatures,
-            )
-        } else {
-            let switch_block_hash = match self
-                .switch_block_era_id_index
-                .get(&(block_header.era_id() - 1))
-            {
-                None => return Ok(None),
-                Some(switch_block_hash) => switch_block_hash,
-            };
-            let switch_block_header = match self.get_single_block_header(tx, switch_block_hash)? {
-                None => return Ok(None),
-                Some(switch_block_header) => switch_block_header,
-            };
-            match switch_block_header.next_era_validator_weights() {
-                None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
-                Some(validator_weights) => linear_chain_sync::check_sufficient_finality_signatures(
-                    validator_weights,
-                    finality_threshold_fraction,
-                    &block_signatures,
-                ),
-            }
+            ),
         };
         match finality_check_result {
             Err(err @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {

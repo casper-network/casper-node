@@ -504,8 +504,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
             .into_iter()
             .collect();
     let finality_threshold_fraction = Ratio::new(1, 3);
-    let switch_block =
-        switch_block_for_block_header(block.header(), genesis_validator_weights.clone());
+    let switch_block = switch_block_for_block_header(block.header(), genesis_validator_weights);
     let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
     assert!(was_new, "putting switch block should have returned `true`");
 
@@ -513,7 +512,6 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
         let block_header_with_metadata = storage
             .read_block_header_and_sufficient_finality_signatures_by_height(
                 block.header().height(),
-                &genesis_validator_weights,
                 finality_threshold_fraction,
                 None, // last emergency restart
             )
@@ -532,7 +530,6 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
         let block_with_metadata = storage
             .read_block_and_sufficient_finality_signatures_by_height(
                 block.header().height(),
-                &genesis_validator_weights,
                 finality_threshold_fraction,
                 None, // last emergency restart
             )
