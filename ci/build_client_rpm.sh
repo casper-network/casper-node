@@ -8,9 +8,9 @@
 
 set -e
 
-#docker pull casperlabs/node-build-u1804:latest
+docker pull casperlabs/rpm-package:latest
 
 # Getting user and group to chown/chgrp target folder from root at end.
 # Cannot use the --user trick as cached .cargo in image is owned by root.
-command="cd /casper-node/client; cargo rpm build; chown -R -f $(id -u):$(id -g) ./target "
-docker run --rm --volume $(pwd)/..:/casper-node cent8package:latest /bin/bash -c "${command}"
+command="cd /casper-node; make rpm; chown -R -f $(id -u):$(id -g) ./target "
+docker run --rm --volume $(pwd)/..:/casper-node casperlabs/rpm-package /bin/bash -c "${command}"

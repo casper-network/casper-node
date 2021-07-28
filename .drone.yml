@@ -135,6 +135,32 @@ type: docker
 name: package
 
 steps:
+- name: build-rpm
+  image: casperlabs/rpm-package
+  commands:
+    - make rpm
+
+- name: put-drone-s3-cache
+  image: plugins/s3-sync:latest
+  settings:
+    bucket:
+      from_secret: put-drone-s3-bucket
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: target/release/rpmbuild/RPMS/x86_64/
+    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/rpm/"
+  when:
+    branch:
+      - master
+      - dev
+      - "release-*"
+      - "feat-*"
+    event:
+      - push
+
 - name: build-deb-update-revision
   image: casperlabs/node-build-u1804
   commands:
@@ -143,8 +169,7 @@ steps:
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
-    - make setup-rs
-    - "make deb"
+    - make deb
 
 - name: test-deb
   image: ubuntu:bionic
@@ -490,10 +515,15 @@ type: docker
 name: release-by-tag
 
 steps:
+  - name: build-rpm
+    image: casperlabs/rpm-package
+    commands:
+      - make rpm
+
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
-    - "make deb"
+    - make deb
 
 - name: publish-repo-prod
   image: casperlabs/aptly:latest
@@ -534,6 +564,7 @@ steps:
     - md5
     files:
     - "./target/debian/*.deb"
+    - "./target/release/rpmbuild/RPMS/x86_64/*.rpm"
     - "./target/upgrade_build/*.gz"
     prerelease:
     - true
