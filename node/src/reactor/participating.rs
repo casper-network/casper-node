@@ -546,14 +546,12 @@ impl reactor::Reactor for Reactor {
             .map(|next_upgrade| next_upgrade.activation_point());
 
         let mut effects = Effects::new();
-        let initial_era;
 
         // If we have a latest block header, we joined via the joiner reactor.
         //
         // If not, run genesis or upgrade and construct a switch block, and use that for the latest
         // block header.
         let latest_block_header = if let Some(latest_block_header) = maybe_latest_block_header {
-            initial_era = latest_block_header.next_block_era_id();
             latest_block_header
         } else {
             let initial_pre_state;
@@ -594,7 +592,6 @@ impl reactor::Reactor for Reactor {
                         0,
                         PublicKey::System,
                     );
-                    initial_era = EraId::from(1);
                 }
                 ActivationPoint::EraId(upgrade_era_id) => {
                     let upgrade_block_header = storage
@@ -649,7 +646,6 @@ impl reactor::Reactor for Reactor {
                         upgrade_block_header.height() + 1,
                         PublicKey::System,
                     );
-                    initial_era = upgrade_era_id.saturating_add(1);
                 }
             };
             // Execute the finalized block, creating a new switch block.
@@ -695,7 +691,7 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            initial_era,
+            latest_block_header.next_block_era_id(),
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
