@@ -1,5 +1,6 @@
 //! Contains implementation of a Mint contract functionality.
 mod constants;
+mod entry_points;
 mod error;
 mod runtime_provider;
 mod storage_provider;
@@ -8,10 +9,10 @@ mod system_provider;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use crate::{account::AccountHash, Key, PublicKey, URef, U512};
+use crate::{account::AccountHash, system::CallStackElement, Key, Phase, PublicKey, URef, U512};
 
 pub use crate::system::mint::{
-    constants::*, error::Error, runtime_provider::RuntimeProvider,
+    constants::*, entry_points::mint_entry_points, error::Error, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider, system_provider::SystemProvider,
 };
 
@@ -99,6 +100,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
+        if let (Phase::Session, Some(&CallStackElement::StoredSession { .. })) =
+            (self.get_phase(), self.get_immediate_caller())
+        {
+            // stored session code is not allowed to call this method in the session phase
+            return Err(Error::InvalidContext);
+        }
+
         if !source.is_readable() {
             return Err(Error::InvalidAccessRights);
         }

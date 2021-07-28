@@ -11,12 +11,13 @@ use std::{
     hash::Hash,
     io::{self, BufWriter, Write},
     num::NonZeroUsize,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use enum_iterator::IntoEnumIterator;
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
+use tracing::warn;
 
 /// Weighted round-robin scheduler.
 ///
@@ -41,6 +42,9 @@ pub struct WeightedRoundRobin<I, K> {
 
     /// Number of items in all queues combined.
     total: Semaphore,
+
+    /// Whether or not the queue is sealed (not accepting any more items).
+    sealed: AtomicBool,
 }
 
 /// State that wraps queue and its event count.
@@ -228,6 +232,7 @@ where
             slots,
             queues,
             total: Semaphore::new(0),
+            sealed: AtomicBool::new(false),
         }
     }
 
@@ -237,6 +242,11 @@ where
     ///
     /// Panics if the queue identified by key `queue` does not exist.
     pub(crate) async fn push(&self, item: I, queue: K) {
+        if self.sealed.load(Ordering::SeqCst) {
+            warn!("queue sealed, dropping item");
+            return;
+        }
+
         self.queues
             .get(&queue)
             .expect("tried to push to non-existent queue")
@@ -316,6 +326,13 @@ where
         events
     }
 
+    /// Seals the queue, preventing it from accepting any more items.
+    ///
+    /// Items pushed into the queue via `push` will be dropped immediately.
+    pub fn seal(&self) {
+        self.sealed.store(true, Ordering::SeqCst);
+    }
+
     /// Returns the number of events currently in the queue.
     #[cfg(test)]
     pub(crate) fn item_count(&self) -> usize {
@@ -376,5 +393,29 @@ mod tests {
         assert_eq!(('b', QueueKind::One), scheduler.pop().await);
         assert_eq!(('f', QueueKind::Two), scheduler.pop().await);
         assert_eq!(('c', QueueKind::One), scheduler.pop().await);
+    }
+
+    #[tokio::test]
+    async fn can_seal_queue() {
+        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights());
+
+        assert_eq!(scheduler.item_count(), 0);
+        scheduler.push('a', QueueKind::One).await;
+        assert_eq!(scheduler.item_count(), 1);
+        scheduler.push('b', QueueKind::Two).await;
+        assert_eq!(scheduler.item_count(), 2);
+
+        scheduler.seal();
+        assert_eq!(scheduler.item_count(), 2);
+        scheduler.push('c', QueueKind::One).await;
+        assert_eq!(scheduler.item_count(), 2);
+        scheduler.push('d', QueueKind::One).await;
+        assert_eq!(scheduler.item_count(), 2);
+
+        assert_eq!(('a', QueueKind::One), scheduler.pop().await);
+        assert_eq!(scheduler.item_count(), 1);
+        assert_eq!(('b', QueueKind::Two), scheduler.pop().await);
+        assert_eq!(scheduler.item_count(), 0);
+        assert!(scheduler.drain_queues().await.is_empty());
     }
 }

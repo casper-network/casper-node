@@ -14,11 +14,11 @@ use anyhow::{self, Context};
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use casper_node::{
     logging,
-    reactor::{initializer, joiner, validator, ReactorExit, Runner},
+    reactor::{initializer, joiner, participating, ReactorExit, Runner},
     setup_signal_hooks,
     types::ExitCode,
     utils::{
@@ -212,7 +212,7 @@ impl Cli {
                     ReactorExit::ProcessShouldContinue => info!("finished initialization"),
                 }
 
-                let initializer = initializer_runner.into_inner();
+                let initializer = initializer_runner.drain_into_inner().await;
                 let root = config
                     .parent()
                     .map(|path| path.to_owned())
@@ -228,17 +228,12 @@ impl Cli {
                     ReactorExit::ProcessShouldContinue => info!("finished joining"),
                 }
 
-                let (joiner_reactor, joiner_queue) = joiner_runner.into_inners();
-                let config = joiner_reactor.into_validator_config().await?;
-
-                // At this point, the joiner is shut down, so we clear the queue to ensure any
-                // connections whose handshake completed but have not been registered are dropped.
-                for event in joiner_queue.drain_queues().await {
-                    debug!(event=%event, "drained event");
-                }
+                let joiner_reactor = joiner_runner.drain_into_inner().await;
+                let config = joiner_reactor.into_participating_config().await?;
 
                 let mut validator_runner =
-                    Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
+                    Runner::<participating::Reactor>::with_metrics(config, &mut rng, &registry)
+                        .await?;
 
                 match validator_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
@@ -293,7 +288,7 @@ impl Cli {
     fn init(
         config: &Path,
         config_ext: Vec<ConfigExt>,
-    ) -> anyhow::Result<WithDir<validator::Config>> {
+    ) -> anyhow::Result<WithDir<participating::Config>> {
         // Determine the parent directory of the configuration file, if any.
         // Otherwise, we default to `/`.
         let root = config
@@ -315,10 +310,10 @@ impl Cli {
             item.update_toml_table(&mut config_table)?;
         }
 
-        // Create validator config, including any overridden values.
-        let validator_config: validator::Config = config_table.try_into()?;
-        logging::init_with_config(&validator_config.logging)?;
+        // Create participating config, including any overridden values.
+        let participating_config: participating::Config = config_table.try_into()?;
+        logging::init_with_config(&participating_config.logging)?;
 
-        Ok(WithDir::new(root, validator_config))
+        Ok(WithDir::new(root, participating_config))
     }
 }

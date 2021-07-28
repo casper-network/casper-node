@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use clap::{App, ArgMatches, SubCommand};
 
 use casper_client::{DeployStrParams, Error};
@@ -7,6 +8,7 @@ use crate::{command::ClientCommand, common, Success};
 
 pub struct MakeTransfer;
 
+#[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
     const NAME: &'static str = "make-transfer";
     const ABOUT: &'static str =
@@ -21,12 +23,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
             .arg(creation_common::output::arg())
             .arg(transfer::amount::arg())
             .arg(transfer::target_account::arg())
-            .arg(transfer::transfer_id::arg());
+            .arg(transfer::transfer_id::arg())
+            .arg(common::force::arg(
+                creation_common::DisplayOrder::Force as usize,
+                true,
+            ));
         let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, false)
     }
 
-    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
+    async fn run(matches: &ArgMatches<'a>) -> Result<Success, Error> {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
         let amount = transfer::amount::get(matches);
@@ -43,6 +49,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
         let payment_str_params = creation_common::payment_str_params(matches);
 
         let maybe_output_path = creation_common::output::get(matches).unwrap_or_default();
+        let force = common::force::get(matches);
 
         casper_client::make_transfer(
             maybe_output_path,
@@ -53,11 +60,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
                 secret_key,
                 timestamp,
                 ttl,
-                dependencies,
                 gas_price,
+                dependencies,
                 chain_name,
             },
             payment_str_params,
+            force,
         )
         .map(|_| {
             Success::Output(if maybe_output_path.is_empty() {

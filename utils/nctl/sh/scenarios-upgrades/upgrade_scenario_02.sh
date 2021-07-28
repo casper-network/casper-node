@@ -75,7 +75,7 @@ function _spinup_step_01()
 {
     local STAGE_ID=${1}
 
-    log_step 1 "starting network from stage $STAGE_ID" "SPINUP"
+    log_step_upgrades 1 "starting network from stage $STAGE_ID" "SPINUP"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node="all"
@@ -84,7 +84,7 @@ function _spinup_step_01()
 # Spinup: step 02: Await era-id >= 1.
 function _spinup_step_02()
 {
-    log_step 2 "awaiting genesis era completion" "SPINUP"
+    log_step_upgrades 2 "awaiting genesis era completion" "SPINUP"
 
     await_until_era_n 1
     log " ... chain @ era-$(get_chain_era) :: height-$(get_chain_height)"
@@ -93,7 +93,7 @@ function _spinup_step_02()
 # Spinup: step 03: Populate global state -> native + wasm transfers.
 function _spinup_step_03()
 {
-    log_step 3 "dispatching deploys to populate global state" "SPINUP"
+    log_step_upgrades 3 "dispatching deploys to populate global state" "SPINUP"
 
     log "... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
@@ -107,7 +107,7 @@ function _spinup_step_03()
 # Spinup: step 04: Await era-id += 1.
 function _spinup_step_04()
 {
-    log_step 4 "awaiting next era" "SPINUP"
+    log_step_upgrades 4 "awaiting next era" "SPINUP"
 
     await_n_eras 1
 }
@@ -136,7 +136,7 @@ function _upgrade_step_01()
     local PROTOCOL_VERSION=${3}
     local PROTOCOL_VERSION_PREVIOUS=${4}
 
-    log_step 1 "upgrading network from stage ($STAGE_ID) @ $PROTOCOL_VERSION_PREVIOUS -> $PROTOCOL_VERSION" "UPGRADE $UPGRADE_ID:"
+    log_step_upgrades 1 "upgrading network from stage ($STAGE_ID) @ $PROTOCOL_VERSION_PREVIOUS -> $PROTOCOL_VERSION" "UPGRADE $UPGRADE_ID:"
 
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
@@ -150,7 +150,7 @@ function _upgrade_step_02()
 {
     local UPGRADE_ID=${1}
 
-    log_step 2 "dispatching deploys to populate global state" "UPGRADE $UPGRADE_ID:"
+    log_step_upgrades 2 "dispatching deploys to populate global state" "UPGRADE $UPGRADE_ID:"
 
     log "... ... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
@@ -164,7 +164,7 @@ function _upgrade_step_02()
 # Upgrade: Await era-id += 1.
 function _upgrade_step_03()
 {
-    log_step 4 "awaiting next era" "UPGRADE $UPGRADE_ID:"
+    log_step_upgrades 4 "awaiting next era" "UPGRADE $UPGRADE_ID:"
 
     await_n_eras 1
 }
@@ -174,7 +174,7 @@ function _upgrade_step_04()
 {
     local UPGRADE_ID=${1}
 
-    log_step 3 "asserting chain liveness" "UPGRADE $UPGRADE_ID:"
+    log_step_upgrades 3 "asserting chain liveness" "UPGRADE $UPGRADE_ID:"
 
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
         log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
@@ -191,7 +191,7 @@ function _upgrade_step_05()
     local HEIGHT_2
     local NODE_ID
 
-    log_step 5 "asserting chain progression" "UPGRADE $UPGRADE_ID:"
+    log_step_upgrades 5 "asserting chain progression" "UPGRADE $UPGRADE_ID:"
 
     HEIGHT_1=$(get_chain_height)
     await_n_blocks 2
@@ -213,7 +213,7 @@ function _upgrade_step_06()
     local N1_PROTOCOL_VERSION
     local NX_PROTOCOL_VERSION
 
-    log_step 6 "asserting node upgrades" "UPGRADE $UPGRADE_ID:"
+    log_step_upgrades 6 "asserting node upgrades" "UPGRADE $UPGRADE_ID:"
 
     # Assert node-1 protocol version incremented.
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1 | sed 's/\./\_/g')
@@ -242,7 +242,7 @@ function _sync_new_nodes()
     local NODE_ID
     local TRUSTED_HASH
 
-    log_step 'sync' "joining passive nodes"
+    log_step_upgrades "1" "joining passive nodes" "SYNC"
 
     log "... submitting auction bids"
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
@@ -285,7 +285,7 @@ function _sync_new_nodes_test()
     local NX_PROTOCOL_VERSION
     local NX_STATE_ROOT_HASH
 
-    log_step 'SYNC' "asserting joined nodes are running upgrade"
+    log_step_upgrades "2" "asserting joined nodes are running upgrade" "SYNC"
 
     # Assert all nodes are live.
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")

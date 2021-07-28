@@ -1,0 +1,22 @@
+[package]
+name = "dictionary-call"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "dictionary_call"
+path = "src/bin/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+default = ["no-std"]
+no-std = ["casper-contract/no-std", "casper-types/no-std", "dictionary/no-std"]
+std = ["casper-contract/std", "casper-types/std", "dictionary/std"]
+
+[dependencies]
+casper-contract = { path = "../../../contract", default-features = false }
+casper-types = { path = "../../../../types", default-features = false }
+dictionary = { path = "../dictionary", default-features = false }

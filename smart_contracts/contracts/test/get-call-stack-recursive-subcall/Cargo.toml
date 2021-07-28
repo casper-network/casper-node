@@ -1,0 +1,21 @@
+[package]
+name = "get-call-stack-recursive-subcall"
+version = "0.1.0"
+authors = ["Daniel Werner <dan@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "get_call_stack_recursive_subcall"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+default = ["no-std"]
+no-std = ["casper-contract/no-std", "casper-contract/provide-allocator", "casper-types/no-std"]
+std = ["casper-contract/std", "casper-types/std"]
+
+[dependencies]
+casper-contract = { path = "../../../contract", default-features = false }
+casper-types = { path = "../../../../types", default-features = false }

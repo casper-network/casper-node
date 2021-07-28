@@ -32,7 +32,7 @@ impl ExecuteRequest {
     }
 
     pub fn take_deploys(&mut self) -> Vec<DeployItem> {
-        mem::replace(&mut self.deploys, vec![])
+        mem::take(&mut self.deploys)
     }
 
     pub fn deploys(&self) -> &Vec<DeployItem> {

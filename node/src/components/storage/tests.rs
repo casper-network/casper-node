@@ -42,6 +42,8 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
         max_deploy_store_size: 50 * MIB,
         max_deploy_metadata_store_size: 50 * MIB,
         max_state_store_size: 50 * MIB,
+        enable_mem_deduplication: false,
+        mem_pool_prune_interval: 1024,
     }
 }
 
@@ -464,18 +466,21 @@ fn can_retrieve_block_by_height() {
         &mut harness.rng,
         EraId::new(1),
         33,
+        ProtocolVersion::V1_0_0,
         true,
     ));
     let block_14 = Box::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         14,
+        ProtocolVersion::V1_0_0,
         false,
     ));
     let block_99 = Box::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(2),
         99,
+        ProtocolVersion::V1_0_0,
         true,
     ));
 
@@ -589,12 +594,14 @@ fn different_block_at_height_is_fatal() {
         &mut harness.rng,
         EraId::new(1),
         44,
+        ProtocolVersion::V1_0_0,
         false,
     ));
     let block_44_b = Box::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         44,
+        ProtocolVersion::V1_0_0,
         false,
     ));
 
@@ -1054,6 +1061,7 @@ fn should_hard_reset() {
                 &mut harness.rng,
                 EraId::from(height as u64 / 3),
                 height as u64,
+                ProtocolVersion::V1_0_0,
                 is_switch,
             )
         })

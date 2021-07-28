@@ -130,10 +130,10 @@ static CARGO_TOML_ADDITIONAL_CONTENTS: Lazy<String> = Lazy::new(|| {
 [[bin]]
 name = "integration-tests"
 path = "src/integration_tests.rs"
-
-[features]
-default = ["casper-contract/std", "casper-types/std", "casper-engine-test-support/test-support", "casper-contract/test-support""#,
-        *CL_CONTRACT, *CL_TYPES, *ENGINE_TEST_SUPPORT,
+"#,
+        CL_CONTRACT.display_with_features(false, vec!["std", "test-support"]),
+        CL_TYPES.display_with_features(false, vec!["std"]),
+        ENGINE_TEST_SUPPORT.display_with_features(true, vec!["test-support"]),
     )
 });
 
@@ -142,8 +142,7 @@ pub fn run_cargo_new() {
 }
 
 pub fn update_cargo_toml() {
-    let cargo_toml_additional_contents = format!("{}{}\n", &*CARGO_TOML_ADDITIONAL_CONTENTS, "]");
-    common::append_to_file(&*CARGO_TOML, cargo_toml_additional_contents);
+    common::append_to_file(&*CARGO_TOML, &*CARGO_TOML_ADDITIONAL_CONTENTS);
 }
 
 pub fn add_rust_toolchain() {

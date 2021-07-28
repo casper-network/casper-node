@@ -135,6 +135,11 @@ impl RuntimeArgs {
     pub fn to_values(&self) -> Vec<&CLValue> {
         self.0.iter().map(|NamedArg(_name, value)| value).collect()
     }
+
+    /// Returns iterator over all arguments in insertion order.
+    pub fn named_args(&self) -> impl Iterator<Item = &NamedArg> {
+        self.0.iter()
+    }
 }
 
 impl From<Vec<NamedArg>> for RuntimeArgs {
@@ -149,10 +154,10 @@ impl From<BTreeMap<String, CLValue>> for RuntimeArgs {
     }
 }
 
-impl Into<BTreeMap<String, CLValue>> for RuntimeArgs {
-    fn into(self) -> BTreeMap<String, CLValue> {
+impl From<RuntimeArgs> for BTreeMap<String, CLValue> {
+    fn from(args: RuntimeArgs) -> BTreeMap<String, CLValue> {
         let mut map = BTreeMap::new();
-        for named in self.0 {
+        for named in args.0 {
             map.insert(named.0, named.1);
         }
         map

@@ -28,15 +28,14 @@ use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_node::types::Deploy;
-use casper_types::{UIntParseError, U512};
+use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
+use casper_types::{Key, UIntParseError, U512};
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
-use deploy::{DeployExt, DeployParams};
+use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
-use parsing::none_if_empty;
 use rpc::{RpcCall, TransferTarget};
 pub use validation::ValidateResponseError;
 
@@ -58,7 +57,7 @@ pub use validation::ValidateResponseError;
 ///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
-pub fn put_deploy(
+pub async fn put_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -71,7 +70,9 @@ pub fn put_deploy(
         payment_params.try_into()?,
         session_params.try_into()?,
     )?;
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).put_deploy(deploy)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .put_deploy(deploy)
+        .await
 }
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
@@ -80,36 +81,38 @@ pub fn put_deploy(
 /// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
 /// using [`send_deploy_file()`](fn.send_deploy_file.html).
 ///
-/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
-///   file already exists, it will be overwritten.
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
 /// * `session_params` contains session-related options for this `Deploy`. See
 ///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
+/// * If `force` is true, and a file exists at `maybe_output_path`, it will be overwritten. If
+///   `force` is false and a file exists at `maybe_output_path`,
+///   [`Error::FileAlreadyExists`](enum.Error.html#variant.FileAlreadyExists) is returned and a file
+///   will not be written.
 pub fn make_deploy(
     maybe_output_path: &str,
     deploy_params: DeployStrParams<'_>,
     session_params: SessionStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
+    force: bool,
 ) -> Result<()> {
-    let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
-        Error::IoError {
-            context: format!(
-                "unable to get file or stdout, provided '{:?}'",
-                maybe_output_path
-            ),
-            error,
-        }
-    })?;
+    let output = if maybe_output_path.is_empty() {
+        OutputKind::Stdout
+    } else {
+        OutputKind::file(maybe_output_path, force)
+    };
 
     Deploy::with_payment_and_session(
         deploy_params.try_into()?,
         payment_params.try_into()?,
         session_params.try_into()?,
     )?
-    .write_deploy(output)
+    .write_deploy(output.get()?)?;
+
+    output.commit()
 }
 
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
@@ -117,26 +120,33 @@ pub fn make_deploy(
 ///
 /// * `input_path` specifies the path to the previously-saved `Deploy` file.
 /// * `secret_key` specifies the path to the secret key with which to sign the `Deploy`.
-/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
-///   file already exists, it will be overwritten.
-pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &str) -> Result<()> {
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
+/// * If `force` is true, and a file exists at `maybe_output_path`, it will be overwritten. If
+///   `force` is false and a file exists at `maybe_output_path`,
+///   [`Error::FileAlreadyExists`](enum.Error.html#variant.FileAlreadyExists) is returned and a file
+///   will not be written.
+pub fn sign_deploy_file(
+    input_path: &str,
+    secret_key: &str,
+    maybe_output_path: &str,
+    force: bool,
+) -> Result<()> {
     let secret_key = parsing::secret_key(secret_key)?;
-    let maybe_output_path = none_if_empty(maybe_output_path);
 
     let input = fs::read(input_path).map_err(|error| Error::IoError {
         context: format!("unable to read deploy file at '{}'", input_path),
         error,
     })?;
 
-    let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
-        context: format!(
-            "unable to get file or stdout, provided '{:?}'",
-            maybe_output_path
-        ),
-        error,
-    })?;
+    let output = if maybe_output_path.is_empty() {
+        OutputKind::Stdout
+    } else {
+        OutputKind::file(maybe_output_path, force)
+    };
 
-    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
+    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output.get()?)?;
+
+    output.commit()
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
@@ -152,13 +162,15 @@ pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `input_path` specifies the path to the previously-saved `Deploy` file.
-pub fn send_deploy_file(
+pub async fn send_deploy_file(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     input_path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).send_deploy_file(input_path)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .send_deploy_file(input_path)
+        .await
 }
 
 /// Transfers funds between purses.
@@ -183,7 +195,7 @@ pub fn send_deploy_file(
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
 #[allow(clippy::too_many_arguments)]
-pub fn transfer(
+pub async fn transfer(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -199,14 +211,16 @@ pub fn transfer(
     let target = parsing::get_transfer_target(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).transfer(
-        amount,
-        source_purse,
-        target,
-        transfer_id,
-        deploy_params.try_into()?,
-        payment_params.try_into()?,
-    )
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .transfer(
+            amount,
+            source_purse,
+            target,
+            transfer_id,
+            deploy_params.try_into()?,
+            payment_params.try_into()?,
+        )
+        .await
 }
 
 /// Creates a transfer `Deploy` and outputs it to a file or stdout.
@@ -215,8 +229,7 @@ pub fn transfer(
 /// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
 /// using [`send_deploy_file()`](fn.send_deploy_file.html).
 ///
-/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
-///   file already exists, it will be overwritten.
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
 /// * `target_account` is the account `PublicKey` into which the funds will be transferred,
 ///   formatted as a hex-encoded string. The account's main purse will receive the funds.
@@ -226,6 +239,10 @@ pub fn transfer(
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
+/// * If `force` is true, and a file exists at `maybe_output_path`, it will be overwritten. If
+///   `force` is false and a file exists at `maybe_output_path`,
+///   [`Error::FileAlreadyExists`](enum.Error.html#variant.FileAlreadyExists) is returned and a file
+///   will not be written.
 pub fn make_transfer(
     maybe_output_path: &str,
     amount: &str,
@@ -233,6 +250,7 @@ pub fn make_transfer(
     transfer_id: &str,
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
+    force: bool,
 ) -> Result<()> {
     let amount = U512::from_dec_str(amount)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
@@ -240,15 +258,11 @@ pub fn make_transfer(
     let target = parsing::get_transfer_target(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
-    let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
-        Error::IoError {
-            context: format!(
-                "unable to get file or stdout, provided '{:?}'",
-                maybe_output_path
-            ),
-            error,
-        }
-    })?;
+    let output = if maybe_output_path.is_empty() {
+        OutputKind::Stdout
+    } else {
+        OutputKind::file(maybe_output_path, force)
+    };
 
     Deploy::new_transfer(
         amount,
@@ -258,7 +272,9 @@ pub fn make_transfer(
         deploy_params.try_into()?,
         payment_params.try_into()?,
     )?
-    .write_deploy(output)
+    .write_deploy(output.get()?)?;
+
+    output.commit()
 }
 
 /// Retrieves a `Deploy` from the network.
@@ -274,13 +290,15 @@ pub fn make_transfer(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `deploy_hash` must be a hex-encoded, 32-byte hash digest.
-pub fn get_deploy(
+pub async fn get_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     deploy_hash: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_deploy(deploy_hash)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_deploy(deploy_hash)
+        .await
 }
 
 /// Retrieves a `Block` from the network.
@@ -297,13 +315,15 @@ pub fn get_deploy(
 ///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` will be retrieved.
-pub fn get_block(
+pub async fn get_block(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_block(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_block(maybe_block_id)
+        .await
 }
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
@@ -320,13 +340,15 @@ pub fn get_block(
 ///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` transfers will be retrieved.
-pub fn get_block_transfers(
+pub async fn get_block_transfers(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_block_transfers(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_block_transfers(maybe_block_id)
+        .await
 }
 
 /// Retrieves a state root hash at a given `Block`.
@@ -343,13 +365,15 @@ pub fn get_block_transfers(
 ///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` will be used.
-pub fn get_state_root_hash(
+pub async fn get_state_root_hash(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_state_root_hash(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_state_root_hash(maybe_block_id)
+        .await
 }
 
 /// Retrieves a stored value from the network.
@@ -377,7 +401,7 @@ pub fn get_state_root_hash(
 /// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
-pub fn get_item(
+pub async fn get_item(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -385,7 +409,9 @@ pub fn get_item(
     key: &str,
     path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_item(state_root_hash, key, path)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_item(state_root_hash, key, path)
+        .await
 }
 
 /// Retrieves a purse's balance from the network.
@@ -405,14 +431,16 @@ pub fn get_item(
 /// ```text
 /// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007
 /// ```
-pub fn get_balance(
+pub async fn get_balance(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     state_root_hash: &str,
     purse: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_balance(state_root_hash, purse)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_balance(state_root_hash, purse)
+        .await
 }
 
 /// Retrieves era information from the network.
@@ -430,7 +458,7 @@ pub fn get_balance(
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, era information from the latest block will be returned if
 ///   available.
-pub fn get_era_info_by_switch_block(
+pub async fn get_era_info_by_switch_block(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -438,6 +466,7 @@ pub fn get_era_info_by_switch_block(
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .get_era_info_by_switch_block(maybe_block_id)
+        .await
 }
 
 /// Retrieves the bids and validators as of the most recently added `Block`.
@@ -455,13 +484,42 @@ pub fn get_era_info_by_switch_block(
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, era information from the latest block will be returned if
 ///   available.
-pub fn get_auction_info(
+pub async fn get_auction_info(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_auction_info(maybe_block_id)
+        .await
+}
+
+/// Retrieves an Account from the network.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+/// * `public_key` the public key associated with the `Account`
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
+///   `Block` height or empty. If empty, the latest `Block` will be retrieved.
+pub async fn get_account_info(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+    public_key: &str,
+    maybe_block_id: &str,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_account_info(public_key, maybe_block_id)
+        .await
 }
 
 /// Retrieves information and examples for all currently supported RPCs.
@@ -476,8 +534,40 @@ pub fn get_auction_info(
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
-pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbosity_level: u64) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).list_rpcs()
+pub async fn list_rpcs(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .list_rpcs()
+        .await
+}
+
+/// Retrieves a stored value from the network.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+/// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
+/// * `dictionary_str_params` contains options to query a dictionary item.
+pub async fn get_dictionary(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+    state_root_hash: &str,
+    dictionary_str_params: DictionaryItemStrParams<'_>,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_dictionary_item(state_root_hash, dictionary_str_params)
+        .await
 }
 
 /// Container for `Deploy` construction options.
@@ -689,9 +779,9 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_name,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -711,9 +801,9 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_hash,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -736,10 +826,10 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_package_name,
-            payment_version,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_version,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -763,10 +853,10 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_package_hash,
-            payment_version,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_version,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -786,6 +876,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
             session_args_complex,
             session_version,
             session_entry_point,
+            is_session_transfer,
         } = self;
 
         parsing::parse_session_info(
@@ -798,6 +889,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
             session_args_complex,
             session_version,
             session_entry_point,
+            is_session_transfer,
         )
     }
 }
@@ -833,6 +925,7 @@ pub struct SessionStrParams<'a> {
     session_args_complex: &'a str,
     session_version: &'a str,
     session_entry_point: &'a str,
+    is_session_transfer: bool,
 }
 
 impl<'a> SessionStrParams<'a> {
@@ -870,9 +963,9 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_name,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -892,9 +985,9 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_hash,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -917,10 +1010,10 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_package_name,
-            session_version,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_version,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -944,11 +1037,108 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_package_hash,
+            session_args_simple,
+            session_args_complex,
             session_version,
             session_entry_point,
+            ..Default::default()
+        }
+    }
+
+    /// Constructs a `SessionStrParams` representing a `Transfer` type of `Deploy`.
+    ///
+    /// * See the struct docs for a description of [`session_args_simple`](#session_args_simple) and
+    ///   [`session_args_complex`](#session_args_complex).
+    pub fn with_transfer(session_args_simple: Vec<&'a str>, session_args_complex: &'a str) -> Self {
+        Self {
+            is_session_transfer: true,
             session_args_simple,
             session_args_complex,
             ..Default::default()
+        }
+    }
+}
+
+/// Various ways of uniquely identifying a dictionary entry.
+pub enum DictionaryItemStrParams<'a> {
+    /// Lookup a dictionary item via an Account's named keys.
+    AccountNamedKey {
+        /// The account key as a formatted string whose named keys contains dictionary_name.
+        key: &'a str,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via a Contract's named keys.
+    ContractNamedKey {
+        /// The contract key as a formatted string whose named keys contains dictionary_name.
+        key: &'a str,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via its seed URef.
+    URef {
+        /// The dictionary's seed URef.
+        seed_uref: &'a str,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: &'a str,
+    },
+    /// Lookup a dictionary item via its unique key.
+    Dictionary(&'a str),
+}
+
+impl<'a> TryInto<DictionaryIdentifier> for DictionaryItemStrParams<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> Result<DictionaryIdentifier> {
+        match self {
+            DictionaryItemStrParams::AccountNamedKey {
+                key,
+                dictionary_item_key,
+                dictionary_name,
+            } => {
+                let key = Key::from_formatted_str(key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::AccountNamedKey {
+                    key: key.to_formatted_string(),
+                    dictionary_name: dictionary_name.to_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::ContractNamedKey {
+                key,
+                dictionary_item_key,
+                dictionary_name,
+            } => {
+                let key = Key::from_formatted_str(key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::ContractNamedKey {
+                    key: key.to_formatted_string(),
+                    dictionary_name: dictionary_name.to_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::URef {
+                seed_uref,
+                dictionary_item_key,
+            } => {
+                let uref = Key::from_formatted_str(seed_uref)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::URef {
+                    seed_uref: uref.to_formatted_string(),
+                    dictionary_item_key: dictionary_item_key.to_string(),
+                })
+            }
+            DictionaryItemStrParams::Dictionary(dictionary_key) => {
+                let dictionary_key = Key::from_formatted_str(dictionary_key)
+                    .map_err(|_| Error::FailedToParseDictionaryIdentifier)?;
+                Ok(DictionaryIdentifier::Dictionary(
+                    dictionary_key.to_formatted_string(),
+                ))
+            }
         }
     }
 }
@@ -979,21 +1169,6 @@ pub fn pretty_print_at_level<T: ?Sized + Serialize>(value: &T, verbosity_level: 
 #[cfg(test)]
 mod param_tests {
     use super::*;
-
-    #[derive(Debug)]
-    struct ErrWrapper(pub Error);
-
-    impl PartialEq for ErrWrapper {
-        fn eq(&self, other: &ErrWrapper) -> bool {
-            format!("{:?}", self.0) == format!("{:?}", other.0)
-        }
-    }
-
-    impl Into<ErrWrapper> for Error {
-        fn into(self) -> ErrWrapper {
-            ErrWrapper(self)
-        }
-    }
 
     const HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const NAME: &str = "name";
@@ -1210,8 +1385,7 @@ mod param_tests {
 
         #[test]
         fn should_convert_into_deploy_params() {
-            let deploy_params: StdResult<DeployParams, ErrWrapper> =
-                test_value().try_into().map_err(ErrWrapper);
+            let deploy_params: StdResult<DeployParams, _> = test_value().try_into();
             assert!(deploy_params.is_ok());
         }
 
@@ -1220,14 +1394,13 @@ mod param_tests {
             let mut params = test_value();
             params.timestamp = "garbage";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(
+            assert!(matches!(
                 result,
-                Err(
-                    Error::FailedToParseTimestamp("timestamp", TimestampError::InvalidFormat)
-                        .into()
-                )
-            );
+                Err(Error::FailedToParseTimestamp(
+                    "timestamp",
+                    TimestampError::InvalidFormat
+                ))
+            ));
         }
 
         #[test]
@@ -1248,8 +1421,7 @@ mod param_tests {
             let mut params = test_value();
             params.chain_name = "";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(result, Ok(()));
+            assert!(matches!(result, Ok(_)));
         }
 
         #[test]
@@ -1257,11 +1429,13 @@ mod param_tests {
             let mut params = test_value();
             params.ttl = "not_a_ttl";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(
+            assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimeDiff("ttl", DurationError::NumberExpected(0)).into())
-            );
+                Err(Error::FailedToParseTimeDiff(
+                    "ttl",
+                    DurationError::NumberExpected(0)
+                ))
+            ));
         }
 
         #[test]
@@ -1269,7 +1443,6 @@ mod param_tests {
             let mut params = test_value();
             params.secret_key = "";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ());
             if let Err(Error::CryptoError { context, .. }) = result {
                 assert_eq!(context, "secret_key");
             } else {
@@ -1283,15 +1456,13 @@ mod param_tests {
             let mut params = test_value();
             params.dependencies = vec!["invalid dep"];
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(
+            assert!(matches!(
                 result,
                 Err(Error::CryptoError {
                     context: "dependencies",
                     error: CryptoError::FromHex(hex::FromHexError::OddLength)
-                }
-                .into())
-            );
+                })
+            ));
         }
     }
 }

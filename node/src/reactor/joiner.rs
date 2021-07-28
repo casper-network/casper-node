@@ -3,7 +3,6 @@
 mod memory_metrics;
 
 use std::{
-    collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
     path::PathBuf,
@@ -24,10 +23,10 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
-        event_stream_server::EventStreamServer,
+        event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -57,7 +56,7 @@ use crate::{
         self,
         event_queue_metrics::EventQueueMetrics,
         initializer,
-        validator::{self, Error, ValidatorInitConfig},
+        participating::{self, Error, ParticipatingInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
@@ -67,7 +66,6 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-use casper_types::{PublicKey, U512};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -136,7 +134,7 @@ pub enum Event {
 
     /// Contract Runtime event.
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
+    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
 
     /// Linear chain event.
     #[from]
@@ -245,12 +243,6 @@ impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event 
     }
 }
 
-impl From<ContractRuntimeRequest> for Event {
-    fn from(request: ContractRuntimeRequest) -> Event {
-        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
-    }
-}
-
 impl From<RestRequest<NodeId>> for Event {
     fn from(request: RestRequest<NodeId>) -> Self {
         Event::RestServer(rest_server::Event::RestRequest(request))
@@ -320,7 +312,7 @@ pub struct Reactor {
     network: Network<Event, Message>,
     small_network: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
-    config: validator::Config,
+    config: participating::Config,
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -398,7 +390,7 @@ impl reactor::Reactor for Reactor {
             None,
         )?;
 
-        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
+        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
         let mut effects = reactor::wrap_effects(Event::Network, network_effects);
         effects.extend(reactor::wrap_effects(
@@ -411,12 +403,9 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let init_hash = config
-            .node
-            .trusted_hash
-            .or_else(|| chainspec_loader.initial_block_hash());
+        let trusted_hash = config.node.trusted_hash;
 
-        match init_hash {
+        match trusted_hash {
             None => {
                 let chainspec = chainspec_loader.chainspec();
                 let era_duration = chainspec.core_config.era_duration;
@@ -436,9 +425,8 @@ impl reactor::Reactor for Reactor {
                         panic!("should have trusted hash after genesis era")
                     }
                 }
-                info!("No synchronization of the linear chain will be done.")
             }
-            Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
+            Some(hash) => info!(trusted_hash=%hash, "synchronizing linear chain"),
         }
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
@@ -452,47 +440,37 @@ impl reactor::Reactor for Reactor {
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
             *protocol_version,
+            DeployGetter::new(effect_builder),
         )?;
 
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
 
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
 
-        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
+        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
 
         let block_header_and_finality_signatures_by_height_fetcher: Fetcher<
             BlockHeaderWithMetadata,
         > = Fetcher::new(
             "block_header_and_finality_signatures_by_height",
             config.fetcher,
-            &registry,
+            registry,
         )?;
 
         let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
-            Fetcher::new("block_header_by_hash", config.fetcher, &registry)?;
+            Fetcher::new("block_header_by_hash", config.fetcher, registry)?;
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
-        contract_runtime.set_initial_state(
-            chainspec_loader.initial_state_root_hash(),
-            chainspec_loader.initial_block_header(),
-        );
-
+        contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
         let linear_chain = linear_chain::LinearChainComponent::new(
-            &registry,
+            registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
         )?;
 
-        let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
-            .chainspec()
-            .network_config
-            .chainspec_validator_stakes()
-            .into_iter()
-            .map(|(pk, motes)| (pk, motes.value()))
-            .collect();
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
@@ -501,10 +479,12 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             chainspec_loader.chainspec(),
             &storage,
-            init_hash,
+            trusted_hash,
             chainspec_loader.initial_block().cloned(),
-            validator_weights,
+            chainspec_loader.after_upgrade(),
             maybe_next_activation_point,
+            chainspec_loader.initial_execution_pre_state(),
+            config.linear_chain_sync,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -663,11 +643,21 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
+                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::EventStreamServer(event));
+
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
                     source,
                 };
-                self.dispatch_event(effect_builder, rng, Event::DeployFetcher(event))
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::DeployFetcher(event),
+                ));
+
+                effects
             }
             Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
                 deploy,
@@ -764,13 +754,6 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
-            Event::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::BlockAlreadyExecuted(block),
-            ) => self.dispatch_event(
-                effect_builder,
-                rng,
-                Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(Box::new(*block))),
-            ),
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
                 era_id,
                 execution_effect,
@@ -779,7 +762,7 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::EventStreamServer(event_stream_server::Event::Step {
                     era_id,
-                    effect: execution_effect,
+                    execution_effect,
                 }),
             ),
             Event::LinearChain(event) => reactor::wrap_effects(
@@ -900,7 +883,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(&self);
+        self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle);
     }
@@ -910,7 +893,7 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+    pub async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
         let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
         // Clean the state of the linear_chain_sync before shutting it down.
         #[cfg(not(feature = "fast-sync"))]
@@ -918,7 +901,7 @@ impl Reactor {
             &self.storage,
             self.chainspec_loader.chainspec(),
         )?;
-        let config = ValidatorInitConfig {
+        let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,

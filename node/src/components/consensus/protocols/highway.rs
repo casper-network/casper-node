@@ -87,9 +87,12 @@ where
     /// The panorama snapshot. This is updated periodically, and if it does not change for too
     /// long, an alert is raised.
     last_panorama: Panorama<C>,
-    /// If the current era's protocol state has not progressed for this long, return
-    /// `ProtocolOutcome::StandstillAlert`.
+    /// If the current era's protocol state has not progressed for this long, request the latest
+    /// state from peers.
     standstill_timeout: TimeDiff,
+    /// If after another `standstill_timeout` there is no progress, raise
+    /// `ProtocolOutcome::StandstillAlert` and shut down.
+    shutdown_on_standstill: bool,
     /// Log inactive or faulty validators periodically, with this interval.
     log_participation_interval: TimeDiff,
     /// Whether to log the size of every incoming and outgoing serialized unit.
@@ -102,7 +105,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
-        slashed: &HashSet<C::ValidatorId>,
+        faulty: &HashSet<C::ValidatorId>,
         inactive: &HashSet<C::ValidatorId>,
         protocol_config: &ProtocolConfig,
         config: &Config,
@@ -126,7 +129,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let mut validators: Validators<C::ValidatorId> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        for vid in slashed {
+        for vid in faulty {
             validators.ban(vid);
         }
         for vid in inactive {
@@ -173,7 +176,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
-        // without getting slashed.
+        // without getting faulty.
         let min_round_len = state::round_len(highway_config.minimum_round_exponent);
         let min_rounds_per_era = protocol_config
             .minimum_era_height
@@ -209,6 +212,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             evidence_only: false,
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
+            shutdown_on_standstill: config.highway.shutdown_on_standstill,
             log_participation_interval: config.highway.log_participation_interval,
             log_unit_sizes: config.highway.log_unit_sizes,
         });
@@ -318,6 +322,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // validator. Continue processing the unit so that it can be added to the state.
         if self.highway.is_doppelganger_vertex(pending_vertex.vertex()) {
             error!(
+                vertex = ?pending_vertex.vertex(),
                 "received vertex from a doppelganger. \
                  Are you running multiple nodes with the same validator key?",
             );
@@ -483,13 +488,22 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             // standstill alert. If we still won't progress by the time
             // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
             let mut outcomes = self.latest_panorama_request();
-            outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + self.standstill_timeout,
-                TIMER_ID_STANDSTILL_ALERT,
-            ));
+            if self.shutdown_on_standstill {
+                outcomes.push(ProtocolOutcome::ScheduleTimer(
+                    now + self.standstill_timeout,
+                    TIMER_ID_STANDSTILL_ALERT,
+                ));
+            }
             return outcomes;
         }
 
+        if !self.shutdown_on_standstill {
+            debug!(
+                instance_id = ?self.highway.instance_id(),
+                "progress detected; not requesting latest state",
+            );
+            return vec![];
+        }
         debug!(
             instance_id = ?self.highway.instance_id(),
             "progress detected; scheduling next standstill check in {}",
@@ -505,8 +519,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Returns a `StandstillAlert` if no progress was made; otherwise schedules the next check.
     fn handle_standstill_alert_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
-        if self.evidence_only || self.finalized_switch_block() {
-            return vec![]; // Era has ended. No further progress is expected.
+        if self.evidence_only || self.finalized_switch_block() || !self.shutdown_on_standstill {
+            // Era has ended and no further progress is expected, or shutdown on standstill is
+            // turned off.
+            return vec![];
         }
         if self.last_panorama == *self.highway.state().panorama() {
             info!(
@@ -834,7 +850,7 @@ where
             outcomes.extend(self.detect_finality());
             outcomes
         } else {
-            // TODO: Slash proposer?
+            // TODO: Report proposer as faulty?
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(&proposed_block);
             warn!(?proposed_block, ?dropped_vertices, "proposal is invalid");

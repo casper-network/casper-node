@@ -219,7 +219,7 @@ impl<C: Context> Highway<C> {
             self.instance_id,
         );
         self.active_validator = Some(av);
-        effects
+        self.add_new_own_vertices(effects, current_time)
     }
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
@@ -500,7 +500,19 @@ impl<C: Context> Highway<C> {
         F: FnOnce(&mut ActiveValidator<C>, &State<C>) -> Vec<Effect<C>>,
     {
         let effects = f(self.active_validator.as_mut()?, &self.state);
-        let mut result = vec![];
+        Some(self.add_new_own_vertices(effects, timestamp))
+    }
+
+    /// Handles all `NewVertex` effects and adds the vertices to the protocol state.
+    ///
+    /// This needs to be applied to all effects created by `ActiveValidator`, so that new vertices
+    /// are not interpreted as coming from a doppelgänger.
+    fn add_new_own_vertices(
+        &mut self,
+        effects: Vec<Effect<C>>,
+        timestamp: Timestamp,
+    ) -> Vec<Effect<C>> {
+        let mut result = Vec::with_capacity(effects.len());
         for effect in &effects {
             match effect {
                 Effect::NewVertex(vv) => {
@@ -511,7 +523,7 @@ impl<C: Context> Highway<C> {
             }
         }
         result.extend(effects);
-        Some(result)
+        result
     }
 
     /// Performs initial validation and returns an error if `vertex` is invalid. (See
@@ -546,7 +558,7 @@ impl<C: Context> Highway<C> {
                         return Err(EndorsementError::Banned.into());
                     }
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *creator);
-                    if !C::verify_signature(&endorsement.hash(), v_id, &signature) {
+                    if !C::verify_signature(&endorsement.hash(), v_id, signature) {
                         return Err(EndorsementError::Signature.into());
                     }
                 }
@@ -983,6 +995,29 @@ pub(crate) mod tests {
             "should use validator that is not bonded"
         );
         // Verify that sending a Ping from a non-existing validator does not panic.
-        assert_eq!(highway.has_vertex(&ping), false);
+        assert!(!highway.has_vertex(&ping));
+    }
+
+    #[test]
+    fn own_initial_ping_is_not_from_doppelganger() {
+        let now: Timestamp = 500.into();
+        let later = 501.into();
+
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
+        let target_ftt = state.total_weight() / 3;
+        let mut highway = Highway {
+            instance_id: TEST_INSTANCE_ID,
+            validators: test_validators(),
+            state,
+            active_validator: None,
+        };
+
+        let _effects =
+            highway.activate_validator(ALICE.0, ALICE_SEC.clone(), now, None, target_ftt);
+
+        let ping = Vertex::Ping(Ping::new(ALICE, now, TEST_INSTANCE_ID, &ALICE_SEC));
+        assert!(!highway.is_doppelganger_vertex(&ping));
+        let ping = Vertex::Ping(Ping::new(ALICE, later, TEST_INSTANCE_ID, &ALICE_SEC));
+        assert!(highway.is_doppelganger_vertex(&ping));
     }
 }
