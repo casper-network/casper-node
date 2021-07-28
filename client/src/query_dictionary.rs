@@ -1,5 +1,6 @@
 use std::{fs, str};
 
+use async_trait::async_trait;
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
 use casper_client::{DictionaryItemStrParams, Error};
@@ -192,6 +193,7 @@ mod dictionary_address {
     }
 }
 
+#[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionaryItem {
     const NAME: &'static str = "get-dictionary-item";
     const ABOUT: &'static str = "Query for values managed in a dictionary";
@@ -228,7 +230,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionaryItem {
             )
     }
 
-    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
+    async fn run(matches: &ArgMatches<'a>) -> Result<Success, Error> {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
@@ -272,6 +274,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionaryItem {
             state_root_hash,
             dictionary_query_str_params,
         )
+        .await
         .map(Success::from)
     }
 }
