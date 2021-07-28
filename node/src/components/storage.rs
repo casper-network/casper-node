@@ -1197,7 +1197,7 @@ fn insert_to_deploy_index(
 }
 
 fn should_move_storage_files_to_network_subdir(
-    root: &PathBuf,
+    root: &Path,
     file_names: &[&str],
 ) -> Result<bool, Error> {
     let mut files_found = vec![];
@@ -1229,8 +1229,8 @@ fn should_move_storage_files_to_network_subdir(
 }
 
 fn move_storage_files_to_network_subdir(
-    root: &PathBuf,
-    subdir: &PathBuf,
+    root: &Path,
+    subdir: &Path,
     file_names: &[&str],
 ) -> Result<(), Error> {
     file_names

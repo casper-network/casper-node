@@ -47,8 +47,7 @@ use crate::{
     },
     fatal,
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
-    utils::WithDir,
-    NodeRng, StorageConfig,
+    NodeRng,
 };
 use std::collections::BTreeMap;
 
@@ -510,7 +509,6 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         };
 
-        let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
             storage_dir,
             contract_runtime_config.max_global_state_size(),
