@@ -97,8 +97,12 @@ impl HighwayMessage {
         }
     }
 
-    fn is_new_vertex(&self) -> bool {
-        matches!(self, HighwayMessage::NewVertex(_))
+    fn is_new_unit(&self) -> bool {
+        if let HighwayMessage::NewVertex(vertex) = self {
+            matches!(**vertex, Vertex::Unit(_))
+        } else {
+            false
+        }
     }
 }
 
@@ -1129,28 +1133,27 @@ mod test_harness {
         let handle = highway_test_harness.mutable_handle();
         let validators = handle.validators();
 
-        let (finalized_values, vertices_produced): (Vec<Vec<ConsensusValue>>, Vec<usize>) =
-            validators
-                .map(|v| {
-                    (
-                        v.finalized_values().cloned().collect::<Vec<_>>(),
-                        v.messages_produced()
-                            .cloned()
-                            .filter(|hwm| hwm.is_new_vertex())
-                            .count(),
-                    )
-                })
-                .unzip();
+        let (finalized_values, units_produced): (Vec<Vec<ConsensusValue>>, Vec<usize>) = validators
+            .map(|v| {
+                (
+                    v.finalized_values().cloned().collect::<Vec<_>>(),
+                    v.messages_produced()
+                        .cloned()
+                        .filter(|hwm| hwm.is_new_unit())
+                        .count(),
+                )
+            })
+            .unzip();
 
-        vertices_produced
+        units_produced
             .into_iter()
             .enumerate()
-            .for_each(|(v_idx, vertices_count)| {
+            .for_each(|(v_idx, units_count)| {
                 // NOTE: Works only when all validators are honest and correct (no "mute"
-                // validators). Validator produces two `NewVertex` type messages per round. It may
+                // validators). Validator produces two units per round. It may
                 // produce just one before lambda message is finalized. Add one in case it's just
                 // one round (one consensus value) – 1 message. 1/2=0 but 3/2=1 b/c of the rounding.
-                let rounds_participated_in = (vertices_count as u8 + 1) / 2;
+                let rounds_participated_in = (units_count as u8 + 1) / 2;
 
                 assert_eq!(
                     rounds_participated_in, cv_count,

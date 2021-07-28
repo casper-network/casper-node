@@ -798,9 +798,9 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_name,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -820,9 +820,9 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_hash,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -845,10 +845,10 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_package_name,
-            payment_version,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_version,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -872,10 +872,10 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_package_hash,
-            payment_version,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_version,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -982,9 +982,9 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_name,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -1004,9 +1004,9 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_hash,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -1029,10 +1029,10 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_package_name,
-            session_version,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_version,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -1056,10 +1056,10 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_package_hash,
-            session_version,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_version,
+            session_entry_point,
             ..Default::default()
         }
     }

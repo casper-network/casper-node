@@ -154,7 +154,9 @@ impl<C: Context> Panorama<C> {
         let can_see = |latest_hash: &C::Hash| {
             Some(hash) == state.find_in_swimlane(latest_hash, unit.seq_number)
         };
-        self.get(unit.creator).correct().map_or(false, can_see)
+        self.get(unit.creator)
+            .and_then(Observation::correct)
+            .map_or(false, can_see)
     }
 
     /// Returns `true` if `self` sees the unit with the specified `hash`.

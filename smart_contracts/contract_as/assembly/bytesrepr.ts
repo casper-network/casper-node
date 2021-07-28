@@ -92,7 +92,7 @@ export class Result<T> {
         if (errorCode != null) {
             const error = new StdError(errorCode.value);
             error.revert();
-            return <T>unreachable();
+            unreachable();
         }
         return this.value;
     }
@@ -241,7 +241,7 @@ export function fromBytesMap<K, V>(
         return new Result<Array<Pair<K, V>>>(ref, Error.Ok, lengthResult.position);
     }
 
-    let bytes = bytes.subarray(currentPos);
+    bytes = bytes.subarray(currentPos);
 
     for (let i = 0; i < changetype<i32>(length); i++) {
         const keyResult = decodeKey(bytes);

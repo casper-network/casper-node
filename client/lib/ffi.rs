@@ -491,7 +491,7 @@ pub extern "C" fn casper_get_block(
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
 ///
-/// See [super::casper_get_block_transfers](super::casper_get_block_transfers) for more details.
+/// See [super::get_block_transfers](super::get_block_transfers) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block_transfers(
     maybe_rpc_id: *const c_char,
@@ -717,8 +717,8 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             timestamp,
             ttl,
             gas_price,
-            chain_name,
             dependencies,
+            chain_name,
         })
     }
 }

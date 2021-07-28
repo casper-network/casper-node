@@ -13,6 +13,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* Support building and testing using stable Rust.
+
+
+
+## [1.3.0] - 2021-07-21
+
 ### Added
 * Add support for retrieving historical auction information via the addition of an optional `--block-identifier` arg in the `get-auction-info` subcommand.
 * Add `keygen::generate_files` to FFI.
@@ -22,7 +29,8 @@ All notable changes to this project will be documented in this file.  The format
 * Change `put-deploy` and `make-deploy` subcommands to support transfers.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to not overwrite files unless `--force` is passed.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to use transactional file writing for enhanced safety and reliability.
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
+
 
 
 ## [1.2.0] - 2021-05-27
@@ -64,7 +72,8 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.2.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
