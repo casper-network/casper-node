@@ -1,4 +1,4 @@
-//! Home of the Auction contract's [`Error`] type.
+//! Home of the Auction contract's [`enum@Error`] type.
 use alloc::vec::Vec;
 use core::{
     convert::{TryFrom, TryInto},

@@ -366,6 +366,11 @@ impl Reactor {
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
+
+    /// Inspect contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
+    }
 }
 
 impl reactor::Reactor for Reactor {
@@ -476,10 +481,21 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(maybe_latest_block_header.map_or_else(
-            || chainspec_loader.initial_execution_pre_state(),
-            |latest_block_header| ExecutionPreState::from(&latest_block_header),
-        ));
+        let execution_pre_state = match maybe_latest_block_header {
+            // if there is a latest block header and it's later than the block that was highest
+            // when the node was started up, we should use its post-state-hash as the initial state
+            // hash
+            Some(latest_block_header)
+                if latest_block_header.height()
+                    >= chainspec_loader
+                        .initial_execution_pre_state()
+                        .next_block_height() =>
+            {
+                ExecutionPreState::from(&latest_block_header)
+            }
+            _ => chainspec_loader.initial_execution_pre_state(),
+        };
+        contract_runtime.set_initial_state(execution_pre_state);
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -504,8 +520,8 @@ impl reactor::Reactor for Reactor {
         Ok((
             Reactor {
                 metrics,
-                network,
                 small_network,
+                network,
                 address_gossiper,
                 storage,
                 contract_runtime,

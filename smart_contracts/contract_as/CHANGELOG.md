@@ -13,7 +13,14 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-No changes.
+### Added
+* Add function to create an account hash from a public key.
+* Add getter for public key algorithm name.
+* Add getter for raw bytes of public key.
+* Export casper_blake2b.
+
+### Fixed
+* Fix instances of `return <T>unreachable()` which is invalid code under the latest AssemblyScript compiler.
 
 
 

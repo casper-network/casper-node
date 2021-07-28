@@ -313,3 +313,7 @@ verify_accounts = true
 #
 # If unset, defaults to 5.
 #max_query_depth = 5
+
+[linear_chain_sync]
+# Use sync_timeout to set the amount of time that the node will try to sync before shutting down.
+sync_timeout = "1hr"

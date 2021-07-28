@@ -1,7 +1,10 @@
 //! Functions for accessing and mutating local and global state.
 
+#[cfg(feature = "no-std")]
 use alloc::{collections::BTreeSet, string::String, vec, vec::Vec};
 use core::{convert::From, mem::MaybeUninit};
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
 
 use casper_types::{
     api_error,
