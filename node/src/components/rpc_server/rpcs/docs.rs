@@ -89,7 +89,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetStateRootHash>(
         "returns a state root hash at a given Block",
     );
-    schema.push_with_params::<GetItem>("returns a stored value from the network");
+    schema.push_with_params::<GetItem>("returns a stored value from the network. This RPC is deprecated, use `query_global_state` instead.");
     schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
     schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
         "returns an EraInfo from the network",

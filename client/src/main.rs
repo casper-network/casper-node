@@ -10,10 +10,9 @@ mod get_auction_info;
 mod get_balance;
 mod get_era_info_by_switch_block;
 mod get_state_hash;
-mod global_state_query;
 mod keygen;
 mod query_dictionary;
-mod query_state;
+mod query_global_state;
 
 use std::process;
 
@@ -25,10 +24,7 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{
-        GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem as QueryState,
-        QueryGlobalState,
-    },
+    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, QueryGlobalState},
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
@@ -52,7 +48,6 @@ enum DisplayOrder {
     GetBlockTransfers,
     ListDeploys,
     GetStateRootHash,
-    QueryState,
     GetBalance,
     GetAccountInfo,
     GetEraInfo,
@@ -86,7 +81,6 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(GetStateRootHash::build(
             DisplayOrder::GetStateRootHash as usize,
         ))
-        .subcommand(QueryState::build(DisplayOrder::QueryState as usize))
         .subcommand(GetEraInfoBySwitchBlock::build(
             DisplayOrder::GetEraInfo as usize,
         ))
@@ -122,7 +116,6 @@ async fn main() {
         (GetBalance::NAME, Some(matches)) => (GetBalance::run(matches), matches),
         (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches), matches),
         (GetStateRootHash::NAME, Some(matches)) => (GetStateRootHash::run(matches), matches),
-        (QueryState::NAME, Some(matches)) => (QueryState::run(matches), matches),
         (GetEraInfoBySwitchBlock::NAME, Some(matches)) => {
             (GetEraInfoBySwitchBlock::run(matches), matches)
         }

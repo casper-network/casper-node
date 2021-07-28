@@ -315,7 +315,7 @@ impl RpcCall {
         };
 
         let response = QueryGlobalState::request_with_map_params(self, params)?;
-        validation::validate_global_state_query(&response, global_state_identifier, &key, &path)?;
+        validation::validate_query_global_state(&response, global_state_identifier, &key, &path)?;
         Ok(response)
     }
 
