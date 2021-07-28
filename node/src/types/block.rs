@@ -756,7 +756,8 @@ impl BlockHeader {
         self.era_end.is_some()
     }
 
-    /// The validators for the upcoming era and their respective weights.
+    /// The validators for the upcoming era and their respective weights (if this is a switch
+    /// block).
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
         match &self.era_end {
             Some(era_end) => {
@@ -765,6 +766,13 @@ impl BlockHeader {
             }
             None => None,
         }
+    }
+
+    /// Takes the validators for the upcoming era and their respective weights (if this is a switch
+    /// block).
+    pub fn maybe_take_next_era_validator_weights(self) -> Option<BTreeMap<PublicKey, U512>> {
+        self.era_end
+            .map(|era_end| era_end.next_era_validator_weights)
     }
 
     /// Hash of the block header.

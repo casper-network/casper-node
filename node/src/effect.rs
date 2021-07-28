@@ -857,21 +857,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the block header at the given height.
-    pub(crate) async fn get_block_header_at_height_from_storage(
-        self,
-        height: u64,
-    ) -> Option<BlockHeader>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHeaderAtHeight { height, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests the header of the block containing the given deploy.
     pub(crate) async fn get_block_header_for_deploy_from_storage(
         self,
@@ -1583,11 +1568,9 @@ impl<REv> EffectBuilder<REv> {
     /// Takes emergency restarts into account based on the information from the chainspec loader.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
+        REv: From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
         let CurrentRunInfo {
-            protocol_version,
-            initial_state_root_hash,
             last_emergency_restart,
             ..
         } = self.get_current_run_info().await;
@@ -1596,62 +1579,10 @@ impl<REv> EffectBuilder<REv> {
             // we don't support getting the validators from before the last emergency restart
             return None;
         }
-        if era_id == cutoff_era_id {
-            // in the activation era, we read the validators from the global state; we use the
-            // global state hash of the first block in the era, if it exists - if we can't get it,
-            // we use the initial_state_root_hash passed from the chainspec loader
-            let root_hash = if era_id.is_genesis() {
-                // genesis era - use block at height 0
-                self.get_block_header_at_height_from_storage(0)
-                    .await
-                    .map(|hdr| *hdr.state_root_hash())
-                    .unwrap_or(initial_state_root_hash)
-            } else {
-                // non-genesis - calculate the height based on the key block
-                let maybe_key_block_header = self
-                    .get_key_block_header_for_era_id_from_storage(era_id)
-                    .await;
-                // this has to be a match because `Option::and_then` can't deal with async closures
-                match maybe_key_block_header {
-                    None => None,
-                    Some(kb_hdr) => {
-                        self.get_block_header_at_height_from_storage(kb_hdr.height() + 1)
-                            .await
-                    }
-                }
-                // default to the initial_state_root_hash if there was no key block or no block
-                // above the key block for the era
-                .map_or(initial_state_root_hash, |hdr| *hdr.state_root_hash())
-            };
-            let req = EraValidatorsRequest::new(root_hash.into(), protocol_version);
-            self.get_era_validators_from_contract_runtime(req)
-                .await
-                .ok()
-                .and_then(|era_validators| era_validators.get(&era_id).cloned())
-        } else {
-            // in other eras, we just use the validators from the key block
-            let key_block_result = self
-                .get_key_block_header_for_era_id_from_storage(era_id)
-                .await
-                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned());
-            if key_block_result.is_some() {
-                // if the key block read was successful, just return it
-                key_block_result
-            } else {
-                // if there was no key block, we might be looking at a future era - in such a case,
-                // read the state root hash from the highest block and check with the contract
-                // runtime
-                let highest_block = self.get_highest_block_from_storage().await?;
-                let req = EraValidatorsRequest::new(
-                    (*highest_block.header().state_root_hash()).into(),
-                    protocol_version,
-                );
-                self.get_era_validators_from_contract_runtime(req)
-                    .await
-                    .ok()
-                    .and_then(|era_validators| era_validators.get(&era_id).cloned())
-            }
-        }
+
+        self.get_key_block_header_for_era_id_from_storage(era_id)
+            .await
+            .and_then(BlockHeader::maybe_take_next_era_validator_weights)
     }
 
     /// Checks whether the given validator is bonded in the given era.

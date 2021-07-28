@@ -692,7 +692,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            Some(initial_era),
         )?;
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
