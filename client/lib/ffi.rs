@@ -491,7 +491,7 @@ pub extern "C" fn casper_get_block(
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
 ///
-/// See [super::casper_get_block_transfers](super::casper_get_block_transfers) for more details.
+/// See [super::get_block_transfers](super::get_block_transfers) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block_transfers(
     maybe_rpc_id: *const c_char,
@@ -672,6 +672,22 @@ pub extern "C" fn casper_get_auction_info(
     })
 }
 
+/// Generates key files.
+///
+/// See [super::keygen::generate_files](super::keygen::generate_files) for more details.
+#[no_mangle]
+pub extern "C" fn casper_keygen(
+    output_dir: *const c_char,
+    algorithm: *const c_char,
+    force: bool,
+) -> casper_error_t {
+    let output_dir = try_unsafe_arg!(output_dir);
+    let algorithm = try_unsafe_arg!(algorithm);
+    let result = super::keygen::generate_files(output_dir, algorithm, force);
+    try_unwrap_result!(result);
+    casper_error_t::CASPER_SUCCESS
+}
+
 /// Container for `Deploy` construction options.
 ///
 /// See [DeployStrParams](super::DeployStrParams) for more info.
@@ -707,8 +723,8 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             timestamp,
             ttl,
             gas_price,
-            chain_name,
             dependencies,
+            chain_name,
         })
     }
 }

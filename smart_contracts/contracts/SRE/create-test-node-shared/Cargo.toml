@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Henry Till <henrytill@gmail.com>"]
 edition = "2018"
 
-[features]
-std = ["base16/std", "casper-contract/std"]
-
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }
 casper-contract = { path = "../../../contract" }

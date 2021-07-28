@@ -3,9 +3,9 @@ use casper_execution_engine::{
         genesis::{GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::motes::Motes,
+    shared::{motes::Motes, stored_value::StoredValue},
 };
-use casper_types::{bytesrepr::ToBytes, AccessRights, Key, PublicKey, URef, U512};
+use casper_types::{AccessRights, Key, PublicKey, URef, U512};
 
 use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},
@@ -130,26 +130,38 @@ impl TestContext {
         dictionary_item_key: String,
     ) -> Result<Value> {
         let empty_path = vec![];
-        let dictionary_key_bytes = dictionary_item_key
-            .to_bytes()
-            .map_err(|_| Error::from("Could not serialize key bytes".to_string()))?;
+        let dictionary_key_bytes = dictionary_item_key.as_bytes();
         let address = match key {
             Key::Account(_) | Key::Hash(_) => {
                 if let Some(name) = dictionary_name {
-                    let path = vec![name];
-                    let seed_uref = self
-                        .inner
-                        .query(None, key, &path)
-                        .map(Value::new)
-                        .map_err(Error::from)?
-                        .into_t::<URef>()
-                        .map_err(Error::from)?;
-                    Key::dictionary(seed_uref, &dictionary_key_bytes)
+                    let stored_value = self.inner.query(None, key, &[]).map_err(Error::from)?;
+
+                    let named_keys = match &stored_value {
+                        StoredValue::Account(account) => account.named_keys(),
+                        StoredValue::Contract(contract) => contract.named_keys(),
+                        _ => {
+                            return Err(Error::from(
+                                "Provided base key is nether an account or a contract".to_string(),
+                            ))
+                        }
+                    };
+
+                    let dictionary_uref =
+                        named_keys
+                            .get(&name)
+                            .and_then(Key::as_uref)
+                            .ok_or_else(|| {
+                                Error::from(
+                                    "No dictionary uref was found in named keys".to_string(),
+                                )
+                            })?;
+
+                    Key::dictionary(*dictionary_uref, dictionary_key_bytes)
                 } else {
                     return Err(Error::from("No dictionary name was provided".to_string()));
                 }
             }
-            Key::URef(uref) => Key::dictionary(uref, &dictionary_key_bytes),
+            Key::URef(uref) => Key::dictionary(uref, dictionary_key_bytes),
             Key::Dictionary(address) => Key::Dictionary(address),
             _ => {
                 return Err(Error::from(

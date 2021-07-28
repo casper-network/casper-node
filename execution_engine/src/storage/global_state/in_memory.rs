@@ -10,7 +10,7 @@ use casper_types::{Key, ProtocolVersion};
 
 use crate::storage::{
     error::{self, in_memory},
-    global_state::{commit, CommitResult, StateProvider, StateReader},
+    global_state::{commit, StateProvider, StateReader},
     protocol_data::ProtocolData,
     protocol_data_store::in_memory::InMemoryProtocolDataStore,
     store::Store,
@@ -216,15 +216,15 @@ impl StateProvider for InMemoryGlobalState {
         correlation_id: CorrelationId,
         prestate_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, Self::Error> {
-        let commit_result = commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
+    ) -> Result<Blake2bHash, Self::Error> {
+        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
             &self.environment,
             &self.trie_store,
             correlation_id,
             prestate_hash,
             effects,
-        )?;
-        Ok(commit_result)
+        )
+        .map_err(Into::into)
     }
 
     fn put_protocol_data(
@@ -387,10 +387,7 @@ mod tests {
             .map(|TestPair { key, value }| (key, Transform::Write(value)))
             .collect();
 
-        let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success { state_root, .. } => state_root,
-            _ => panic!("commit failed"),
-        };
+        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
@@ -417,10 +414,7 @@ mod tests {
             tmp
         };
 
-        let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success { state_root, .. } => state_root,
-            _ => panic!("commit failed"),
-        };
+        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
@@ -453,6 +447,6 @@ mod tests {
             210, 91, 221, 123, 200, 135, 102, 194, 204, 46, 76, 13, 254,
         ];
         let (_, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[]).unwrap();
-        assert_eq!(expected_bytes, root_hash.to_vec())
+        assert_eq!(expected_bytes, root_hash.into_vec())
     }
 }

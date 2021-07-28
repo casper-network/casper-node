@@ -20,9 +20,6 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
-#![feature(test)]
-
-extern crate test;
 
 pub mod components;
 mod config_migration;
@@ -59,6 +56,7 @@ pub use components::{
     event_stream_server::Config as EventStreamServerConfig,
     fetcher::Config as FetcherConfig,
     gossiper::{Config as GossipConfig, Error as GossipError},
+    linear_chain_sync::Config as LinearChainSyncConfig,
     rest_server::Config as RestServerConfig,
     rpc_server::{rpcs, Config as RpcServerConfig},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},

@@ -97,7 +97,7 @@ function _step_03()
     if [ "$(get_node_is_up "$NODE_ID")" == false ]; then
         source "$NCTL/sh/contracts-auction/do_bid.sh" \
                 node="$NODE_ID" \
-                amount="$(get_node_staking_weight "$NODE_ID")" \
+                amount="2" \
                 rate="0" \
                 quiet="FALSE"
 
@@ -111,7 +111,7 @@ function _step_04()
 {
     local NODE_ID=${1:-'5'}
     local ACCOUNT_ID=${2:-'7'}
-    local AMOUNT=${3:-'1000'}
+    local AMOUNT=${3:-'1'}
 
     log_step_upgrades 4 "Delegating $AMOUNT from account-$ACCOUNT_ID to validator-$NODE_ID"
 
@@ -125,7 +125,7 @@ function _step_04()
 function _step_05()
 {
     log_step_upgrades 5 "Awaiting Auction_Delay = 3"
-    await_n_eras '3' 'true' '5.0'
+    await_n_eras '4' 'true' '5.0'
 }
 
 # Step 06: Assert NODE_ID is a validator
@@ -159,21 +159,33 @@ function _step_07()
     local USER_PATH
     local HEX
     local AUCTION_INFO_FOR_HEX
+    local TIMEOUT_SEC
+
+    TIMEOUT_SEC='0'
 
     USER_PATH=$(get_path_to_user "$USER_ID")
     HEX=$(cat "$USER_PATH"/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
 
     log_step_upgrades 7 "Asserting user-$USER_ID is a delegatee"
 
-    if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
-        log "... user-$USER_ID found in auction info delegators!"
-        log "... public_key_hex: $HEX"
-        echo "$AUCTION_INFO_FOR_HEX"
-    else
-        log "ERROR: Could not find $HEX in auction info delegators!"
-        exit 1
-    fi
+    while [ "$TIMEOUT_SEC" -le "60" ]; do
+        AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
+        if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
+            log "... user-$USER_ID found in auction info delegators!"
+            log "... public_key_hex: $HEX"
+            echo "$AUCTION_INFO_FOR_HEX"
+            break
+        else
+            TIMEOUT_SEC=$((TIMEOUT_SEC + 1))
+            log "... timeout=$TIMEOUT_SEC: delegatee not yet detected"
+            sleep 1
+            if [ "$TIMEOUT_SEC" = '60' ]; then
+                log "ERROR: Could not find $HEX in auction info delegators!"
+                echo "$(nctl-view-chain-auction-info)"
+                exit 1
+            fi
+        fi
+    done
 }
 
 # Step 08: Upgrade network from stage.
@@ -276,7 +288,7 @@ function _step_11()
     if [ "$(get_node_is_up "$NODE_ID")" == true ]; then
         source "$NCTL/sh/contracts-auction/do_bid_withdraw.sh" \
                 node="$NODE_ID" \
-                amount="$(get_node_staking_weight "$NODE_ID")" \
+                amount="2" \
                 quiet="FALSE"
     fi
 }
@@ -286,7 +298,7 @@ function _step_12()
 {
     local NODE_ID=${1:-'5'}
     local ACCOUNT_ID=${2:-'7'}
-    local AMOUNT=${3:-'1000'}
+    local AMOUNT=${3:-'1'}
 
     log_step_upgrades 12 "Undelegating $AMOUNT to account-$ACCOUNT_ID from validator-$NODE_ID"
 
@@ -300,7 +312,7 @@ function _step_12()
 function _step_13()
 {
     log_step_upgrades 13 "Awaiting Auction_Delay = 3"
-    await_n_eras '3' 'true' '5.0'
+    await_n_eras '4' 'true' '5.0'
 }
 
 # Step 14: Assert NODE_ID is NOT a validator

@@ -779,9 +779,9 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_name,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -801,9 +801,9 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_hash,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -826,10 +826,10 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_package_name,
-            payment_version,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_version,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -853,10 +853,10 @@ impl<'a> PaymentStrParams<'a> {
     ) -> Self {
         Self {
             payment_package_hash,
-            payment_version,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
+            payment_version,
+            payment_entry_point,
             ..Default::default()
         }
     }
@@ -963,9 +963,9 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_name,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -985,9 +985,9 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_hash,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -1010,10 +1010,10 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_package_name,
-            session_version,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_version,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -1037,10 +1037,10 @@ impl<'a> SessionStrParams<'a> {
     ) -> Self {
         Self {
             session_package_hash,
-            session_version,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
+            session_version,
+            session_entry_point,
             ..Default::default()
         }
     }
@@ -1169,21 +1169,6 @@ pub fn pretty_print_at_level<T: ?Sized + Serialize>(value: &T, verbosity_level: 
 #[cfg(test)]
 mod param_tests {
     use super::*;
-
-    #[derive(Debug)]
-    struct ErrWrapper(pub Error);
-
-    impl PartialEq for ErrWrapper {
-        fn eq(&self, other: &ErrWrapper) -> bool {
-            format!("{:?}", self.0) == format!("{:?}", other.0)
-        }
-    }
-
-    impl From<Error> for ErrWrapper {
-        fn from(error: Error) -> Self {
-            ErrWrapper(error)
-        }
-    }
 
     const HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const NAME: &str = "name";
@@ -1400,8 +1385,7 @@ mod param_tests {
 
         #[test]
         fn should_convert_into_deploy_params() {
-            let deploy_params: StdResult<DeployParams, ErrWrapper> =
-                test_value().try_into().map_err(ErrWrapper);
+            let deploy_params: StdResult<DeployParams, _> = test_value().try_into();
             assert!(deploy_params.is_ok());
         }
 
@@ -1410,14 +1394,13 @@ mod param_tests {
             let mut params = test_value();
             params.timestamp = "garbage";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(
+            assert!(matches!(
                 result,
-                Err(
-                    Error::FailedToParseTimestamp("timestamp", TimestampError::InvalidFormat)
-                        .into()
-                )
-            );
+                Err(Error::FailedToParseTimestamp(
+                    "timestamp",
+                    TimestampError::InvalidFormat
+                ))
+            ));
         }
 
         #[test]
@@ -1438,8 +1421,7 @@ mod param_tests {
             let mut params = test_value();
             params.chain_name = "";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(result, Ok(()));
+            assert!(matches!(result, Ok(_)));
         }
 
         #[test]
@@ -1447,11 +1429,13 @@ mod param_tests {
             let mut params = test_value();
             params.ttl = "not_a_ttl";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(
+            assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimeDiff("ttl", DurationError::NumberExpected(0)).into())
-            );
+                Err(Error::FailedToParseTimeDiff(
+                    "ttl",
+                    DurationError::NumberExpected(0)
+                ))
+            ));
         }
 
         #[test]
@@ -1459,7 +1443,6 @@ mod param_tests {
             let mut params = test_value();
             params.secret_key = "";
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ());
             if let Err(Error::CryptoError { context, .. }) = result {
                 assert_eq!(context, "secret_key");
             } else {
@@ -1473,15 +1456,13 @@ mod param_tests {
             let mut params = test_value();
             params.dependencies = vec!["invalid dep"];
             let result: StdResult<DeployParams, Error> = params.try_into();
-            let result = result.map(|_| ()).map_err(ErrWrapper);
-            assert_eq!(
+            assert!(matches!(
                 result,
                 Err(Error::CryptoError {
                     context: "dependencies",
                     error: CryptoError::FromHex(hex::FromHexError::OddLength)
-                }
-                .into())
-            );
+                })
+            ));
         }
     }
 }

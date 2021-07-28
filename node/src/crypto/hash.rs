@@ -56,12 +56,12 @@ impl Digest {
     pub const LENGTH: usize = 32;
 
     /// Returns a copy of the wrapped `u8` array.
-    pub fn to_array(&self) -> [u8; Digest::LENGTH] {
+    pub fn to_array(self) -> [u8; Digest::LENGTH] {
         self.0
     }
 
     /// Returns a copy of the wrapped `u8` array as a `Vec`
-    pub fn to_vec(&self) -> Vec<u8> {
+    pub fn into_vec(self) -> Vec<u8> {
         self.0.to_vec()
     }
 
