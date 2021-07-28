@@ -473,6 +473,43 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let signature = sign(data, &ed25519_secret_key, &public_key);
             bytesrepr::test_serialization_roundtrip(&signature);
         }
+
+        #[test]
+        fn validate_known_signature() {
+            // In the event that this test fails, we need to consider pinning the version of the
+            // `ed25519-dalek` crate to maintain backwards compatibility with existing data on the
+            // Casper network.
+
+            // Values taken from:
+            // https://github.com/dalek-cryptography/ed25519-dalek/blob/925eb9ea56192053c9eb93b9d30d1b9419eee128/TESTVECTORS#L62
+            let secret_key_hex = "bf5ba5d6a49dd5ef7b4d5d7d3e4ecc505c01f6ccee4c54b5ef7b40af6a454140";
+            let public_key_hex = "1be034f813017b900d8990af45fad5b5214b573bd303ef7a75ef4b8c5c5b9842";
+            let message_hex =
+                "16152c2e037b1c0d3219ced8e0674aee6b57834b55106c5344625322da638ecea2fc9a424a05ee9512\
+                d48fcf75dd8bd4691b3c10c28ec98ee1afa5b863d1c36795ed18105db3a9aabd9d2b4c1747adbaf1a56\
+                ffcc0c533c1c0faef331cdb79d961fa39f880a1b8b1164741822efb15a7259a465bef212855751fab66\
+                a897bfa211abe0ea2f2e1cd8a11d80e142cde1263eec267a3138ae1fcf4099db0ab53d64f336f4bcd7a\
+                363f6db112c0a2453051a0006f813aaf4ae948a2090619374fa58052409c28ef76225687df3cb2d1b0b\
+                fb43b09f47f1232f790e6d8dea759e57942099f4c4bd3390f28afc2098244961465c643fc8b29766af2\
+                bcbc5440b86e83608cfc937be98bb4827fd5e6b689adc2e26513db531076a6564396255a09975b7034d\
+                ac06461b255642e3a7ed75fa9fc265011f5f6250382a84ac268d63ba64";
+            let signature_hex =
+                "279cace6fdaf3945e3837df474b28646143747632bede93e7a66f5ca291d2c24978512ca0cb8827c8c\
+                322685bd605503a5ec94dbae61bbdcae1e49650602bc07";
+
+            let secret_key_bytes = hex::decode(secret_key_hex).unwrap();
+            let public_key_bytes = hex::decode(public_key_hex).unwrap();
+            let message_bytes = hex::decode(message_hex).unwrap();
+            let signature_bytes = hex::decode(signature_hex).unwrap();
+
+            let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes).unwrap();
+            let public_key = PublicKey::ed25519_from_bytes(public_key_bytes).unwrap();
+            assert_eq!(public_key, PublicKey::from(&secret_key));
+
+            let signature = Signature::ed25519_from_bytes(signature_bytes).unwrap();
+            assert_eq!(sign(&message_bytes, &secret_key, &public_key), signature);
+            assert!(verify(&message_bytes, &signature, &public_key).is_ok());
+        }
     }
 
     mod secp256k1 {
@@ -670,6 +707,31 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let signature_low = Signature::secp256k1([1; SIGNATURE_LENGTH]).unwrap();
             let signature_high = Signature::secp256k1([3; SIGNATURE_LENGTH]).unwrap();
             check_ord_and_hash(signature_low, signature_high)
+        }
+
+        #[test]
+        fn validate_known_signature() {
+            // In the event that this test fails, we need to consider pinning the version of the
+            // `k256` crate to maintain backwards compatibility with existing data on the Casper
+            // network.
+            let secret_key_hex = "833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42";
+            let public_key_hex =
+                "028e24fd9654f12c793d3d376c15f7abe53e0fbd537884a3a98d10d2dc6d513b4e";
+            let message_hex = "616263";
+            let signature_hex = "8016162860f0795154643d15c5ab5bb840d8c695d6de027421755579ea7f2a4629b7e0c88fc3428669a6a89496f426181b73f10c6c8a05ac8f49d6cb5032eb89";
+
+            let secret_key_bytes = hex::decode(secret_key_hex).unwrap();
+            let public_key_bytes = hex::decode(public_key_hex).unwrap();
+            let message_bytes = hex::decode(message_hex).unwrap();
+            let signature_bytes = hex::decode(signature_hex).unwrap();
+
+            let secret_key = SecretKey::secp256k1_from_bytes(secret_key_bytes).unwrap();
+            let public_key = PublicKey::secp256k1_from_bytes(public_key_bytes).unwrap();
+            assert_eq!(public_key, PublicKey::from(&secret_key));
+
+            let signature = Signature::secp256k1_from_bytes(signature_bytes).unwrap();
+            assert_eq!(sign(&message_bytes, &secret_key, &public_key), signature);
+            assert!(verify(&message_bytes, &signature, &public_key).is_ok());
         }
     }
 

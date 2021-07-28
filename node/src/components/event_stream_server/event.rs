@@ -7,6 +7,7 @@ use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature
 #[derive(Debug)]
 pub enum Event {
     BlockAdded(Box<Block>),
+    DeployAccepted(DeployHash),
     DeployProcessed {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
@@ -21,7 +22,7 @@ pub enum Event {
     FinalitySignature(Box<FinalitySignature>),
     Step {
         era_id: EraId,
-        effect: ExecutionEffect,
+        execution_effect: ExecutionEffect,
     },
 }
 
@@ -29,6 +30,9 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Event::BlockAdded(block) => write!(formatter, "block added {}", block.hash()),
+            Event::DeployAccepted(deploy_hash) => {
+                write!(formatter, "deploy accepted {}", deploy_hash)
+            }
             Event::DeployProcessed { deploy_hash, .. } => {
                 write!(formatter, "deploy processed {}", deploy_hash)
             }

@@ -1,9 +1,7 @@
 //! Functions for interacting with the current runtime.
 
-// Can be removed once https://github.com/rust-lang/rustfmt/issues/3362 is resolved.
-#[rustfmt::skip]
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(feature = "no-std")]
+use alloc::{vec, vec::Vec};
 use core::mem::MaybeUninit;
 
 use casper_types::{
@@ -11,6 +9,7 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes},
     contracts::{ContractVersion, NamedKeys},
+    system::CallStackElement,
     ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
     RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
@@ -341,6 +340,27 @@ pub(crate) fn read_host_buffer(size: usize) -> Result<Vec<u8>, ApiError> {
     };
     read_host_buffer_into(&mut dest)?;
     Ok(dest)
+}
+
+/// Returns the call stack.
+pub fn get_call_stack() -> Vec<CallStackElement> {
+    let (call_stack_len, result_size) = {
+        let mut call_stack_len: usize = 0;
+        let mut result_size: usize = 0;
+        let ret = unsafe {
+            ext_ffi::casper_load_call_stack(
+                &mut call_stack_len as *mut usize,
+                &mut result_size as *mut usize,
+            )
+        };
+        api_error::result_from(ret).unwrap_or_revert();
+        (call_stack_len, result_size)
+    };
+    if call_stack_len == 0 {
+        return Vec::new();
+    }
+    let bytes = read_host_buffer(result_size).unwrap_or_revert();
+    bytesrepr::deserialize(bytes).unwrap_or_revert()
 }
 
 #[cfg(feature = "test-support")]

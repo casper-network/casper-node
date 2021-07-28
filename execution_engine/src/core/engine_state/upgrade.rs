@@ -5,8 +5,11 @@ use thiserror::Error;
 
 use casper_types::{
     bytesrepr,
-    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    ContractHash, EraId, Key, ProtocolVersion,
+    system::{
+        auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
+        STANDARD_PAYMENT,
+    },
+    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion,
 };
 
 use crate::{
@@ -16,59 +19,23 @@ use crate::{
         stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
-        TypeMismatch,
     },
-    storage::{
-        global_state::{CommitResult, StateProvider},
-        protocol_data::ProtocolData,
-    },
+    storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
 
 #[derive(Debug, Clone)]
-pub enum UpgradeResult {
-    RootNotFound,
-    KeyNotFound(Key),
-    TypeMismatch(TypeMismatch),
-    Serialization(bytesrepr::Error),
-    Success {
-        post_state_hash: Blake2bHash,
-        effect: ExecutionEffect,
-    },
+pub struct UpgradeSuccess {
+    pub post_state_hash: Blake2bHash,
+    pub execution_effect: ExecutionEffect,
 }
 
-impl fmt::Display for UpgradeResult {
+impl fmt::Display for UpgradeSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            UpgradeResult::RootNotFound => write!(f, "Root not found"),
-            UpgradeResult::KeyNotFound(key) => write!(f, "Key not found: {}", key),
-            UpgradeResult::TypeMismatch(type_mismatch) => {
-                write!(f, "Type mismatch: {:?}", type_mismatch)
-            }
-            UpgradeResult::Serialization(error) => write!(f, "Serialization error: {:?}", error),
-            UpgradeResult::Success {
-                post_state_hash,
-                effect,
-            } => write!(f, "Success: {} {:?}", post_state_hash, effect),
-        }
-    }
-}
-
-impl UpgradeResult {
-    pub fn from_commit_result(commit_result: CommitResult, effect: ExecutionEffect) -> Self {
-        match commit_result {
-            CommitResult::RootNotFound => UpgradeResult::RootNotFound,
-            CommitResult::KeyNotFound(key) => UpgradeResult::KeyNotFound(key),
-            CommitResult::TypeMismatch(type_mismatch) => UpgradeResult::TypeMismatch(type_mismatch),
-            CommitResult::Serialization(error) => UpgradeResult::Serialization(error),
-            CommitResult::Success { state_root, .. } => UpgradeResult::Success {
-                post_state_hash: state_root,
-                effect,
-            },
-        }
-    }
-
-    pub fn is_success(&self) -> bool {
-        matches!(&self, UpgradeResult::Success { .. })
+        write!(
+            f,
+            "Success: {} {:?}",
+            self.post_state_hash, self.execution_effect
+        )
     }
 }
 
@@ -183,6 +150,8 @@ pub enum ProtocolUpgradeError {
     UnableToRetrieveSystemContractPackage(String),
     #[error("Failed to disable previous version of system contract: {0}")]
     FailedToDisablePreviousVersion(String),
+    #[error(transparent)]
+    Bytesrepr(#[from] bytesrepr::Error),
 }
 
 pub(crate) struct SystemUpgrader<S>
@@ -215,17 +184,29 @@ where
         &self,
         correlation_id: CorrelationId,
     ) -> Result<(), ProtocolUpgradeError> {
-        self.store_contract(correlation_id, self.protocol_data.mint(), MINT)?;
-        self.store_contract(correlation_id, self.protocol_data.auction(), AUCTION)?;
+        self.store_contract(
+            correlation_id,
+            self.protocol_data.mint(),
+            MINT,
+            mint::mint_entry_points(),
+        )?;
+        self.store_contract(
+            correlation_id,
+            self.protocol_data.auction(),
+            AUCTION,
+            auction::auction_entry_points(),
+        )?;
         self.store_contract(
             correlation_id,
             self.protocol_data.handle_payment(),
             HANDLE_PAYMENT,
+            handle_payment::handle_payment_entry_points(),
         )?;
         self.store_contract(
             correlation_id,
             self.protocol_data.standard_payment(),
             STANDARD_PAYMENT,
+            standard_payment::standard_payment_entry_points(),
         )?;
 
         Ok(())
@@ -236,6 +217,7 @@ where
         correlation_id: CorrelationId,
         contract_hash: ContractHash,
         contract_name: &str,
+        entry_points: EntryPoints,
     ) -> Result<(), ProtocolUpgradeError> {
         let contract_key = Key::Hash(contract_hash.value());
 
@@ -285,12 +267,21 @@ where
                 ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
             })?;
         contract.set_protocol_version(self.new_protocol_version);
+
+        let new_contract = Contract::new(
+            contract.contract_package_hash(),
+            contract.contract_wasm_hash(),
+            contract.named_keys().clone(),
+            entry_points,
+            self.new_protocol_version,
+        );
+        self.tracking_copy
+            .borrow_mut()
+            .write(contract_hash.into(), StoredValue::Contract(new_contract));
+
         contract_package
             .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
 
-        self.tracking_copy
-            .borrow_mut()
-            .write(contract_hash.into(), StoredValue::Contract(contract));
         self.tracking_copy.borrow_mut().write(
             contract_package_key,
             StoredValue::ContractPackage(contract_package),

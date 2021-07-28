@@ -6,10 +6,6 @@
 //! the crate's `std` feature.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(
-    not(feature = "no-unstable-features"),
-    feature(min_specialization, try_reserve)
-)]
 #![doc(html_root_url = "https://docs.rs/casper-types/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
@@ -18,7 +14,9 @@
 )]
 #![warn(missing_docs)]
 
+#[cfg_attr(not(any(feature = "std", test)), macro_use)]
 extern crate alloc;
+
 #[cfg(any(feature = "std", test))]
 #[macro_use]
 extern crate std;
@@ -59,6 +57,7 @@ pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
+#[doc(inline)]
 pub use contracts::{
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
     ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
@@ -71,10 +70,14 @@ pub use execution_result::{
 };
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
-pub use key::{HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
+pub use key::{
+    DictionaryAddr, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+};
 pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
+#[doc(inline)]
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use tagged::Tagged;
@@ -89,3 +92,12 @@ pub use crate::{
     era_id::EraId,
     uint::{UIntParseError, U128, U256, U512},
 };
+
+#[cfg(not(any(feature = "std", feature = "no-std")))]
+compile_error!(
+    "casper-types requires one of 'std' (enabled by default) or 'no-std' features to be enabled"
+);
+#[cfg(all(feature = "std", feature = "no-std"))]
+compile_error!(
+    "casper-types features 'std' (enabled by default) and 'no-std' should not both be enabled"
+);

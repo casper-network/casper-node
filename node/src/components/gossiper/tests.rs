@@ -25,7 +25,6 @@ use crate::{
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
-    crypto::hash::Digest,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
@@ -70,7 +69,7 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
+    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
 }
 
 impl ReactorEvent for Event {
@@ -86,12 +85,6 @@ impl ReactorEvent for Event {
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
         Event::Storage(storage::Event::from(request))
-    }
-}
-
-impl From<ContractRuntimeRequest> for Event {
-    fn from(request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
     }
 }
 
@@ -192,12 +185,10 @@ impl reactor::Reactor for Reactor {
 
         let contract_runtime_config = contract_runtime::Config::default();
         let contract_runtime = ContractRuntime::new(
-            Digest::random(rng),
-            None,
             ProtocolVersion::from_parts(1, 0, 0),
             storage_withdir,
             &contract_runtime_config,
-            &registry,
+            registry,
         )
         .unwrap();
 
@@ -277,27 +268,20 @@ impl reactor::Reactor for Reactor {
                                 return Effects::new();
                             }
                         };
+
                         match self
                             .storage
-                            .handle_legacy_direct_deploy_request(deploy_hash)
+                            .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
                         {
-                            // This functionality was moved out of the storage component and
-                            // should be refactored ASAP.
-                            Some(deploy) => {
-                                match NodeMessage::new_get_response(&deploy) {
-                                    Ok(message) => {
-                                        return effect_builder
-                                            .send_message(sender, message)
-                                            .ignore();
-                                    }
-                                    Err(error) => {
-                                        error!("failed to create get-response: {}", error);
-                                        return Effects::new();
-                                    }
-                                };
+                            Some(serialized_item) => {
+                                let message = NodeMessage::new_get_response_raw_unchecked::<Deploy>(
+                                    serialized_item,
+                                );
+                                return effect_builder.send_message(sender, message).ignore();
                             }
+
                             None => {
-                                debug!("failed to get {} for {}", deploy_hash, sender);
+                                debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
                                 return Effects::new();
                             }
                         }
@@ -473,7 +457,7 @@ async fn should_get_from_alternate_source() {
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
         network
-            .process_injected_effect_on(&node_id, announce_deploy_received(deploy.clone(), None))
+            .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone(), None))
             .await;
     }
 

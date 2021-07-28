@@ -4,6 +4,7 @@ mod create_purse;
 mod dictionary;
 mod get_arg;
 mod get_blocktime;
+mod get_call_stack;
 mod get_caller;
 mod get_phase;
 mod list_named_keys;

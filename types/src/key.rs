@@ -47,8 +47,10 @@ pub const KEY_HASH_LENGTH: usize = 32;
 pub const KEY_TRANSFER_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
 pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
-/// The number of bytes in a [`Key::Local`].
+/// The number of bytes in a [`Key::Dictionary`].
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
+/// The maximum length for a `dictionary_item_key`.
+pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
@@ -65,7 +67,7 @@ const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_D
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
-/// A newtype for [`Key`]s dictionary variant.
+/// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
 
 #[allow(missing_docs)]
@@ -199,10 +201,10 @@ impl Key {
     }
 
     /// Returns a human-readable version of `self`, with the inner bytes encoded to Base16.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         match self {
             Key::Account(account_hash) => account_hash.to_formatted_string(),
-            Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(addr)),
+            Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(&addr)),
             Key::URef(uref) => uref.to_formatted_string(),
             Key::Transfer(transfer_addr) => transfer_addr.to_formatted_string(),
             Key::DeployInfo(addr) => {
@@ -361,12 +363,13 @@ impl Key {
         Some(Key::Hash(addr))
     }
 
-    /// Creates a new [`Key::Dictionary`] variant based on a `uref` and a `key` bytes.
-    pub fn dictionary(uref: URef, key: &[u8]) -> Key {
+    /// Creates a new [`Key::Dictionary`] variant based on a `seed_uref` and a `dictionary_item_key`
+    /// bytes.
+    pub fn dictionary(seed_uref: URef, dictionary_item_key: &[u8]) -> Key {
         // NOTE: Expect below is safe because the length passed is supported.
         let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
-        hasher.update(uref.addr().as_ref());
-        hasher.update(key);
+        hasher.update(seed_uref.addr().as_ref());
+        hasher.update(dictionary_item_key);
         // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
         let mut addr = HashAddr::default();
         hasher.finalize_variable(|hash| addr.clone_from_slice(hash));
