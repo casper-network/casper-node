@@ -1,4 +1,4 @@
-//! Home of the Handle Payment contract's [`Error`] type.
+//! Home of the Handle Payment contract's [`enum@Error`] type.
 use alloc::vec::Vec;
 use core::result;
 

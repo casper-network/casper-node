@@ -44,7 +44,7 @@ function _main()
     pushd "$PATH_TO_REMOTE" || exit
     for REMOTE_FILE in "${_REMOTE_FILES[@]}"
     do
-        if [ "${#PROTOCOL_VERSION}" = '3' ]; then
+        if ( ! curl -Isf "$_BASE_URL/v$PROTOCOL_VERSION/$REMOTE_FILE" > /dev/null 2>&1 ); then
             log "... downloading RC $PROTOCOL_VERSION :: $REMOTE_FILE"
             curl -O "$_BASE_URL/release-$PROTOCOL_VERSION/$REMOTE_FILE" > /dev/null 2>&1
         else
