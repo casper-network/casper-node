@@ -30,7 +30,7 @@ use casper_types::{
         handle_payment::{self, HandlePayment},
         mint::{self, Mint},
         standard_payment::{self, StandardPayment},
-        CallStackElement, SystemContractType,
+        CallStackElement, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, NamedArg, Parameter,
@@ -54,7 +54,7 @@ use crate::{
         stored_value::StoredValue,
         wasm_config::WasmConfig,
     },
-    storage::{global_state::StateReader, protocol_data::ProtocolData},
+    storage::global_state::StateReader,
 };
 
 pub struct Runtime<'a, R> {
@@ -101,6 +101,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
         Key::Dictionary(_) => None,
+        Key::SystemContractRegistry => None,
     }
 }
 
@@ -999,10 +1000,6 @@ where
         &self.context
     }
 
-    pub fn protocol_data(&self) -> &ProtocolData {
-        self.context.protocol_data()
-    }
-
     fn gas(&mut self, amount: Gas) -> Result<(), Error> {
         self.context.charge_gas(amount)
     }
@@ -1308,15 +1305,15 @@ where
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().mint().value())
+        key.into_hash() == Some(self.context.get_system_contract(MINT).value())
     }
 
     pub fn is_handle_payment(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().handle_payment().value())
+        key.into_hash() == Some(self.context.get_system_contract(HANDLE_PAYMENT).value())
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().auction().value())
+        key.into_hash() == Some(self.context.get_system_contract(AUCTION).value())
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -1372,7 +1369,7 @@ where
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.protocol_data().mint().into();
+        let base_key = self.context.get_system_contract(MINT).into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -1382,7 +1379,6 @@ where
         let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
-        let protocol_data = self.context.protocol_data();
         let transfers = self.context.transfers().to_owned();
 
         let mint_context = RuntimeContext::new(
@@ -1404,7 +1400,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            *protocol_data,
+            self.config,
             transfers,
         );
 
@@ -1417,7 +1413,7 @@ where
             call_stack,
         );
 
-        let system_config = protocol_data.system_config();
+        let system_config = self.config.system_config();
         let mint_costs = system_config.mint_costs();
 
         let result = match entry_point_name {
@@ -1519,7 +1515,7 @@ where
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.protocol_data().handle_payment().into();
+        let base_key = self.context.get_system_contract(HANDLE_PAYMENT).into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -1529,7 +1525,6 @@ where
         let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
-        let protocol_data = self.context.protocol_data();
         let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
@@ -1551,7 +1546,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            *protocol_data,
+            self.config,
             transfers,
         );
 
@@ -1564,7 +1559,7 @@ where
             call_stack,
         );
 
-        let system_config = protocol_data.system_config();
+        let system_config = self.config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
 
         let result = match entry_point_name {
@@ -1648,7 +1643,7 @@ where
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.protocol_data().auction().into();
+        let base_key = self.context.get_system_contract(AUCTION).into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -1658,7 +1653,7 @@ where
         let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
-        let protocol_data = self.context.protocol_data();
+
         let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
@@ -1680,7 +1675,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            *protocol_data,
+            self.config,
             transfers,
         );
 
@@ -1693,7 +1688,7 @@ where
             call_stack,
         );
 
-        let system_config = protocol_data.system_config();
+        let system_config = self.config.system_config();
         let auction_costs = system_config.auction_costs();
 
         let result = match entry_point_name {
@@ -1953,11 +1948,7 @@ where
         // This will skip arguments check for system contracts only. This code should be removed on
         // next major version bump. Argument checks for system contract is still done during
         // execution of a system contract.
-        if !self
-            .protocol_data()
-            .system_contracts()
-            .contains(&contract_hash)
-        {
+        if !self.context.system_contracts().contains(&contract_hash) {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
                 .iter()
@@ -2137,11 +2128,8 @@ where
 
         let entry_point_name = entry_point.name();
 
-        let (instance, memory) = instance_and_memory(
-            module.clone(),
-            protocol_version,
-            self.protocol_data().wasm_config(),
-        )?;
+        let (instance, memory) =
+            instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
 
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -2176,7 +2164,7 @@ where
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
-            *self.context.protocol_data(),
+            self.config,
             self.context.transfers().to_owned(),
         );
 
@@ -2648,7 +2636,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.base_key() != Key::from(self.protocol_data().mint()) {
+        if self.context.base_key() != Key::from(self.context.get_system_contract(MINT)) {
             return Err(Error::InvalidContext);
         }
 
@@ -2674,7 +2662,7 @@ where
 
     /// Records given auction info at a given era id
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
-        if self.context.base_key() != Key::from(self.protocol_data().auction()) {
+        if self.context.base_key() != Key::from(self.context.get_system_contract(AUCTION)) {
             return Err(Error::InvalidContext);
         }
 
@@ -2840,28 +2828,28 @@ where
     ///
     /// Returned URef is already attenuated depending on the calling account.
     fn get_mint_contract(&self) -> ContractHash {
-        self.context.protocol_data().mint()
+        self.context.get_system_contract(MINT)
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
     fn get_handle_payment_contract(&self) -> ContractHash {
-        self.context.protocol_data().handle_payment()
+        self.context.get_system_contract(HANDLE_PAYMENT)
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
     fn get_standard_payment_contract(&self) -> ContractHash {
-        self.context.protocol_data().standard_payment()
+        self.context.get_system_contract(STANDARD_PAYMENT)
     }
 
     /// Looks up the public auction contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
     fn get_auction_contract(&self) -> ContractHash {
-        self.context.protocol_data().auction()
+        self.context.get_system_contract(AUCTION)
     }
 
     /// Calls the `read_base_round_reward` method on the mint contract at the given mint

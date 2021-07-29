@@ -14,15 +14,16 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    AccessRights, BlockTime, CLValue, Contract, DeployHash, EntryPointType, EntryPoints, Key,
-    Phase, ProtocolVersion, RuntimeArgs, URef, KEY_HASH_LENGTH, U512,
+    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
+    AccessRights, BlockTime, CLValue, Contract, ContractHash, DeployHash, EntryPointType,
+    EntryPoints, Key, Phase, ProtocolVersion, RuntimeArgs, URef, KEY_HASH_LENGTH, U512,
 };
 
 use super::{Address, Error, RuntimeContext};
 use crate::{
     core::{
-        execution::AddressGenerator, runtime::extract_access_rights_from_keys,
-        tracking_copy::TrackingCopy,
+        engine_state::EngineConfig, execution::AddressGenerator,
+        runtime::extract_access_rights_from_keys, tracking_copy::TrackingCopy,
     },
     shared::{
         account::{Account, AssociatedKeys},
@@ -32,20 +33,18 @@ use crate::{
         stored_value::StoredValue,
         transform::Transform,
     },
-    storage::{
-        global_state::{
-            in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
-            StateProvider,
-        },
-        protocol_data::ProtocolData,
+    storage::global_state::{
+        in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
+        StateProvider,
     },
 };
+use std::collections::BTreeMap;
 
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
-static TEST_PROTOCOL_DATA: Lazy<ProtocolData> = Lazy::new(ProtocolData::default);
+static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default);
 
 fn mock_tracking_copy(
     init_key: Key,
@@ -143,7 +142,7 @@ fn mock_runtime_context<'a>(
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         Phase::Session,
-        *TEST_PROTOCOL_DATA,
+        *TEST_ENGINE_CONFIG,
         Vec::default(),
     )
 }
@@ -350,6 +349,19 @@ fn contract_key_addable_valid() {
     )));
     tracking_copy.borrow_mut().write(contract_key, contract);
 
+    let default_system_registry = {
+        let mut registry = BTreeMap::<String, ContractHash>::new();
+        registry.insert(MINT.to_string(), ContractHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(AUCTION.to_string(), ContractHash::default());
+        StoredValue::CLValue(CLValue::from_t(registry).unwrap())
+    };
+
+    tracking_copy
+        .borrow_mut()
+        .write(Key::SystemContractRegistry, default_system_registry);
+
     let mut named_keys = NamedKeys::new();
     let uref = create_uref(&mut uref_address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();
@@ -377,7 +389,7 @@ fn contract_key_addable_valid() {
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         PHASE,
-        Default::default(),
+        EngineConfig::default(),
         Vec::default(),
     );
 
@@ -450,7 +462,7 @@ fn contract_key_addable_invalid() {
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         PHASE,
-        Default::default(),
+        EngineConfig::default(),
         Vec::default(),
     );
 
@@ -860,7 +872,7 @@ fn should_meter_for_gas_storage_write() {
     let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
     let access_rights = extract_access_rights_from_keys(vec![uref]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let expected_write_cost = TEST_PROTOCOL_DATA
+    let expected_write_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
@@ -890,7 +902,7 @@ fn should_meter_for_gas_storage_add() {
     let uref = create_uref(&mut rng, AccessRights::ADD_WRITE);
     let access_rights = extract_access_rights_from_keys(vec![uref]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let expected_add_cost = TEST_PROTOCOL_DATA
+    let expected_add_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());

@@ -38,6 +38,7 @@ const BALANCE_PREFIX: &str = "balance-";
 const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
+const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -52,6 +53,7 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
 
+const SYSTEM_CONTRACT_REGISTRY: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
@@ -63,6 +65,8 @@ const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADD
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
+const KEY_SYSTEM_CONTRACT_REGISTRY_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -84,6 +88,7 @@ pub enum KeyTag {
     Bid = 7,
     Withdraw = 8,
     Dictionary = 9,
+    SystemContractRegistry = 10,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -112,6 +117,8 @@ pub enum Key {
     Withdraw(AccountHash),
     /// A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.
     Dictionary(DictionaryAddr),
+    /// A `Key` variant under which system contract hashes are stored.
+    SystemContractRegistry,
 }
 
 #[derive(Debug)]
@@ -182,6 +189,7 @@ impl Key {
             Key::Bid(_) => String::from("Key::Bid"),
             Key::Withdraw(_) => String::from("Key::Unbond"),
             Key::Dictionary(_) => String::from("Key::Dictionary"),
+            Key::SystemContractRegistry => String::from("Key::SystemContractRegistry"),
         }
     }
 
@@ -231,6 +239,13 @@ impl Key {
                     "{}{}",
                     DICTIONARY_PREFIX,
                     base16::encode_lower(&dictionary_addr)
+                )
+            }
+            Key::SystemContractRegistry => {
+                format!(
+                    "{}{}",
+                    SYSTEM_CONTRACT_REGISTRY_PREFIX,
+                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY)
                 )
             }
         }
@@ -307,6 +322,13 @@ impl Key {
             let addr = DictionaryAddr::try_from(dictionary_addr_bytes.as_ref())
                 .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
             return Ok(Key::Dictionary(addr));
+        }
+
+        if input
+            .strip_prefix(SYSTEM_CONTRACT_REGISTRY_PREFIX)
+            .is_some()
+        {
+            return Ok(Key::SystemContractRegistry);
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -390,6 +412,11 @@ impl Display for Key {
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
             Key::Dictionary(addr) => write!(f, "Key::Dictionary({})", HexFmt(addr)),
+            Key::SystemContractRegistry => write!(
+                f,
+                "Key::SystemContractRegistry({})",
+                HexFmt(SYSTEM_CONTRACT_REGISTRY)
+            ),
         }
     }
 }
@@ -413,6 +440,7 @@ impl Tagged<KeyTag> for Key {
             Key::Bid(_) => KeyTag::Bid,
             Key::Withdraw(_) => KeyTag::Withdraw,
             Key::Dictionary(_) => KeyTag::Dictionary,
+            Key::SystemContractRegistry => KeyTag::SystemContractRegistry,
         }
     }
 }
@@ -495,6 +523,7 @@ impl ToBytes for Key {
             Key::Dictionary(addr) => {
                 result.append(&mut addr.to_bytes()?);
             }
+            Key::SystemContractRegistry => result.append(&mut SYSTEM_CONTRACT_REGISTRY.to_bytes()?),
         }
         Ok(result)
     }
@@ -513,6 +542,7 @@ impl ToBytes for Key {
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
+            Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_LENGTH,
         }
     }
 }
@@ -561,6 +591,10 @@ impl FromBytes for Key {
                 let (addr, rem) = DictionaryAddr::from_bytes(remainder)?;
                 Ok((Key::Dictionary(addr), rem))
             }
+            tag if tag == KeyTag::SystemContractRegistry as u8 => {
+                let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
+                Ok((Key::SystemContractRegistry, rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -599,6 +633,7 @@ mod serde_helpers {
         Bid(String),
         Withdraw(String),
         Dictionary(String),
+        SystemContractRegistry(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -615,6 +650,9 @@ mod serde_helpers {
                 Key::Bid(_) => HumanReadable::Bid(formatted_string),
                 Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
                 Key::Dictionary(_) => HumanReadable::Dictionary(formatted_string),
+                Key::SystemContractRegistry => {
+                    HumanReadable::SystemContractRegistry(formatted_string)
+                }
             }
         }
     }
@@ -638,6 +676,9 @@ mod serde_helpers {
                 HumanReadable::Dictionary(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
+                HumanReadable::SystemContractRegistry(formatted_string) => {
+                    Key::from_formatted_str(&formatted_string)
+                }
             }
         }
     }
@@ -654,6 +695,7 @@ mod serde_helpers {
         Bid(&'a AccountHash),
         Withdraw(&'a AccountHash),
         Dictionary(&'a HashAddr),
+        SystemContractRegistry,
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -669,6 +711,7 @@ mod serde_helpers {
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
+                Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
             }
         }
     }
@@ -685,6 +728,7 @@ mod serde_helpers {
         Bid(AccountHash),
         Withdraw(AccountHash),
         Dictionary(DictionaryAddr),
+        SystemContractRegistry,
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -700,6 +744,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
+                BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
             }
         }
     }

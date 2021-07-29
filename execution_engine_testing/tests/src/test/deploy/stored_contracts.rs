@@ -349,7 +349,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // next make another deploy that USES stored payment logic
@@ -432,7 +432,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // next make another deploy that USES stored payment logic
@@ -508,7 +508,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -594,7 +594,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -668,7 +668,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -731,7 +731,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // first, store payment contract for v2.0.0

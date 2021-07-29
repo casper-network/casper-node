@@ -10,7 +10,10 @@ use casper_engine_test_support::{
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisValidator, GenesisAccount},
+    core::engine_state::{
+        engine_config::DEFAULT_WASMLESS_TRANSFER_COST, genesis::GenesisValidator, EngineConfig,
+        GenesisAccount,
+    },
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -36,7 +39,6 @@ use casper_execution_engine::{
         wasm,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
-    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
     runtime_args,
@@ -190,6 +192,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_standard_payment_costs,
     );
 
+    let new_engine_config = EngineConfig::new(5, WasmConfig::default(), new_system_config);
+
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -198,11 +202,10 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_system_config(new_system_config)
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -421,6 +424,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_standard_payment_costs,
     );
 
+    let new_engine_config = EngineConfig::new(5, WasmConfig::default(), new_system_config);
+
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(
@@ -446,11 +451,10 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_system_config(new_system_config)
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -853,17 +857,17 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_standard_payment_costs,
     );
 
+    let new_engine_config = EngineConfig::new(5, new_wasm_config, new_system_config);
+
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasm_config(new_wasm_config)
-            .with_new_system_config(new_system_config)
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

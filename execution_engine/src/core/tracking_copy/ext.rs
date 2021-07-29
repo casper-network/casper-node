@@ -15,6 +15,7 @@ use crate::{
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
+use std::collections::BTreeMap;
 
 pub trait TrackingCopyExt<R> {
     type Error;
@@ -84,6 +85,11 @@ pub trait TrackingCopyExt<R> {
     ) -> Result<ContractPackage, Self::Error>;
 
     fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error>;
+
+    fn get_system_contracts(
+        &mut self,
+        correlation_id: CorrelationId,
+    ) -> Result<BTreeMap<String, ContractHash>, Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -246,5 +252,26 @@ where
 
     fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error> {
         Ok(wasm::do_nothing_module(preprocessor)?)
+    }
+
+    fn get_system_contracts(
+        &mut self,
+        correlation_id: CorrelationId,
+    ) -> Result<BTreeMap<String, ContractHash>, Self::Error> {
+        match self
+            .get(correlation_id, &Key::SystemContractRegistry)
+            .map_err(Into::into)?
+        {
+            Some(StoredValue::CLValue(registry)) => {
+                let registry: BTreeMap<String, ContractHash> =
+                    CLValue::into_t(registry).map_err(Self::Error::from)?;
+                Ok(registry)
+            }
+            Some(other) => Err(execution::Error::TypeMismatch(TypeMismatch::new(
+                "StoredValue".to_string(),
+                other.type_name(),
+            ))),
+            None => Err(execution::Error::KeyNotFound(Key::SystemContractRegistry)),
+        }
     }
 }

@@ -6,7 +6,8 @@ use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
+
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
     account::AccountHash, runtime_args, AccessRights, DeployHash, PublicKey, RuntimeArgs,
     SecretKey, Transfer, TransferAddr, U512,

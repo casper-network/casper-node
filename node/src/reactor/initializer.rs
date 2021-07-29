@@ -201,6 +201,8 @@ impl Reactor {
             chainspec_loader.chainspec().protocol_config.version,
             storage_config,
             &config.value().contract_runtime,
+            chainspec_loader.chainspec().wasm_config,
+            chainspec_loader.chainspec().system_costs_config,
             registry,
         )?;
 

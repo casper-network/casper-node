@@ -16,6 +16,7 @@ use casper_execution_engine::{
 use tempfile::TempDir;
 
 pub const RELEASE_1_2_0: &str = "release_1_2_0";
+pub const RELEASE_1_3_1: &str = "release_1_3_1";
 const STATE_JSON_FILE: &str = "state.json";
 const FIXTURES_DIRECTORY: &str = "fixtures";
 const GENESIS_PROTOCOL_VERSION_FIELD: &str = "protocol_version";
@@ -99,6 +100,7 @@ pub fn generate_fixture(
 
     // You can customize the fixture post genesis with a callable.
     post_genesis_setup(&mut builder);
+    // Pass in a function taking the builder
 
     let post_state_hash = builder.get_post_state_hash();
 

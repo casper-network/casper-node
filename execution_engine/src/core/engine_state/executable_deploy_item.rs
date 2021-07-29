@@ -38,7 +38,7 @@ use crate::{
         account::Account, newtypes::CorrelationId, stored_value::StoredValue, wasm, wasm_prep,
         wasm_prep::Preprocessor,
     },
-    storage::{global_state::StateReader, protocol_data::ProtocolData},
+    storage::global_state::StateReader,
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
@@ -128,7 +128,7 @@ impl ExecutableDeployItem {
         correlation_id: CorrelationId,
         preprocessor: &Preprocessor,
         protocol_version: &ProtocolVersion,
-        protocol_data: &ProtocolData,
+        standard_payment_hash: ContractHash,
         phase: Phase,
     ) -> Result<DeployMetadata, Error>
     where
@@ -150,7 +150,7 @@ impl ExecutableDeployItem {
                 if module_bytes.is_empty() && phase == Phase::Payment =>
             {
                 let base_key = account_hash.into();
-                let contract_hash = protocol_data.standard_payment();
+                let contract_hash = standard_payment_hash;
                 let module = wasm::do_nothing_module(preprocessor)?;
                 return Ok(DeployMetadata {
                     kind: DeployKind::System,
@@ -320,7 +320,12 @@ impl ExecutableDeployItem {
                 error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        if protocol_data.system_contracts().contains(&contract_hash) {
+        let mut system_hashes = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)?
+            .into_values();
+
+        if system_hashes.any(|x| x == contract_hash) {
             let module = wasm::do_nothing_module(preprocessor)?;
             return Ok(DeployMetadata {
                 kind: DeployKind::System,

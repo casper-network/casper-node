@@ -92,7 +92,7 @@ use casper_execution_engine::{
         MAX_PAYMENT,
     },
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::{protocol_data::ProtocolData, trie::Trie},
+    storage::trie::Trie,
 };
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
@@ -1517,26 +1517,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::GetBalance {
                 balance_request,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Returns `ProtocolData` by `ProtocolVersion`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_protocol_data(
-        self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<Box<ProtocolData>>, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetProtocolData {
-                protocol_version,
                 responder,
             },
             QueueKind::Regular,

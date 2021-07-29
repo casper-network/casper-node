@@ -11,13 +11,14 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error, ExecuteRequest},
+        engine_state::{EngineConfig, Error, ExecuteRequest},
         execution::Error as ExecError,
     },
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
+        system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
@@ -272,10 +273,11 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
-        .with_new_wasm_config(*DOUBLED_WASM_MEMORY_LIMIT)
         .build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    let engine_config = EngineConfig::new(5, *DOUBLED_WASM_MEMORY_LIMIT, SystemConfig::default());
+
+    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
 
     //
     // Now this request is working as the maximum memory limit is doubled.

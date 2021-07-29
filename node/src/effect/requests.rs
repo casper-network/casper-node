@@ -26,7 +26,7 @@ use casper_execution_engine::{
         upgrade::{UpgradeConfig, UpgradeSuccess},
     },
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::{protocol_data::ProtocolData, trie::Trie},
+    storage::trie::Trie,
 };
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
@@ -585,13 +585,7 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-    /// Query the contract runtime for protocol version data.
-    QueryProtocolData {
-        /// The protocol version.
-        protocol_version: ProtocolVersion,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
-    },
+
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
@@ -641,9 +635,7 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers {}", block_hash)
             }
-            RpcRequest::QueryProtocolData {
-                protocol_version, ..
-            } => write!(formatter, "protocol_version {}", protocol_version),
+
             RpcRequest::QueryGlobalState {
                 state_root_hash,
                 base_key,
@@ -725,13 +717,6 @@ pub enum ContractRuntimeRequest {
         deploys: Vec<Deploy>,
     },
 
-    /// Get `ProtocolData` by `ProtocolVersion`.
-    GetProtocolData {
-        /// The protocol version.
-        protocol_version: ProtocolVersion,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
-    },
     /// Commit genesis chainspec.
     CommitGenesis {
         /// The chainspec.
@@ -868,10 +853,6 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }
-
-            ContractRuntimeRequest::GetProtocolData {
-                protocol_version, ..
-            } => write!(formatter, "protocol_version: {}", protocol_version),
 
             ContractRuntimeRequest::IsBonded {
                 public_key, era_id, ..
