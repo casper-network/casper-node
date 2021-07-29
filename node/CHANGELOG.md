@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Support building and testing using stable Rust.
 
 ### Removed
-* The inofficial support for nix-related derivations and support tooling has been removed.
+* The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 
 
