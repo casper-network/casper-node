@@ -56,6 +56,9 @@ pub enum BlockExecutionError {
     /// An error that occurred while creating a block.
     #[error(transparent)]
     BlockCreationError(#[from] BlockCreationError),
+    /// An error that occurred while interacting with lmdb.
+    #[error(transparent)]
+    LmdbError(#[from] lmdb::Error),
 }
 
 /// An error emitted by the execution engine on commit

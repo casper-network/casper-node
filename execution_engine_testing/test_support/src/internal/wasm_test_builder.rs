@@ -234,7 +234,7 @@ impl LmdbWasmTestBuilder {
 
     pub fn flush_environment(&self) {
         let engine_state = &*self.engine_state;
-        engine_state.flush_environment();
+        engine_state.flush_environment().unwrap();
     }
 
     pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {

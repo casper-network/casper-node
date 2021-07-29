@@ -104,12 +104,8 @@ pub struct EngineState<S> {
 }
 
 impl EngineState<LmdbGlobalState> {
-    pub fn flush_environment(&self) {
-        self.state
-            .environment
-            .env()
-            .sync(true)
-            .expect("should flush environment")
+    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+        self.state.environment.env().sync(true)
     }
 }
 
