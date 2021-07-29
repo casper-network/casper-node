@@ -6,8 +6,8 @@ NPM    = $(or $(shell which npm),    /usr/bin/npm)
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 
 CARGO_OPTS := --locked
-CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
-CARGO := $(CARGO) $(CARGO_OPTS)
+CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY)
+CARGO := $(CARGO)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
