@@ -294,7 +294,8 @@ impl SwitchBlockInfo {
     }
 }
 
-/// Get trusted switch block; returns `None` if we are still in the first era.
+/// Get trusted switch block.
+/// Returns `None` if we are still in the first era.
 async fn get_trusted_switch_block_info<REv, I>(
     effect_builder: EffectBuilder<REv>,
     chainspec: &Chainspec,
