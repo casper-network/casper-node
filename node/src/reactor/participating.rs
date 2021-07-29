@@ -597,10 +597,10 @@ impl reactor::Reactor for Reactor {
                     let upgrade_block_header = storage
                         .read_switch_block_header_by_era_id(upgrade_era_id.saturating_sub(1))?
                         .ok_or(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id })?;
-                    // Unless it's an emergency upgrade, if there's a block higher than ours we will
-                    // over-write an existing blockchain if we don't exit immediately.
+                    // If it's not an emergency upgrade and there is a block higher than ours, bail
+                    // because we will overwrite an existing blockchain.
                     if chainspec.protocol_config.last_emergency_restart
-                        == Some(upgrade_block_header.era_id())
+                        != Some(upgrade_block_header.era_id())
                     {
                         if let Some(preexisting_block_header) = storage
                             .read_block_header_by_height(upgrade_block_header.height() + 1)?
@@ -681,14 +681,21 @@ impl reactor::Reactor for Reactor {
             block_proposer_effects,
         ));
 
-        let (small_network, small_network_effects) = SmallNetwork::new(
-            event_queue,
-            config.network,
-            Some(WithDir::new(&root, &config.consensus)),
-            registry,
-            small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
-        )?;
+        let (small_network, small_network_effects) = {
+            let maybe_initial_validators_hash_set = latest_block_header
+                .next_era_validator_weights()
+                .cloned()
+                .map(|validator_weights| validator_weights.into_keys().collect());
+            SmallNetwork::new(
+                event_queue,
+                config.network,
+                Some(WithDir::new(&root, &config.consensus)),
+                registry,
+                small_network_identity,
+                chainspec_loader.chainspec().as_ref(),
+                maybe_initial_validators_hash_set,
+            )?
+        };
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),

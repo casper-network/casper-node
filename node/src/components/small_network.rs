@@ -207,6 +207,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
+        maybe_initial_validators: Option<HashSet<PublicKey>>,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -320,6 +321,15 @@ where
             outgoing_limiter,
             incoming_limiter,
         };
+
+        if let Some(initial_validators) = maybe_initial_validators {
+            component
+                .outgoing_limiter
+                .update_validators(Default::default(), initial_validators.clone());
+            component
+                .incoming_limiter
+                .update_validators(Default::default(), initial_validators);
+        }
 
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -960,7 +970,6 @@ where
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let _era_id = block.header().era_id();
                 if let Some(next_era_validators) =
                     block.take_header().maybe_take_next_era_validator_weights()
                 {
