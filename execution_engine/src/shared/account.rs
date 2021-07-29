@@ -1,24 +1,11 @@
-use std::collections::BTreeSet;
-
-use casper_types::{
-    account::{
-        Account, AccountHash, ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys,
-        RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
-    },
-    bytesrepr::{self, Error, FromBytes, ToBytes},
-    contracts::NamedKeys,
-    AccessRights, URef,
-};
-
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
-    use super::*;
     use proptest::prelude::*;
 
     use casper_types::{
         account::{
             action_thresholds::gens::action_thresholds_arb,
-            associated_keys::gens::associated_keys_arb,
+            associated_keys::gens::associated_keys_arb, Account, Weight,
         },
         gens::{account_hash_arb, named_keys_arb, uref_arb},
     };
@@ -61,14 +48,14 @@ mod proptests {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::{collections::BTreeSet, iter::FromIterator};
 
     use casper_types::{
         account::{
-            Account, AccountHash, ActionType, RemoveKeyFailure, SetThresholdFailure,
-            UpdateKeyFailure, Weight,
+            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
+            SetThresholdFailure, UpdateKeyFailure, Weight,
         },
+        contracts::NamedKeys,
         AccessRights, URef,
     };
 

@@ -61,10 +61,12 @@ impl ActionThresholds {
         }
     }
 
+    /// TODO: doc comment.
     pub fn deployment(&self) -> &Weight {
         &self.deployment
     }
 
+    /// TODO: doc comment.
     pub fn key_management(&self) -> &Weight {
         &self.key_management
     }
@@ -117,12 +119,14 @@ impl FromBytes for ActionThresholds {
     }
 }
 
+/// TODO: doc comment.
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
 
     use super::ActionThresholds;
 
+    /// TODO: doc comment.
     pub fn action_thresholds_arb() -> impl Strategy<Value = ActionThresholds> {
         Just(Default::default())
     }

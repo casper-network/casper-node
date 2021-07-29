@@ -1,8 +1,10 @@
 //! Contains types and constants associated with user accounts.
 
 mod account_hash;
+/// TODO: doc comment.
 pub mod action_thresholds;
 mod action_type;
+/// TODO: doc comment.
 pub mod associated_keys;
 mod error;
 mod weight;
@@ -30,6 +32,7 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
+/// TODO: doc comment.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Account {
     account_hash: AccountHash,
@@ -40,6 +43,7 @@ pub struct Account {
 }
 
 impl Account {
+    /// TODO: doc comment.
     pub fn new(
         account_hash: AccountHash,
         named_keys: NamedKeys,
@@ -56,6 +60,7 @@ impl Account {
         }
     }
 
+    /// TODO: doc comment.
     pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
         let associated_keys = AssociatedKeys::new(account, Weight::new(1));
         let action_thresholds: ActionThresholds = Default::default();
@@ -68,22 +73,27 @@ impl Account {
         )
     }
 
+    /// TODO: doc comment.
     pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
         self.named_keys.append(keys);
     }
 
+    /// TODO: doc comment.
     pub fn named_keys(&self) -> &NamedKeys {
         &self.named_keys
     }
 
+    /// TODO: doc comment.
     pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
         &mut self.named_keys
     }
 
+    /// TODO: doc comment.
     pub fn account_hash(&self) -> AccountHash {
         self.account_hash
     }
 
+    /// TODO: doc comment.
     pub fn main_purse(&self) -> URef {
         self.main_purse
     }
@@ -93,14 +103,17 @@ impl Account {
         URef::new(self.main_purse.addr(), AccessRights::ADD)
     }
 
+    /// TODO: doc comment.
     pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
         self.associated_keys.iter()
     }
 
+    /// TODO: doc comment.
     pub fn action_thresholds(&self) -> &ActionThresholds {
         &self.action_thresholds
     }
 
+    /// TODO: doc comment.
     pub fn add_associated_key(
         &mut self,
         account_hash: AccountHash,
@@ -138,6 +151,7 @@ impl Account {
             && new_weight >= self.action_thresholds().key_management().value()
     }
 
+    /// TODO: doc comment.
     pub fn remove_associated_key(
         &mut self,
         account_hash: AccountHash,
@@ -151,6 +165,7 @@ impl Account {
         self.associated_keys.remove_key(&account_hash)
     }
 
+    /// TODO: doc comment.
     pub fn update_associated_key(
         &mut self,
         account_hash: AccountHash,
@@ -167,10 +182,12 @@ impl Account {
         self.associated_keys.update_key(account_hash, weight)
     }
 
+    /// TODO: doc comment.
     pub fn get_associated_key_weight(&self, account_hash: AccountHash) -> Option<&Weight> {
         self.associated_keys.get(&account_hash)
     }
 
+    /// TODO: doc comment.
     pub fn set_action_threshold(
         &mut self,
         action_type: ActionType,

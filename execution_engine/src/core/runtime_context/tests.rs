@@ -10,7 +10,8 @@ use rand::RngCore;
 
 use casper_types::{
     account::{
-        AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, Weight,
+        Account, AccountHash, ActionType, AddKeyFailure, AssociatedKeys, RemoveKeyFailure,
+        SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -25,11 +26,7 @@ use crate::{
         tracking_copy::TrackingCopy,
     },
     shared::{
-        account::{Account, AssociatedKeys},
-        additive_map::AdditiveMap,
-        gas::Gas,
-        newtypes::CorrelationId,
-        stored_value::StoredValue,
+        additive_map::AdditiveMap, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue,
         transform::Transform,
     },
     storage::{
