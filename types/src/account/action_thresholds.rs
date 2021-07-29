@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     account::{ActionType, SetThresholdFailure, Weight, WEIGHT_SERIALIZED_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes},
 };

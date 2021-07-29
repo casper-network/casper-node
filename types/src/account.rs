@@ -1,11 +1,18 @@
 //! Contains types and constants associated with user accounts.
 
 mod account_hash;
+mod action_thresholds;
 mod action_type;
+mod associated_keys;
 mod error;
 mod weight;
 
-use crate::BLAKE2B_DIGEST_LENGTH;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::NamedKeys,
+    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
+};
+use alloc::collections::BTreeSet;
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -16,11 +23,243 @@ use thiserror::Error;
 
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
+    action_thresholds::ActionThresholds,
     action_type::ActionType,
+    associated_keys::AssociatedKeys,
     error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct Account {
+    account_hash: AccountHash,
+    named_keys: NamedKeys,
+    main_purse: URef,
+    associated_keys: AssociatedKeys,
+    action_thresholds: ActionThresholds,
+}
+
+impl Account {
+    pub fn new(
+        account_hash: AccountHash,
+        named_keys: NamedKeys,
+        main_purse: URef,
+        associated_keys: AssociatedKeys,
+        action_thresholds: ActionThresholds,
+    ) -> Self {
+        Account {
+            account_hash,
+            named_keys,
+            main_purse,
+            associated_keys,
+            action_thresholds,
+        }
+    }
+
+    pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
+        let associated_keys = AssociatedKeys::new(account, Weight::new(1));
+        let action_thresholds: ActionThresholds = Default::default();
+        Account::new(
+            account,
+            named_keys,
+            main_purse,
+            associated_keys,
+            action_thresholds,
+        )
+    }
+
+    pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
+        self.named_keys.append(keys);
+    }
+
+    pub fn named_keys(&self) -> &NamedKeys {
+        &self.named_keys
+    }
+
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
+    }
+
+    pub fn account_hash(&self) -> AccountHash {
+        self.account_hash
+    }
+
+    pub fn main_purse(&self) -> URef {
+        self.main_purse
+    }
+
+    /// Returns an [`AccessRights::ADD`]-only version of the [`URef`].
+    pub fn main_purse_add_only(&self) -> URef {
+        URef::new(self.main_purse.addr(), AccessRights::ADD)
+    }
+
+    pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
+        self.associated_keys.iter()
+    }
+
+    pub fn action_thresholds(&self) -> &ActionThresholds {
+        &self.action_thresholds
+    }
+
+    pub fn add_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), AddKeyFailure> {
+        self.associated_keys.add_key(account_hash, weight)
+    }
+
+    /// Checks if removing given key would properly satisfy thresholds.
+    fn can_remove_key(&self, account_hash: AccountHash) -> bool {
+        let total_weight_without = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Returns true if the total weight calculated without given public key would be greater or
+        // equal to all of the thresholds.
+        total_weight_without >= *self.action_thresholds().deployment()
+            && total_weight_without >= *self.action_thresholds().key_management()
+    }
+
+    /// Checks if adding a weight to a sum of all weights excluding the given key would make the
+    /// resulting value to fall below any of the thresholds on account.
+    fn can_update_key(&self, account_hash: AccountHash, weight: Weight) -> bool {
+        // Calculates total weight of all keys excluding the given key
+        let total_weight = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Safely calculate new weight by adding the updated weight
+        let new_weight = total_weight.value().saturating_add(weight.value());
+
+        // Returns true if the new weight would be greater or equal to all of
+        // the thresholds.
+        new_weight >= self.action_thresholds().deployment().value()
+            && new_weight >= self.action_thresholds().key_management().value()
+    }
+
+    pub fn remove_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<(), RemoveKeyFailure> {
+        if self.associated_keys.contains_key(&account_hash) {
+            // Check if removing this weight would fall below thresholds
+            if !self.can_remove_key(account_hash) {
+                return Err(RemoveKeyFailure::ThresholdViolation);
+            }
+        }
+        self.associated_keys.remove_key(&account_hash)
+    }
+
+    pub fn update_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), UpdateKeyFailure> {
+        if let Some(current_weight) = self.associated_keys.get(&account_hash) {
+            if weight < *current_weight {
+                // New weight is smaller than current weight
+                if !self.can_update_key(account_hash, weight) {
+                    return Err(UpdateKeyFailure::ThresholdViolation);
+                }
+            }
+        }
+        self.associated_keys.update_key(account_hash, weight)
+    }
+
+    pub fn get_associated_key_weight(&self, account_hash: AccountHash) -> Option<&Weight> {
+        self.associated_keys.get(&account_hash)
+    }
+
+    pub fn set_action_threshold(
+        &mut self,
+        action_type: ActionType,
+        weight: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        // Verify if new threshold weight exceeds total weight of all associated
+        // keys.
+        self.can_set_threshold(weight)?;
+        // Set new weight for given action
+        self.action_thresholds.set_threshold(action_type, weight)
+    }
+
+    /// Verifies if user can set action threshold
+    pub fn can_set_threshold(&self, new_threshold: Weight) -> Result<(), SetThresholdFailure> {
+        let total_weight = self.associated_keys.total_keys_weight();
+        if new_threshold > total_weight {
+            return Err(SetThresholdFailure::InsufficientTotalWeight);
+        }
+        Ok(())
+    }
+
+    /// Checks whether all authorization keys are associated with this account
+    pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        !authorization_keys.is_empty()
+            && authorization_keys
+                .iter()
+                .all(|e| self.associated_keys.contains_key(e))
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to deploy threshold.
+    pub fn can_deploy_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().deployment()
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to key management threshold.
+    pub fn can_manage_keys_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().key_management()
+    }
+}
+
+impl ToBytes for Account {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        result.append(&mut self.account_hash.to_bytes()?);
+        result.append(&mut self.named_keys.to_bytes()?);
+        result.append(&mut self.main_purse.to_bytes()?);
+        result.append(&mut self.associated_keys.to_bytes()?);
+        result.append(&mut self.action_thresholds.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.account_hash.serialized_length()
+            + self.named_keys.serialized_length()
+            + self.main_purse.serialized_length()
+            + self.associated_keys.serialized_length()
+            + self.action_thresholds.serialized_length()
+    }
+}
+
+impl FromBytes for Account {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (account_hash, rem) = AccountHash::from_bytes(bytes)?;
+        let (named_keys, rem) = NamedKeys::from_bytes(rem)?;
+        let (main_purse, rem) = URef::from_bytes(rem)?;
+        let (associated_keys, rem) = AssociatedKeys::from_bytes(rem)?;
+        let (action_thresholds, rem) = ActionThresholds::from_bytes(rem)?;
+        Ok((
+            Account {
+                account_hash,
+                named_keys,
+                main_purse,
+                associated_keys,
+                action_thresholds,
+            },
+            rem,
+        ))
+    }
+}
 /// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
 /// account.
 pub const MAX_ASSOCIATED_KEYS: usize = 10;

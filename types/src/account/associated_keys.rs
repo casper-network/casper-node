@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     account::{
         AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight, MAX_ASSOCIATED_KEYS,
     },
@@ -144,7 +144,7 @@ impl FromBytes for AssociatedKeys {
 pub mod gens {
     use proptest::prelude::*;
 
-    use casper_types::{
+    use crate::{
         account::MAX_ASSOCIATED_KEYS,
         gens::{account_hash_arb, weight_arb},
     };
@@ -170,7 +170,7 @@ mod tests {
         iter::FromIterator,
     };
 
-    use casper_types::{
+    use crate::{
         account::{AccountHash, AddKeyFailure, Weight, ACCOUNT_HASH_LENGTH, MAX_ASSOCIATED_KEYS},
         bytesrepr::{self, ToBytes},
     };
