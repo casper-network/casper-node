@@ -19,7 +19,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement},
@@ -35,7 +35,7 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::Account, newtypes::CorrelationId, stored_value::StoredValue, wasm, wasm_prep,
+        newtypes::CorrelationId, stored_value::StoredValue, wasm, wasm_prep,
         wasm_prep::Preprocessor,
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},

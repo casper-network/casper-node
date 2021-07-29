@@ -61,17 +61,16 @@ mod proptests {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::{collections::BTreeSet, iter::FromIterator};
 
     use casper_types::{
         account::{
-            AccountHash, ActionType, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
-            Weight,
+            Account, AccountHash, ActionType, RemoveKeyFailure, SetThresholdFailure,
+            UpdateKeyFailure, Weight,
         },
         AccessRights, URef,
     };
-
-    use super::*;
 
     #[test]
     fn associated_keys_can_authorize_keys() {

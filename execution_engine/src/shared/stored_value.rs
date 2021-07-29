@@ -4,13 +4,14 @@ use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
 use casper_types::{
+    account::Account,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
-use crate::shared::{account::Account, TypeMismatch};
+use crate::shared::TypeMismatch;
 
 #[repr(u8)]
 enum Tag {

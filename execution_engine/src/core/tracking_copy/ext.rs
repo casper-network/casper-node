@@ -3,14 +3,15 @@ use std::convert::TryInto;
 use parity_wasm::elements::Module;
 
 use casper_types::{
-    account::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, Key, URef,
+    account::{Account, AccountHash},
+    CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
+    ContractWasmHash, Key, URef,
 };
 
 use crate::{
     core::{execution, tracking_copy::TrackingCopy},
     shared::{
-        account::Account, motes::Motes, newtypes::CorrelationId, stored_value::StoredValue, wasm,
+        motes::Motes, newtypes::CorrelationId, stored_value::StoredValue, wasm,
         wasm_prep::Preprocessor, TypeMismatch,
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},

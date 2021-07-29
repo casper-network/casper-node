@@ -1,9 +1,9 @@
 //! Contains types and constants associated with user accounts.
 
 mod account_hash;
-mod action_thresholds;
+pub mod action_thresholds;
 mod action_type;
-mod associated_keys;
+pub mod associated_keys;
 mod error;
 mod weight;
 
@@ -12,7 +12,7 @@ use crate::{
     contracts::NamedKeys,
     AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
 };
-use alloc::collections::BTreeSet;
+use alloc::{collections::BTreeSet, vec::Vec};
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,

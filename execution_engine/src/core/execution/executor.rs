@@ -5,7 +5,7 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::FromBytes,
     contracts::NamedKeys,
     system::{auction, handle_payment, mint, CallStackElement},
@@ -24,7 +24,7 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopy,
     },
-    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
