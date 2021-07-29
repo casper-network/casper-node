@@ -25,8 +25,9 @@ use tracing::debug;
 use super::*;
 use crate::{logging, testing::TestRng};
 use sse_server::{
-    Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH, SSE_API_MAIN_PATH as MAIN_PATH,
-    SSE_API_ROOT_PATH as ROOT_PATH, SSE_API_SIGNATURES_PATH as SIGS_PATH,
+    DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
+    SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
+    SSE_API_SIGNATURES_PATH as SIGS_PATH,
 };
 
 /// The total number of random events each `EventStreamServer` will emit by default, excluding the
@@ -350,8 +351,8 @@ impl TestFixture {
                 SseData::DeployAccepted {
                     deploy: deploy_hash,
                 } => {
-                    let deploy = self.deploy_getter.get_test_deploy(*deploy_hash).unwrap();
-                    serde_json::to_string(&deploy).unwrap()
+                    let deploy_accepted = self.deploy_getter.get_test_deploy(*deploy_hash).unwrap();
+                    serde_json::to_string(&DeployAccepted { deploy_accepted }).unwrap()
                 }
                 _ => serde_json::to_string(event).unwrap(),
             };

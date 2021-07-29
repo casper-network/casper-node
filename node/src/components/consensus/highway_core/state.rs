@@ -475,7 +475,7 @@ impl<C: Context> State<C> {
         // Update the panorama.
         let unit = self.unit(&hash);
         let creator = unit.creator;
-        let new_obs = match (self.panorama.get(creator), unit.panorama.get(creator)) {
+        let new_obs = match (&self.panorama[creator], &unit.panorama[creator]) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(hash),
             (Observation::None, _) => panic!("missing creator's previous unit"),
@@ -568,13 +568,11 @@ impl<C: Context> State<C> {
         self.pings[creator] = self.pings[creator].max(timestamp);
     }
 
-    /// Returns `true` if the latest timestamp we have is less than one maximum round length older
-    /// than the given timestamp.
-    ///
-    /// This is to prevent ping spam: If the incoming ping is only slightly newer than a unit or
-    /// ping we have already received, we drop it without forwarding it to our peers.
+    /// Returns `true` if the latest timestamp we have is older than the given timestamp.
     pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
-        self.pings.has(creator) && self.pings[creator] + self.params.max_round_length() > timestamp
+        self.pings
+            .get(creator)
+            .map_or(false, |ping_time| *ping_time >= timestamp)
     }
 
     /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
@@ -774,7 +772,7 @@ impl<C: Context> State<C> {
         if wunit.panorama.len() != self.validator_count() {
             return Err(UnitError::PanoramaLength(wunit.panorama.len()));
         }
-        if wunit.panorama.get(creator).is_faulty() {
+        if wunit.panorama[creator].is_faulty() {
             return Err(UnitError::FaultyCreator);
         }
         Ok(())

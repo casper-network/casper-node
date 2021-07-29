@@ -1,14 +1,17 @@
 //! Functions for accessing and mutating local and global state.
 
+#[cfg(feature = "no-std")]
 use alloc::{collections::BTreeSet, string::String, vec, vec::Vec};
 use core::{convert::From, mem::MaybeUninit};
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
 
 use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{ContractVersion, EntryPoints, NamedKeys},
     AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
-    URef, UREF_SERIALIZED_LENGTH,
+    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -355,13 +358,19 @@ pub fn new_dictionary(dictionary_name: &str) -> Result<URef, ApiError> {
     Ok(uref)
 }
 
-/// Retrieve value stored under `key` in the dictionary accessed by `dictionary_uref`.
-pub fn dictionary_get<K: ToBytes, V: CLTyped + FromBytes>(
-    uref: URef,
-    key: K,
+/// Retrieve `value` stored under `dictionary_item_key` in the dictionary accessed by
+/// `dictionary_seed_uref`.
+pub fn dictionary_get<V: CLTyped + FromBytes>(
+    dictionary_seed_uref: URef,
+    dictionary_item_key: &str,
 ) -> Result<Option<V>, bytesrepr::Error> {
-    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(uref);
-    let (key_bytes_ptr, key_bytes_size, _bytes1) = contract_api::to_ptr(key);
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_seed_uref);
+    let (dictionary_item_key_ptr, dictionary_item_key_size) =
+        contract_api::dictionary_item_key_to_ptr(dictionary_item_key);
+
+    if dictionary_item_key_size > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+        revert(ApiError::DictionaryItemKeyExceedsLength)
+    }
 
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
@@ -369,8 +378,8 @@ pub fn dictionary_get<K: ToBytes, V: CLTyped + FromBytes>(
             ext_ffi::casper_dictionary_get(
                 uref_ptr,
                 uref_size,
-                key_bytes_ptr,
-                key_bytes_size,
+                dictionary_item_key_ptr,
+                dictionary_item_key_size,
                 value_size.as_mut_ptr(),
             )
         };
@@ -385,22 +394,34 @@ pub fn dictionary_get<K: ToBytes, V: CLTyped + FromBytes>(
     Ok(Some(bytesrepr::deserialize(value_bytes)?))
 }
 
-/// Writes `value` under `key` in the dictionary accessed by `dictionary_uref`.
-pub fn dictionary_put<K: ToBytes, V: CLTyped + ToBytes>(dictionary_uref: URef, key: K, value: V) {
-    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_uref);
-    let (key_ptr, key_size, _bytes2) = contract_api::to_ptr(key);
+/// Writes `value` under `dictionary_item_key` in the dictionary accessed by `dictionary_seed_uref`.
+pub fn dictionary_put<V: CLTyped + ToBytes>(
+    dictionary_seed_uref: URef,
+    dictionary_item_key: &str,
+    value: V,
+) {
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(dictionary_seed_uref);
+    let (dictionary_item_key_ptr, dictionary_item_key_size) =
+        contract_api::dictionary_item_key_to_ptr(dictionary_item_key);
+
+    if dictionary_item_key_size > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+        revert(ApiError::DictionaryItemKeyExceedsLength)
+    }
 
     let cl_value = CLValue::from_t(value).unwrap_or_revert();
     let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
 
-    unsafe {
-        ext_ffi::casper_dictionary_put(
+    let result = unsafe {
+        let ret = ext_ffi::casper_dictionary_put(
             uref_ptr,
             uref_size,
-            key_ptr,
-            key_size,
+            dictionary_item_key_ptr,
+            dictionary_item_key_size,
             cl_value_ptr,
             cl_value_size,
         );
-    }
+        api_error::result_from(ret)
+    };
+
+    result.unwrap_or_revert()
 }

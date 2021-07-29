@@ -205,18 +205,9 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
-                let account_hash =
-                    AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), |x| {
-                        provider.blake2b(x)
-                    });
-
                 // Move funds from bid purse to unbonding purse
                 provider
-                    .transfer_purse_to_account(
-                        *unbonding_purse.bonding_purse(),
-                        account_hash,
-                        *unbonding_purse.amount(),
-                    )
+                    .unbond(unbonding_purse)
                     .map_err(|_| Error::TransferToUnbondingPurse)?;
             } else {
                 new_unbonding_list.push(unbonding_purse.clone());
@@ -264,7 +255,7 @@ pub fn reinvest_delegator_rewards<P>(
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
-) -> Result<Vec<(U512, URef)>, Error>
+) -> Result<Vec<(AccountHash, U512, URef)>, Error>
 where
     P: StorageProvider,
 {
@@ -289,7 +280,11 @@ where
 
         delegator.increase_stake(delegator_reward_trunc)?;
 
-        delegator_payouts.push((delegator_reward_trunc, *delegator.bonding_purse()));
+        delegator_payouts.push((
+            delegator_key.to_account_hash(),
+            delegator_reward_trunc,
+            *delegator.bonding_purse(),
+        ));
 
         let allocation = SeigniorageAllocation::delegator(
             delegator_key,

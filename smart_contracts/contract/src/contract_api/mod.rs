@@ -5,10 +5,14 @@ pub mod runtime;
 pub mod storage;
 pub mod system;
 
+#[cfg(feature = "no-std")]
 use alloc::{
     alloc::{alloc, Layout},
     vec::Vec,
 };
+#[cfg(feature = "std")]
+use std::alloc::{alloc, Layout};
+
 use core::{mem, ptr::NonNull};
 
 use casper_types::{bytesrepr::ToBytes, ApiError};
@@ -39,4 +43,11 @@ fn to_ptr<T: ToBytes>(t: T) -> (*const u8, usize, Vec<u8>) {
     let ptr = bytes.as_ptr();
     let size = bytes.len();
     (ptr, size, bytes)
+}
+
+fn dictionary_item_key_to_ptr(dictionary_item_key: &str) -> (*const u8, usize) {
+    let bytes = dictionary_item_key.as_bytes();
+    let ptr = bytes.as_ptr();
+    let size = bytes.len();
+    (ptr, size)
 }

@@ -130,8 +130,6 @@ impl CLTyped for UnbondingPurse {
 
 #[cfg(test)]
 mod tests {
-    use once_cell::sync::Lazy;
-
     use crate::{
         bytesrepr,
         system::auction::{EraId, UnbondingPurse},
@@ -141,36 +139,41 @@ mod tests {
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);
     const ERA_OF_WITHDRAWAL: EraId = EraId::MAX;
 
-    static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    fn validator_public_key() -> PublicKey {
         let secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
         PublicKey::from(&secret_key)
-    });
-    static UNBONDER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    }
+
+    fn unbonder_public_key() -> PublicKey {
         let secret_key = SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
         PublicKey::from(&secret_key)
-    });
-    static AMOUNT: Lazy<U512> = Lazy::new(|| U512::max_value() - 1);
+    }
+
+    fn amount() -> U512 {
+        U512::max_value() - 1
+    }
 
     #[test]
     fn serialization_roundtrip() {
         let unbonding_purse = UnbondingPurse {
             bonding_purse: BONDING_PURSE,
-            validator_public_key: VALIDATOR_PUBLIC_KEY.clone(),
-            unbonder_public_key: UNBONDER_PUBLIC_KEY.clone(),
+            validator_public_key: validator_public_key(),
+            unbonder_public_key: unbonder_public_key(),
             era_of_creation: ERA_OF_WITHDRAWAL,
-            amount: *AMOUNT,
+            amount: amount(),
         };
 
         bytesrepr::test_serialization_roundtrip(&unbonding_purse);
     }
+
     #[test]
     fn should_be_validator_condition() {
         let validator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
-            VALIDATOR_PUBLIC_KEY.clone(),
-            VALIDATOR_PUBLIC_KEY.clone(),
+            validator_public_key(),
+            validator_public_key(),
             ERA_OF_WITHDRAWAL,
-            *AMOUNT,
+            amount(),
         );
         assert!(validator_unbonding_purse.is_validator());
     }
@@ -179,10 +182,10 @@ mod tests {
     fn should_be_delegator_condition() {
         let delegator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
-            VALIDATOR_PUBLIC_KEY.clone(),
-            UNBONDER_PUBLIC_KEY.clone(),
+            validator_public_key(),
+            unbonder_public_key(),
             ERA_OF_WITHDRAWAL,
-            *AMOUNT,
+            amount(),
         );
         assert!(!delegator_unbonding_purse.is_validator());
     }

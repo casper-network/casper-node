@@ -17,7 +17,8 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
     DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
+    PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_HASH_LENGTH,
 };
 
 use crate::{
@@ -1057,12 +1058,17 @@ where
     pub(crate) fn dictionary_get(
         &mut self,
         uref: URef,
-        key_bytes: &[u8],
+        dictionary_item_key: &str,
     ) -> Result<Option<CLValue>, Error> {
         self.validate_readable(&uref.into())?;
         self.validate_key(&uref.into())?;
+        let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
 
-        let dictionary_key = Key::dictionary(uref, key_bytes);
+        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+            return Err(Error::DictionaryItemKeyExceedsLength);
+        }
+
+        let dictionary_key = Key::dictionary(uref, dictionary_item_key_bytes);
 
         let maybe_stored_value = self
             .tracking_copy
@@ -1084,22 +1090,31 @@ where
 
     pub fn dictionary_put(
         &mut self,
-        uref: URef,
-        key_bytes: &[u8],
+        seed_uref: URef,
+        dictionary_item_key: &str,
         cl_value: CLValue,
     ) -> Result<(), Error> {
-        self.validate_writeable(&uref.into())?;
-        self.validate_uref(&uref)?;
+        let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
+
+        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+            return Err(Error::DictionaryItemKeyExceedsLength);
+        }
+
+        self.validate_writeable(&seed_uref.into())?;
+        self.validate_uref(&seed_uref)?;
 
         self.validate_cl_value(&cl_value)?;
 
         let wrapped_cl_value = {
-            let dictionary_value =
-                DictionaryValue::new(cl_value, key_bytes.to_vec(), uref.addr().to_vec());
+            let dictionary_value = DictionaryValue::new(
+                cl_value,
+                seed_uref.addr().to_vec(),
+                dictionary_item_key_bytes.to_vec(),
+            );
             CLValue::from_t(dictionary_value).map_err(Error::from)?
         };
 
-        let dictionary_key = Key::dictionary(uref, key_bytes);
+        let dictionary_key = Key::dictionary(seed_uref, dictionary_item_key_bytes);
         self.metered_write_gs_unsafe(dictionary_key, wrapped_cl_value)?;
         Ok(())
     }

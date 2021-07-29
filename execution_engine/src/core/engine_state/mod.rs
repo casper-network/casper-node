@@ -56,12 +56,12 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisResult},
+    genesis::{ExecConfig, GenesisAccount, GenesisSuccess},
     query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
-    step::{RewardItem, SlashItem, StepRequest, StepResult},
+    step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
-    upgrade::{UpgradeConfig, UpgradeResult},
+    upgrade::{UpgradeConfig, UpgradeSuccess},
 };
 use crate::{
     core::{
@@ -83,7 +83,7 @@ use crate::{
         wasm_prep::Preprocessor,
     },
     storage::{
-        global_state::{lmdb::LmdbGlobalState, CommitResult, StateProvider},
+        global_state::{lmdb::LmdbGlobalState, StateProvider},
         protocol_data::ProtocolData,
         trie::Trie,
     },
@@ -148,7 +148,7 @@ where
         genesis_config_hash: Blake2bHash,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
-    ) -> Result<GenesisResult, Error> {
+    ) -> Result<GenesisSuccess, Error> {
         // Preliminaries
         let initial_root_hash = self.state.empty_root();
         let system_config = ee_config.system_config();
@@ -212,26 +212,27 @@ where
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
 
-        let commit_result = self
+        let post_state_hash = self
             .state
             .commit(
                 correlation_id,
                 initial_root_hash,
                 execution_effect.transforms.to_owned(),
             )
-            .map_err(Into::into)?;
+            .map_err(Into::<execution::Error>::into)?;
 
         // Return the result
-        let genesis_result = GenesisResult::from_commit_result(commit_result, execution_effect);
-
-        Ok(genesis_result)
+        Ok(GenesisSuccess {
+            post_state_hash,
+            execution_effect,
+        })
     }
 
     pub fn commit_upgrade(
         &self,
         correlation_id: CorrelationId,
         upgrade_config: UpgradeConfig,
-    ) -> Result<UpgradeResult, Error> {
+    ) -> Result<UpgradeSuccess, Error> {
         // per specification:
         // https://casperlabs.atlassian.net/wiki/spaces/EN/pages/139854367/Upgrading+System+Contracts+Specification
 
@@ -240,7 +241,7 @@ where
         let pre_state_hash = upgrade_config.pre_state_hash();
         let tracking_copy = match self.tracking_copy(pre_state_hash)? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Ok(UpgradeResult::RootNotFound),
+            None => return Err(Error::RootNotFound(pre_state_hash)),
         };
 
         // 3.1.1.1.1.2 current protocol version is required
@@ -385,20 +386,23 @@ where
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
-        let effects = tracking_copy.borrow().effect();
+        let execution_effect = tracking_copy.borrow().effect();
 
         // commit
-        let commit_result = self
+        let post_state_hash = self
             .state
             .commit(
                 correlation_id,
                 pre_state_hash,
-                effects.transforms.to_owned(),
+                execution_effect.transforms.to_owned(),
             )
             .map_err(Into::into)?;
 
         // return result and effects
-        Ok(UpgradeResult::from_commit_result(commit_result, effects))
+        Ok(UpgradeSuccess {
+            post_state_hash,
+            execution_effect,
+        })
     }
 
     pub fn tracking_copy(
@@ -776,6 +780,8 @@ where
                 Err(error) => return Ok(make_charged_execution_failure(error)),
             };
 
+        let payment_uref;
+
         // Construct a payment code that will put cost of wasmless payment into payment purse
         let payment_result = {
             // Check source purses minimum balance
@@ -824,7 +830,7 @@ where
                 );
                 vec![system, handle_payment]
             };
-            let (payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
+            let (maybe_payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
                 executor.exec_system_contract(
                     DirectSystemContractCall::GetPaymentPurse,
                     system_module.clone(),
@@ -846,7 +852,7 @@ where
                     get_payment_purse_call_stack,
                 );
 
-            let payment_uref = match payment_uref {
+            payment_uref = match maybe_payment_uref {
                 Some(payment_uref) => payment_uref,
                 None => return Ok(make_charged_execution_failure(Error::InsufficientPayment)),
             };
@@ -1046,13 +1052,15 @@ where
                 );
                 vec![system, handle_payment]
             };
+            let extra_keys = [Key::from(payment_uref), Key::from(proposer_purse)];
+
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
                     system_module,
                     handle_payment_args,
                     &mut handle_payment_named_keys,
-                    Default::default(),
+                    &extra_keys,
                     Key::from(handle_payment_contract_hash),
                     &system_account,
                     authorization_keys,
@@ -1345,39 +1353,38 @@ where
         let payment_result_cost = payment_result.cost();
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
+
+        // Get handle payment system contract details
+        // payment_code_spec_6: system contract validity
+        let handle_payment_contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, protocol_data.handle_payment())
+        {
+            Ok(contract) => contract,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
+        // Get payment purse Key from handle payment contract
+        // payment_code_spec_6: system contract validity
+        let payment_purse_key: Key = match handle_payment_contract
+            .named_keys()
+            .get(handle_payment::PAYMENT_PURSE_KEY)
+        {
+            Some(key) => *key,
+            None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+        };
+        let purse_balance_key = match tracking_copy
+            .borrow_mut()
+            .get_purse_balance_key(correlation_id, payment_purse_key)
+        {
+            Ok(key) => key,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
         let payment_purse_balance: Motes = {
-            // Get handle payment system contract details
-            // payment_code_spec_6: system contract validity
-            let handle_payment_contract = match tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, protocol_data.handle_payment())
-            {
-                Ok(contract) => contract,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
-
-            // Get payment purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            let payment_purse_key: Key = match handle_payment_contract
-                .named_keys()
-                .get(handle_payment::PAYMENT_PURSE_KEY)
-            {
-                Some(key) => *key,
-                None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-            };
-
-            let purse_balance_key = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, payment_purse_key)
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
-
             match tracking_copy
                 .borrow_mut()
                 .get_purse_balance(correlation_id, purse_balance_key)
@@ -1599,13 +1606,18 @@ where
                 );
                 vec![deploy_account, handle_payment]
             };
+            let extra_keys = [
+                payment_purse_key,
+                purse_balance_key,
+                Key::from(proposer_purse),
+            ];
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
                     system_module,
                     handle_payment_args,
                     &mut handle_payment_keys,
-                    Default::default(),
+                    &extra_keys,
                     Key::from(protocol_data.handle_payment()),
                     &system_account,
                     authorization_keys,
@@ -1642,7 +1654,7 @@ where
         correlation_id: CorrelationId,
         pre_state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, Error>
+    ) -> Result<Blake2bHash, Error>
     where
         Error: From<S::Error>,
     {
@@ -1824,18 +1836,20 @@ where
         &self,
         correlation_id: CorrelationId,
         step_request: StepRequest,
-    ) -> Result<StepResult, Error> {
+    ) -> Result<StepSuccess, StepError> {
         let protocol_data = match self.state.get_protocol_data(step_request.protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
             Ok(None) => {
-                return Ok(StepResult::InvalidProtocolVersion);
+                return Err(StepError::InvalidProtocolVersion(
+                    step_request.protocol_version,
+                ));
             }
-            Err(error) => return Ok(StepResult::GetProtocolDataError(Error::Exec(error.into()))),
+            Err(error) => return Err(StepError::GetProtocolDataError(Error::Exec(error.into()))),
         };
 
         let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
-            Err(error) => return Ok(StepResult::TrackingCopyError(error)),
-            Ok(None) => return Ok(StepResult::RootNotFound),
+            Err(error) => return Err(StepError::TrackingCopyError(error)),
+            Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
@@ -1854,14 +1868,14 @@ where
         {
             Ok(contract) => contract,
             Err(error) => {
-                return Ok(StepResult::GetContractError(error.into()));
+                return Err(StepError::GetContractError(error.into()));
             }
         };
 
         let system_module = match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
             Ok(module) => module,
             Err(error) => {
-                return Ok(StepResult::GetSystemModuleError(error.into()));
+                return Err(StepError::GetSystemModuleError(error.into()));
             }
         };
 
@@ -1897,21 +1911,14 @@ where
                     "failed to deserialize reward factors: {}",
                     error.to_string()
                 );
-                return Ok(StepResult::Serialization(error));
+                return Err(StepError::BytesRepr(error));
             }
         };
 
-        let reward_args = {
-            let maybe_runtime_args = RuntimeArgs::try_new(|args| {
-                args.insert(ARG_REWARD_FACTORS, reward_factors)?;
-                Ok(())
-            });
-
-            match maybe_runtime_args {
-                Ok(runtime_args) => runtime_args,
-                Err(error) => return Ok(StepResult::CLValueError(error)),
-            }
-        };
+        let reward_args = RuntimeArgs::try_new(|args| {
+            args.insert(ARG_REWARD_FACTORS, reward_factors)?;
+            Ok(())
+        })?;
 
         let distribute_rewards_call_stack = {
             let system = CallStackElement::session(PublicKey::System.to_account_hash());
@@ -1943,7 +1950,7 @@ where
         );
 
         if let Some(exec_error) = execution_result.take_error() {
-            return Ok(StepResult::DistributeError(exec_error));
+            return Err(StepError::DistributeError(exec_error));
         }
 
         let slashed_validators = match step_request.slashed_validators() {
@@ -1953,7 +1960,7 @@ where
                     "failed to deserialize validator_ids for slashing: {}",
                     error.to_string()
                 );
-                return Ok(StepResult::Serialization(error));
+                return Err(StepError::BytesRepr(error));
             }
         };
 
@@ -1995,32 +2002,25 @@ where
         );
 
         if let Some(exec_error) = execution_result.take_error() {
-            return Ok(StepResult::SlashingError(exec_error));
+            return Err(StepError::SlashingError(exec_error));
         }
 
         if step_request.run_auction {
-            let run_auction_args = {
-                let maybe_runtime_args = RuntimeArgs::try_new(|args| {
-                    args.insert(
-                        ARG_ERA_END_TIMESTAMP_MILLIS,
-                        step_request.era_end_timestamp_millis,
-                    )?;
-                    args.insert(
-                        ARG_EVICTED_VALIDATORS,
-                        step_request
-                            .evict_items
-                            .iter()
-                            .map(|item| item.validator_id.clone())
-                            .collect::<Vec<PublicKey>>(),
-                    )?;
-                    Ok(())
-                });
-
-                match maybe_runtime_args {
-                    Ok(runtime_args) => runtime_args,
-                    Err(error) => return Ok(StepResult::CLValueError(error)),
-                }
-            };
+            let run_auction_args = RuntimeArgs::try_new(|args| {
+                args.insert(
+                    ARG_ERA_END_TIMESTAMP_MILLIS,
+                    step_request.era_end_timestamp_millis,
+                )?;
+                args.insert(
+                    ARG_EVICTED_VALIDATORS,
+                    step_request
+                        .evict_items
+                        .iter()
+                        .map(|item| item.validator_id.clone())
+                        .collect::<Vec<PublicKey>>(),
+                )?;
+                Ok(())
+            })?;
 
             let run_auction_call_stack = {
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
@@ -2053,33 +2053,21 @@ where
                 );
 
             if let Some(exec_error) = execution_result.take_error() {
-                return Ok(StepResult::AuctionError(exec_error));
+                return Err(StepError::AuctionError(exec_error));
             }
         }
 
-        let effects = tracking_copy.borrow().effect();
+        let execution_effect = tracking_copy.borrow().effect();
 
         // commit
-        let commit_result = self
+        let post_state_hash = self
             .state
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                effects.transforms.clone(),
+                execution_effect.transforms.clone(),
             )
             .map_err(Into::into)?;
-
-        let post_state_hash = match commit_result {
-            CommitResult::Success { state_root } => state_root,
-            CommitResult::RootNotFound => return Ok(StepResult::RootNotFound),
-            CommitResult::KeyNotFound(key) => return Ok(StepResult::KeyNotFound(key)),
-            CommitResult::TypeMismatch(type_mismatch) => {
-                return Ok(StepResult::TypeMismatch(type_mismatch))
-            }
-            CommitResult::Serialization(bytesrepr_error) => {
-                return Ok(StepResult::Serialization(bytesrepr_error))
-            }
-        };
 
         let next_era_validators = {
             let mut era_validators = match self.get_era_validators(
@@ -2088,7 +2076,7 @@ where
             ) {
                 Ok(era_validators) => era_validators,
                 Err(error) => {
-                    return Ok(StepResult::GetEraValidatorsError(error));
+                    return Err(StepError::GetEraValidatorsError(error));
                 }
             };
 
@@ -2096,15 +2084,15 @@ where
             match era_validators.remove(era_id) {
                 Some(validator_weights) => validator_weights,
                 None => {
-                    return Ok(StepResult::EraValidatorsMissing(*era_id));
+                    return Err(StepError::EraValidatorsMissing(*era_id));
                 }
             }
         };
 
-        Ok(StepResult::Success {
+        Ok(StepSuccess {
             post_state_hash,
             next_era_validators,
-            execution_effect: effects,
+            execution_effect,
         })
     }
 

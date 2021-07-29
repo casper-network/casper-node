@@ -168,7 +168,7 @@ impl URef {
 
     /// Formats the address and access rights of the [`URef`] in a unique way that could be used as
     /// a name when storing the given `URef` in a global state.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         // Extract bits as numerical value, with no flags marked as 0.
         let access_rights_bits = self.access_rights().bits();
         // Access rights is represented as octal, which means that max value of u8 can

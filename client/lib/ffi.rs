@@ -53,6 +53,7 @@ pub enum casper_error_t {
     CASPER_FFI_PTR_NULL_BUT_REQUIRED = -22,
     CASPER_CONFLICTING_ARGUMENTS = -23,
     CASPER_DEPLOY_SIZE_TOO_LARGE = -24,
+    CASPER_FAILED_TO_CREATE_DICTIONARY_IDENTIFIER = -25,
 }
 
 trait AsFFIError {
@@ -86,6 +87,9 @@ impl AsFFIError for Error {
             Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
             Error::ConflictingArguments { .. } => casper_error_t::CASPER_CONFLICTING_ARGUMENTS,
             Error::DeploySizeTooLarge(_) => casper_error_t::CASPER_DEPLOY_SIZE_TOO_LARGE,
+            Error::FailedToParseDictionaryIdentifier => {
+                casper_error_t::CASPER_FAILED_TO_CREATE_DICTIONARY_IDENTIFIER
+            }
         }
     }
 }
@@ -483,7 +487,7 @@ pub extern "C" fn casper_get_block(
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
 ///
-/// See [super::casper_get_block_transfers](super::casper_get_block_transfers) for more details.
+/// See [super::get_block_transfers](super::get_block_transfers) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block_transfers(
     maybe_rpc_id: *const c_char,
@@ -658,6 +662,22 @@ pub extern "C" fn casper_get_auction_info(
     })
 }
 
+/// Generates key files.
+///
+/// See [super::keygen::generate_files](super::keygen::generate_files) for more details.
+#[no_mangle]
+pub extern "C" fn casper_keygen(
+    output_dir: *const c_char,
+    algorithm: *const c_char,
+    force: bool,
+) -> casper_error_t {
+    let output_dir = try_unsafe_arg!(output_dir);
+    let algorithm = try_unsafe_arg!(algorithm);
+    let result = super::keygen::generate_files(output_dir, algorithm, force);
+    try_unwrap_result!(result);
+    casper_error_t::CASPER_SUCCESS
+}
+
 /// Container for `Deploy` construction options.
 ///
 /// See [DeployStrParams](super::DeployStrParams) for more info.
@@ -693,8 +713,8 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             timestamp,
             ttl,
             gas_price,
-            chain_name,
             dependencies,
+            chain_name,
         })
     }
 }
