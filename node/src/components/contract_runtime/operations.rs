@@ -80,6 +80,8 @@ pub(super) fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
+    engine_state.flush_environment();
+
     // If the finalized block has an era report, run the auction contract
     let maybe_step_success = match finalized_block.era_report() {
         None => None,
