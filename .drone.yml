@@ -30,7 +30,7 @@ steps:
   - name: cargo-audit
     image: casperlabs/node-build-u1804
     commands:
-      - make setup-audit
+      - cargo install cargo-audit
       - cargo generate-lockfile
       - make audit
 
