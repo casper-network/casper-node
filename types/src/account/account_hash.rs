@@ -9,6 +9,10 @@ use core::{
     fmt::{Debug, Display, Formatter},
 };
 use datasize::DataSize;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -195,3 +199,9 @@ impl AsRef<[u8]> for AccountHash {
 /// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`].
 #[derive(Debug)]
 pub struct TryFromSliceForAccountHashError(());
+
+impl Distribution<AccountHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountHash {
+        AccountHash::new(rng.gen())
+    }
+}

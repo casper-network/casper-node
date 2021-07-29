@@ -11,10 +11,6 @@ use blake2::{
     VarBlake2b,
 };
 use core::{convert::TryFrom, fmt::Debug};
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
 #[cfg(feature = "std")]
 use thiserror::Error;
 
@@ -40,12 +36,6 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         result.copy_from_slice(slice);
     });
     result
-}
-
-impl Distribution<AccountHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountHash {
-        AccountHash::new(rng.gen())
-    }
 }
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
