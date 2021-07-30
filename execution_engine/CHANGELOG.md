@@ -23,6 +23,9 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Update pinned version of Rust to `nightly-2021-06-17`.
 
+### Fixed
+* Fix a case where user could potentially supply a refund purse as a payment purse.
+
 
 
 ## [1.2.0] - 2021-05-27
