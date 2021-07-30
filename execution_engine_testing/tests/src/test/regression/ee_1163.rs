@@ -7,13 +7,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{
-            engine_config::DEFAULT_WASMLESS_TRANSFER_COST, Error, ExecuteRequest,
-            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-        },
+        engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
         execution,
     },
-    shared::{gas::Gas, motes::Motes},
+    shared::{gas::Gas, motes::Motes, system_config::DEFAULT_WASMLESS_TRANSFER_COST},
 };
 use casper_types::{
     runtime_args,

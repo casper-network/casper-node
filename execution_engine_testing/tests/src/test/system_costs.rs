@@ -11,8 +11,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::DEFAULT_WASMLESS_TRANSFER_COST, genesis::GenesisValidator, EngineConfig,
-        GenesisAccount,
+        genesis::GenesisValidator, EngineConfig, GenesisAccount, DEFAULT_MAX_QUERY_DEPTH,
     },
     shared::{
         gas::Gas,
@@ -34,7 +33,7 @@ use casper_execution_engine::{
                 DEFAULT_REDUCE_TOTAL_SUPPLY_COST, DEFAULT_TRANSFER_COST,
             },
             standard_payment_costs::StandardPaymentCosts,
-            SystemConfig,
+            SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
         },
         wasm,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
@@ -192,7 +191,11 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(5, WasmConfig::default(), new_system_config);
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        WasmConfig::default(),
+        new_system_config,
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -424,7 +427,11 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(5, WasmConfig::default(), new_system_config);
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        WasmConfig::default(),
+        new_system_config,
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
@@ -857,7 +864,8 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(5, new_wasm_config, new_system_config);
+    let new_engine_config =
+        EngineConfig::new(DEFAULT_MAX_QUERY_DEPTH, new_wasm_config, new_system_config);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()

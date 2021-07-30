@@ -664,8 +664,6 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    //assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
-
     let transfer_args = runtime_args! {
         mint::ARG_AMOUNT => U512::one(),
         mint::ARG_TARGET => AccountHash::new([3; 32]),
@@ -796,8 +794,6 @@ fn should_add_bid_after_minor_bump() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    //assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
-
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
@@ -843,8 +839,6 @@ fn should_wasm_transfer_after_major_bump() {
     builder
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
-
-    // assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -893,8 +887,6 @@ fn should_wasm_transfer_after_minor_bump() {
     builder
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
-
-    //assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

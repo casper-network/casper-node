@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::Debug,
     rc::Rc,
@@ -1152,5 +1152,12 @@ where
             .expect("should have system contracts registry")
             .get(name)
             .expect("should have system contract registry")
+    }
+
+    pub fn get_system_contract_registry(&self) -> BTreeMap<String, ContractHash> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_system_contracts(self.correlation_id)
+            .expect("must have system contract registry")
     }
 }

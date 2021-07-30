@@ -6,10 +6,8 @@ use casper_engine_test_support::{
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::DEFAULT_WASMLESS_TRANSFER_COST, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    },
-    shared::{gas::Gas, motes::Motes},
+    core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    shared::{gas::Gas, motes::Motes, system_config::DEFAULT_WASMLESS_TRANSFER_COST},
 };
 use casper_types::{runtime_args, system::mint, RuntimeArgs, U512};
 

@@ -66,6 +66,7 @@ use casper_types::{
 use crate::internal::{
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
+use casper_execution_engine::core::engine_state::genesis::SystemContractRegistry;
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
@@ -372,10 +373,7 @@ where
             &empty_path,
         ) {
             Ok(StoredValue::CLValue(cl_registry)) => {
-                match CLValue::into_t::<BTreeMap<String, ContractHash>>(cl_registry) {
-                    Ok(registry) => registry,
-                    Err(error) => panic!("{:?}", error),
-                }
+                CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap()
             }
             Ok(_) => panic!("Failed to get system registry"),
             Err(err) => panic!("{}", err),

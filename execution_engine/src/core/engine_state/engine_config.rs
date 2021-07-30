@@ -2,8 +2,6 @@ use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 
-pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
-
 /// The runtime configuration of the execution engine
 #[derive(Debug, Copy, Clone)]
 pub struct EngineConfig {

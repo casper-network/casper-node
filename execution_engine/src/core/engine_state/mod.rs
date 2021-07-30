@@ -1140,15 +1140,15 @@ where
         // Create session code `A` from provided session bytes
         // validation_spec_1: valid wasm bytes
         // we do this upfront as there is no reason to continue if session logic is invalid
-        let standard_payment_hash =
-            self.get_standard_payment_hash(correlation_id, prestate_hash)?;
+        let system_contract_registry =
+            self.get_system_contract_registry(correlation_id, prestate_hash)?;
         let session_metadata = match session.get_deploy_metadata(
             Rc::clone(&tracking_copy),
             &account,
             correlation_id,
             &preprocessor,
             &protocol_version,
-            standard_payment_hash,
+            system_contract_registry,
             Phase::Session,
         ) {
             Ok(metadata) => metadata,
@@ -1222,10 +1222,6 @@ where
                 .borrow_mut()
                 .get_system_contracts(correlation_id)?;
 
-            let standard_payment_hash = system_contract_registry
-                .get(STANDARD_PAYMENT)
-                .expect("should have standard payment");
-
             // Create payment code module from bytes
             // validation_spec_1: valid wasm bytes
             let phase = Phase::Payment;
@@ -1235,7 +1231,7 @@ where
                 correlation_id,
                 &preprocessor,
                 &protocol_version,
-                *standard_payment_hash,
+                system_contract_registry,
                 phase,
             ) {
                 Ok(metadata) => metadata,

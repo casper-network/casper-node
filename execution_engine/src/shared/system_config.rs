@@ -13,7 +13,8 @@ use self::{
     auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts, mint_costs::MintCosts,
     standard_payment_costs::StandardPaymentCosts,
 };
-use crate::core::engine_state::engine_config::DEFAULT_WASMLESS_TRANSFER_COST;
+
+pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemConfig {

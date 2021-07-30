@@ -20,7 +20,6 @@ use casper_types::{
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
-use casper_types::system::STANDARD_PAYMENT;
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
@@ -120,7 +119,7 @@ where
 
     let preprocessor = Preprocessor::new(wasm_config);
 
-    let standard_payment_hash = context.get_system_contract(STANDARD_PAYMENT);
+    let system_contract_registry = context.get_system_contract_registry();
 
     let parity_module = deploy_item
         .get_deploy_metadata(
@@ -129,7 +128,7 @@ where
             correlation_id,
             &preprocessor,
             &protocol_version,
-            standard_payment_hash,
+            system_contract_registry,
             phase,
         )
         .expect("should get wasm module");

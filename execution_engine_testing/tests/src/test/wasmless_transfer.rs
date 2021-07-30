@@ -8,8 +8,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::DEFAULT_WASMLESS_TRANSFER_COST, EngineConfig, Error as CoreError,
-            DEFAULT_MAX_QUERY_DEPTH, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+            EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
+            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
         },
         execution::Error as ExecError,
     },
@@ -19,6 +19,7 @@ use casper_execution_engine::{
         system_config::{
             auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
             mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
+            DEFAULT_WASMLESS_TRANSFER_COST,
         },
         wasm_config::WasmConfig,
     },

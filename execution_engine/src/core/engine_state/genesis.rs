@@ -57,6 +57,7 @@ use crate::{
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
+pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
 #[derive(Debug)]
 pub struct GenesisSuccess {
@@ -836,8 +837,7 @@ where
 
         let (_, handle_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        self.store_system_contract(HANDLE_PAYMENT, handle_payment_hash)
-            .expect("should install handle payment");
+        self.store_system_contract(HANDLE_PAYMENT, handle_payment_hash)?;
 
         Ok(handle_payment_hash)
     }
