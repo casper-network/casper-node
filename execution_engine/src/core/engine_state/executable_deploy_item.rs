@@ -322,10 +322,7 @@ impl ExecutableDeployItem {
                 error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        let mut system_hashes = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)?
-            .into_values();
+        let mut system_hashes = system_contract_registry.into_values();
 
         if system_hashes.any(|value| value == contract_hash) {
             let module = wasm::do_nothing_module(preprocessor)?;
