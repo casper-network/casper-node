@@ -1,17 +1,16 @@
-use std::{convert::TryFrom, fmt::Debug};
+mod type_mismatch;
 
-use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
-use serde_bytes::ByteBuf;
-
-use casper_types::{
+use crate::{
     account::Account,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
-
-use crate::shared::TypeMismatch;
+use core::{convert::TryFrom, fmt::Debug};
+use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
+use serde_bytes::ByteBuf;
+use type_mismatch::TypeMismatch;
 
 #[repr(u8)]
 enum Tag {
@@ -364,7 +363,7 @@ impl<'de> Deserialize<'de> for StoredValue {
 pub mod gens {
     use proptest::prelude::*;
 
-    use casper_types::{
+    use crate::{
         gens::{
             cl_value_arb, contract_arb, contract_package_arb, contract_wasm_arb, deploy_info_arb,
             transfer_arb,
@@ -373,7 +372,7 @@ pub mod gens {
     };
 
     use super::StoredValue;
-    use crate::shared::account::gens::account_arb;
+    use crate::account::gens::account_arb;
 
     pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         prop_oneof![

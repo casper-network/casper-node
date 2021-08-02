@@ -17,10 +17,16 @@ bitflags = "1"
 blake2 = { version = "0.9.0", default-features = false }
 datasize = { version = "0.2.4", default-features = false }
 displaydoc = { version = "0.1", default-features = false, optional = true }
-ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
+ed25519-dalek = { version = "1.0.0", default-features = false, features = [
+	"rand",
+	"u64_backend",
+] }
 hex = { version = "0.4.2", default-features = false }
 hex_fmt = "0.3.0"
-k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "zeroize"] }
+k256 = { version = "0.7.2", default-features = false, features = [
+	"ecdsa",
+	"zeroize",
+] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-rational = { version = "0.4.0", default-features = false }
@@ -31,6 +37,7 @@ rand = { version = "0.8.3", default-features = false, features = ["small_rng"] }
 schemars = { version = "0.8.0", features = ["preserve_order"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.59", default-features = false }
+serde_bytes = { version = "0.11.5", default-features = false }
 thiserror = { version = "1.0.20", default-features = false, optional = true }
 uint = { version = "0.9.0", default-features = false }
 
@@ -46,8 +53,28 @@ version-sync = "0.9"
 
 [features]
 default = ["no-std"]
-std = ["base16/std", "base64/std", "ed25519-dalek/std", "ed25519-dalek/serde", "hex/std", "k256/std", "once_cell/std", "serde/std", "serde_json/std", "schemars", "thiserror"]
-no-std = ["base16/alloc", "hex/alloc", "serde/alloc", "serde_json/alloc", "displaydoc"]
+std = [
+	"base16/std",
+	"base64/std",
+	"ed25519-dalek/std",
+	"ed25519-dalek/serde",
+	"hex/std",
+	"k256/std",
+	"once_cell/std",
+	"serde/std",
+	"serde_json/std",
+	"serde_bytes/std",
+	"schemars",
+	"thiserror",
+]
+no-std = [
+	"base16/alloc",
+	"hex/alloc",
+	"serde/alloc",
+	"serde_json/alloc",
+	"serde_bytes/alloc",
+	"displaydoc",
+]
 gens = ["std", "proptest/std"]
 
 [[bench]]

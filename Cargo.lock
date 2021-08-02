@@ -927,6 +927,7 @@ dependencies = [
  "rand 0.8.4",
  "schemars",
  "serde",
+ "serde_bytes",
  "serde_json",
  "serde_test",
  "strum",
