@@ -500,6 +500,15 @@ where
             })
     }
 
+    /// Checks if an address is blocked.
+    #[cfg(test)]
+    pub(crate) fn is_blocked(&self, addr: SocketAddr) -> bool {
+        match self.outgoing.get(&addr) {
+            Some(ref outgoing) => matches!(outgoing.state, OutgoingState::Blocked { .. }),
+            None => false,
+        }
+    }
+
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
@@ -1281,5 +1290,43 @@ mod tests {
 
         // We now expect to be connected through the first connection (see documentation).
         assert_eq!(manager.get_route(id_a), Some(&1));
+    }
+
+    #[test]
+    fn blocking_not_overridden_by_racing_failed_connections() {
+        init_logging();
+
+        let mut clock = TestClock::new();
+
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+
+        let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
+
+        assert!(!manager.is_blocked(addr_a));
+
+        // Block `addr_a` from the start.
+        assert!(manager.block_addr(addr_a, clock.now()).is_none());
+        assert!(manager.is_blocked(addr_a));
+
+        clock.advance_time(60);
+
+        // Receive an "illegal" dial outcome, even though we did not dial.
+        assert!(manager
+            .handle_dial_outcome(DialOutcome::Failed {
+                addr: addr_a,
+                error: TestDialerError { id: 12345 },
+
+                /// The moment the connection attempt failed.
+                when: clock.now(),
+            })
+            .is_none());
+
+        // The failed connection should _not_ have reset the block!
+        assert!(manager.is_blocked(addr_a));
+        clock.advance_time(60);
+        assert!(manager.is_blocked(addr_a));
+
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager.is_blocked(addr_a));
     }
 }
