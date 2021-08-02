@@ -13,14 +13,18 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-No changes.
+### Changed
+* Support building and testing using stable Rust.
 
 
 
 ## [1.3.0] - 2021-07-19
 
 ### Changed
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
+
+### Fixed
+* Fix a case where user could potentially supply a refund purse as a payment purse.
 
 
 

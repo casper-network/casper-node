@@ -183,7 +183,7 @@ where
                     }
                 };
                 let indexed_pointers_with_hole = pointer_block
-                    .to_indexed_pointers()
+                    .as_indexed_pointers()
                     .filter(|(index, _)| *index as usize != hole_index)
                     .collect();
                 let next = match store.get(txn, pointer.hash())? {
@@ -277,7 +277,7 @@ where
             Some(Trie::Leaf { .. }) => (),
             // If we hit a pointer block, queue up all of the nodes it points to
             Some(Trie::Node { pointer_block }) => {
-                for (_, pointer) in pointer_block.to_indexed_pointers() {
+                for (_, pointer) in pointer_block.as_indexed_pointers() {
                     match pointer {
                         Pointer::LeafPointer(descendant_leaf_trie_key) => {
                             trie_keys_to_visit.push(descendant_leaf_trie_key)
@@ -355,7 +355,7 @@ where
             }
             // If we hit a pointer block, queue up all of the nodes it points to
             Some(Trie::Node { pointer_block }) => {
-                for (byte, pointer) in pointer_block.to_indexed_pointers() {
+                for (byte, pointer) in pointer_block.as_indexed_pointers() {
                     let mut new_path = path.clone();
                     new_path.push(byte);
                     match pointer {
@@ -537,7 +537,7 @@ where
             // zero siblings.
             (None, Trie::Node { mut pointer_block }) => {
                 let (sibling_idx, sibling_pointer) = match pointer_block
-                    .to_indexed_pointers()
+                    .as_indexed_pointers()
                     .find(|(jdx, _)| idx != *jdx)
                 {
                     // There are zero siblings.  Elsewhere we maintain the invariant that only the

@@ -16,11 +16,14 @@ const MAIN_RS_CONTENTS: &str = r#"#![cfg_attr(
     not(target_arch = "wasm32"),
     crate_type = "target arch should be wasm32"
 )]
+#![no_std]
 #![no_main]
 
-use casper_contract::{
-    contract_api::{runtime, storage},
-};
+extern crate alloc;
+
+use alloc::string::String;
+
+use casper_contract::{contract_api::{runtime, storage}};
 use casper_types::{Key, URef};
 
 const KEY: &str = "special_value";
@@ -73,13 +76,17 @@ bench = false
 doctest = false
 test = false
 
-[features]
-default = ["casper-contract/std", "casper-types/std", "casper-contract/test-support"]
+# To enable the test-only function `casper_contract::runtime::print()`, uncomment the following
+#[features]
+#default = ["casper-contract/test-support"]
 
 [profile.release]
+codegen-units = 1
 lto = true
 "#,
-        *CL_CONTRACT, *CL_TYPES, PACKAGE_NAME
+        CL_CONTRACT.display_with_features(true, vec![]),
+        CL_TYPES.display_with_features(true, vec![]),
+        PACKAGE_NAME
     )
 });
 

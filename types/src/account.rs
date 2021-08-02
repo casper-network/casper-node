@@ -236,7 +236,7 @@ impl AccountHash {
     }
 
     /// Formats the `AccountHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         format!(
             "{}{}",
             ACCOUNT_HASH_FORMATTED_STRING_PREFIX,

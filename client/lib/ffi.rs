@@ -283,7 +283,8 @@ pub extern "C" fn casper_put_deploy(
             deploy_params,
             session_params,
             payment_params,
-        );
+        )
+        .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -354,7 +355,7 @@ pub extern "C" fn casper_send_deploy_file(
     let input_path = try_unsafe_arg!(input_path);
     runtime.block_on(async move {
         let result =
-            super::send_deploy_file(maybe_rpc_id, node_address, verbosity_level, input_path);
+            super::send_deploy_file(maybe_rpc_id, node_address, verbosity_level, input_path).await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -396,7 +397,8 @@ pub extern "C" fn casper_transfer(
             transfer_id,
             deploy_params,
             payment_params,
-        );
+        )
+        .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -453,7 +455,8 @@ pub extern "C" fn casper_get_deploy(
     let node_address = try_unsafe_arg!(node_address);
     let deploy_hash = try_unsafe_arg!(deploy_hash);
     runtime.block_on(async move {
-        let result = super::get_deploy(maybe_rpc_id, node_address, verbosity_level, deploy_hash);
+        let result =
+            super::get_deploy(maybe_rpc_id, node_address, verbosity_level, deploy_hash).await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -478,7 +481,8 @@ pub extern "C" fn casper_get_block(
     let node_address = try_unsafe_arg!(node_address);
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
-        let result = super::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
+        let result =
+            super::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id).await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -487,7 +491,7 @@ pub extern "C" fn casper_get_block(
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
 ///
-/// See [super::casper_get_block_transfers](super::casper_get_block_transfers) for more details.
+/// See [super::get_block_transfers](super::get_block_transfers) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block_transfers(
     maybe_rpc_id: *const c_char,
@@ -504,7 +508,8 @@ pub extern "C" fn casper_get_block_transfers(
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
         let result =
-            super::get_block_transfers(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
+            super::get_block_transfers(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
+                .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -530,7 +535,8 @@ pub extern "C" fn casper_get_state_root_hash(
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
         let result =
-            super::get_state_root_hash(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
+            super::get_state_root_hash(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
+                .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -566,7 +572,8 @@ pub extern "C" fn casper_get_item(
             state_root_hash,
             key,
             path,
-        );
+        )
+        .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -599,7 +606,8 @@ pub extern "C" fn casper_get_balance(
             verbosity_level,
             state_root_hash,
             purse,
-        );
+        )
+        .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -629,7 +637,8 @@ pub extern "C" fn casper_get_era_info_by_switch_block(
             node_address,
             verbosity_level,
             maybe_block_id,
-        );
+        )
+        .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -655,7 +664,8 @@ pub extern "C" fn casper_get_auction_info(
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
         let result =
-            super::get_auction_info(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
+            super::get_auction_info(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
+                .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -713,8 +723,8 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             timestamp,
             ttl,
             gas_price,
-            chain_name,
             dependencies,
+            chain_name,
         })
     }
 }

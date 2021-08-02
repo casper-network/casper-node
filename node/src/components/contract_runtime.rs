@@ -6,6 +6,7 @@ mod types;
 
 use std::{
     fmt::{self, Debug, Formatter},
+    path::Path,
     sync::Arc,
     time::Instant,
 };
@@ -46,8 +47,7 @@ use crate::{
     },
     fatal,
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
-    utils::WithDir,
-    NodeRng, StorageConfig,
+    NodeRng,
 };
 use std::collections::BTreeMap;
 
@@ -69,14 +69,14 @@ pub struct ExecutionPreState {
 
 impl ExecutionPreState {
     pub(crate) fn new(
-        pre_state_root_hash: Digest,
         next_block_height: u64,
+        pre_state_root_hash: Digest,
         parent_hash: BlockHash,
         parent_seed: Digest,
     ) -> Self {
         ExecutionPreState {
-            pre_state_root_hash,
             next_block_height,
+            pre_state_root_hash,
             parent_hash,
             parent_seed,
         }
@@ -497,7 +497,7 @@ where
 impl ContractRuntime {
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
-        storage_config: WithDir<StorageConfig>,
+        storage_dir: &Path,
         contract_runtime_config: &Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
@@ -509,9 +509,8 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         };
 
-        let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
-            path.as_path(),
+            storage_dir,
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
         )?);
@@ -647,5 +646,11 @@ impl ContractRuntime {
             .read_trie
             .observe(start.elapsed().as_secs_f64());
         result
+    }
+
+    /// Returns the engine state, for testing only.
+    #[cfg(test)]
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+        &self.engine_state
     }
 }

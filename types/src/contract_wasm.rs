@@ -102,7 +102,7 @@ impl ContractWasmHash {
     }
 
     /// Formats the `ContractWasmHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         format!("{}{}", WASM_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 

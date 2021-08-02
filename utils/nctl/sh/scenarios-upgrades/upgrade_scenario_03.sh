@@ -159,21 +159,33 @@ function _step_07()
     local USER_PATH
     local HEX
     local AUCTION_INFO_FOR_HEX
+    local TIMEOUT_SEC
+
+    TIMEOUT_SEC='0'
 
     USER_PATH=$(get_path_to_user "$USER_ID")
     HEX=$(cat "$USER_PATH"/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
 
     log_step_upgrades 7 "Asserting user-$USER_ID is a delegatee"
 
-    if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
-        log "... user-$USER_ID found in auction info delegators!"
-        log "... public_key_hex: $HEX"
-        echo "$AUCTION_INFO_FOR_HEX"
-    else
-        log "ERROR: Could not find $HEX in auction info delegators!"
-        exit 1
-    fi
+    while [ "$TIMEOUT_SEC" -le "60" ]; do
+        AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
+        if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
+            log "... user-$USER_ID found in auction info delegators!"
+            log "... public_key_hex: $HEX"
+            echo "$AUCTION_INFO_FOR_HEX"
+            break
+        else
+            TIMEOUT_SEC=$((TIMEOUT_SEC + 1))
+            log "... timeout=$TIMEOUT_SEC: delegatee not yet detected"
+            sleep 1
+            if [ "$TIMEOUT_SEC" = '60' ]; then
+                log "ERROR: Could not find $HEX in auction info delegators!"
+                echo "$(nctl-view-chain-auction-info)"
+                exit 1
+            fi
+        fi
+    done
 }
 
 # Step 08: Upgrade network from stage.

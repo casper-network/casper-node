@@ -212,3 +212,11 @@ export declare function disable_contract_version(
 ): i32;
 @external("env", "casper_new_dictionary")
 export declare function casper_new_dictionary(output_size_ptr: usize): i32;
+/** @hidden */
+@external("env", "casper_blake2b")
+export declare function casper_blake2b(
+    in_ptr: usize,
+    in_size: usize,
+    out_ptr: usize,
+    out_size: usize,
+): i32;

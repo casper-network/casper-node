@@ -348,12 +348,12 @@ pub(super) fn parse_deploy_params(
     let chain_name = chain_name.to_string();
 
     Ok(DeployParams {
+        secret_key,
         timestamp,
         ttl,
         gas_price,
         dependencies,
         chain_name,
-        secret_key,
     })
 }
 
