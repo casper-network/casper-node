@@ -4,15 +4,14 @@ use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
 use casper_execution_engine::{
-    core, core::ValidationError, shared::stored_value::StoredValue,
-    storage::trie::merkle_proof::TrieMerkleProof,
+    core, core::ValidationError, storage::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_node::{
     crypto::hash::Digest,
     rpcs::chain::{BlockIdentifier, EraSummary, GetEraInfoResult},
     types::{json_compatibility, Block, BlockValidationError, JsonBlock},
 };
-use casper_types::{bytesrepr, Key, U512};
+use casper_types::{bytesrepr, stored_value::StoredValue, Key, U512};
 
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";

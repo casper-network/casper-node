@@ -9,9 +9,9 @@ use std::convert::TryFrom;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
+    stored_value::StoredValue as ExecutionEngineStoredValue,
     system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, DeployInfo, Transfer,
 };

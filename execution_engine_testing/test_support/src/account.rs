@@ -1,7 +1,6 @@
 use std::convert::TryFrom;
 
-use casper_execution_engine::shared::stored_value::StoredValue;
-use casper_types::{account::AccountHash, contracts::NamedKeys, URef};
+use casper_types::{account::AccountHash, contracts::NamedKeys, stored_value::StoredValue, URef};
 
 use crate::{Error, Result};
 

@@ -1,7 +1,6 @@
 use std::result;
 
-use casper_execution_engine::shared::TypeMismatch;
-use casper_types::CLValueError;
+use casper_types::{stored_value::TypeMismatch, CLValueError};
 
 /// The error type returned by any casper-engine-test-support operation.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]

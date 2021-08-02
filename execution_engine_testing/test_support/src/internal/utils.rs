@@ -13,11 +13,9 @@ use casper_execution_engine::{
         run_genesis_request::RunGenesisRequest,
         Error,
     },
-    shared::{
-        additive_map::AdditiveMap, gas::Gas, stored_value::StoredValue, transform::Transform,
-    },
+    shared::{additive_map::AdditiveMap, gas::Gas, transform::Transform},
 };
-use casper_types::{account::Account, Key};
+use casper_types::{account::Account, stored_value::StoredValue, Key};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
-use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
+    stored_value::StoredValue,
     system::auction::{
         Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,

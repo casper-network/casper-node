@@ -4,12 +4,9 @@ use num_rational::Ratio;
 
 use casper_execution_engine::{
     core::engine_state::UpgradeConfig,
-    shared::{
-        newtypes::Blake2bHash, stored_value::StoredValue, system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::{newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{EraId, Key, ProtocolVersion};
+use casper_types::{stored_value::StoredValue, EraId, Key, ProtocolVersion};
 
 #[derive(Default)]
 pub struct UpgradeRequestBuilder {

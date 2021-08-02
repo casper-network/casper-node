@@ -26,15 +26,12 @@ use serde::{Deserialize, Serialize};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self,
-        genesis::GenesisSuccess,
-        upgrade::{UpgradeConfig, UpgradeSuccess},
-    },
-    shared::stored_value::StoredValue,
+use casper_execution_engine::core::engine_state::{
+    self,
+    genesis::GenesisSuccess,
+    upgrade::{UpgradeConfig, UpgradeSuccess},
 };
-use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion};
+use casper_types::{bytesrepr::FromBytes, stored_value::StoredValue, EraId, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;

@@ -32,7 +32,6 @@ use casper_execution_engine::{
         gas::Gas,
         logging::{self, Settings, Style},
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::Transform,
         utils::OS_PAGE_SIZE,
     },
@@ -50,6 +49,7 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self},
     runtime_args,
+    stored_value::StoredValue,
     system::{
         auction::{
             Bids, EraValidators, UnbondingPurses, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,

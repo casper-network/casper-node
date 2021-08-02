@@ -25,16 +25,13 @@ use casper_execution_engine::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
         GetEraValidatorsRequest,
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
-    },
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::{
         global_state::lmdb::LmdbGlobalState, protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment, trie::Trie, trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{Key, ProtocolVersion};
+use casper_types::{stored_value::StoredValue, Key, ProtocolVersion};
 
 use crate::{
     components::Component,

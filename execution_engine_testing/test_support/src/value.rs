@@ -1,8 +1,8 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
+    stored_value::StoredValue,
     CLTyped, CLValue,
 };
 
