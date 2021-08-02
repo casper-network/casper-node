@@ -7,12 +7,19 @@ use crate::{
     system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{convert::TryFrom, fmt::Debug};
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 pub use type_mismatch::TypeMismatch;
 
+#[allow(clippy::large_enum_variant)]
 #[repr(u8)]
+
 enum Tag {
     CLValue = 0,
     Account = 1,
@@ -26,21 +33,34 @@ enum Tag {
     Withdraw = 9,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Eq, PartialEq, Clone, Debug)]
+/// TODO: doc comment.
 pub enum StoredValue {
+    /// TODO: doc comment.
     CLValue(CLValue),
+    /// TODO: doc comment.
     Account(Account),
+    /// TODO: doc comment.
     ContractWasm(ContractWasm),
+    /// TODO: doc comment.
     Contract(Contract),
+    /// TODO: doc comment.
     ContractPackage(ContractPackage),
+    /// TODO: doc comment.
     Transfer(Transfer),
+    /// TODO: doc comment.
     DeployInfo(DeployInfo),
+    /// TODO: doc comment.
     EraInfo(EraInfo),
+    /// TODO: doc comment.
     Bid(Box<Bid>),
+    /// TODO: doc comment.
     Withdraw(Vec<UnbondingPurse>),
 }
 
 impl StoredValue {
+    /// TODO: doc comment.
     pub fn as_cl_value(&self) -> Option<&CLValue> {
         match self {
             StoredValue::CLValue(cl_value) => Some(cl_value),
@@ -48,6 +68,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_account(&self) -> Option<&Account> {
         match self {
             StoredValue::Account(account) => Some(account),
@@ -55,6 +76,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_contract(&self) -> Option<&Contract> {
         match self {
             StoredValue::Contract(contract) => Some(contract),
@@ -62,6 +84,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
         match self {
             StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
@@ -69,6 +92,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_contract_package(&self) -> Option<&ContractPackage> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
@@ -76,6 +100,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_deploy_info(&self) -> Option<&DeployInfo> {
         match self {
             StoredValue::DeployInfo(deploy_info) => Some(deploy_info),
@@ -83,6 +108,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_era_info(&self) -> Option<&EraInfo> {
         match self {
             StoredValue::EraInfo(era_info) => Some(era_info),
@@ -90,6 +116,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_bid(&self) -> Option<&Bid> {
         match self {
             StoredValue::Bid(bid) => Some(bid),
@@ -97,6 +124,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn as_withdraw(&self) -> Option<&Vec<UnbondingPurse>> {
         match self {
             StoredValue::Withdraw(unbonding_purses) => Some(unbonding_purses),
@@ -104,6 +132,7 @@ impl StoredValue {
         }
     }
 
+    /// TODO: doc comment.
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
@@ -359,6 +388,7 @@ impl<'de> Deserialize<'de> for StoredValue {
     }
 }
 
+/// TODO: doc comment.
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
@@ -374,6 +404,7 @@ pub mod gens {
     use super::StoredValue;
     use crate::account::gens::account_arb;
 
+    /// TODO: doc comment.
     pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         prop_oneof![
             cl_value_arb().prop_map(StoredValue::CLValue),

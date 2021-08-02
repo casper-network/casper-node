@@ -15,10 +15,10 @@ use casper_execution_engine::shared::{
         DEFAULT_NOP_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST,
     },
     storage_costs::StorageCosts,
-    stored_value::StoredValue,
     wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
 };
 use casper_types::{
+    stored_value::StoredValue,
     system::{
         auction::{
             AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,

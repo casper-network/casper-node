@@ -7,6 +7,7 @@ use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
+    stored_value::{gens::stored_value_arb, StoredValue},
     AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, URef,
     U256, U512,
 };
@@ -22,7 +23,6 @@ use crate::{
     },
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::{gens::stored_value_arb, StoredValue},
         transform::Transform,
     },
     storage::{

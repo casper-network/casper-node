@@ -427,6 +427,7 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
+/// TODO: doc comment.
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
@@ -440,6 +441,7 @@ pub mod gens {
     };
 
     prop_compose! {
+    /// TODO: doc comment.
         pub fn account_arb()(
             account_hash in account_hash_arb(),
             urefs in named_keys_arb(3),

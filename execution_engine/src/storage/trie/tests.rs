@@ -49,12 +49,9 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::*;
 
-    use casper_types::{bytesrepr, gens::key_arb, Key};
+    use casper_types::{bytesrepr, gens::key_arb, stored_value::StoredValue, Key};
 
-    use crate::{
-        shared::stored_value::StoredValue,
-        storage::trie::{gens::*, PointerBlock, Trie},
-    };
+    use crate::storage::trie::{gens::*, PointerBlock, Trie};
 
     proptest! {
         #[test]

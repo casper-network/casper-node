@@ -6,12 +6,10 @@ use casper_engine_test_support::{
     AccountHash, DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 
-use casper_execution_engine::{
-    core::{engine_state::Error, execution},
-    shared::TypeMismatch,
-};
+use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
     runtime_args,
+    stored_value::TypeMismatch,
     system::{
         auction::{self, DelegationRate},
         mint,
