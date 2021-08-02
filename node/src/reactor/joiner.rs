@@ -425,7 +425,6 @@ impl reactor::Reactor for Reactor {
                         panic!("should have trusted hash after genesis era")
                     }
                 }
-                info!("No synchronization of the linear chain will be done.")
             }
             Some(hash) => info!(trusted_hash=%hash, "synchronizing linear chain"),
         }
@@ -485,6 +484,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.after_upgrade(),
             maybe_next_activation_point,
             chainspec_loader.initial_execution_pre_state(),
+            config.linear_chain_sync,
         )?;
 
         effects.extend(reactor::wrap_effects(

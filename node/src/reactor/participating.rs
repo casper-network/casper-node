@@ -444,6 +444,7 @@ impl reactor::Reactor for Reactor {
                 .map(|block_header| block_header.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
+            config.block_proposer,
         )?;
 
         let initial_era = maybe_latest_block_header.as_ref().map_or_else(
@@ -482,11 +483,14 @@ impl reactor::Reactor for Reactor {
         ));
 
         let execution_pre_state = match maybe_latest_block_header {
+            // if there is a latest block header and it's later than the block that was highest
+            // when the node was started up, we should use its post-state-hash as the initial state
+            // hash
             Some(latest_block_header)
-                if chainspec_loader
-                    .initial_execution_pre_state()
-                    .next_block_height()
-                    <= latest_block_header.height() =>
+                if latest_block_header.height()
+                    >= chainspec_loader
+                        .initial_execution_pre_state()
+                        .next_block_height() =>
             {
                 ExecutionPreState::from(&latest_block_header)
             }
@@ -911,12 +915,30 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
+                let deploy_info = match deploy.deploy_info() {
+                    Ok(deploy_info) => deploy_info,
+                    Err(error) => {
+                        error!(%error, "invalid deploy");
+                        return Effects::new();
+                    }
+                };
+
+                let event = block_proposer::Event::BufferDeploy {
+                    hash: deploy.deploy_or_transfer_hash(),
+                    deploy_info: Box::new(deploy_info),
+                };
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
+
                 let event = gossiper::Event::ItemReceived {
                     item_id: *deploy.id(),
                     source: source.clone(),
                 };
-                let mut effects =
-                    self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::DeployGossiper(event),
+                ));
 
                 let event = event_stream_server::Event::DeployAccepted(*deploy.id());
                 effects.extend(self.dispatch_event(
@@ -1017,11 +1039,13 @@ impl reactor::Reactor for Reactor {
                 Effects::new()
             }
             Event::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                gossiped_deploy_id,
+                _gossiped_deploy_id,
             )) => {
-                let reactor_event =
-                    Event::BlockProposer(block_proposer::Event::BufferDeploy(gossiped_deploy_id));
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                // let reactor_event =
+                //     Event::BlockProposer(block_proposer::Event::
+                // BufferDeploy(gossiped_deploy_id));
+                // self.dispatch_event(effect_builder, rng, reactor_event)
+                Effects::new()
             }
             Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,

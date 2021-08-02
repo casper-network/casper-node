@@ -57,7 +57,7 @@ pub use validation::ValidateResponseError;
 ///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
-pub fn put_deploy(
+pub async fn put_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -70,7 +70,9 @@ pub fn put_deploy(
         payment_params.try_into()?,
         session_params.try_into()?,
     )?;
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).put_deploy(deploy)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .put_deploy(deploy)
+        .await
 }
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
@@ -160,13 +162,15 @@ pub fn sign_deploy_file(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `input_path` specifies the path to the previously-saved `Deploy` file.
-pub fn send_deploy_file(
+pub async fn send_deploy_file(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     input_path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).send_deploy_file(input_path)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .send_deploy_file(input_path)
+        .await
 }
 
 /// Transfers funds between purses.
@@ -191,7 +195,7 @@ pub fn send_deploy_file(
 /// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
 #[allow(clippy::too_many_arguments)]
-pub fn transfer(
+pub async fn transfer(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -209,14 +213,16 @@ pub fn transfer(
     let target_account = parsing::get_target_account(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).transfer(
-        amount,
-        source_purse,
-        target_account,
-        transfer_id,
-        deploy_params.try_into()?,
-        payment_params.try_into()?,
-    )
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .transfer(
+            amount,
+            source_purse,
+            target,
+            transfer_id,
+            deploy_params.try_into()?,
+            payment_params.try_into()?,
+        )
+        .await
 }
 
 /// Creates a transfer `Deploy` and outputs it to a file or stdout.
@@ -288,13 +294,15 @@ pub fn make_transfer(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `deploy_hash` must be a hex-encoded, 32-byte hash digest.
-pub fn get_deploy(
+pub async fn get_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     deploy_hash: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_deploy(deploy_hash)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_deploy(deploy_hash)
+        .await
 }
 
 /// Retrieves a `Block` from the network.
@@ -311,13 +319,15 @@ pub fn get_deploy(
 ///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` will be retrieved.
-pub fn get_block(
+pub async fn get_block(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_block(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_block(maybe_block_id)
+        .await
 }
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
@@ -334,13 +344,15 @@ pub fn get_block(
 ///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` transfers will be retrieved.
-pub fn get_block_transfers(
+pub async fn get_block_transfers(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_block_transfers(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_block_transfers(maybe_block_id)
+        .await
 }
 
 /// Retrieves a state root hash at a given `Block`.
@@ -357,13 +369,15 @@ pub fn get_block_transfers(
 ///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` will be used.
-pub fn get_state_root_hash(
+pub async fn get_state_root_hash(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_state_root_hash(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_state_root_hash(maybe_block_id)
+        .await
 }
 
 /// Retrieves a stored value from the network.
@@ -391,7 +405,7 @@ pub fn get_state_root_hash(
 /// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
-pub fn get_item(
+pub async fn get_item(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -399,7 +413,9 @@ pub fn get_item(
     key: &str,
     path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_item(state_root_hash, key, path)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_item(state_root_hash, key, path)
+        .await
 }
 
 /// Retrieves a purse's balance from the network.
@@ -419,14 +435,16 @@ pub fn get_item(
 /// ```text
 /// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007
 /// ```
-pub fn get_balance(
+pub async fn get_balance(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     state_root_hash: &str,
     purse: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_balance(state_root_hash, purse)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_balance(state_root_hash, purse)
+        .await
 }
 
 /// Retrieves era information from the network.
@@ -444,7 +462,7 @@ pub fn get_balance(
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, era information from the latest block will be returned if
 ///   available.
-pub fn get_era_info_by_switch_block(
+pub async fn get_era_info_by_switch_block(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -452,6 +470,7 @@ pub fn get_era_info_by_switch_block(
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .get_era_info_by_switch_block(maybe_block_id)
+        .await
 }
 
 /// Retrieves the bids and validators as of the most recently added `Block`.
@@ -469,13 +488,15 @@ pub fn get_era_info_by_switch_block(
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, era information from the latest block will be returned if
 ///   available.
-pub fn get_auction_info(
+pub async fn get_auction_info(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_auction_info(maybe_block_id)
+        .await
 }
 
 /// Retrieves an Account from the network.
@@ -493,7 +514,7 @@ pub fn get_auction_info(
 /// * `public_key` the public key associated with the `Account`
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` will be retrieved.
-pub fn get_account_info(
+pub async fn get_account_info(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -502,6 +523,7 @@ pub fn get_account_info(
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .get_account_info(public_key, maybe_block_id)
+        .await
 }
 
 /// Retrieves information and examples for all currently supported RPCs.
@@ -516,8 +538,14 @@ pub fn get_account_info(
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
-pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbosity_level: u64) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).list_rpcs()
+pub async fn list_rpcs(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .list_rpcs()
+        .await
 }
 
 /// Retrieves a stored value from the network.
@@ -534,7 +562,7 @@ pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbosity_level: u64) -
 ///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
 /// * `dictionary_str_params` contains options to query a dictionary item.
-pub fn get_dictionary(
+pub async fn get_dictionary(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -543,6 +571,7 @@ pub fn get_dictionary(
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .get_dictionary_item(state_root_hash, dictionary_str_params)
+        .await
 }
 
 /// Container for `Deploy` construction options.

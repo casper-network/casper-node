@@ -23,13 +23,14 @@
 //! execute (as we do in the first, SynchronizeTrustedHash, phase) it would have taken more time and
 //! we might miss more eras.
 
+mod config;
 mod event;
 mod metrics;
 mod peers;
 mod state;
 mod traits;
 
-use std::{convert::Infallible, fmt::Display, mem, str::FromStr};
+use std::{convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -57,6 +58,7 @@ use crate::{
     },
     NodeRng,
 };
+pub use config::Config;
 use event::BlockByHeightResult;
 pub use event::Event;
 pub use metrics::LinearChainSyncMetrics;
@@ -102,15 +104,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         after_upgrade: bool,
         next_upgrade_activation_point: Option<ActivationPoint>,
         initial_execution_pre_state: ExecutionPreState,
+        config: Config,
     ) -> Result<(Self, Effects<Event<I>>), Err>
     where
         REv: From<Event<I>> + Send,
         Err: From<prometheus::Error> + From<storage::Error>,
     {
-        // set timeout to 5 minutes after now.
-        let five_minutes = TimeDiff::from_str("5minutes").unwrap();
         let timeout_event = effect_builder
-            .set_timeout(five_minutes.into())
+            .set_timeout(config.get_sync_timeout().into())
             .event(|_| Event::InitializeTimeout);
         let protocol_version = chainspec.protocol_config.version;
         if let Some(state) = read_init_state(storage, chainspec)? {
@@ -136,6 +137,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
                 }
                 None if after_upgrade => {
+                    info!("No synchronization of the linear chain will be done.");
                     // Right after upgrade, no linear chain to synchronize.
                     State::Done(highest_block.map(Box::new))
                 }
@@ -147,6 +149,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         // still be trusted – i.e. it's within the unbonding period.
                         State::sync_descendants(*highest_block.hash(), highest_block, None)
                     } else {
+                        info!("No synchronization of the linear chain will be done.");
                         State::Done(None)
                     }
                 }
@@ -185,6 +188,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
             chainspec.core_config.era_duration,
         );
+        if matches!(state, State::None | State::Done(_)) {
+            info!("No synchronization of the linear chain will be done.");
+        }
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,

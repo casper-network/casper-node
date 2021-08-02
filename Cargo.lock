@@ -662,6 +662,7 @@ name = "casper-client"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64",
  "casper-execution-engine",
  "casper-node",
@@ -1726,6 +1727,14 @@ dependencies = [
 
 [[package]]
 name = "ee-1217-regression"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "ee-1225-regression"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

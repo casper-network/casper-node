@@ -13,7 +13,7 @@
 [logging]
 
 # Output format.  Possible values are 'text' or 'json'.
-format = 'json'
+format = 'text'
 
 # Colored output.  Has no effect if format = 'json'.
 color = false
@@ -29,7 +29,7 @@ abbreviate_modules = false
 
 # Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
 # consensus messages.
-secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
+secret_key_path = 'secret_key.pem'
 
 
 # ===========================================
@@ -38,12 +38,13 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 [consensus.highway]
 
 # The folder in which the files with per-era latest unit hashes will be stored.
-unit_hashes_folder = "/var/lib/casper/casper-node"
+unit_hashes_folder = "../node-storage"
 
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
-pending_vertex_timeout = '30min'
+pending_vertex_timeout = '1min'
 
-# If the current era's protocol state has not progressed for this long, shut down.
+# If the current era's protocol state has not progressed for this long, request the latest state
+# from peers.
 standstill_timeout = '5min'
 
 # If after another `standstill_timeout` there still was no progress, shut down.
@@ -94,11 +95,11 @@ acceleration_ftt = [1, 100]
 #
 # It must be publicly available in order to allow peers to connect to this node.
 # If the port is set to 0, the actual bound port will be substituted.
-public_address = '<IP ADDRESS>:0'
+public_address = '127.0.0.1:0'
 
 # Address to bind to for listening.
 # If port is set to 0, a random port will be used.
-bind_address = '0.0.0.0:35000'
+bind_address = '0.0.0.0:34553'
 
 # Addresses to connect to in order to join the network.
 #
@@ -108,10 +109,10 @@ bind_address = '0.0.0.0:35000'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['139.162.132.144:35000','3.225.191.9:35000','31.7.207.16:35000','178.238.235.196:35000','209.145.60.74:35000','157.90.131.49:35000','18.188.152.102:35000','94.130.107.198:35000','135.181.134.57:35000','47.88.87.63:35000','139.59.247.32:35000','188.40.83.254:35000','135.181.165.110:35000','54.180.220.20:35000','148.251.190.103:35000','54.39.129.79:35000','54.39.129.78:35000','88.99.95.7:35000','101.36.120.117:35000','52.207.122.179:35000','18.144.20.51:35000','168.119.209.31:35000','134.209.16.172:35000','18.219.70.138:35000','3.221.194.62:35000','168.119.69.6:35000','62.171.135.101:35000','46.101.61.107:35000','13.58.71.180:35000','52.51.46.127:35000','157.90.131.121:35000','148.251.135.60:35000','54.215.53.35:35000','18.184.78.232:35000','18.188.103.230:35000','168.119.137.143:35000','54.179.8.192:35000','1.15.171.36:35000','47.57.239.181:35000','47.242.53.164:35000','139.59.247.32:35000','99.81.225.72:35000','82.95.0.200:35000','54.252.66.23:35000','134.209.243.124:35000','3.141.97.53:35000','98.149.220.243:35000','46.4.91.24:35000']
+known_addresses = ['127.0.0.1:34553']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
-gossip_interval = 120_000
+gossip_interval = 30000
 
 # Minimum amount of time that has to pass before attempting to reconnect after losing all
 # connections to established nodes.
@@ -148,7 +149,7 @@ address = '0.0.0.0:7777'
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 50
+qps_limit = 100
 
 
 # ==============================================
@@ -166,7 +167,7 @@ address = '0.0.0.0:8888'
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 10
+qps_limit = 100
 
 
 # ==========================================================
@@ -200,28 +201,28 @@ max_concurrent_subscribers = 100
 # If the folder doesn't exist, it and any required parents will be created.
 #
 # If unset, the path must be supplied as an argument via the CLI.
-path = '/var/lib/casper/casper-node'
+path = '../node-storage'
 
 # Maximum size of the database to use for the block store.
 #
 # The size should be a multiple of the OS page size.
 #
-# 483_183_820_800 == 450 GiB.
-max_block_store_size = 483_183_820_800
+# 483_183_820_800 == 18 GiB.
+max_block_store_size = 19_327_352_832
 
 # Maximum size of the database to use for the deploy store.
 #
 # The size should be a multiple of the OS page size.
 #
-# 322_122_547_200 == 300 GiB.
-max_deploy_store_size = 322_122_547_200
+# 322_122_547_200 == 12 GiB.
+max_deploy_store_size = 12_884_901_888
 
 # Maximum size of the database to use for the deploy metadata.
 #
 # The size should be a multiple of the OS page size.
 #
-# 322_122_547_200 == 300 GiB.
-max_deploy_metadata_store_size = 322_122_547_200
+# 322_122_547_200 == 12 GiB.
+max_deploy_metadata_store_size = 12_884_901_888
 
 # Maximum size of the database to use for the state snapshots.
 #
@@ -266,7 +267,7 @@ finished_entry_duration_secs = 60
 # The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-gossip_request_timeout_secs = 30
+gossip_request_timeout_secs = 10
 
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
@@ -303,10 +304,10 @@ verify_accounts = true
 
 # Optional maximum size of the database to use for the global state store.
 #
-# If unset, defaults to 805,306,368,000 == 750 GiB.
+# If unset, defaults to 32,212,254,720 == 30 GiB.
 #
 # The size should be a multiple of the OS page size.
-#max_global_state_size = 805306368000
+#max_global_state_size = 32_212_254_720
 
 # Optional depth limit to use for global state queries.
 #
@@ -331,4 +332,4 @@ sync_timeout = '1hr'
 # Deploys are only proposed in a new block if they have been received at least this long ago.
 # A longer delay makes it more likely that many proposed deploys are already known by the
 # other nodes, and don't have to be requested from the proposer afterwards.
-#deploy_delay = '1min'
+deploy_delay = '5seconds'
