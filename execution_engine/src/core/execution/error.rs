@@ -3,15 +3,13 @@ use thiserror::Error;
 
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, URef,
+    bytesrepr,
+    stored_value::TypeMismatch,
+    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
+    ContractVersionKey, ContractWasmHash, Key, URef,
 };
 
-use crate::{
-    core::resolvers::error::ResolverError,
-    shared::{wasm_prep, TypeMismatch},
-    storage,
-};
+use crate::{core::resolvers::error::ResolverError, shared::wasm_prep, storage};
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {

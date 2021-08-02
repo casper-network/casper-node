@@ -1,7 +1,8 @@
 use std::{collections::BTreeMap, vec::Vec};
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey, U512,
+    bytesrepr, bytesrepr::ToBytes, stored_value::TypeMismatch, CLValueError, EraId, Key,
+    ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
         engine_state::{execution_effect::ExecutionEffect, Error, GetEraValidatorsError},
         execution,
     },
-    shared::{newtypes::Blake2bHash, TypeMismatch},
+    shared::newtypes::Blake2bHash,
 };
 
 #[derive(Debug)]

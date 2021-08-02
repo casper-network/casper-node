@@ -24,6 +24,7 @@ use casper_types::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
         DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
+    stored_value::StoredValue,
     system::{
         self,
         auction::{self, Auction, EraInfo},
@@ -50,7 +51,6 @@ use crate::{
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction},
-        stored_value::StoredValue,
         wasm_config::WasmConfig,
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},

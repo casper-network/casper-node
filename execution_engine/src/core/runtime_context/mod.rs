@@ -14,6 +14,7 @@ use casper_types::{
     bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
+    stored_value::StoredValue,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
     DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
@@ -29,7 +30,7 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy},
         Address,
     },
-    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{gas::Gas, newtypes::CorrelationId},
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 

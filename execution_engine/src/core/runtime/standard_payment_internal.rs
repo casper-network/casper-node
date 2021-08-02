@@ -1,4 +1,5 @@
 use casper_types::{
+    stored_value::StoredValue,
     system::{
         handle_payment, mint,
         standard_payment::{AccountProvider, HandlePaymentProvider, MintProvider, StandardPayment},
@@ -8,7 +9,6 @@ use casper_types::{
 
 use crate::{
     core::{execution, runtime::Runtime},
-    shared::stored_value::StoredValue,
     storage::global_state::StateReader,
 };
 

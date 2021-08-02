@@ -4,6 +4,7 @@ use casper_types::{
     account::{self, AccountHash},
     bytesrepr::{FromBytes, ToBytes},
     contracts::NamedKeys,
+    stored_value::StoredValue,
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
@@ -16,9 +17,7 @@ use casper_types::{
 };
 
 use super::Runtime;
-use crate::{
-    core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
-};
+use crate::{core::execution, storage::global_state::StateReader};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {

@@ -8,6 +8,7 @@ use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
+    stored_value::StoredValue,
     system::auction::EraInfo,
     ContractHash, ContractPackageHash, ContractVersion, EraId, Group, Key, URef, U512,
 };
@@ -18,7 +19,6 @@ use crate::{
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
-        stored_value::StoredValue,
     },
     storage::global_state::StateReader,
 };

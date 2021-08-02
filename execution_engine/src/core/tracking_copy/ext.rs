@@ -4,16 +4,14 @@ use parity_wasm::elements::Module;
 
 use casper_types::{
     account::{Account, AccountHash},
+    stored_value::{StoredValue, TypeMismatch},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
     ContractWasmHash, Key, URef,
 };
 
 use crate::{
     core::{execution, tracking_copy::TrackingCopy},
-    shared::{
-        motes::Motes, newtypes::CorrelationId, stored_value::StoredValue, wasm,
-        wasm_prep::Preprocessor, TypeMismatch,
-    },
+    shared::{motes::Motes, newtypes::CorrelationId, wasm, wasm_prep::Preprocessor},
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 

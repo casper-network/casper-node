@@ -8,6 +8,7 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
     contracts::NamedKeys,
+    stored_value::StoredValue,
     system::{auction, handle_payment, mint, CallStackElement},
     BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
     Phase, ProtocolVersion, RuntimeArgs,
@@ -24,7 +25,7 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopy,
     },
-    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{gas::Gas, newtypes::CorrelationId},
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 

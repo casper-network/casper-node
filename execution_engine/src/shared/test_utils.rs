@@ -3,10 +3,9 @@
 use casper_types::{
     account::{Account, AccountHash},
     contracts::NamedKeys,
+    stored_value::StoredValue,
     AccessRights, Key, URef,
 };
-
-use crate::shared::stored_value::StoredValue;
 
 /// Returns an account value paired with its key
 pub fn mocked_account(account_hash: AccountHash) -> Vec<(Key, StoredValue)> {

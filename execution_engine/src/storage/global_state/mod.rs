@@ -5,13 +5,12 @@ use std::hash::BuildHasher;
 
 use tracing::error;
 
-use casper_types::{bytesrepr, Key, ProtocolVersion};
+use casper_types::{bytesrepr, stored_value::StoredValue, Key, ProtocolVersion};
 
 use crate::{
     shared::{
         additive_map::AdditiveMap,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::{self, Transform},
     },
     storage::{

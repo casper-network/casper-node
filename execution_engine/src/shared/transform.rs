@@ -12,10 +12,9 @@ use num::traits::{AsPrimitive, WrappingAdd};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
+    stored_value::{StoredValue, TypeMismatch},
     CLType, CLTyped, CLValue, CLValueError, U128, U256, U512,
 };
-
-use crate::shared::{stored_value::StoredValue, TypeMismatch};
 
 /// Error type for applying and combining transforms. A `TypeMismatch`
 /// occurs when a transform cannot be applied because the types are
@@ -357,7 +356,7 @@ pub mod gens {
     use proptest::{collection::vec, prelude::*};
 
     use super::Transform;
-    use crate::shared::stored_value::gens::stored_value_arb;
+    use casper_types::stored_value::gens::stored_value_arb;
 
     pub fn transform_arb() -> impl Strategy<Value = Transform> {
         prop_oneof![

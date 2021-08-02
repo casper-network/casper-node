@@ -13,7 +13,11 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, Tagged, U512};
+use casper_types::{
+    bytesrepr,
+    stored_value::{StoredValue, TypeMismatch},
+    CLType, CLValue, CLValueError, Key, KeyTag, Tagged, U512,
+};
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -25,9 +29,7 @@ use crate::{
     shared::{
         additive_map::AdditiveMap,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::{self, Transform},
-        TypeMismatch,
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };

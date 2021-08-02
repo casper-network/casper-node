@@ -15,6 +15,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     runtime_args,
+    stored_value::StoredValue,
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -46,7 +47,6 @@ use crate::{
         gas::Gas,
         motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
     },

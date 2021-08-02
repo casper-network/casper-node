@@ -10,7 +10,7 @@ use crate::{
 use core::{convert::TryFrom, fmt::Debug};
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
-use type_mismatch::TypeMismatch;
+pub use type_mismatch::TypeMismatch;
 
 #[repr(u8)]
 enum Tag {

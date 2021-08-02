@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use casper_types::{
     bytesrepr,
+    stored_value::StoredValue,
     system::{
         auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
@@ -16,7 +17,6 @@ use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
     },

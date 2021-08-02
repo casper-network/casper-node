@@ -32,6 +32,7 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
     contracts::NamedKeys,
+    stored_value::StoredValue,
     system::{
         auction::{
             EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
@@ -77,7 +78,6 @@ use crate::{
         gas::Gas,
         motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::Transform,
         wasm_prep::Preprocessor,
     },

@@ -2,6 +2,7 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_types::{
     account::{Account, AccountHash},
+    stored_value::StoredValue,
     system::mint,
     AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs, URef, U512,
 };
@@ -12,7 +13,7 @@ use crate::{
         execution::Error as ExecError,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{self, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::newtypes::CorrelationId,
     storage::global_state::StateReader,
 };
 
@@ -170,7 +171,10 @@ impl TransferRuntimeArgsBuilder {
                         }
                     }
                     Some(key) => Err(Error::Exec(ExecError::TypeMismatch(
-                        shared::TypeMismatch::new("Key::URef".to_string(), key.type_string()),
+                        casper_types::stored_value::TypeMismatch::new(
+                            "Key::URef".to_string(),
+                            key.type_string(),
+                        ),
                     ))),
                     None => Err(Error::Exec(ExecError::ForgedReference(uref))),
                 }

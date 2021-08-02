@@ -1,6 +1,7 @@
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    stored_value::StoredValue,
     system::{
         mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
         CallStackElement,
@@ -9,9 +10,7 @@ use casper_types::{
 };
 
 use super::Runtime;
-use crate::{
-    core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
-};
+use crate::{core::execution, storage::global_state::StateReader};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
