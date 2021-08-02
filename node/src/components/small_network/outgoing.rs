@@ -504,7 +504,7 @@ where
     #[cfg(test)]
     pub(crate) fn is_blocked(&self, addr: SocketAddr) -> bool {
         match self.outgoing.get(&addr) {
-            Some(ref outgoing) => matches!(outgoing.state, OutgoingState::Blocked { .. }),
+            Some(outgoing) => matches!(outgoing.state, OutgoingState::Blocked { .. }),
             None => false,
         }
     }
