@@ -680,31 +680,7 @@ impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let PaymentStrParams {
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        } = self;
-
-        parsing::parse_payment_info(PaymentStrParams {
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        })
+        parsing::parse_payment_info(self)
     }
 }
 
@@ -841,31 +817,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let SessionStrParams {
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        } = self;
-
-        parsing::parse_session_info(SessionStrParams {
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        })
+        parsing::parse_session_info(self)
     }
 }
 

@@ -21,10 +21,10 @@ fn set_last_error(error: Error) {
     *last_error = Some(error)
 }
 
-/// FFI representation of [super::Error](super::Error)
+/// FFI representation of [Error](super::Error)
 ///
-/// The full error can be extracted with get_last_error.
-/// See [Error](super::Error) for more details on what these mean.
+/// The full error can be extracted with get_last_error. See [Error](super::Error) for more details
+/// on what these mean.
 #[allow(non_snake_case, non_camel_case_types, missing_docs)]
 #[repr(C)]
 pub enum casper_error_t {
