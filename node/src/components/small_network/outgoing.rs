@@ -699,14 +699,17 @@ where
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
 
-                let failures_so_far = if let Some(outgoing) = self.outgoing.get(&addr) {
+                let failures_so_far: Option<_> = if let Some(outgoing) = self.outgoing.get(&addr) {
                     match outgoing.state {
                         OutgoingState::Connecting { failures_so_far,.. } => {
-                            failures_so_far + 1
+                            Some(failures_so_far + 1)
                         }
                         OutgoingState::Blocked { .. } => {
                             debug!("failed dial outcome after block ignored");
-                            1
+
+                            // We do not set the connection to "waiting" if an out-of-order failed
+                            // connection arrives, but continue to honor the blocking.
+                            None
                         }
                         OutgoingState::Waiting { .. } |
                         OutgoingState::Connected { .. } |
@@ -714,22 +717,30 @@ where
                             warn!(
                                 "processing dial outcome on a connection that was not marked as connecting or blocked"
                             );
-                            1
+
+                            // Ensure we do not override the existing state, return early.
+                            None
                         }
                     }
                 } else {
                     warn!("processing dial outcome non-existent connection");
-                    1
+
+                    // If the connection does not exist, do not introduce it!
+                    None
                 };
 
-                self.change_outgoing_state(
-                    addr,
-                    OutgoingState::Waiting {
-                        failures_so_far,
-                        error: Some(error),
-                        last_failure: when,
-                    },
-                );
+                // If we had actual failure we are going to honor, set the waiting state.
+                if let Some(failures_so_far) = failures_so_far {
+                    self.change_outgoing_state(
+                        addr,
+                        OutgoingState::Waiting {
+                            failures_so_far,
+                            error: Some(error),
+                            last_failure: when,
+                        },
+                    );
+                }
+
                 None
             }
             DialOutcome::Loopback { addr } => {
