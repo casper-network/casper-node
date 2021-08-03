@@ -5,7 +5,7 @@ use alloc::{format, string::String, vec::Vec};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-const MAX_STRING_LEN: usize = 100;
+const MAX_STRING_LEN: usize = 150;
 
 /// Serializes the given data structure as a pretty-printed `String` of JSON using
 /// `serde_json::to_string_pretty()`, but after first reducing any large hex-string values.
@@ -115,22 +115,22 @@ mod tests {
   "field_1": null,
   "field_2": true,
   "field_3": 123,
-  "field_4": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123",
+  "field_4": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345",
   "field_5": [
     "short string value",
-    "[101 hex chars]"
+    "[151 hex chars]"
   ],
   "field_6": {
     "f1": null,
     "f2": false,
     "f3": -123,
-    "f4": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+    "f4": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
     "f5": [
       "short string value",
-      "a-[101 hex chars]-b"
+      "a-[151 hex chars]-b"
     ],
     "f6": {
-      "final long string": "a: [101 hex chars], b: [101 hex chars], c: [101 hex chars]"
+      "final long string": "a: [151 hex chars], b: [151 hex chars], c: [151 hex chars]"
     }
   }
 }"#;
