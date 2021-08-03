@@ -23,40 +23,46 @@ where
     serde_json::to_string_pretty(&json_value)
 }
 
+fn find_hex_strings_longer_than(s: &str, max_len: usize) -> Vec<(usize, usize)> {
+    let mut ranges_to_remove = Vec::new();
+    let mut start_index = 0;
+    let mut contiguous_hex_count = 0;
+
+    // Record all large hex-strings' start positions and lengths.
+    for (index, char) in s.char_indices() {
+        if char.is_ascii_hexdigit() {
+            if contiguous_hex_count == 0 {
+                // This is the start of a new hex-string.
+                start_index = index;
+            }
+            contiguous_hex_count += 1;
+        } else if contiguous_hex_count != 0 {
+            // This is the end of a hex-string: if it's too long, record it.
+            if contiguous_hex_count > max_len {
+                ranges_to_remove.push((start_index, contiguous_hex_count));
+            }
+            contiguous_hex_count = 0;
+        }
+    }
+    // If the string contains a large hex-string at the end, record it now.
+    if contiguous_hex_count > max_len {
+        ranges_to_remove.push((start_index, contiguous_hex_count));
+    }
+    ranges_to_remove
+}
+
 fn shorten_string_field(value: &mut Value) {
     match value {
         Value::String(string) => {
-            let mut ranges_to_remove = Vec::new();
-            let mut start_index = 0;
-            let mut contiguous_hex_count = 0;
-
-            // Record all large hex-strings' start positions and lengths.
-            for (index, char) in string.char_indices() {
-                if char.is_ascii_hexdigit() {
-                    if contiguous_hex_count == 0 {
-                        // This is the start of a new hex-string.
-                        start_index = index;
-                    }
-                    contiguous_hex_count += 1;
-                } else if contiguous_hex_count != 0 {
-                    // This is the end of a hex-string: if it's too long, record it.
-                    if contiguous_hex_count > MAX_STRING_LEN {
-                        ranges_to_remove.push((start_index, contiguous_hex_count));
-                    }
-                    contiguous_hex_count = 0;
-                }
-            }
-            // If the string contains a large hex-string at the end, record it now.
-            if contiguous_hex_count > MAX_STRING_LEN {
-                ranges_to_remove.push((start_index, contiguous_hex_count));
-            }
-
-            // Replace the recorded large hex-strings.  Iterate from last to first so each
+            // Iterate over the ranges to remove from last to first so each
             // replacement start index remains valid.
-            for (start_index, contiguous_hex_count) in ranges_to_remove.into_iter().rev() {
-                let range = start_index..(start_index + contiguous_hex_count);
-                string.replace_range(range, &format!("[{} hex chars]", contiguous_hex_count));
-            }
+            find_hex_strings_longer_than(string, MAX_STRING_LEN)
+                .into_iter()
+                .rev()
+                .for_each(|(start_index, length)| {
+                    let range = start_index..(start_index + length);
+                    string.replace_range(range, &format!("[{} hex chars]", length));
+                })
         }
         Value::Array(values) => {
             for value in values {
@@ -78,6 +84,54 @@ mod tests {
 
     fn hex_string(length: usize) -> String {
         "0123456789abcdef".chars().cycle().take(length).collect()
+    }
+
+    #[test]
+    fn finds_hex_strings_longer_than() {
+        const TESTING_LEN: usize = 3;
+
+        let input = "01234";
+        let expected = vec![(0, 5)];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "01234-0123";
+        let expected = vec![(0, 5), (6, 4)];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "012-34-0123";
+        let expected = vec![(7, 4)];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "012-34-01-23";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "0";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn respects_length() {
+        let input = "I like beef";
+        let expected = vec![(7, 4)];
+        let actual = find_hex_strings_longer_than(input, 3);
+        assert_eq!(actual, expected);
+
+        let input = "I like beef";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, 1000);
+        assert_eq!(actual, expected);
     }
 
     #[test]
