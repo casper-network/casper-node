@@ -217,7 +217,7 @@ pub async fn transfer(
         .transfer(
             amount,
             source_purse,
-            target,
+            target_account,
             transfer_id,
             deploy_params.try_into()?,
             payment_params.try_into()?,

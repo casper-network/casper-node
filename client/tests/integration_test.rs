@@ -153,8 +153,8 @@ impl MockServerHandle {
         &self,
         amount: &str,
         target_account: &str,
-        deploy_params: DeployStrParams,
-        payment_params: PaymentStrParams,
+        deploy_params: DeployStrParams<'_>,
+        payment_params: PaymentStrParams<'_>,
     ) -> Result<(), Error> {
         casper_client::transfer(
             "1",
@@ -311,10 +311,10 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert!(matches!(
             server_handle.get_balance(VALID_STATE_ROOT_HASH, "").await,
-            Err(Error::FailedToParseURef(
-                "purse_uref",
-                URefFromStrError::InvalidPrefix
-            ))
+            Err(Error::FailedToParseURef {
+                context: "purse_uref",
+                error: URefFromStrError::InvalidPrefix
+            })
         ));
     }
 
@@ -427,7 +427,10 @@ mod get_block {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert!(matches!(
             server_handle.get_block("<not a valid hash>").await,
-            Err(Error::FailedToParseInt("block_identifier", _))
+            Err(Error::FailedToParseInt {
+                context: "block_identifier",
+                error: _
+            })
         ))
     }
 }
@@ -1031,17 +1034,15 @@ mod rate_limit {
 
             let server_handle = server_handle.clone();
 
-            assert!(matches!(
-                server_handle
-                    .transfer(
-                        amount,
-                        target_account,
-                        deploy_params::test_data_valid(),
-                        payment_params::test_data_with_name(),
-                    )
-                    .await,
-                Ok(())
-            ));
+            assert!(server_handle
+                .transfer(
+                    amount,
+                    target_account,
+                    deploy_params::test_data_valid(),
+                    payment_params::test_data_with_name(),
+                )
+                .await
+                .is_ok());
         }
 
         let diff = now.elapsed();
@@ -1067,16 +1068,14 @@ mod transfer {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         let amount = "100";
         let target_account = "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
-        assert!(matches!(
-            server_handle
-                .transfer(
-                    amount,
-                    target_account,
-                    deploy_params::test_data_valid(),
-                    payment_params::test_data_with_name()
-                )
-                .await,
-            Ok(())
-        ));
+        assert!(server_handle
+            .transfer(
+                amount,
+                target_account,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            )
+            .await
+            .is_ok());
     }
 }
