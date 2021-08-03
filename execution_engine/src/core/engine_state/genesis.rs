@@ -1162,7 +1162,7 @@ where
 
         let mint_hash = registry
             .get(MINT)
-            .ok_or_else(|| GenesisError::MissingSystemContractHash(AUCTION.to_string()))?;
+            .ok_or_else(|| GenesisError::MissingSystemContractHash(MINT.to_string()))?;
 
         let base_key = Key::Hash(mint_hash.value());
         let mint = {

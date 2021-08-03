@@ -8,7 +8,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     contracts::NamedKeys,
-    system::{auction, handle_payment, mint, CallStackElement},
+    system::{auction, handle_payment, mint, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT},
     BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
     Phase, ProtocolVersion, RuntimeArgs,
 };
@@ -27,7 +27,6 @@ use crate::{
     shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
     storage::global_state::StateReader,
 };
-use casper_types::system::{AUCTION, HANDLE_PAYMENT, MINT};
 
 macro_rules! on_fail_charge {
     ($fn:expr) => {
@@ -390,15 +389,10 @@ impl Executor {
         R::Error: Into<Error>,
         T: FromBytes + CLTyped,
     {
-        let system_contract_registry = match tracking_copy
+        let system_contract_registry = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
-        {
-            Ok(registry) => registry,
-            Err(error) => {
-                panic!("Could not retrieve system contracts: {:?}", error)
-            }
-        };
+            .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
 
         match direct_system_contract_call {
             DirectSystemContractCall::Slash

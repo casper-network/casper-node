@@ -323,9 +323,10 @@ impl ExecutableDeployItem {
                 error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        let mut system_hashes = system_contract_registry.into_values();
-
-        if system_hashes.any(|value| value == contract_hash) {
+        if system_contract_registry
+            .values()
+            .any(|value| *value == contract_hash)
+        {
             let module = wasm::do_nothing_module(preprocessor)?;
             return Ok(DeployMetadata {
                 kind: DeployKind::System,

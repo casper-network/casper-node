@@ -1966,7 +1966,12 @@ where
         // This will skip arguments check for system contracts only. This code should be removed on
         // next major version bump. Argument checks for system contract is still done during
         // execution of a system contract.
-        if !self.context.system_contracts()?.contains(&contract_hash) {
+        if !self
+            .context
+            .system_contract_registry()?
+            .values()
+            .any(|&system_hash| system_hash == contract_hash)
+        {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
                 .iter()

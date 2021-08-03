@@ -53,7 +53,7 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
 
-const SYSTEM_CONTRACT_REGISTRY: [u8; 32] = [0u8; 32];
+const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
@@ -66,7 +66,7 @@ const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LEN
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
 const KEY_SYSTEM_CONTRACT_REGISTRY_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY.len();
+    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -245,7 +245,7 @@ impl Key {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY)
+                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
                 )
             }
         }
@@ -415,7 +415,7 @@ impl Display for Key {
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                HexFmt(SYSTEM_CONTRACT_REGISTRY)
+                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         }
     }
@@ -523,7 +523,9 @@ impl ToBytes for Key {
             Key::Dictionary(addr) => {
                 result.append(&mut addr.to_bytes()?);
             }
-            Key::SystemContractRegistry => result.append(&mut SYSTEM_CONTRACT_REGISTRY.to_bytes()?),
+            Key::SystemContractRegistry => {
+                result.append(&mut SYSTEM_CONTRACT_REGISTRY_KEY.to_bytes()?)
+            }
         }
         Ok(result)
     }

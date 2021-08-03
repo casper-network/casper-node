@@ -33,6 +33,8 @@ use crate::{
     storage::global_state::StateReader,
 };
 
+use tracing::error;
+
 pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
@@ -268,7 +270,8 @@ where
                 Ok(())
             }
             Key::SystemContractRegistry => {
-                unreachable!("should not remove this key once written")
+                error!("should not remove the system contract registry key");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
         }
     }
@@ -764,18 +767,12 @@ where
     /// Checks if we are calling a system contract.
     pub(crate) fn is_system_contract(&self) -> bool {
         if let Some(hash) = self.base_key().into_hash() {
-            let system_contracts_registry = self
-                .tracking_copy
-                .borrow_mut()
-                .get_system_contracts(self.correlation_id)
-                .expect("should have registry");
-
-            if system_contracts_registry
-                .into_values()
-                .any(|system_hash| system_hash == hash.into())
-            {
-                return true;
-            }
+            let contract_hash = ContractHash::new(hash);
+            return self
+                .system_contract_registry()
+                .expect("must get system contract registry")
+                .values()
+                .any(|&system_hash| system_hash == contract_hash);
         }
         false
     }
@@ -1133,18 +1130,6 @@ where
         Ok(())
     }
 
-    pub fn system_contracts(&self) -> Result<Vec<ContractHash>, Error> {
-        let hashes = self
-            .tracking_copy
-            .borrow_mut()
-            .get_system_contracts(self.correlation_id)
-            .map_err(|_| Error::MissingSystemContractRegistry)?
-            .values()
-            .cloned()
-            .collect();
-        Ok(hashes)
-    }
-
     pub fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
         let hash = *self
             .tracking_copy
@@ -1157,7 +1142,7 @@ where
         Ok(hash)
     }
 
-    pub fn get_system_contract_registry(&self) -> Result<BTreeMap<String, ContractHash>, Error> {
+    pub fn system_contract_registry(&self) -> Result<BTreeMap<String, ContractHash>, Error> {
         self.tracking_copy
             .borrow_mut()
             .get_system_contracts(self.correlation_id)
