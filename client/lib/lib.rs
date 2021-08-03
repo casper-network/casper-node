@@ -205,17 +205,11 @@ pub async fn transfer(
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-    let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .transfer(
             amount,
-            source_purse,
-            target,
+            None,
+            target_account,
             transfer_id,
             deploy_params.try_into()?,
             payment_params.try_into()?,
