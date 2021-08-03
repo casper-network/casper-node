@@ -4,7 +4,7 @@
 //! round-robin manner. This way, events are only competing for time within one queue, non-congested
 //! queues can always assume to be speedily processed.
 
-use std::{fmt::Display, num::NonZeroUsize};
+use std::fmt::Display;
 
 use enum_iterator::IntoEnumIterator;
 use serde::Serialize;
@@ -57,8 +57,8 @@ impl QueueKind {
     ///
     /// The weight determines how many events are at most processed from a specific queue during
     /// each event processing round.
-    fn weight(self) -> NonZeroUsize {
-        NonZeroUsize::new(match self {
+    fn weight(self) -> std::num::NonZeroUsize {
+        std::num::NonZeroUsize::new(match self {
             // Note: Control events should be very rare, but we do want to process them right away.
             QueueKind::Control => 32,
             QueueKind::NetworkIncoming => 4,
@@ -70,7 +70,7 @@ impl QueueKind {
     }
 
     /// Return weights of all possible `Queue`s.
-    pub(crate) fn weights() -> Vec<(Self, NonZeroUsize)> {
+    pub(crate) fn weights() -> Vec<(Self, std::num::NonZeroUsize)> {
         QueueKind::into_enum_iter()
             .map(|q| (q, q.weight()))
             .collect()

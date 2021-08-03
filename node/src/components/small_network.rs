@@ -42,7 +42,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    io, mem,
+    io,
     net::{SocketAddr, TcpListener},
     result,
     sync::{Arc, Weak},
@@ -104,10 +104,8 @@ use crate::{
     NodeRng,
 };
 use chain_info::ChainInfo;
-pub use config::Config;
-pub use error::Error;
-
-const MAX_ASYMMETRIC_TIME: Duration = Duration::from_secs(60);
+pub(crate) use config::Config;
+pub(crate) use error::Error;
 
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
@@ -127,11 +125,8 @@ const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 /// Interval during which to perform outgoing manager housekeeping.
 const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Interval for checking for symmetrical connections.
-const SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
-
 #[derive(Clone, DataSize, Debug)]
-pub struct OutgoingHandle<P> {
+pub(crate) struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Arc<Message<P>>>,
     peer_addr: SocketAddr,
@@ -675,36 +670,6 @@ where
             .ignore()
     }
 
-    /// Sweeps across connection symmetry, enforcing symmetrical connections.
-    fn enforce_symmetric_connections(&mut self, now: Instant) -> Effects<Event<P>> {
-        let mut dial_requests = Vec::new();
-
-        let conn_syms = mem::take(&mut self.connection_symmetries);
-        self.connection_symmetries = conn_syms
-            .into_iter()
-            .filter_map(|(peer_id, sym)| {
-                if sym.should_be_reaped(now, MAX_ASYMMETRIC_TIME) {
-                    info!(%peer_id, "reaping asymmetric connection");
-
-                    // Get the outgoing connection and block it.
-                    if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
-                            if let Some(req) = self.outgoing_manager.block_addr(addr, now) {
-                                dial_requests.push(req);
-                            }
-                    } else {
-                        debug!(%peer_id, "tried to reap non-existent asymmetric connection, must be incoming only");
-                    }
-
-                    None
-                } else {
-                    Some((peer_id, sym))
-                }
-            })
-            .collect();
-
-        self.process_dial_requests(dial_requests)
-    }
-
     /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
     fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
     where
@@ -995,20 +960,6 @@ where
                 );
                 effects
             }
-
-            Event::SweepSymmetries => {
-                let now = Instant::now();
-
-                let mut effects = self.enforce_symmetric_connections(now);
-
-                effects.extend(
-                    effect_builder
-                        .set_timeout(SYMMETRY_SWEEP_INTERVAL)
-                        .event(|_| Event::SweepSymmetries),
-                );
-
-                effects
-            }
             Event::SweepOutgoing => {
                 let now = Instant::now();
                 let requests = self.outgoing_manager.perform_housekeeping(now);
@@ -1060,7 +1011,7 @@ where
 }
 
 #[derive(Debug, Error)]
-pub enum SmallNetworkIdentityError {
+pub(crate) enum SmallNetworkIdentityError {
     #[error("could not generate TLS certificate: {0}")]
     CouldNotGenerateTlsCertificate(OpenSslErrorStack),
     #[error(transparent)]
@@ -1069,13 +1020,13 @@ pub enum SmallNetworkIdentityError {
 
 /// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
 #[derive(DataSize, Debug, Clone)]
-pub struct SmallNetworkIdentity {
+pub(crate) struct SmallNetworkIdentity {
     secret_key: Arc<PKey<Private>>,
     tls_certificate: Arc<TlsCert>,
 }
 
 impl SmallNetworkIdentity {
-    pub fn new() -> result::Result<Self, SmallNetworkIdentityError> {
+    pub(crate) fn new() -> result::Result<Self, SmallNetworkIdentityError> {
         let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
             .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
         let tls_certificate = tls::validate_cert(not_yet_validated_x509_cert)?;
@@ -1112,7 +1063,7 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub type FramedTransport<P> = tokio_serde::Framed<
+pub(crate) type FramedTransport<P> = tokio_serde::Framed<
     tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
     Arc<Message<P>>,

@@ -25,9 +25,9 @@
 //! [`run`](struct.Runner.html#method.crank).
 
 mod event_queue_metrics;
-pub mod initializer;
-pub mod joiner;
-pub mod participating;
+pub(crate) mod initializer;
+pub(crate) mod joiner;
+pub(crate) mod participating;
 mod queue_kind;
 
 #[cfg(test)]
@@ -67,7 +67,7 @@ use crate::{
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
-pub use queue_kind::QueueKind;
+pub(crate) use queue_kind::QueueKind;
 
 /// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
 const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
@@ -153,7 +153,7 @@ fn adjust_open_files_limit() {
 
 /// The value returned by a reactor on completion of the `run()` loop.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
-pub enum ReactorExit {
+pub(crate) enum ReactorExit {
     /// The process should continue running, moving to the next reactor.
     ProcessShouldContinue,
     /// The process should exit with the given exit code to allow the launcher to react
@@ -167,7 +167,7 @@ pub enum ReactorExit {
 /// is the central hook for any part of the program that schedules events directly.
 ///
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
-pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
+pub(crate) type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 
 /// Event queue handle
 ///
@@ -175,7 +175,7 @@ pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 #[derive(DataSize, Debug)]
-pub struct EventQueueHandle<REv>(&'static Scheduler<REv>)
+pub(crate) struct EventQueueHandle<REv>(&'static Scheduler<REv>)
 where
     REv: 'static;
 
@@ -211,7 +211,7 @@ impl<REv> EventQueueHandle<REv> {
 /// Reactor core.
 ///
 /// Any reactor should implement this trait and be executed by the `reactor::run` function.
-pub trait Reactor: Sized {
+pub(crate) trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
@@ -260,7 +260,7 @@ pub trait Reactor: Sized {
 }
 
 /// A reactor event type.
-pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
+pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
     /// Returns the event as a control announcement, if possible.
     ///
     /// Returns a reference to a wrapped
@@ -272,7 +272,7 @@ pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
 /// A drop-like trait for `async` compatible drop-and-wait.
 ///
 /// Shuts down a type by explicitly freeing resources, but allowing to wait on cleanup to complete.
-pub trait Finalize: Sized {
+pub(crate) trait Finalize: Sized {
     /// Runs cleanup code and waits for a shutdown to complete.
     ///
     /// This function must always be optional and a way to wait for all resources to be freed, not
@@ -297,7 +297,7 @@ struct AllocatedMem {
 /// The runner manages a reactors event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
-pub struct Runner<R>
+pub(crate) struct Runner<R>
 where
     R: Reactor,
 {
@@ -419,20 +419,10 @@ where
     R::Event: Serialize,
     R::Error: From<prometheus::Error>,
 {
-    /// Creates a new runner from a given configuration.
-    ///
-    /// Creates a metrics registry that is only going to be used in this runner.
-    #[inline]
-    pub async fn new(cfg: R::Config, rng: &mut NodeRng) -> Result<Self, R::Error> {
-        // Instantiate a new registry for metrics for this reactor.
-        let registry = Registry::new();
-        Self::with_metrics(cfg, rng, &registry).await
-    }
-
     /// Creates a new runner from a given configuration, using existing metrics.
     #[inline]
     #[instrument("runner creation", level = "debug", skip(cfg, rng, registry))]
-    pub async fn with_metrics(
+    pub(crate) async fn with_metrics(
         cfg: R::Config,
         rng: &mut NodeRng,
         registry: &Registry,
@@ -476,32 +466,12 @@ where
         })
     }
 
-    /// Inject (schedule then process) effects created via a call to `create_effects` which is
-    /// itself passed an instance of an `EffectBuilder`.
-    #[cfg(test)]
-    pub(crate) async fn process_injected_effects<F>(&mut self, create_effects: F)
-    where
-        F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
-    {
-        let event_queue = EventQueueHandle::new(self.scheduler);
-        let effect_builder = EffectBuilder::new(event_queue);
-
-        let effects = create_effects(effect_builder);
-
-        process_effects(self.scheduler, effects)
-            .instrument(debug_span!(
-                "process injected effects",
-                ev = self.event_count
-            ))
-            .await;
-    }
-
     /// Processes a single event on the event queue.
     ///
     /// Returns `false` if processing should stop.
     #[inline]
     #[instrument("crank", level = "debug", fields(ev = self.event_count), skip(self, rng))]
-    pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
+    pub(crate) async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
@@ -687,21 +657,10 @@ where
         }
     }
 
-    /// Processes a single event if there is one, returns `None` otherwise.
-    #[inline]
-    #[cfg(test)]
-    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
-        if self.scheduler.item_count() == 0 {
-            None
-        } else {
-            Some(self.crank(rng).await)
-        }
-    }
-
     /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
     /// signal.
     #[inline]
-    pub async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
+    pub(crate) async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
         loop {
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
@@ -743,26 +702,73 @@ where
         }
     }
 
-    /// Returns a reference to the reactor.
-    #[inline]
-    pub fn reactor(&self) -> &R {
-        &self.reactor
-    }
-
-    /// Returns a mutable reference to the reactor.
-    #[inline]
-    pub fn reactor_mut(&mut self) -> &mut R {
-        &mut self.reactor
-    }
-
     /// Shuts down a reactor, sealing and draining the entire queue before returning it.
     #[inline]
-    pub async fn drain_into_inner(self) -> R {
+    pub(crate) async fn drain_into_inner(self) -> R {
         self.scheduler.seal();
         for event in self.scheduler.drain_queues().await {
             debug!(event=%event, "drained event");
         }
         self.reactor
+    }
+}
+
+#[cfg(test)]
+impl<R> Runner<R>
+where
+    R: Reactor,
+    R::Event: Serialize,
+    R::Error: From<prometheus::Error>,
+{
+    /// Creates a new runner from a given configuration.
+    ///
+    /// Creates a metrics registry that is only going to be used in this runner.
+    #[inline]
+    pub(crate) async fn new(cfg: R::Config, rng: &mut NodeRng) -> Result<Self, R::Error> {
+        // Instantiate a new registry for metrics for this reactor.
+        let registry = Registry::new();
+        Self::with_metrics(cfg, rng, &registry).await
+    }
+
+    /// Inject (schedule then process) effects created via a call to `create_effects` which is
+    /// itself passed an instance of an `EffectBuilder`.
+    pub(crate) async fn process_injected_effects<F>(&mut self, create_effects: F)
+    where
+        F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
+    {
+        let event_queue = EventQueueHandle::new(self.scheduler);
+        let effect_builder = EffectBuilder::new(event_queue);
+
+        let effects = create_effects(effect_builder);
+
+        process_effects(self.scheduler, effects)
+            .instrument(debug_span!(
+                "process injected effects",
+                ev = self.event_count
+            ))
+            .await;
+    }
+
+    /// Processes a single event if there is one, returns `None` otherwise.
+    #[inline]
+    pub(crate) async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
+        if self.scheduler.item_count() == 0 {
+            None
+        } else {
+            Some(self.crank(rng).await)
+        }
+    }
+
+    /// Returns a reference to the reactor.
+    #[inline]
+    pub(crate) fn reactor(&self) -> &R {
+        &self.reactor
+    }
+
+    /// Returns a mutable reference to the reactor.
+    #[inline]
+    pub(crate) fn reactor_mut(&mut self) -> &mut R {
+        &mut self.reactor
     }
 }
 
@@ -841,7 +847,7 @@ where
 
 /// Converts multiple effects into another by wrapping.
 #[inline]
-pub fn wrap_effects<Ev, REv, F>(wrap: F, effects: Effects<Ev>) -> Effects<REv>
+pub(crate) fn wrap_effects<Ev, REv, F>(wrap: F, effects: Effects<Ev>) -> Effects<REv>
 where
     F: Fn(Ev) -> REv + Send + 'static + Clone,
     Ev: Send + 'static,

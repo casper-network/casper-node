@@ -51,6 +51,7 @@ pub struct LoggingConfig {
 
 impl LoggingConfig {
     /// Creates a new instance of LoggingConfig.
+    #[cfg(test)]
     pub fn new(format: LoggingFormat, color: bool, abbreviate_modules: bool) -> Self {
         LoggingConfig {
             format,
@@ -254,6 +255,7 @@ where
 /// Initializes the logging system with the default parameters.
 ///
 /// See `init_params` for details.
+#[cfg(test)]
 pub fn init() -> anyhow::Result<()> {
     init_with_config(&Default::default())
 }

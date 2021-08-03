@@ -5,8 +5,8 @@
 
 mod condition_check_reactor;
 mod multi_stage_test_reactor;
-pub mod network;
-pub mod test_clock;
+pub(crate) mod network;
+pub(crate) mod test_clock;
 mod test_rng;
 
 use std::{
@@ -20,7 +20,6 @@ use std::{
 use anyhow::Context;
 use derive_more::From;
 use futures::channel::oneshot;
-use serde::{de::DeserializeOwned, Serialize};
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, info, warn};
@@ -38,12 +37,6 @@ pub(crate) use test_rng::TestRng;
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.
 const FATAL_GRACE_TIME: time::Duration = time::Duration::from_secs(3);
-
-pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
-    let serialized = bincode::serialize(value).unwrap();
-    let deserialized = bincode::deserialize(serialized.as_slice()).unwrap();
-    assert_eq!(*value, deserialized);
-}
 
 /// Create an unused port on localhost.
 pub(crate) fn unused_port_on_localhost() -> u16 {
@@ -105,9 +98,6 @@ pub(crate) struct ComponentHarness<REv: 'static> {
     pub(crate) rng: TestRng,
     /// Scheduler for events. Only explicitly polled by the harness.
     pub(crate) scheduler: &'static Scheduler<REv>,
-    /// An event queue handle to the scheduler.
-    #[allow(unused)] // TODO: Remove once in use.
-    pub(crate) event_queue_handle: EventQueueHandle<REv>,
     /// Effect builder pointing at the scheduler.
     pub(crate) effect_builder: EffectBuilder<REv>,
     /// A temporary directory that can be used to store various data.
@@ -170,7 +160,6 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
         Ok(ComponentHarness {
             rng,
             scheduler,
-            event_queue_handle,
             effect_builder,
             tmp,
             runtime,
@@ -302,19 +291,16 @@ impl<REv: 'static> Default for ComponentHarness<REv> {
 /// Essentially discards all event (they are not even processed by the unit testing hardness),
 /// except for control announcements, which are preserved.
 #[derive(Debug, From)]
-pub enum UnitTestEvent {
+pub(crate) enum UnitTestEvent {
     /// A preserved control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
-    /// A different event.
-    Other,
 }
 
 impl ReactorEvent for UnitTestEvent {
     fn as_control(&self) -> Option<&ControlAnnouncement> {
         match self {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
-            UnitTestEvent::Other => None,
         }
     }
 }

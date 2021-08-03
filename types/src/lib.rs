@@ -97,7 +97,3 @@ pub use crate::{
 compile_error!(
     "casper-types requires one of 'std' (enabled by default) or 'no-std' features to be enabled"
 );
-#[cfg(all(feature = "std", feature = "no-std"))]
-compile_error!(
-    "casper-types features 'std' (enabled by default) and 'no-std' should not both be enabled"
-);

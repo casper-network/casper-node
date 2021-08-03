@@ -129,7 +129,7 @@ const LMDB_FILES: [&str; 4] = [
 
 #[derive(Debug, From, Serialize)]
 #[repr(u8)]
-pub enum Event {
+pub(crate) enum Event {
     /// Incoming storage request.
     #[from]
     StorageRequest(StorageRequest),
@@ -140,7 +140,7 @@ pub enum Event {
 
 /// A storage component initialization error.
 #[derive(Debug, Error)]
-pub enum Error {
+pub(crate) enum Error {
     /// Failure to create the root database directory.
     #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
@@ -204,7 +204,7 @@ impl From<lmdb::Error> for Error {
 }
 
 #[derive(DataSize, Debug)]
-pub struct Storage {
+pub(crate) struct Storage {
     /// Storage location.
     root: PathBuf,
     /// Environment holding LMDB databases.
@@ -444,6 +444,7 @@ impl Storage {
                 txn.commit()?;
                 Ok(responder.respond(()).ignore())
             }
+            #[cfg(test)]
             StateStoreRequest::Load { key, responder } => {
                 let txn = self.env.begin_ro_txn()?;
                 let bytes = match txn.get(self.state_store_db, &key) {
@@ -554,9 +555,6 @@ impl Storage {
                     self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?,
                 )
                 .ignore(),
-            StorageRequest::GetSwitchBlockAtEraId { era_id, responder } => responder
-                .respond(self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?)
-                .ignore(),
             StorageRequest::GetBlockHeaderForDeploy {
                 deploy_hash,
                 responder,
@@ -566,21 +564,6 @@ impl Storage {
                         &mut self.env.begin_ro_txn()?,
                         deploy_hash,
                     )?)
-                    .ignore()
-            }
-            StorageRequest::GetHighestSwitchBlock { responder } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                responder
-                    .respond(
-                        self.switch_block_era_id_index
-                            .keys()
-                            .last()
-                            .and_then(|&era_id| {
-                                self.get_switch_block_by_era_id(&mut txn, era_id)
-                                    .transpose()
-                            })
-                            .transpose()?,
-                    )
                     .ignore()
             }
             StorageRequest::GetBlockHeader {
@@ -611,18 +594,6 @@ impl Storage {
                 responder,
             } => responder
                 .respond(self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?)
-                .ignore(),
-            StorageRequest::GetDeployHeaders {
-                deploy_hashes,
-                responder,
-            } => responder
-                .respond(
-                    // TODO: Similarly to getting block headers, requires optimized function.
-                    self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?
-                        .into_iter()
-                        .map(|opt| opt.map(|deploy| deploy.header().clone()))
-                        .collect(),
-                )
                 .ignore(),
             StorageRequest::PutExecutionResults {
                 block_hash,
@@ -833,7 +804,7 @@ impl Storage {
     }
 
     // Retrieves a block header to handle a network request.
-    pub fn read_block_header_and_finality_signatures_by_height(
+    pub(crate) fn read_block_header_and_finality_signatures_by_height(
         &self,
         height: u64,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
@@ -966,20 +937,8 @@ impl Storage {
         Ok(deploys)
     }
 
-    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        era_id: EraId,
-    ) -> Result<Option<Block>, LmdbExtError> {
-        self.switch_block_era_id_index
-            .get(&era_id)
-            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
-            .transpose()
-    }
-
     /// Retrieves the state root hashes from storage to check the integrity of the trie store.
-    pub fn get_state_root_hashes_for_trie_check(&self) -> Option<Vec<Blake2bHash>> {
+    pub(crate) fn get_state_root_hashes_for_trie_check(&self) -> Option<Vec<Blake2bHash>> {
         let mut blake_hashes: Vec<Blake2bHash> = Vec::new();
         let txn =
             self.env.begin_ro_txn().ok().unwrap_or_else(|| {
@@ -1022,7 +981,7 @@ impl Storage {
     }
 
     // Retrieves a block header to handle a network request.
-    pub fn read_block_header_by_hash(
+    pub(crate) fn read_block_header_by_hash(
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHeader>, LmdbExtError> {
@@ -1256,11 +1215,11 @@ fn move_storage_files_to_network_subdir(
 /// On-disk storage configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub(crate) struct Config {
     /// The path to the folder where any files created or read by the storage component will exist.
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
-    pub path: PathBuf,
+    pub(crate) path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.
@@ -1346,7 +1305,7 @@ impl Storage {
 
     /// Retrieves a potentially deduplicated deploy from the deploy store or cache, depending on
     /// runtime configuration.
-    pub fn handle_deduplicated_legacy_direct_deploy_request(
+    pub(crate) fn handle_deduplicated_legacy_direct_deploy_request(
         &mut self,
         deploy_hash: DeployHash,
     ) -> Option<SharedObject<Vec<u8>>> {
@@ -1392,7 +1351,7 @@ impl Storage {
     /// # Panics
     ///
     /// Panics if an IO error occurs.
-    pub fn get_deploy_by_hash(&self, deploy_hash: DeployHash) -> Option<Deploy> {
+    pub(crate) fn get_deploy_by_hash(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -1406,7 +1365,7 @@ impl Storage {
     /// # Panics
     ///
     /// Panics on any IO or db corruption error.
-    pub fn get_all_deploy_hashes(&self) -> BTreeSet<DeployHash> {
+    pub(crate) fn get_all_deploy_hashes(&self) -> BTreeSet<DeployHash> {
         let txn = self
             .env
             .begin_ro_txn()
@@ -1424,12 +1383,24 @@ impl Storage {
             .collect()
     }
 
+    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
+    fn get_switch_block_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<Block>, LmdbExtError> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
+    }
+
     /// Get the switch block for a specified era number in a read-only LMDB database transaction.
     ///
     /// # Panics
     ///
     /// Panics on any IO or db corruption error.
-    pub fn transactional_get_switch_block_by_era_id(
+    pub(crate) fn transactional_get_switch_block_by_era_id(
         &self,
         switch_block_era_num: u64,
     ) -> Option<Block> {

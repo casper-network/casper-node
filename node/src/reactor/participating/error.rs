@@ -7,7 +7,7 @@ use crate::{
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
-pub enum Error {
+pub(crate) enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
@@ -22,7 +22,7 @@ pub enum Error {
 
     /// An error starting one of the HTTP servers.
     #[error("http server listening error: {0}")]
-    ListeningError(#[from] ListeningError),
+    HttpServerListening(#[from] ListeningError),
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
@@ -35,8 +35,4 @@ pub enum Error {
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
-
-    /// Failed to serialize data.
-    #[error("serialization: {0}")]
-    Serialization(#[source] bincode::ErrorKind),
 }

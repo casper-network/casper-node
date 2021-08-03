@@ -23,7 +23,7 @@ pub(crate) fn generate_reactor(def: &ReactorDefinition) -> TokenStream {
     quote!(
         /// Top-level reactor.
         #[derive(Debug)]
-        pub struct #reactor_ident {
+        pub(crate) struct #reactor_ident {
             #(#reactor_fields,)*
         }
     )
@@ -134,7 +134,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         #[doc = #event_docs]
         #[allow(clippy::large_enum_variant)]
         #[derive(Debug, serde::Serialize)]
-        pub enum #event_ident {
+        pub(crate) enum #event_ident {
            #(#event_variants,)*
         }
 
@@ -150,7 +150,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
 
         #[doc = #error_docs]
         #[derive(Debug)]
-        pub enum #error_ident {
+        pub(crate) enum #error_ident {
             #(#error_variants,)*
             /// Failure to initialize metrics.
             MetricsInitialization(prometheus::Error),

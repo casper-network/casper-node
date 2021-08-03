@@ -3,12 +3,7 @@
 //! Tracks the state of connections, which may be uni- or bi-directional, depending on whether a
 //! peer has connected back to us. Asymmetric connections are usually removed periodically.
 
-use std::{
-    collections::BTreeSet,
-    mem,
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeSet, mem, net::SocketAddr, time::Instant};
 
 use datasize::DataSize;
 use tracing::warn;
@@ -173,8 +168,13 @@ impl ConnectionSymmetry {
         }
     }
 
+    #[cfg(test)]
     /// Indicates whether or not a connection should be cleaned up.
-    pub(super) fn should_be_reaped(&self, now: Instant, max_time_asymmetric: Duration) -> bool {
+    pub(super) fn should_be_reaped(
+        &self,
+        now: Instant,
+        max_time_asymmetric: std::time::Duration,
+    ) -> bool {
         match self {
             ConnectionSymmetry::IncomingOnly { since, .. } => now >= *since + max_time_asymmetric,
             ConnectionSymmetry::OutgoingOnly { since } => now >= *since + max_time_asymmetric,
