@@ -124,6 +124,9 @@ pub enum Error {
     /// An arithmetic overflow occurred
     #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
     ArithmeticOverflow,
+    /// Unable to retrieve system contract hash
+    #[cfg_attr(feature = "std", error("Missing system contract hash"))]
+    MissingSystemContractHash,
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]

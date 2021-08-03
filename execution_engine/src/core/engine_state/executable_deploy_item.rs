@@ -40,6 +40,7 @@ use crate::{
     },
     storage::global_state::StateReader,
 };
+use casper_types::system::HANDLE_PAYMENT;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const MODULE_BYTES_TAG: u8 = 0;
@@ -152,7 +153,7 @@ impl ExecutableDeployItem {
                 let base_key = account_hash.into();
                 let contract_hash = *system_contract_registry
                     .get(STANDARD_PAYMENT)
-                    .expect("must have standard payment hash");
+                    .ok_or_else(|| Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string()))?;
                 let module = wasm::do_nothing_module(preprocessor)?;
                 return Ok(DeployMetadata {
                     kind: DeployKind::System,

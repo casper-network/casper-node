@@ -1305,15 +1305,33 @@ where
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.context.get_system_contract(MINT).value())
+        key.into_hash()
+            == Some(
+                self.context
+                    .get_system_contract(MINT)
+                    .expect("should have mint hash")
+                    .value(),
+            )
     }
 
     pub fn is_handle_payment(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.context.get_system_contract(HANDLE_PAYMENT).value())
+        key.into_hash()
+            == Some(
+                self.context
+                    .get_system_contract(HANDLE_PAYMENT)
+                    .expect("should have handle_payment hash")
+                    .value(),
+            )
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.context.get_system_contract(AUCTION).value())
+        key.into_hash()
+            == Some(
+                self.context
+                    .get_system_contract(AUCTION)
+                    .expect("should have auction hash")
+                    .value(),
+            )
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -1363,13 +1381,13 @@ where
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
-            keys.push(self.get_mint_contract().into());
-            keys.push(self.get_handle_payment_contract().into());
+            keys.push(self.get_mint_contract()?.into());
+            keys.push(self.get_handle_payment_contract()?.into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.context.get_system_contract(MINT).into();
+        let base_key = self.context.get_system_contract(MINT)?.into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -1509,13 +1527,13 @@ where
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
-            keys.push(self.get_mint_contract().into());
-            keys.push(self.get_handle_payment_contract().into());
+            keys.push(self.get_mint_contract()?.into());
+            keys.push(self.get_handle_payment_contract()?.into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.context.get_system_contract(HANDLE_PAYMENT).into();
+        let base_key = self.context.get_system_contract(HANDLE_PAYMENT)?.into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -1637,13 +1655,13 @@ where
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
-            keys.push(self.get_mint_contract().into());
-            keys.push(self.get_handle_payment_contract().into());
+            keys.push(self.get_mint_contract()?.into());
+            keys.push(self.get_handle_payment_contract()?.into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.context.get_system_contract(AUCTION).into();
+        let base_key = self.context.get_system_contract(AUCTION)?.into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -1948,7 +1966,7 @@ where
         // This will skip arguments check for system contracts only. This code should be removed on
         // next major version bump. Argument checks for system contract is still done during
         // execution of a system contract.
-        if !self.context.system_contracts().contains(&contract_hash) {
+        if !self.context.system_contracts()?.contains(&contract_hash) {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
                 .iter()
@@ -2134,8 +2152,8 @@ where
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
-            keys.push(self.get_mint_contract().into());
-            keys.push(self.get_handle_payment_contract().into());
+            keys.push(self.get_mint_contract()?.into());
+            keys.push(self.get_handle_payment_contract()?.into());
             extract_access_rights_from_keys(keys)
         };
 
@@ -2636,7 +2654,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.base_key() != Key::from(self.context.get_system_contract(MINT)) {
+        if self.context.base_key() != Key::from(self.context.get_system_contract(MINT)?) {
             return Err(Error::InvalidContext);
         }
 
@@ -2662,7 +2680,7 @@ where
 
     /// Records given auction info at a given era id
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
-        if self.context.base_key() != Key::from(self.context.get_system_contract(AUCTION)) {
+        if self.context.base_key() != Key::from(self.context.get_system_contract(AUCTION)?) {
             return Err(Error::InvalidContext);
         }
 
@@ -2827,28 +2845,28 @@ where
     /// Looks up the public mint contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_mint_contract(&self) -> ContractHash {
+    fn get_mint_contract(&self) -> Result<ContractHash, Error> {
         self.context.get_system_contract(MINT)
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_handle_payment_contract(&self) -> ContractHash {
+    fn get_handle_payment_contract(&self) -> Result<ContractHash, Error> {
         self.context.get_system_contract(HANDLE_PAYMENT)
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_standard_payment_contract(&self) -> ContractHash {
+    fn get_standard_payment_contract(&self) -> Result<ContractHash, Error> {
         self.context.get_system_contract(STANDARD_PAYMENT)
     }
 
     /// Looks up the public auction contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_auction_contract(&self) -> ContractHash {
+    fn get_auction_contract(&self) -> Result<ContractHash, Error> {
         self.context.get_system_contract(AUCTION)
     }
 
@@ -2923,7 +2941,7 @@ where
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
-        self.mint_create(self.get_mint_contract())
+        self.mint_create(self.get_mint_contract()?)
     }
 
     /// Calls the "transfer" method on the mint contract at the given mint
@@ -2964,7 +2982,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
-        let mint_contract_hash = self.get_mint_contract();
+        let mint_contract_hash = self.get_mint_contract()?;
 
         let target_key = Key::Account(target);
 
@@ -3008,7 +3026,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
-        let mint_contract_key = self.get_mint_contract();
+        let mint_contract_key = self.get_mint_contract()?;
 
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
         self.context.insert_uref(target);
@@ -3096,7 +3114,7 @@ where
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
         };
 
-        let mint_contract_key = self.get_mint_contract();
+        let mint_contract_key = self.get_mint_contract()?;
 
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
@@ -3166,10 +3184,10 @@ where
     ) -> Result<Result<(), ApiError>, Trap> {
         let contract_hash: ContractHash = match SystemContractType::try_from(system_contract_index)
         {
-            Ok(SystemContractType::Mint) => self.get_mint_contract(),
-            Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract(),
-            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract(),
-            Ok(SystemContractType::Auction) => self.get_auction_contract(),
+            Ok(SystemContractType::Mint) => self.get_mint_contract()?,
+            Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract()?,
+            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract()?,
+            Ok(SystemContractType::Auction) => self.get_auction_contract()?,
             Err(error) => return Ok(Err(error)),
         };
 

@@ -1133,31 +1133,34 @@ where
         Ok(())
     }
 
-    pub fn system_contracts(&self) -> Vec<ContractHash> {
-        self.tracking_copy
+    pub fn system_contracts(&self) -> Result<Vec<ContractHash>, Error> {
+        let hashes = self
+            .tracking_copy
             .borrow_mut()
             .get_system_contracts(self.correlation_id)
-            .expect("should have system contract registry")
+            .map_err(|_| Error::MissingSystemContractRegistry)?
             .values()
             .cloned()
-            .collect()
+            .collect();
+        Ok(hashes)
     }
 
-    pub fn get_system_contract(&self, name: &str) -> ContractHash {
-        *self
+    pub fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
+        let hash = *self
             .tracking_copy
             .borrow_mut()
             .get_system_contracts(self.correlation_id)
             .map_err(Error::from)
             .expect("should have system contracts registry")
             .get(name)
-            .expect("should have system contract registry")
+            .ok_or_else(|| Error::MissingSystemContractHash(name.to_string()))?;
+        Ok(hash)
     }
 
-    pub fn get_system_contract_registry(&self) -> BTreeMap<String, ContractHash> {
+    pub fn get_system_contract_registry(&self) -> Result<BTreeMap<String, ContractHash>, Error> {
         self.tracking_copy
             .borrow_mut()
             .get_system_contracts(self.correlation_id)
-            .expect("must have system contract registry")
+            .map_err(|_| Error::MissingSystemContractRegistry)
     }
 }

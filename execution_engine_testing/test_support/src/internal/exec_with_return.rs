@@ -119,7 +119,9 @@ where
 
     let preprocessor = Preprocessor::new(wasm_config);
 
-    let system_contract_registry = context.get_system_contract_registry();
+    let system_contract_registry = context
+        .get_system_contract_registry()
+        .expect("must have contract registry");
 
     let parity_module = deploy_item
         .get_deploy_metadata(

@@ -656,6 +656,7 @@ pub enum GenesisError {
         public_key: PublicKey,
     },
     FailedToCreateRegistry,
+    MissingSystemContractHash(String),
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1159,7 +1160,9 @@ where
             .map_err(execution::Error::from)
             .map_err(GenesisError::ExecutionError)?;
 
-        let mint_hash = registry.get(MINT).expect("should have mint contract hash");
+        let mint_hash = registry
+            .get(MINT)
+            .ok_or_else(|| GenesisError::MissingSystemContractHash(AUCTION.to_string()))?;
 
         let base_key = Key::Hash(mint_hash.value());
         let mint = {
@@ -1276,9 +1279,11 @@ where
             .borrow_mut()
             .read(self.correlation_id, &Key::SystemContractRegistry)
             .map_err(|_| GenesisError::FailedToCreateRegistry)?
-            .expect("should have stored value")
+            .ok_or_else(|| {
+                GenesisError::CLValue("failed to convert registry as stored value".to_string())
+            })?
             .as_cl_value()
-            .expect("should be able to convert to CLValue")
+            .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?
             .to_owned();
         let mut partial_registry =
             CLValue::into_t::<BTreeMap<String, ContractHash>>(partial_cl_registry)

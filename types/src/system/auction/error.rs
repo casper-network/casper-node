@@ -153,6 +153,9 @@ pub enum Error {
     /// An arithmetic overflow has occurred.
     #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
     ArithmeticOverflow = 39,
+    /// Unable to retrieve a system contract hash.
+    #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
+    MissingSystemContractHash = 40,
 
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
@@ -226,6 +229,9 @@ impl TryFrom<u8> for Error {
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
+            d if d == Error::MissingSystemContractHash as u8 => {
+                Ok(Error::MissingSystemContractHash)
+            }
             _ => Err(TryFromU8ForError(())),
         }
     }
