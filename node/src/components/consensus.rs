@@ -127,14 +127,6 @@ pub enum Event<I> {
         /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
         booking_block_hash: Result<BlockHash, EraId>,
     },
-    /// Event raised upon initialization, when a number of eras have to be instantiated at once.
-    InitializeEras {
-        key_blocks: HashMap<EraId, BlockHeader>,
-        booking_blocks: HashMap<EraId, BlockHash>,
-        /// This is empty except if the activation era still needs to be instantiated: Its
-        /// validator set is read from the global state, not from a key block.
-        validators: BTreeMap<PublicKey, U512>,
-    },
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
 }
@@ -232,7 +224,6 @@ impl<I: Debug> Display for Event<I> {
                 "New era should be created; booking block hash: {:?}, switch block: {:?}",
                 booking_block_hash, switch_block_header
             ),
-            Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
@@ -328,11 +319,6 @@ where
                 };
                 handling_es.handle_create_new_era(*switch_block_header, booking_block_hash)
             }
-            Event::InitializeEras {
-                key_blocks,
-                booking_blocks,
-                validators,
-            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
             }
