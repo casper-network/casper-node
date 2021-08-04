@@ -6,6 +6,7 @@ mod types;
 
 use std::{
     fmt::{self, Debug, Formatter},
+    path::Path,
     sync::Arc,
     time::Instant,
 };
@@ -48,8 +49,7 @@ use crate::{
     },
     fatal,
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
-    utils::WithDir,
-    NodeRng, StorageConfig,
+    NodeRng,
 };
 use std::collections::BTreeMap;
 
@@ -489,7 +489,7 @@ impl ContractRuntime {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
-        storage_config: WithDir<StorageConfig>,
+        storage_dir: &Path,
         contract_runtime_config: &Config,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
@@ -503,9 +503,8 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         };
 
-        let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
-            path.as_path(),
+            storage_dir,
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
         )?);
