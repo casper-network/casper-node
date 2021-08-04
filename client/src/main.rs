@@ -116,7 +116,6 @@ async fn main() {
         (GetBalance::NAME, Some(matches)) => (GetBalance::run(matches), matches),
         (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches), matches),
         (GetStateRootHash::NAME, Some(matches)) => (GetStateRootHash::run(matches), matches),
-
         (GetEraInfoBySwitchBlock::NAME, Some(matches)) => {
             (GetEraInfoBySwitchBlock::run(matches), matches)
         }

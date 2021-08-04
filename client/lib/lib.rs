@@ -29,12 +29,12 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
-    rpcs::state::DictionaryIdentifier,
+    crypto::hash::Digest,
+    rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
     types::{BlockHash, Deploy},
 };
 use casper_types::{Key, UIntParseError, U512};
 
-use casper_node::{crypto::hash::Digest, rpcs::state::GlobalStateIdentifier};
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
