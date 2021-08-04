@@ -71,9 +71,9 @@ pub enum Error {
         upgrade_era_id: EraId,
     },
 
-    /// Non-emergency upgrade will clobber existing block-chain.
+    /// Non-emergency upgrade will clobber existing blockchain.
     #[error(
-        "Non-emergency upgrade will clobber existing block-chain. \
+        "Non-emergency upgrade will clobber existing blockchain. \
          Preexisting block header: {preexisting_block_header}"
     )]
     NonEmergencyUpgradeWillClobberExistingBlockChain {
