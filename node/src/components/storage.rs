@@ -69,10 +69,7 @@ use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
 
 use crate::{
-    components::{
-        linear_chain_sync::{self, FinalitySignatureError},
-        Component,
-    },
+    components::{consensus, linear_chain_sync::FinalitySignatureError, Component},
     crypto,
     crypto::hash::{self, Digest},
     effect::{
@@ -1564,7 +1561,7 @@ impl Storage {
         };
         let finality_check_result = match switch_block_header.next_era_validator_weights() {
             None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
-            Some(validator_weights) => linear_chain_sync::check_sufficient_finality_signatures(
+            Some(validator_weights) => consensus::check_sufficient_finality_signatures(
                 validator_weights,
                 finality_threshold_fraction,
                 &block_signatures,

@@ -13,9 +13,9 @@ mod protocols;
 #[cfg(test)]
 mod tests;
 mod traits;
+mod utils;
 
 use std::{
-    collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
@@ -28,7 +28,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::{EraId, PublicKey, U512};
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::Component,
@@ -53,6 +53,7 @@ pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{bonded_eras, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+pub(crate) use utils::check_sufficient_finality_signatures;
 
 #[cfg(test)]
 pub(crate) use era_supervisor::oldest_bonded_era;
