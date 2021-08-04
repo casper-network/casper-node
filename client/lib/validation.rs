@@ -22,7 +22,7 @@ use casper_types::{bytesrepr, Key, U512};
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
 const GET_ITEM_RESULT_MERKLE_PROOF: &str = "merkle_proof";
-const GLOBAL_STATE_QUERY_BLOCK_HEADER: &str = "block_header";
+const QUERY_GLOBAL_STATE_BLOCK_HEADER: &str = "block_header";
 
 /// Error that can be returned when validating a block returned from a JSON-RPC method.
 #[derive(Error, Debug)]
@@ -184,7 +184,7 @@ pub(crate) fn validate_query_response(
     .map_err(Into::into)
 }
 
-pub(crate) fn validate_global_state_query(
+pub(crate) fn validate_query_global_state(
     response: &JsonRpc,
     state_identifier: GlobalStateIdentifier,
     key: &Key,
@@ -218,7 +218,7 @@ pub(crate) fn validate_global_state_query(
     };
 
     let json_block_header_value = object
-        .get(GLOBAL_STATE_QUERY_BLOCK_HEADER)
+        .get(QUERY_GLOBAL_STATE_BLOCK_HEADER)
         .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
     let maybe_json_block_header: Option<JsonBlockHeader> =
         serde_json::from_value(json_block_header_value.to_owned())?;

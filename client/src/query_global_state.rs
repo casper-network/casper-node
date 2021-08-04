@@ -116,7 +116,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
         let key = common::key::get(matches)?;
         let path = common::path::get(matches);
 
-        casper_client::global_state_query(
+        casper_client::query_global_state(
             maybe_rpc_id,
             node_address,
             verbosity_level,

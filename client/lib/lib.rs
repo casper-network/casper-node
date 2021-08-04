@@ -533,7 +533,7 @@ pub fn get_account_info(
 /// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
-pub fn global_state_query(
+pub fn query_global_state(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
