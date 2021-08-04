@@ -1,5 +1,3 @@
-use std::fmt::{Display, Formatter, Result};
-
 use crate::ARGS;
 
 /// Used to hold the information about the Casper dependencies which will be required by the
@@ -24,25 +22,31 @@ impl Dependency {
         }
     }
 
+    pub fn display_with_features(&self, default_features: bool, features: Vec<&str>) -> String {
+        let mut output = format!(r#"{} = {{ version = "{}""#, self.name, self.version);
+
+        if let Some(workspace_path) = ARGS.workspace_path() {
+            output = format!(
+                r#"{}, path = "{}/{}""#,
+                output,
+                workspace_path.display(),
+                self.relative_path
+            );
+        }
+
+        if !default_features {
+            output = format!("{}, default-features = false", output);
+        }
+
+        if !features.is_empty() {
+            output = format!("{}, features = {:?}", output, features);
+        }
+
+        format!("{} }}", output)
+    }
+
     #[cfg(test)]
     pub fn version(&self) -> &str {
         &self.version
-    }
-}
-
-impl Display for Dependency {
-    fn fmt(&self, formatter: &mut Formatter) -> Result {
-        if let Some(workspace_path) = ARGS.workspace_path() {
-            write!(
-                formatter,
-                r#"{} = {{ version = "{}", path = "{}/{}" }}"#,
-                self.name,
-                self.version,
-                workspace_path.display(),
-                self.relative_path
-            )
-        } else {
-            write!(formatter, r#"{} = "{}""#, self.name, self.version)
-        }
     }
 }

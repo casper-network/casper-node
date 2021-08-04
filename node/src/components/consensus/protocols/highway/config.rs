@@ -16,8 +16,12 @@ pub struct Config {
     pub unit_hashes_folder: PathBuf,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pub pending_vertex_timeout: TimeDiff,
-    /// If the current era's protocol state has not progressed for this long, shut down.
+    /// If the current era's protocol state has not progressed for this long, request the latest
+    /// state from peers.
     pub standstill_timeout: TimeDiff,
+    /// If another `standstill_timeout` passes assume we failed to join the network and restart.
+    #[serde(default = "default_shutdown_on_standstill")]
+    pub shutdown_on_standstill: bool,
     /// Log inactive or faulty validators periodically, with this interval.
     pub log_participation_interval: TimeDiff,
     /// Log the size of every incoming and outgoing serialized unit.
@@ -30,12 +34,17 @@ pub struct Config {
     pub round_success_meter: RSMConfig,
 }
 
+fn default_shutdown_on_standstill() -> bool {
+    false
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
             unit_hashes_folder: Default::default(),
             pending_vertex_timeout: "10sec".parse().unwrap(),
             standstill_timeout: "1min".parse().unwrap(),
+            shutdown_on_standstill: false,
             log_participation_interval: "10sec".parse().unwrap(),
             log_unit_sizes: false,
             max_execution_delay: 3,

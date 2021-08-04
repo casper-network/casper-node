@@ -51,7 +51,7 @@ impl MockReactor {
     async fn expect_block_validator_event(&self) -> Event<NodeId> {
         let (reactor_event, _) = self.scheduler.pop().await;
         if let ReactorEvent::BlockValidator(event) = reactor_event {
-            return event;
+            event
         } else {
             panic!("unexpected event: {:?}", reactor_event);
         }

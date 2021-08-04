@@ -32,7 +32,7 @@ impl Blake2bHash {
     }
 
     /// Converts the underlying BLAKE2b hash digest array to a `Vec`
-    pub fn to_vec(&self) -> Vec<u8> {
+    pub fn into_vec(self) -> Vec<u8> {
         self.0.to_vec()
     }
 }
@@ -91,9 +91,9 @@ impl AsRef<[u8]> for Blake2bHash {
     }
 }
 
-impl Into<[u8; Blake2bHash::LENGTH]> for Blake2bHash {
-    fn into(self) -> [u8; Blake2bHash::LENGTH] {
-        self.0
+impl From<Blake2bHash> for [u8; Blake2bHash::LENGTH] {
+    fn from(hash: Blake2bHash) -> Self {
+        hash.0
     }
 }
 

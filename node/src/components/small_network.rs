@@ -261,7 +261,7 @@ where
         let mut public_addr =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
-        let net_metrics = Arc::new(NetworkingMetrics::new(&registry)?);
+        let net_metrics = Arc::new(NetworkingMetrics::new(registry)?);
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -608,7 +608,7 @@ where
                 info!("new outgoing connection established");
 
                 let (sender, receiver) = mpsc::unbounded_channel();
-                let handle = OutgoingHandle { peer_addr, sender };
+                let handle = OutgoingHandle { sender, peer_addr };
 
                 let request = self
                     .outgoing_manager

@@ -12,9 +12,9 @@ use crate::{
 #[derive(Clone)]
 struct TestData<K, V>(Blake2bHash, Trie<K, V>);
 
-impl<'a, K, V> Into<(&'a Blake2bHash, &'a Trie<K, V>)> for &'a TestData<K, V> {
-    fn into(self) -> (&'a Blake2bHash, &'a Trie<K, V>) {
-        (&self.0, &self.1)
+impl<'a, K, V> From<&'a TestData<K, V>> for (&'a Blake2bHash, &'a Trie<K, V>) {
+    fn from(test_data: &'a TestData<K, V>) -> Self {
+        (&test_data.0, &test_data.1)
     }
 }
 

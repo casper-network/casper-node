@@ -525,6 +525,6 @@ fn should_record_wasm_transfers_with_subcall() {
 
     const EXPECTED_COUNT: Option<usize> = Some(2);
     for expected in &[expected_alice, expected_bob, expected_carol] {
-        assert_eq!(transfer_counts.get(&expected).cloned(), EXPECTED_COUNT);
+        assert_eq!(transfer_counts.get(expected).cloned(), EXPECTED_COUNT);
     }
 }

@@ -31,7 +31,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
         fetcher::{self, Fetcher},
@@ -114,9 +114,6 @@ pub enum Event {
     /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
-    /// Contract runtime event.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
     /// Block validator event.
     #[from]
     BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
@@ -125,6 +122,9 @@ pub enum Event {
     LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
 
     // Requests
+    /// Contract runtime request.
+    #[from]
+    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
@@ -226,12 +226,6 @@ impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for Event {
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<ContractRuntimeRequest> for Event {
-    fn from(request: ContractRuntimeRequest) -> Event {
-        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
     }
 }
 
@@ -372,6 +366,11 @@ impl Reactor {
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
+
+    /// Inspect contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
+    }
 }
 
 impl reactor::Reactor for Reactor {
@@ -430,7 +429,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -481,15 +480,26 @@ impl reactor::Reactor for Reactor {
             Event::Consensus,
             init_consensus_effects,
         ));
-        contract_runtime.set_initial_state(
-            chainspec_loader.initial_state_root_hash(),
-            chainspec_loader.initial_block_header(),
-        );
-        contract_runtime.set_parent_map_from_block(maybe_latest_block_header);
 
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let execution_pre_state = match maybe_latest_block_header {
+            // if there is a latest block header and it's later than the block that was highest
+            // when the node was started up, we should use its post-state-hash as the initial state
+            // hash
+            Some(latest_block_header)
+                if latest_block_header.height()
+                    >= chainspec_loader
+                        .initial_execution_pre_state()
+                        .next_block_height() =>
+            {
+                ExecutionPreState::from(&latest_block_header)
+            }
+            _ => chainspec_loader.initial_execution_pre_state(),
+        };
+        contract_runtime.set_initial_state(execution_pre_state);
+
+        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
-            &registry,
+            registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -510,8 +520,8 @@ impl reactor::Reactor for Reactor {
         Ok((
             Reactor {
                 metrics,
-                network,
                 small_network,
+                network,
                 address_gossiper,
                 storage,
                 contract_runtime,
@@ -993,19 +1003,13 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
-            Event::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::BlockAlreadyExecuted(_),
-            ) => {
-                debug!("Ignoring `BlockAlreadyExecuted` announcement in `participating` reactor.");
-                Effects::new()
-            }
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
                 era_id,
                 execution_effect,
             }) => {
                 let reactor_event = Event::EventStreamServer(event_stream_server::Event::Step {
                     era_id,
-                    effect: execution_effect,
+                    execution_effect,
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
@@ -1075,7 +1079,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(&self);
+        self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
     }

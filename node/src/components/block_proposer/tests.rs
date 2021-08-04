@@ -296,7 +296,7 @@ fn should_successfully_prune() {
 
     assert_eq!(proposer.sets.pending_deploys.len(), 3);
     assert_eq!(proposer.sets.finalized_deploys.len(), 1);
-    assert!(proposer.sets.finalized_deploys.contains_key(&deploy1.id()));
+    assert!(proposer.sets.finalized_deploys.contains_key(deploy1.id()));
 
     // now move the clock to make some things expire
     let pruned = proposer.prune(expired_time);

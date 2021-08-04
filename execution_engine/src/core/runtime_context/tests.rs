@@ -35,7 +35,7 @@ use crate::{
     storage::{
         global_state::{
             in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
-            CommitResult, StateProvider,
+            StateProvider,
         },
         protocol_data::ProtocolData,
     },
@@ -58,14 +58,9 @@ fn mock_tracking_copy(
 
     let mut m = AdditiveMap::new();
     m.insert(init_key, transform);
-    let commit_result = hist
+    let new_hash = hist
         .commit(correlation_id, root_hash, m)
         .expect("Creation of mocked account should be a success.");
-
-    let new_hash = match commit_result {
-        CommitResult::Success { state_root, .. } => state_root,
-        other => panic!("Committing changes to test History failed: {:?}.", other),
-    };
 
     let reader = hist
         .checkout(new_hash)
@@ -136,7 +131,7 @@ fn mock_runtime_context<'a>(
         access_rights,
         RuntimeArgs::new(),
         BTreeSet::from_iter(vec![AccountHash::new([0; 32])]),
-        &account,
+        account,
         base_key,
         BlockTime::new(0),
         DeployHash::new([1u8; 32]),

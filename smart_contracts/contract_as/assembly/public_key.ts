@@ -16,6 +16,22 @@ export class PublicKey {
     constructor(private variant: PublicKeyVariant, private bytes: Uint8Array) {
     }
 
+    getRawBytes(): Uint8Array{
+        return this.bytes;
+    }
+
+    getAlgorithmName(): string{
+        const ED25519_LOWERCASE: string = "ed25519";
+        const SECP256K1_LOWERCASE: string = "secp256k1";
+        
+        switch (this.variant) {
+            case PublicKeyVariant.Ed25519:
+                return ED25519_LOWERCASE;
+            case PublicKeyVariant.Secp256k1:
+                return SECP256K1_LOWERCASE;
+        }
+    }
+
     toBytes(): Array<u8> {
         let variantBytes: Array<u8> = [<u8>this.variant];
         return variantBytes.concat(typedToArray(this.bytes));

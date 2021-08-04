@@ -33,7 +33,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
         let secret_key = common::secret_key::get(matches);
         let maybe_output_path = creation_common::output::get(matches).unwrap_or_default();
         let force = common::force::get(matches);
-        casper_client::sign_deploy_file(&input_path, secret_key, maybe_output_path, force).map(
+        casper_client::sign_deploy_file(input_path, secret_key, maybe_output_path, force).map(
             |_| {
                 Success::Output(if maybe_output_path.is_empty() {
                     String::new()

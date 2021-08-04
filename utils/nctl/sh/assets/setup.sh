@@ -60,7 +60,7 @@ PATH_TO_CONFIG_TOML=${PATH_TO_CONFIG_TOML:-"${NCTL_CASPER_HOME}/resources/local/
 function _set_nodes()
 {
     log "... setting node config"
-    
+
     local IDX
     local PATH_TO_FILE
 
@@ -137,12 +137,12 @@ function _main()
                              "$NCTL_CASPER_HOME/target/release/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
-    fi    
+    fi
 
     setup_asset_keys "$COUNT_NODES" "$COUNT_USERS"
 
     setup_asset_daemon
-    
+
     setup_asset_chainspec "$COUNT_NODES" \
                           "1.0.0" \
                           $(get_genesis_timestamp "$GENESIS_DELAY") \

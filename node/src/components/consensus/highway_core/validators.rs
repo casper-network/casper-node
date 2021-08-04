@@ -214,9 +214,9 @@ where
 }
 
 impl<T> ValidatorMap<T> {
-    /// Returns the value for the given validator. Panics if the index is out of range.
-    pub(crate) fn get(&self, idx: ValidatorIndex) -> &T {
-        &self.0[idx.0 as usize]
+    /// Returns the value for the given validator, or `None` if the index is out of range.
+    pub(crate) fn get(&self, idx: ValidatorIndex) -> Option<&T> {
+        self.0.get(idx.0 as usize)
     }
 
     /// Returns the number of values. This must equal the number of validators.

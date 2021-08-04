@@ -12,24 +12,27 @@ steps:
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
-      - rustup component add rustfmt
-      - cargo fmt --all -- --check
+      - make setup-rs
+      - make check-format
 
   - name: cargo-clippy
     image: casperlabs/node-build-u1804
-    environment:
-      RUSTFLAGS: '-D warnings'
     commands:
       - make setup-rs
-      - rustup component add clippy
-      - cargo clippy --all-targets --all-features --workspace
+      - make lint
+
+  - name: cargo-doc
+    image: casperlabs/node-build-u1804
+    commands:
+      - make setup-rs
+      - make doc
 
   - name: cargo-audit
     image: casperlabs/node-build-u1804
     commands:
-      - cargo install cargo-audit
+      - make setup-audit
       - cargo generate-lockfile
-      - cargo audit
+      - make audit
 
 trigger:
   branch:
@@ -244,6 +247,21 @@ steps:
   volumes:
   - name: nctl-temp-dir
     path: /tmp/nctl_upgrade_stage
+  when:
+    branch:
+      - "release-*"
+    event:
+      - push
+
+- name: nctl-bucket-pr-clear
+  image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_BRANCH} --recursive"
   when:
     branch:
       - "release-*"
@@ -554,6 +572,16 @@ steps:
   volumes:
   - name: nctl-temp-dir
     path: /tmp/nctl_upgrade_stage
+
+- name: nctl-bucket-tag-clear
+  image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_TAG} --recursive"
 
 - name: nctl-bucket-upload
   image: plugins/s3-sync:latest

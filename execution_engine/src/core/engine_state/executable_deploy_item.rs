@@ -101,7 +101,7 @@ impl ExecutableDeployItem {
             ExecutableDeployItem::StoredVersionedContractByName { entry_point, .. }
             | ExecutableDeployItem::StoredVersionedContractByHash { entry_point, .. }
             | ExecutableDeployItem::StoredContractByHash { entry_point, .. }
-            | ExecutableDeployItem::StoredContractByName { entry_point, .. } => &entry_point,
+            | ExecutableDeployItem::StoredContractByName { entry_point, .. } => entry_point,
         }
     }
 
@@ -166,7 +166,7 @@ impl ExecutableDeployItem {
             }
             ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
                 let base_key = account_hash.into();
-                let module = preprocessor.preprocess(&module_bytes.as_ref())?;
+                let module = preprocessor.preprocess(module_bytes.as_ref())?;
                 return Ok(DeployMetadata {
                     kind: DeployKind::Session,
                     account_hash,

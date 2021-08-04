@@ -1,6 +1,10 @@
 //! Types and functions used by the http server to manage the event-stream.
 
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use datasize::DataSize;
 use futures::{future, Stream, StreamExt};
@@ -20,7 +24,7 @@ use tokio::{
 use tokio_stream::wrappers::{
     errors::BroadcastStreamRecvError, BroadcastStream, UnboundedReceiverStream,
 };
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, warn};
 use warp::{
     filters::BoxedFilter,
     path,
@@ -201,6 +205,12 @@ impl SseData {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+pub(super) struct DeployAccepted {
+    pub(super) deploy_accepted: Deploy,
+}
+
 /// The components of a single SSE.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(super) struct ServerSentEvent {
@@ -306,7 +316,7 @@ async fn filter_map_server_sent_event(
             // lost when the joiner reactor's event queue is purged as we transition to the
             // participating reactor.  This workaround should no longer be required once the reactor
             // transitions are handled properly.
-            let deploy =
+            let deploy_accepted =
                 match time::timeout(GET_DEPLOY_TIMEOUT, deploy_getter.get(deploy_hash)).await {
                     Ok(maybe_deploy) => maybe_deploy?,
                     Err(_) => {
@@ -316,7 +326,7 @@ async fn filter_map_server_sent_event(
                 };
 
             Some(Ok(WarpServerSentEvent::default()
-                .json_data(&deploy)
+                .json_data(&DeployAccepted { deploy_accepted })
                 .unwrap_or_else(|error| {
                     warn!(%error, "failed to jsonify sse event");
                     WarpServerSentEvent::default()
@@ -498,17 +508,25 @@ fn stream_to_client(
     event_filter: &'static [EventFilter],
     deploy_getter: DeployGetter,
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
-    UnboundedReceiverStream::new(initial_events)
-        .map(|event| Ok(BroadcastChannelMessage::ServerSentEvent(event)))
-        .chain(BroadcastStream::new(ongoing_events))
-        .filter_map(
-            move |result| {
-            let cloned_deploy_getter = deploy_getter.clone();
+    // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
+    let initial_stream_ids = Arc::new(RwLock::new(HashSet::new()));
+    let cloned_initial_ids = Arc::clone(&initial_stream_ids);
+
+    // Map the events arriving after the initial stream to the correct error type, filtering out any
+    // that have already been sent in the initial stream.
+    let ongoing_stream = BroadcastStream::new(ongoing_events)
+        .filter_map(move |result| {
+            let cloned_initial_ids = Arc::clone(&cloned_initial_ids);
             async move {
-                trace!(?result);
                 match result {
                     Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
-                        filter_map_server_sent_event(&event, event_filter, cloned_deploy_getter).await
+                        if let Some(id) = event.id {
+                            if cloned_initial_ids.read().unwrap().contains(&id) {
+                                debug!(event_id=%id, "skipped duplicate event");
+                                return None;
+                            }
+                        }
+                        Some(Ok(event))
                     }
                     Ok(BroadcastChannelMessage::Shutdown) => Some(Err(RecvError::Closed)),
                     Err(BroadcastStreamRecvError::Lagged(amount)) => {
@@ -521,13 +539,38 @@ fn stream_to_client(
                 }
             }
         })
-        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))))
+        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))));
+
+    // Serve the initial events followed by the ongoing ones, filtering as dictated by the
+    // `event_filter`.
+    UnboundedReceiverStream::new(initial_events)
+        .map(move |event| {
+            if let Some(id) = event.id {
+                let _ = initial_stream_ids.write().unwrap().insert(id);
+            }
+            Ok(event)
+        })
+        .chain(ongoing_stream)
+        .filter_map(move |result| {
+            let cloned_deploy_getter = deploy_getter.clone();
+            async move {
+                match result {
+                    Ok(event) => {
+                        filter_map_server_sent_event(&event, event_filter, cloned_deploy_getter)
+                            .await
+                    }
+                    Err(error) => Some(Err(error)),
+                }
+            }
+        })
 }
 
 #[cfg(test)]
 mod tests {
+    use std::iter;
+
     use super::*;
-    use crate::logging;
+    use crate::{logging, testing::TestRng};
 
     async fn should_filter_out(
         event: &ServerSentEvent,
@@ -685,5 +728,185 @@ mod tests {
             should_filter_out(&malformed_finality_signature, filter, getter.clone()).await;
             should_filter_out(&malformed_step, filter, getter.clone()).await;
         }
+    }
+
+    async fn should_filter_duplicate_events(path_filter: &str) {
+        // Returns `count` random SSE events, all of a single variant defined by `path_filter`.  The
+        // events will have sequential IDs starting from `start_id`, and if the path filter
+        // indicates the events should be deploy-accepted ones, the corresponding random deploys
+        // will be inserted into `deploys`.
+        fn make_random_events(
+            rng: &mut TestRng,
+            start_id: Id,
+            count: usize,
+            path_filter: &str,
+            deploys: &mut HashMap<DeployHash, Deploy>,
+        ) -> Vec<ServerSentEvent> {
+            (start_id..(start_id + count as u32))
+                .map(|id| {
+                    let data = match path_filter {
+                        SSE_API_MAIN_PATH => SseData::random_block_added(rng),
+                        SSE_API_DEPLOYS_PATH => {
+                            let (event, deploy) = SseData::random_deploy_accepted(rng);
+                            assert!(deploys.insert(*deploy.id(), deploy).is_none());
+                            event
+                        }
+                        SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
+                        _ => unreachable!(),
+                    };
+                    ServerSentEvent { id: Some(id), data }
+                })
+                .collect()
+        }
+
+        // Returns `NUM_ONGOING_EVENTS` random SSE events for the ongoing stream containing
+        // duplicates taken from the end of the initial stream.  Allows for the full initial stream
+        // to be duplicated except for its first event (the `ApiVersion` one) which has no ID.
+        fn make_ongoing_events(
+            rng: &mut TestRng,
+            duplicate_count: usize,
+            initial_events: &[ServerSentEvent],
+            path_filter: &str,
+            deploys: &mut HashMap<DeployHash, Deploy>,
+        ) -> Vec<ServerSentEvent> {
+            assert!(duplicate_count < initial_events.len());
+            let initial_skip_count = initial_events.len() - duplicate_count;
+            let unique_start_id = initial_events.len() as Id - 1;
+            let unique_count = NUM_ONGOING_EVENTS - duplicate_count;
+            initial_events
+                .iter()
+                .skip(initial_skip_count)
+                .cloned()
+                .chain(make_random_events(
+                    rng,
+                    unique_start_id,
+                    unique_count,
+                    path_filter,
+                    deploys,
+                ))
+                .collect()
+        }
+
+        // The number of events in the initial stream, excluding the very first `ApiVersion` one.
+        const NUM_INITIAL_EVENTS: usize = 10;
+        // The number of events in the ongoing stream, including any duplicated from the initial
+        // stream.
+        const NUM_ONGOING_EVENTS: usize = 20;
+
+        let _ = logging::init();
+        let mut rng = crate::new_rng();
+
+        let mut deploys = HashMap::new();
+
+        let initial_events: Vec<ServerSentEvent> =
+            iter::once(ServerSentEvent::initial_event(ProtocolVersion::V1_0_0))
+                .chain(make_random_events(
+                    &mut rng,
+                    0,
+                    NUM_INITIAL_EVENTS,
+                    path_filter,
+                    &mut deploys,
+                ))
+                .collect();
+
+        // Run three cases; where only a single event is duplicated, where five are duplicated, and
+        // where the whole initial stream (except the `ApiVersion`) is duplicated.
+        for duplicate_count in &[1, 5, NUM_INITIAL_EVENTS] {
+            // Create the events with the requisite duplicates at the start of the collection.
+            let ongoing_events = make_ongoing_events(
+                &mut rng,
+                *duplicate_count,
+                &initial_events,
+                path_filter,
+                &mut deploys,
+            );
+
+            let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
+            let (ongoing_events_sender, ongoing_events_receiver) =
+                broadcast::channel(NUM_INITIAL_EVENTS + NUM_ONGOING_EVENTS + 1);
+            let deploy_getter = DeployGetter::with_deploys(deploys.clone());
+
+            // Send all the events.
+            for event in initial_events.iter().cloned() {
+                initial_events_sender.send(event).unwrap();
+            }
+            for event in ongoing_events.iter().cloned() {
+                let _ = ongoing_events_sender
+                    .send(BroadcastChannelMessage::ServerSentEvent(event))
+                    .unwrap();
+            }
+            // Drop the channel senders so that the chained receiver streams can both complete.
+            drop(initial_events_sender);
+            drop(ongoing_events_sender);
+
+            // Collect the events emitted by `stream_to_client()` - should not contain duplicates.
+            let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
+                initial_events_receiver,
+                ongoing_events_receiver,
+                get_filter(path_filter).unwrap(),
+                deploy_getter,
+            )
+            .collect()
+            .await;
+
+            // Create the expected collection of emitted events.
+            let deduplicated_events: Vec<ServerSentEvent> = initial_events
+                .iter()
+                .take(initial_events.len() - duplicate_count)
+                .cloned()
+                .chain(ongoing_events)
+                .collect();
+
+            assert_eq!(received_events.len(), deduplicated_events.len());
+
+            // Iterate the received and expected collections, asserting that each matches.  As we
+            // don't have access to the internals of the `WarpServerSentEvent`s, assert using their
+            // `String` representations.
+            for (received_event, deduplicated_event) in
+                received_events.iter().zip(deduplicated_events.iter())
+            {
+                let received_event = received_event.as_ref().unwrap();
+
+                let expected_data_string = match &deduplicated_event.data {
+                    SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
+                        deploy_accepted: deploys.get(deploy).unwrap().clone(),
+                    })
+                    .unwrap(),
+                    data => serde_json::to_string(&data).unwrap(),
+                };
+
+                let expected_id_string = if let Some(id) = deduplicated_event.id {
+                    format!("\nid:{}", id)
+                } else {
+                    String::new()
+                };
+
+                let expected_string =
+                    format!("data:{}{}", expected_data_string, expected_id_string);
+
+                assert_eq!(received_event.to_string().trim(), expected_string)
+            }
+        }
+    }
+
+    /// This test checks that main events from the initial stream which are duplicated in the
+    /// ongoing stream are filtered out.
+    #[tokio::test]
+    async fn should_filter_duplicate_main_events() {
+        should_filter_duplicate_events(SSE_API_MAIN_PATH).await
+    }
+
+    /// This test checks that deploy-accepted events from the initial stream which are duplicated in
+    /// the ongoing stream are filtered out.
+    #[tokio::test]
+    async fn should_filter_duplicate_deploys_events() {
+        should_filter_duplicate_events(SSE_API_DEPLOYS_PATH).await
+    }
+
+    /// This test checks that signature events from the initial stream which are duplicated in the
+    /// ongoing stream are filtered out.
+    #[tokio::test]
+    async fn should_filter_duplicate_signature_events() {
+        should_filter_duplicate_events(SSE_API_SIGNATURES_PATH).await
     }
 }
