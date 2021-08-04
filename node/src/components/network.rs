@@ -42,14 +42,13 @@ use serde::{Deserialize, Serialize};
 use tokio::{select, sync::watch, task::JoinHandle, time};
 use tracing::{debug, error, info, trace, warn};
 
-pub(crate) use self::event::Event;
 use self::{
     behavior::{Behavior, SwarmBehaviorEvent},
     gossip::GossipMessage,
     one_way_messaging::{Codec as OneWayCodec, Outgoing as OneWayOutgoingMessage},
     protocol_id::ProtocolId,
 };
-pub(crate) use self::{config::Config, error::Error};
+pub(crate) use self::{config::Config, error::Error, event::Event};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
