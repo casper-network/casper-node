@@ -227,31 +227,31 @@ where
     Ok(None)
 }
 
-pub(super) struct SwitchBlockInfo {
+pub(super) struct KeyBlockInfo {
     validator_weights: BTreeMap<PublicKey, U512>,
     era_start: Timestamp,
-    switch_block_height: u64,
+    height: u64,
 }
 
-impl SwitchBlockInfo {
-    pub(super) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<SwitchBlockInfo> {
+impl KeyBlockInfo {
+    pub(super) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
-            .map(|next_era_validator_weights| SwitchBlockInfo {
+            .map(|next_era_validator_weights| KeyBlockInfo {
                 validator_weights: next_era_validator_weights.clone(),
                 era_start: block_header.timestamp(),
-                switch_block_height: block_header.height(),
+                height: block_header.height(),
             })
     }
 }
 
 /// Get trusted switch block.
 /// Returns `None` if we are still in the first era.
-async fn get_trusted_switch_block_info<REv, I>(
+async fn get_trusted_key_block_info<REv, I>(
     effect_builder: EffectBuilder<REv>,
     chainspec: &Chainspec,
     trusted_header: &BlockHeader,
-) -> Result<SwitchBlockInfo, LinearChainSyncError<I>>
+) -> Result<KeyBlockInfo, LinearChainSyncError<I>>
 where
     REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
@@ -275,10 +275,10 @@ where
             _ => {}
         }
 
-        if let Some(switch_block_info) =
-            SwitchBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
+        if let Some(key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
         {
-            break Ok(switch_block_info);
+            break Ok(key_block_info);
         }
 
         if current_header_to_walk_back_from.height() == 0 {
@@ -438,8 +438,8 @@ where
         _ => {}
     }
 
-    let mut trusted_switch_block_info =
-        get_trusted_switch_block_info(effect_builder, &chainspec, &trusted_block_header).await?;
+    let mut trusted_key_block_info =
+        get_trusted_key_block_info(effect_builder, &chainspec, &trusted_block_header).await?;
 
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height, or we reach
@@ -459,7 +459,7 @@ where
         let maybe_fetched_block = fetch_and_store_block_header_by_height(
             effect_builder,
             most_recent_block_header.height() + 1,
-            &trusted_switch_block_info.validator_weights,
+            &trusted_key_block_info.validator_weights,
             chainspec.highway_config.finality_threshold_fraction,
         )
         .await?;
@@ -467,10 +467,10 @@ where
             Some(more_recent_block_header_with_metadata) => {
                 most_recent_block_header = more_recent_block_header_with_metadata.block_header;
                 // If the new block is a switch block, update the validator weights, etc...
-                if let Some(switch_block_info) =
-                    SwitchBlockInfo::maybe_from_block_header(&most_recent_block_header)
+                if let Some(key_block_info) =
+                    KeyBlockInfo::maybe_from_block_header(&most_recent_block_header)
                 {
-                    trusted_switch_block_info = switch_block_info;
+                    trusted_key_block_info = key_block_info;
                 }
             }
             // If we could not fetch, we can stop when the most recent header:
@@ -479,7 +479,7 @@ where
             None if most_recent_block_header.protocol_version() == current_version
                 && is_current_era(
                     &most_recent_block_header,
-                    &trusted_switch_block_info,
+                    &trusted_key_block_info,
                     &chainspec,
                 ) =>
             {
@@ -537,7 +537,7 @@ where
         let block = match fetch_and_store_block_by_height(
             effect_builder,
             most_recent_block_header.height() + 1,
-            &trusted_switch_block_info.validator_weights,
+            &trusted_key_block_info.validator_weights,
             chainspec.highway_config.finality_threshold_fraction,
         )
         .await?
@@ -545,7 +545,7 @@ where
             None => {
                 if is_current_era(
                     &most_recent_block_header,
-                    &trusted_switch_block_info,
+                    &trusted_key_block_info,
                     &chainspec,
                 ) {
                     info!(
@@ -609,10 +609,10 @@ where
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
 
-        if let Some(switch_block_info) =
-            SwitchBlockInfo::maybe_from_block_header(&most_recent_block_header)
+        if let Some(key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(&most_recent_block_header)
         {
-            trusted_switch_block_info = switch_block_info;
+            trusted_key_block_info = key_block_info;
         }
     }
 
@@ -630,12 +630,12 @@ where
 /// Returns `true` if `most_recent_block` belongs to an era that is still ongoing.
 pub(super) fn is_current_era(
     most_recent_block: &BlockHeader,
-    trusted_switch_block_info: &SwitchBlockInfo,
+    trusted_key_block_info: &KeyBlockInfo,
     chainspec: &Chainspec,
 ) -> bool {
     is_current_era_given_current_timestamp(
         most_recent_block,
-        trusted_switch_block_info,
+        trusted_key_block_info,
         chainspec,
         Timestamp::now(),
     )
@@ -643,15 +643,15 @@ pub(super) fn is_current_era(
 
 fn is_current_era_given_current_timestamp(
     most_recent_block: &BlockHeader,
-    trusted_switch_block_info: &SwitchBlockInfo,
+    trusted_key_block_info: &KeyBlockInfo,
     chainspec: &Chainspec,
     current_timestamp: Timestamp,
 ) -> bool {
-    let SwitchBlockInfo {
+    let KeyBlockInfo {
         era_start,
-        switch_block_height,
+        height,
         validator_weights: _,
-    } = trusted_switch_block_info;
+    } = trusted_key_block_info;
 
     // If the minimum era duration has not yet run out, the era is still current.
     if current_timestamp.saturating_diff(*era_start) < chainspec.core_config.era_duration {
@@ -662,7 +662,7 @@ fn is_current_era_given_current_timestamp(
     let remaining_blocks_in_this_era = chainspec
         .core_config
         .minimum_era_height
-        .saturating_sub(most_recent_block.height() - *switch_block_height);
+        .saturating_sub(most_recent_block.height() - *height);
     let min_round_length = chainspec.highway_config.min_round_length();
     let time_since_most_recent_block =
         current_timestamp.saturating_diff(most_recent_block.timestamp());
@@ -751,7 +751,7 @@ mod tests {
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
         let switch_block5 = create_block(era6_start, EraId::from(5), 100, true);
-        let trusted_switch_block_info5 = SwitchBlockInfo::maybe_from_block_header(&switch_block5)
+        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(&switch_block5)
             .expect("no switch block info for switch block");
 
         // If we are still within the minimum era duration the era is current, even if we have the

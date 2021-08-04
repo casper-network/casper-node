@@ -55,7 +55,7 @@ use crate::{
     components::{
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchedData, FetcherError},
-        linear_chain_sync::operations::SwitchBlockInfo,
+        linear_chain_sync::operations::KeyBlockInfo,
     },
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
@@ -386,9 +386,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     );
                     return fatal!(effect_builder, "unexpected block execution result").ignore();
                 }
-                match last_switch_block_header.as_ref().and_then(|boxed_header| {
-                    SwitchBlockInfo::maybe_from_block_header(&*boxed_header)
-                }) {
+                match last_switch_block_header
+                    .as_ref()
+                    .and_then(|boxed_header| KeyBlockInfo::maybe_from_block_header(&*boxed_header))
+                {
                     Some(trusted_switch_block_info)
                         if operations::is_current_era(
                             latest_block.header(),
