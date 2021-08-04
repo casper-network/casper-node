@@ -205,6 +205,12 @@ impl SseData {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+pub(super) struct DeployAccepted {
+    pub(super) deploy_accepted: Deploy,
+}
+
 /// The components of a single SSE.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(super) struct ServerSentEvent {
@@ -310,7 +316,7 @@ async fn filter_map_server_sent_event(
             // lost when the joiner reactor's event queue is purged as we transition to the
             // participating reactor.  This workaround should no longer be required once the reactor
             // transitions are handled properly.
-            let deploy =
+            let deploy_accepted =
                 match time::timeout(GET_DEPLOY_TIMEOUT, deploy_getter.get(deploy_hash)).await {
                     Ok(maybe_deploy) => maybe_deploy?,
                     Err(_) => {
@@ -320,7 +326,7 @@ async fn filter_map_server_sent_event(
                 };
 
             Some(Ok(WarpServerSentEvent::default()
-                .json_data(&deploy)
+                .json_data(&DeployAccepted { deploy_accepted })
                 .unwrap_or_else(|error| {
                     warn!(%error, "failed to jsonify sse event");
                     WarpServerSentEvent::default()
@@ -862,9 +868,10 @@ mod tests {
                 let received_event = received_event.as_ref().unwrap();
 
                 let expected_data_string = match &deduplicated_event.data {
-                    SseData::DeployAccepted { deploy } => {
-                        serde_json::to_string(deploys.get(deploy).unwrap()).unwrap()
-                    }
+                    SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
+                        deploy_accepted: deploys.get(deploy).unwrap().clone(),
+                    })
+                    .unwrap(),
                     data => serde_json::to_string(&data).unwrap(),
                 };
 

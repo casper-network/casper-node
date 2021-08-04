@@ -1024,7 +1024,7 @@ where
                 )?;
                 scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
                 scoped_instrumenter.add_property("value_size", value_ptr_size);
-                self.dictionary_put(
+                let ret = self.dictionary_put(
                     uref_ptr,
                     uref_size,
                     key_bytes_ptr,
@@ -1032,7 +1032,7 @@ where
                     value_ptr,
                     value_ptr_size,
                 )?;
-                Ok(None)
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
             FunctionIndex::LoadCallStack => {
                 // args(0) (Output) Pointer to number of elements in the call stack.

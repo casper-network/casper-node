@@ -27,6 +27,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
+use smallvec::SmallVec;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
@@ -46,12 +47,13 @@ use crate::{
     },
     crypto::hash::Digest,
     effect::{
-        requests::{BlockValidationRequest, StorageRequest},
+        announcements::ControlAnnouncement,
+        requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, DeployHash, DeployOrTransferHash,
+        ActivationPoint, BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash,
         FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
@@ -1080,15 +1082,8 @@ where
                 // the block or seen as equivocating via the consensus protocol gets faulty.
                 let era_end = terminal_block_data.map(|tbd| EraReport {
                     rewards: tbd.rewards,
-                    // TODO: This is a temporary change to disable slashing; we just report all
-                    // equivocators as "inactive" instead. Change this back and put
-                    // era.accusations() into equivocators instead of inactive_validators.
-                    equivocators: vec![],
-                    inactive_validators: tbd
-                        .inactive_validators
-                        .into_iter()
-                        .chain(era.accusations())
-                        .collect(),
+                    equivocators: era.accusations(),
+                    inactive_validators: tbd.inactive_validators,
                 });
                 let finalized_block = FinalizedBlock::new(
                     Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
@@ -1123,7 +1118,8 @@ where
                     effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
                 }
                 // Request execution of the finalized block.
-                effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
+                let effect_builder = self.effect_builder;
+                effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());
                 self.era_supervisor.update_consensus_pause();
                 effects
             }
@@ -1268,6 +1264,38 @@ where
             Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
+}
+
+async fn execute_finalized_block<REv>(
+    effect_builder: EffectBuilder<REv>,
+    finalized_block: FinalizedBlock,
+) where
+    REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
+{
+    // Get the deploy hashes for the finalized block.
+    let deploy_hashes = finalized_block
+        .deploys_and_transfers_iter()
+        .map(DeployHash::from)
+        .collect::<SmallVec<_>>();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
+    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
+        if let Some(deploy) = maybe_deploy {
+            deploys.push(deploy)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
+    effect_builder
+        .enqueue_block_for_execution(finalized_block, deploys)
+        .await
 }
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.

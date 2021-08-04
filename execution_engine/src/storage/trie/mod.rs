@@ -173,7 +173,7 @@ impl PointerBlock {
         ret
     }
 
-    pub fn to_indexed_pointers(&self) -> impl Iterator<Item = (u8, Pointer)> + '_ {
+    pub fn as_indexed_pointers(&self) -> impl Iterator<Item = (u8, Pointer)> + '_ {
         self.0
             .iter()
             .enumerate()
@@ -184,7 +184,7 @@ impl PointerBlock {
     }
 
     pub fn child_count(&self) -> usize {
-        self.to_indexed_pointers().count()
+        self.as_indexed_pointers().count()
     }
 }
 

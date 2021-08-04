@@ -211,8 +211,10 @@ impl<C: Context> ActiveValidator<C> {
                 }
             }
         }
-        // We are not creating a new unit. Send a ping if necessary, to show that we're online.
-        if !state.has_ping(self.vidx, timestamp) {
+        // We are not creating a new unit. Send a ping once per maximum-length round, to show that
+        // we're online.
+        let one_max_round_ago = timestamp.saturating_sub(state.params().max_round_length());
+        if !state.has_ping(self.vidx, one_max_round_ago + 1.into()) {
             warn!(%timestamp, "too many validators offline, sending ping");
             effects.push(self.send_ping(timestamp, instance_id));
         }
@@ -505,14 +507,17 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
         state
             .panorama()
-            .get(self.vidx)
+            .get(self.vidx)?
             .correct()
             .map(|vh| state.unit(vh))
     }
 
     /// Checks if validator knows it's faulty.
     fn is_faulty(&self, state: &State<C>) -> bool {
-        state.panorama().get(self.vidx).is_faulty()
+        state
+            .panorama()
+            .get(self.vidx)
+            .map_or(false, |obs| obs.is_faulty())
     }
 
     /// Returns the duration after the beginning of a round when the witness units are sent.
@@ -594,6 +599,8 @@ impl<C: Context> ActiveValidator<C> {
                     && !state.has_endorsement(endorsements.unit(), self.vidx)
             }
             Vertex::Ping(ping) => {
+                // If we get a ping from ourselves with a later timestamp than the latest one we
+                // know of, another node must be signing with our key.
                 ping.creator() == self.vidx && !state.has_ping(self.vidx, ping.timestamp())
             }
             Vertex::Evidence(_) => false,
@@ -687,7 +694,7 @@ mod tests {
 
     impl TestState {
         fn new(
-            state: State<TestContext>,
+            mut state: State<TestContext>,
             start_time: Timestamp,
             instance_id: u64,
             fd: FinalityDetector<TestContext>,
@@ -701,55 +708,54 @@ mod tests {
                 current_round_id + state::round_len(state.params().init_round_exp())
             };
             let target_ftt = state.total_weight() / 3;
-            let active_validators = validators
-                .into_iter()
-                .map(|vidx| {
-                    let secret = TestSecret(vidx.0);
-                    let (av, effects) = ActiveValidator::new(
-                        vidx,
-                        secret,
-                        start_time,
-                        start_time,
-                        &state,
-                        None,
-                        target_ftt,
-                        TEST_INSTANCE_ID,
-                    );
+            let mut active_validators = Vec::with_capacity(validators.len());
+            for vidx in validators {
+                let secret = TestSecret(vidx.0);
+                let (av, effects) = ActiveValidator::new(
+                    vidx,
+                    secret,
+                    start_time,
+                    start_time,
+                    &state,
+                    None,
+                    target_ftt,
+                    TEST_INSTANCE_ID,
+                );
 
-                    let timestamp = match &*effects {
-                        [
-                            Effect::ScheduleTimer(timer),
-                            Effect::NewVertex(ValidVertex(Vertex::Ping(_)))
-                        ] => { *timer }
-                        other => panic!("expected timer and ping effects, got={:?}", other),
-                    };
-
-                    if state.leader(earliest_round_start) == vidx {
-                        assert_eq!(
-                            timestamp, earliest_round_start,
-                            "Invalid initial timer scheduled for {:?}.",
-                            vidx,
-                        )
-                    } else {
-                        let witness_offset =
-                            av.witness_offset(state::round_len(state.params().init_round_exp()));
-                        let witness_timestamp = earliest_round_start + witness_offset;
-                        assert_eq!(
-                            timestamp, witness_timestamp,
-                            "Invalid initial timer scheduled for {:?}.",
-                            vidx,
-                        )
+                let (timestamp, ping) = match &*effects {
+                    [Effect::ScheduleTimer(timestamp), Effect::NewVertex(ValidVertex(Vertex::Ping(ping)))] => {
+                        (*timestamp, ping)
                     }
-                    timers.insert((timestamp, vidx));
-                    av
-                })
-                .collect();
+                    other => panic!("expected timer and ping effects, got={:?}", other),
+                };
+
+                state.add_ping(ping.creator(), ping.timestamp());
+
+                if state.leader(earliest_round_start) == vidx {
+                    assert_eq!(
+                        timestamp, earliest_round_start,
+                        "Invalid initial timer scheduled for {:?}.",
+                        vidx,
+                    )
+                } else {
+                    let witness_offset =
+                        av.witness_offset(state::round_len(state.params().init_round_exp()));
+                    let witness_timestamp = earliest_round_start + witness_offset;
+                    assert_eq!(
+                        timestamp, witness_timestamp,
+                        "Invalid initial timer scheduled for {:?}.",
+                        vidx,
+                    )
+                }
+                timers.insert((timestamp, vidx));
+                active_validators.push(av);
+            }
 
             TestState {
                 state,
                 instance_id,
                 fd,
-                active_validators,
+                active_validators: active_validators.into_iter().collect(),
                 timers,
             }
         }
@@ -960,6 +966,31 @@ mod tests {
                 other
             ),
         }
+    }
+
+    #[test]
+    fn detects_doppelganger_ping() {
+        let mut state = State::new_test(&[Weight(3)], 0);
+        let (active_validator, _init_effects) = ActiveValidator::new(
+            ALICE,
+            ALICE_SEC.clone(),
+            410.into(),
+            410.into(),
+            &state,
+            None,
+            Weight(2),
+            TEST_INSTANCE_ID,
+        );
+
+        let ping = Vertex::Ping(Ping::new(ALICE, 500.into(), TEST_INSTANCE_ID, &ALICE_SEC));
+
+        // The ping is suspicious if it is newer than the latest ping (or unit) that has been added
+        // to the state.
+        assert!(active_validator.is_doppelganger_vertex(&ping, &state));
+        state.add_ping(ALICE, 499.into());
+        assert!(active_validator.is_doppelganger_vertex(&ping, &state));
+        state.add_ping(ALICE, 500.into());
+        assert!(!active_validator.is_doppelganger_vertex(&ping, &state));
     }
 
     #[test]

@@ -1,0 +1,335 @@
+# ================================
+# Configuration options for a node
+# ================================
+[node]
+
+# If set, use this hash as a trust anchor when joining an existing network.
+#trusted_hash = 'HEX-FORMATTED BLOCK HASH'
+
+
+# =================================
+# Configuration options for logging
+# =================================
+[logging]
+
+# Output format.  Possible values are 'text' or 'json'.
+format = 'text'
+
+# Colored output.  Has no effect if format = 'json'.
+color = false
+
+# Abbreviate module names in text output.  Has no effect if format = 'json'.
+abbreviate_modules = false
+
+
+# ===================================
+# Configuration options for consensus
+# ===================================
+[consensus]
+
+# Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
+# consensus messages.
+secret_key_path = 'secret_key.pem'
+
+
+# ===========================================
+# Configuration options for Highway consensus
+# ===========================================
+[consensus.highway]
+
+# The folder in which the files with per-era latest unit hashes will be stored.
+unit_hashes_folder = "../node-storage"
+
+# The duration for which incoming vertices with missing dependencies should be kept in a queue.
+pending_vertex_timeout = '1min'
+
+# If the current era's protocol state has not progressed for this long, request the latest state
+# from peers.
+standstill_timeout = '5min'
+
+# If after another `standstill_timeout` there still was no progress, shut down.
+shutdown_on_standstill = false
+
+# Log inactive or faulty validators periodically, with this interval.
+log_participation_interval = '1min'
+
+# Log the size of every incoming and outgoing serialized unit.
+log_unit_sizes = false
+
+# The maximum number of blocks by which execution is allowed to lag behind finalization.
+# If it is more than that, consensus will pause, and resume once the executor has caught up.
+max_execution_delay = 3
+
+# The maximum number of peers we request the same vertex from in parallel.
+max_requests_for_vertex = 5
+
+[consensus.highway.round_success_meter]
+# The number of most recent rounds we will be keeping track of.
+num_rounds_to_consider = 40
+
+# The number of successful rounds that triggers us to slow down: With this many or fewer
+# successes per `num_rounds_to_consider`, we increase our round exponent.
+num_rounds_slowdown = 10
+
+# The number of successful rounds that triggers us to speed up: With this many or more successes
+# per `num_rounds_to_consider`, we decrease our round exponent.
+num_rounds_speedup = 32
+
+# We will try to accelerate (decrease our round exponent) every `acceleration_parameter` rounds if
+# we have few enough failures.
+acceleration_parameter = 40
+
+# The FTT, as a percentage (i.e. `acceleration_ftt = [1, 100]` means 1% of the validators' total weight), which
+# we will use for looking for a summit in order to determine a proposal's finality.
+# The required quorum in a summit we will look for to check if a round was successful is
+# determined by this FTT.
+acceleration_ftt = [1, 100]
+
+
+# ====================================
+# Configuration options for networking
+# ====================================
+[network]
+
+# The public address of the node.
+#
+# It must be publicly available in order to allow peers to connect to this node.
+# If the port is set to 0, the actual bound port will be substituted.
+public_address = '127.0.0.1:0'
+
+# Address to bind to for listening.
+# If port is set to 0, a random port will be used.
+bind_address = '0.0.0.0:34553'
+
+# Addresses to connect to in order to join the network.
+#
+# If not set, this node will not be able to attempt to connect to the network.  Instead it will
+# depend upon peers connecting to it.  This is normally only useful for the first node of the
+# network.
+#
+# Multiple addresses can be given and the node will attempt to connect to each, requiring at least
+# one connection.
+known_addresses = ['127.0.0.1:34553']
+
+# The interval (in milliseconds) between each fresh round of gossiping the node's public address.
+gossip_interval = 30000
+
+# Minimum amount of time that has to pass before attempting to reconnect after losing all
+# connections to established nodes.
+isolation_reconnect_delay = '2s'
+
+# Initial delay for starting address gossipping after the network starts. This should be slightly
+# more than the expected time required for initial connections to complete.
+initial_gossip_delay = '5s'
+
+# How long a connection is allowed to be stuck as pending before it is abandoned.
+max_addr_pending_time = '1min'
+
+# The maximum amount of upstream bandwidth in bytes per second allocated to non-validating peers.
+# A value of `0` means unlimited.
+max_outgoing_byte_rate_non_validators = 0
+
+# The maximum amount of requests from validating peers per second answered.
+# A value of `0` means unlimited.
+max_incoming_message_rate_non_validators = 0
+
+
+# ==================================================
+# Configuration options for the JSON-RPC HTTP server
+# ==================================================
+[rpc_server]
+
+# Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the JSON-RPC HTTP server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:7777'
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
+
+
+# ==============================================
+# Configuration options for the REST HTTP server
+# ==============================================
+[rest_server]
+
+# Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the REST HTTP server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:8888'
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
+
+
+# ==========================================================
+# Configuration options for the SSE HTTP event stream server
+# ==========================================================
+[event_stream_server]
+
+# Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the SSE HTTP event stream server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:9999'
+
+# The number of event stream events to buffer.
+event_stream_buffer_length = 5000
+
+# The maximum number of subscribers across all event streams the server will permit at any one time.
+max_concurrent_subscribers = 100
+
+
+# ===============================================
+# Configuration options for the storage component
+# ===============================================
+[storage]
+
+# Path (absolute, or relative to this config.toml) to the folder where any files created
+# or read by the storage component will exist.
+#
+# If the folder doesn't exist, it and any required parents will be created.
+#
+# If unset, the path must be supplied as an argument via the CLI.
+path = '../node-storage'
+
+# Maximum size of the database to use for the block store.
+#
+# The size should be a multiple of the OS page size.
+#
+# 483_183_820_800 == 18 GiB.
+max_block_store_size = 19_327_352_832
+
+# Maximum size of the database to use for the deploy store.
+#
+# The size should be a multiple of the OS page size.
+#
+# 322_122_547_200 == 12 GiB.
+max_deploy_store_size = 12_884_901_888
+
+# Maximum size of the database to use for the deploy metadata.
+#
+# The size should be a multiple of the OS page size.
+#
+# 322_122_547_200 == 12 GiB.
+max_deploy_metadata_store_size = 12_884_901_888
+
+# Maximum size of the database to use for the state snapshots.
+#
+# The size should be a multiple of the OS page size.
+#
+# 10_737_418_240 == 10 GiB.
+max_state_store_size = 10_737_418_240
+
+# Memory deduplication.
+#
+# If enabled, nodes will attempt to share loaded objects if possible.
+enable_mem_deduplication = false
+
+# Memory duplication garbage collection.
+#
+# Sets the frequency how often the memory pool cache is swept for free references.
+mem_pool_prune_interval = 1024
+
+
+# ===================================
+# Configuration options for gossiping
+# ===================================
+[gossip]
+
+# Target number of peers to infect with a given piece of data.
+infection_target = 3
+
+# The saturation limit as a percentage, with a maximum value of 99.  Used as a termination
+# condition.
+#
+# Example: assume the `infection_target` is 3, the `saturation_limit_percent` is 80, and we don't
+# manage to newly infect 3 peers.  We will stop gossiping once we know of more than 15 holders
+# excluding us since 80% saturation would imply 3 new infections in 15 peers.
+saturation_limit_percent = 80
+
+# The maximum duration in seconds for which to keep finished entries.
+#
+# The longer they are retained, the lower the likelihood of re-gossiping a piece of data.  However,
+# the longer they are retained, the larger the list of finished entries can grow.
+finished_entry_duration_secs = 60
+
+# The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
+# sent from this node, it will be considered timed out if the expected response from that peer is
+# not received within this specified duration.
+gossip_request_timeout_secs = 10
+
+# The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
+# from a peer which gossiped information about that data to this node.
+get_remainder_timeout_secs = 5
+
+
+# =================================
+# Configuration options for fetcher
+# =================================
+[fetcher]
+
+# The timeout duration in seconds for a single fetcher request, i.e. for a single fetcher message
+# sent from this node to another node, it will be considered timed out if the expected response from that peer is
+# not received within this specified duration.
+get_from_peer_timeout = 3
+
+
+# ===================================================
+# Configuration options for deploy acceptor component
+# ===================================================
+[deploy_acceptor]
+
+# If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
+verify_accounts = true
+
+
+# ========================================================
+# Configuration options for the contract runtime component
+# ========================================================
+[contract_runtime]
+
+# Optional setting to enable bonding or not.  If unset, defaults to false.
+#enable_bonding = false
+
+# Optional maximum size of the database to use for the global state store.
+#
+# If unset, defaults to 32,212,254,720 == 30 GiB.
+#
+# The size should be a multiple of the OS page size.
+#max_global_state_size = 32_212_254_720
+
+# Optional depth limit to use for global state queries.
+#
+# If unset, defaults to 5.
+#max_query_depth = 5
+
+
+# ========================================================
+# Configuration options for synchronizing the linear chain
+# ========================================================
+[linear_chain_sync]
+
+# The amount of time that the node will try to sync without making progress before shutting down.
+sync_timeout = '1hr'
+
+
+# ====================================================================
+# Configuration options for selecting deploys to propose in new blocks
+# ====================================================================
+[block_proposer]
+
+# Deploys are only proposed in a new block if they have been received at least this long ago.
+# A longer delay makes it more likely that many proposed deploys are already known by the
+# other nodes, and don't have to be requested from the proposer afterwards.
+deploy_delay = '5seconds'

@@ -11,12 +11,12 @@ use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{error, info};
 use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult};
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    bytesrepr::ToBytes, CLType, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
 };
 
 use super::{
@@ -79,6 +79,24 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
     account: Account::doc_example().clone(),
     merkle_proof: MERKLE_PROOF.clone(),
 });
+static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
+    Lazy::new(|| GetDictionaryItemParams {
+        state_root_hash: *Block::doc_example().header().state_root_hash(),
+        dictionary_identifier: DictionaryIdentifier::URef {
+            seed_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
+                .to_string(),
+            dictionary_item_key: "a_unique_entry_identifier".to_string(),
+        },
+    });
+static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
+    Lazy::new(|| GetDictionaryItemResult {
+        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        dictionary_key:
+            "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f"
+                .to_string(),
+        stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
+        merkle_proof: MERKLE_PROOF.clone(),
+    });
 
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -550,6 +568,260 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
+                merkle_proof: hex::encode(proof_bytes),
+            };
+
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+/// Options for dictionary item lookups.
+pub enum DictionaryIdentifier {
+    /// Lookup a dictionary item via an Account's named keys.
+    AccountNamedKey {
+        /// The account key as a formatted string whose named keys contains dictionary_name.
+        key: String,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: String,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: String,
+    },
+    /// Lookup a dictionary item via a Contract's named keys.
+    ContractNamedKey {
+        /// The contract key as a formatted string whose named keys contains dictionary_name.
+        key: String,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: String,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: String,
+    },
+    /// Lookup a dictionary item via its seed URef.
+    URef {
+        /// The dictionary's seed URef.
+        seed_uref: String,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: String,
+    },
+    /// Lookup a dictionary item via its unique key.
+    Dictionary(String),
+}
+
+impl DictionaryIdentifier {
+    fn get_dictionary_base_key(&self) -> Result<Option<Key>, Error> {
+        match self {
+            DictionaryIdentifier::AccountNamedKey { ref key, .. }
+            | DictionaryIdentifier::ContractNamedKey { ref key, .. } => {
+                match Key::from_formatted_str(key) {
+                    Ok(key) => Ok(Some(key)),
+                    Err(error) => Err(Error(format!("failed to parse key: {}", error))),
+                }
+            }
+            DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => Ok(None),
+        }
+    }
+
+    fn get_base_query_path(&self) -> Result<Option<Vec<String>>, Error> {
+        match self {
+            DictionaryIdentifier::AccountNamedKey {
+                dictionary_name, ..
+            }
+            | DictionaryIdentifier::ContractNamedKey {
+                dictionary_name, ..
+            } => Ok(Some(vec![dictionary_name.clone()])),
+            DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => Ok(None),
+        }
+    }
+
+    fn get_dictionary_address(
+        &self,
+        maybe_stored_value: Option<StoredValue>,
+    ) -> Result<Key, Error> {
+        match self {
+            DictionaryIdentifier::AccountNamedKey {
+                dictionary_item_key,
+                ..
+            }
+            | DictionaryIdentifier::ContractNamedKey {
+                dictionary_item_key,
+                ..
+            } => match maybe_stored_value {
+                Some(StoredValue::CLValue(value)) => {
+                    if *value.cl_type() == CLType::URef {
+                        let seed: URef = value
+                            .into_t()
+                            .map_err(|_| Error("Failed to parse URef".to_string()))?;
+                        let key_bytes = dictionary_item_key.as_str().as_bytes();
+                        Ok(Key::dictionary(seed, key_bytes))
+                    } else {
+                        Err(Error("Failed create dictionary address".to_string()))
+                    }
+                }
+                Some(_) | None => Err(Error("Failed to create dictionary address".to_string())),
+            },
+            DictionaryIdentifier::URef {
+                seed_uref,
+                dictionary_item_key,
+            } => {
+                let key_bytes = dictionary_item_key.as_str().as_bytes();
+                let seed_uref = URef::from_formatted_str(seed_uref)
+                    .map_err(|_| Error("Failed to parse URef".to_string()))?;
+                Ok(Key::dictionary(seed_uref, key_bytes))
+            }
+            DictionaryIdentifier::Dictionary(address) => Key::from_formatted_str(address)
+                .map_err(|_| Error("Failed to parse Dictionary key".to_string())),
+        }
+    }
+}
+
+/// Params for "state_get_dict" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetDictionaryItemParams {
+    /// Hash of the state root
+    pub state_root_hash: Digest,
+    /// The Dictionary query identifier.
+    pub dictionary_identifier: DictionaryIdentifier,
+}
+
+impl DocExample for GetDictionaryItemParams {
+    fn doc_example() -> &'static Self {
+        &*GET_DICTIONARY_ITEM_PARAMS
+    }
+}
+
+/// Result for "state_get_dictionary" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetDictionaryItemResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The key under which the value is stored.
+    pub dictionary_key: String,
+    /// The stored value.
+    pub stored_value: StoredValue,
+    /// The merkle proof.
+    pub merkle_proof: String,
+}
+
+impl DocExample for GetDictionaryItemResult {
+    fn doc_example() -> &'static Self {
+        &*GET_DICTIONARY_ITEM_RESULT
+    }
+}
+
+/// "state_get_dictionary" RPC.
+pub struct GetDictionaryItem {}
+
+impl RpcWithParams for GetDictionaryItem {
+    const METHOD: &'static str = "state_get_dictionary_item";
+    type RequestParams = GetDictionaryItemParams;
+    type ResponseResult = GetDictionaryItemResult;
+}
+
+impl RpcWithParamsExt for GetDictionaryItem {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let dictionary_address = match params.dictionary_identifier {
+                DictionaryIdentifier::AccountNamedKey { .. }
+                | DictionaryIdentifier::ContractNamedKey { .. } => {
+                    let base_key = match params.dictionary_identifier.get_dictionary_base_key() {
+                        Ok(Some(key)) => key,
+                        Err(_) | Ok(None) => {
+                            error!("Failed to parse key");
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                ErrorCode::ParseQueryKey as i64,
+                                "Failed to parse key",
+                            ))?);
+                        }
+                    };
+
+                    let path = match params.dictionary_identifier.get_base_query_path() {
+                        Ok(Some(path)) => path,
+                        Err(_) | Ok(None) => {
+                            error!("Failed to execute query");
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                ErrorCode::NoDictionaryName as i64,
+                                "Failed to execute query",
+                            ))?);
+                        }
+                    };
+
+                    let query_result = effect_builder
+                        .make_request(
+                            |responder| RpcRequest::QueryGlobalState {
+                                state_root_hash: params.state_root_hash,
+                                base_key,
+                                path,
+                                responder,
+                            },
+                            QueueKind::Api,
+                        )
+                        .await;
+
+                    let (stored_value, _) = match common::extract_query_result(query_result) {
+                        Ok(tuple) => tuple,
+                        Err((error_code, error_msg)) => {
+                            info!("{}", error_msg);
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                error_code as i64,
+                                error_msg,
+                            ))?);
+                        }
+                    };
+
+                    params
+                        .dictionary_identifier
+                        .get_dictionary_address(Some(stored_value))
+                }
+                DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
+                    params.dictionary_identifier.get_dictionary_address(None)
+                }
+            };
+
+            let dictionary_query_key = match dictionary_address {
+                Ok(key) => key,
+                Err(Error(message)) => {
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::FailedToGetDictionaryURef as i64,
+                        message,
+                    ))?)
+                }
+            };
+
+            let query_result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::QueryGlobalState {
+                        state_root_hash: params.state_root_hash,
+                        base_key: dictionary_query_key,
+                        path: vec![],
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+                Ok(tuple) => tuple,
+                Err((error_code, error_msg)) => {
+                    info!("{}", error_msg);
+                    return Ok(response_builder
+                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                dictionary_key: dictionary_query_key.to_formatted_string(),
+                stored_value,
                 merkle_proof: hex::encode(proof_bytes),
             };
 
