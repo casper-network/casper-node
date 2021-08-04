@@ -205,7 +205,7 @@ mod sealed_public_key {
 
     const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
 
-    pub(crate) fn arg(
+    pub(super) fn arg(
         order: usize,
         arg_name: &'static str,
         arg_help: &'static str,
@@ -219,7 +219,7 @@ mod sealed_public_key {
             .display_order(order)
     }
 
-    pub(crate) fn get(
+    pub(super) fn get(
         matches: &ArgMatches,
         arg_name: &str,
         required: bool,
@@ -254,7 +254,7 @@ mod sealed_public_key {
 }
 
 /// Handles providing the arg for and retrieval of the public key.
-pub mod public_key {
+pub(super) mod public_key {
     use super::*;
 
     const ARG_NAME: &str = "public-key";
@@ -265,11 +265,11 @@ pub mod public_key {
         should be one of the two public key files generated via the `keygen` subcommand; \
         \"public_key_hex\" or \"public_key.pem\"";
 
-    pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
+    pub fn arg(order: usize) -> Arg<'static, 'static> {
         sealed_public_key::arg(order, ARG_NAME, ARG_HELP, IS_REQUIRED)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Result<String, Error> {
+    pub fn get(matches: &ArgMatches) -> Result<String, Error> {
         sealed_public_key::get(matches, ARG_NAME, IS_REQUIRED)
     }
 }

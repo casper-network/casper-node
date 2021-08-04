@@ -348,10 +348,8 @@ pub(super) fn parse_deploy_params(
     let dependencies = self::dependencies(dependencies)?;
     let chain_name = chain_name.to_string();
     let session_account = if !session_account.is_empty() {
-        let public_key = PublicKey::from_hex(session_account).map_err(|error| {
-            eprintln!("Can't parse the contents as a public key: {}", error);
-            Error::FailedToParseKey
-        })?;
+        let public_key =
+            PublicKey::from_hex(session_account).map_err(|_| Error::FailedToParseKey)?;
         Some(public_key)
     } else {
         None
