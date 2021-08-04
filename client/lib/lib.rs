@@ -366,7 +366,8 @@ pub fn get_state_root_hash(
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_state_root_hash(maybe_block_id)
 }
 
-/// Retrieves a stored value from the network.
+/// Retrieves a stored value from the network. This function is deprecated, use
+/// `casper_client::query_global_state` instead.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
 ///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
