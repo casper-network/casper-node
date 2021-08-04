@@ -558,11 +558,7 @@ impl reactor::Reactor for Reactor {
             let finalized_block;
 
             let chainspec = chainspec_loader.chainspec();
-            match chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-            {
+            match chainspec.protocol_config.activation_point {
                 ActivationPoint::Genesis(genesis_timestamp) => {
                     // Check that no blocks exist in storage so we don't try to run genesis again on
                     // an existing blockchain
