@@ -195,9 +195,6 @@ where
                 .last_emergency_restart
                 .unwrap_or_else(|| EraId::from(0u64));
             let key_block_era_id = era_id.saturating_sub(1);
-            if key_block_era_id < minimum_era {
-                continue;
-            }
             let block_header = storage
                 .read_switch_block_header_by_era_id(key_block_era_id)?
                 .ok_or_else(|| anyhow::Error::msg("No such switch block"))?;
