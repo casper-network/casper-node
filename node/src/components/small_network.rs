@@ -684,7 +684,7 @@ where
             .into_iter()
             .filter_map(|(peer_id, sym)| {
                 if sym.should_be_reaped(now, MAX_ASYMMETRIC_TIME) {
-                    info!(%peer_id, "reaping asymmetric connection");
+                    debug!(%peer_id, "reaping asymmetric connection");
 
                     // Get the outgoing connection and block it.
                     if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
