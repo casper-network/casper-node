@@ -187,8 +187,9 @@ where
             .collect();
 
         // Collect the information needed to initialize all recent eras.
-        let mut key_blocks = HashMap::new();
-        let mut booking_blocks = HashMap::new();
+        // TODO: Merge these into one
+        let mut key_blocks = BTreeMap::new();
+        let mut booking_blocks = BTreeMap::new();
         for era_id in era_ids {
             let minimum_era = era_supervisor
                 .protocol_config
@@ -471,17 +472,16 @@ where
 
     fn handle_initialize_eras(
         &mut self,
-        key_blocks: HashMap<EraId, BlockHeader>,
-        booking_blocks: HashMap<EraId, BlockHash>,
+        key_blocks: BTreeMap<EraId, BlockHeader>,
+        booking_blocks: BTreeMap<EraId, BlockHash>,
     ) -> HashMap<EraId, ProtocolOutcomes<I, ClContext>> {
         let mut result_map = HashMap::new();
 
-        for era_id in self.iter_past(self.current_era, self.bonded_eras().saturating_mul(2)) {
+        for (&era_id, key_block) in &key_blocks {
             let booking_block_hash = booking_blocks
                 .get(&era_id)
                 .expect("should have booking block");
 
-            let key_block = key_blocks.get(&era_id).expect("missing key block");
             #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
             let start_height = key_block.height() + 1;
             let era_start_time = key_block.timestamp();
@@ -812,27 +812,6 @@ where
             };
             self.effect_builder.set_timeout(delay).event(deactivate_era)
         }
-    }
-
-    pub(super) fn handle_initialize_eras(
-        &mut self,
-        key_blocks: HashMap<EraId, BlockHeader>,
-        booking_blocks: HashMap<EraId, BlockHash>,
-        _validators: BTreeMap<PublicKey, U512>,
-    ) -> Effects<Event<I>> {
-        let result_map = self
-            .era_supervisor
-            .handle_initialize_eras(key_blocks, booking_blocks);
-
-        let effects = result_map
-            .into_iter()
-            .flat_map(|(era_id, results)| self.handle_consensus_outcomes(era_id, results))
-            .collect();
-
-        info!("finished initializing era supervisor");
-        info!(?self.era_supervisor, "current eras");
-
-        effects
     }
 
     /// Creates a new era.
