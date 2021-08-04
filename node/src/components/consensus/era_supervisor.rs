@@ -202,14 +202,15 @@ where
             let booking_block_era_id = era_id
                 .saturating_sub(era_supervisor.protocol_config.auction_delay)
                 .saturating_sub(1);
-            if booking_block_era_id < minimum_era {
-                continue;
-            }
-            let block_header_hash = storage
-                .read_switch_block_header_by_era_id(booking_block_era_id)?
-                .ok_or_else(|| anyhow::Error::msg("No such switch block"))?
-                .hash();
-            booking_blocks.insert(era_id, block_header_hash);
+            let booking_block_hash = if booking_block_era_id < minimum_era {
+                Default::default()
+            } else {
+                storage
+                    .read_switch_block_header_by_era_id(booking_block_era_id)?
+                    .ok_or_else(|| anyhow::Error::msg("No such switch block"))?
+                    .hash()
+            };
+            booking_blocks.insert(era_id, booking_block_hash);
         }
         let result_map = era_supervisor.handle_initialize_eras(key_blocks, booking_blocks);
 
