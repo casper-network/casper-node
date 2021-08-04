@@ -932,6 +932,7 @@ impl Display for BlockHeaderWithMetadata {
 }
 
 /// A node in a Merkle linked-list used for hashing data structures.
+#[derive(Debug, Clone)]
 pub struct MerkleLinkedListNode<T> {
     value: T,
     merkle_proof_of_rest: Digest,
@@ -968,6 +969,7 @@ impl<T> MerkleLinkedListNode<T> {
 ///     |
 /// merkle_linked_list_node::value
 /// ```
+#[derive(Debug, Clone)]
 pub struct MerkleBlockBodyPart<'a, T> {
     value_hash: Digest,
     merkle_linked_list_node: MerkleLinkedListNode<&'a T>,
@@ -1019,6 +1021,7 @@ impl<'a, T> MerkleBlockBodyPart<'a, T> {
 ///                   hash(transfer_hashes)     /             \
 ///                                         hash(proposer)   SENTINEL
 /// ```
+#[derive(Debug, Clone)]
 pub struct MerkleBlockBody<'a> {
     /// Merklized [`BlockBody::deploy_hashes`].
     pub deploy_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
@@ -1028,9 +1031,14 @@ pub struct MerkleBlockBody<'a> {
     pub proposer: MerkleBlockBodyPart<'a, PublicKey>,
 }
 
+#[cfg(test)]
 impl<'a> MerkleBlockBody<'a> {
     /// Takes the hashes and Merkle proofs for a [`MerkleBlockBody`].
-    pub fn take_hashes_and_proofs(self) -> [(Digest, Digest); BlockBody::PARTS_COUNT] {
+    /// The `Digest` triplets contain the node hash, and contained within that node: the value hash
+    /// and the Merkle proof of the rest of the tree.
+    pub(crate) fn take_hashes_and_proofs(
+        self,
+    ) -> [(Digest, Digest, Digest); BlockBody::PARTS_COUNT] {
         let MerkleBlockBody {
             deploy_hashes,
             transfer_hashes,
@@ -1038,14 +1046,20 @@ impl<'a> MerkleBlockBody<'a> {
         } = self;
         [
             (
-                deploy_hashes.value_hash,
                 deploy_hashes.merkle_linked_list_node_hash,
+                deploy_hashes.value_hash,
+                deploy_hashes.merkle_linked_list_node.merkle_proof_of_rest,
             ),
             (
-                transfer_hashes.value_hash,
                 transfer_hashes.merkle_linked_list_node_hash,
+                transfer_hashes.value_hash,
+                transfer_hashes.merkle_linked_list_node.merkle_proof_of_rest,
             ),
-            (proposer.value_hash, proposer.merkle_linked_list_node_hash),
+            (
+                proposer.merkle_linked_list_node_hash,
+                proposer.value_hash,
+                proposer.merkle_linked_list_node.merkle_proof_of_rest,
+            ),
         ]
     }
 }
@@ -1254,7 +1268,8 @@ pub enum HashingAlgorithmVersion {
 
 impl HashingAlgorithmVersion {
     #[cfg(feature = "casper-mainnet")]
-    const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 4, 0);
+    pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
+        ProtocolVersion::from_parts(1, 4, 0);
 
     #[cfg(not(feature = "casper-mainnet"))]
     const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(0, 0, 0);
@@ -2025,5 +2040,40 @@ mod tests {
         };
         // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
         assert!(fs_manufactured.verify().is_err());
+    }
+
+    #[test]
+    fn block_body_merkle_proof_should_be_correct() {
+        let mut rng = TestRng::new();
+        let era_id = rng.gen_range(0..10).into();
+        let height = rng.gen_range(0..100);
+        let is_switch = rng.gen();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            era_id,
+            height,
+            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            is_switch,
+        );
+
+        let merkle_block_body = block.body().merklize();
+
+        let hashes = [
+            *merkle_block_body.deploy_hashes.value_hash(),
+            *merkle_block_body.transfer_hashes.value_hash(),
+            *merkle_block_body.proposer.value_hash(),
+        ];
+
+        assert_eq!(
+            block.header().body_hash(),
+            merkle_block_body
+                .deploy_hashes
+                .merkle_linked_list_node_hash()
+        );
+
+        assert_eq!(
+            *block.header().body_hash(),
+            hash::hash_slice_rfold(&hashes[..])
+        );
     }
 }

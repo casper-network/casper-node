@@ -19,7 +19,10 @@ use super::{
     Storage,
 };
 use crate::{
-    components::{consensus::EraReport, storage::lmdb_ext::WriteTransactionExt},
+    components::{
+        consensus::EraReport,
+        storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
+    },
     crypto::{hash::Digest, AsymmetricKeyExt},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
@@ -28,7 +31,7 @@ use crate::{
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata, FinalitySignature, FinalizedBlock,
+        DeployMetadata, FinalitySignature, FinalizedBlock, HashingAlgorithmVersion,
     },
     utils::WithDir,
 };
@@ -1385,4 +1388,87 @@ fn should_garbage_collect() {
 
     check(2);
     check(1);
+}
+
+#[test]
+fn can_put_and_get_blocks_v2() {
+    let num_blocks = 10;
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let era_id = harness.rng.gen_range(0..10).into();
+    let height = harness.rng.gen_range(0..100);
+
+    let mut blocks = vec![];
+
+    for i in 0..num_blocks {
+        let block = Block::random_with_specifics(
+            &mut harness.rng,
+            era_id,
+            height + i,
+            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            i == num_blocks - 1,
+        );
+
+        blocks.push(block.clone());
+
+        assert!(put_block(
+            &mut harness,
+            &mut storage,
+            Box::new(block.clone())
+        ));
+
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let block_body_merkle = block.body().merklize();
+
+        for (node_hash, value_hash, proof_of_rest) in
+            block_body_merkle.clone().take_hashes_and_proofs()
+        {
+            assert_eq!(
+                txn.get_value::<_, [Digest; 2]>(storage.block_body_v2_db, &node_hash)
+                    .unwrap()
+                    .unwrap(),
+                [value_hash, proof_of_rest]
+            );
+        }
+
+        assert_eq!(
+            txn.get_value::<_, Vec<DeployHash>>(
+                storage.deploy_hashes_db,
+                block_body_merkle.deploy_hashes.value_hash()
+            )
+            .unwrap()
+            .unwrap(),
+            block.body().deploy_hashes().clone()
+        );
+
+        assert_eq!(
+            txn.get_value::<_, Vec<DeployHash>>(
+                storage.transfer_hashes_db,
+                block_body_merkle.transfer_hashes.value_hash()
+            )
+            .unwrap()
+            .unwrap(),
+            block.body().transfer_hashes().clone()
+        );
+
+        assert_eq!(
+            txn.get_value::<_, PublicKey>(
+                storage.proposer_db,
+                block_body_merkle.proposer.value_hash()
+            )
+            .unwrap()
+            .unwrap(),
+            *block.body().proposer()
+        );
+
+        txn.commit().unwrap();
+    }
+
+    for (i, expected_block) in blocks.into_iter().enumerate() {
+        assert_eq!(
+            get_block_at_height(&mut harness, &mut storage, height + i as u64),
+            Some(expected_block)
+        );
+    }
 }
