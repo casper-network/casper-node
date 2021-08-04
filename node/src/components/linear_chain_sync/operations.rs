@@ -246,7 +246,7 @@ impl KeyBlockInfo {
 }
 
 /// Get trusted switch block.
-/// Returns `None` if we are still in the first era.
+/// Returns an error if we are still in the first era, or the era after an emergency restart.
 async fn get_trusted_key_block_info<REv, I>(
     effect_builder: EffectBuilder<REv>,
     chainspec: &Chainspec,
