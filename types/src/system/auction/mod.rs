@@ -225,8 +225,8 @@ pub trait Auction:
         Ok(updated_stake)
     }
 
-    /// Adds a new delegator to delegators or increases its current stake. If the target validator is
-    /// missing, the function call returns an error and does nothing.
+    /// Adds a new delegator to delegators or increases its current stake. If the target validator
+    /// is missing, the function call returns an error and does nothing.
     ///
     /// The function transfers motes from the source purse to the delegator's bonding purse.
     ///    
