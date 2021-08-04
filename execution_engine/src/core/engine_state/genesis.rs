@@ -9,6 +9,7 @@ use rand::{
     Rng,
 };
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_types::{
     account::AccountHash,
@@ -1160,9 +1161,10 @@ where
             .map_err(execution::Error::from)
             .map_err(GenesisError::ExecutionError)?;
 
-        let mint_hash = registry
-            .get(MINT)
-            .ok_or_else(|| GenesisError::MissingSystemContractHash(MINT.to_string()))?;
+        let mint_hash = registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            GenesisError::MissingSystemContractHash(MINT.to_string())
+        })?;
 
         let base_key = Key::Hash(mint_hash.value());
         let mint = {

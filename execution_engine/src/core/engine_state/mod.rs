@@ -248,18 +248,22 @@ where
             }
         };
 
-        let mint_hash = registry
-            .get(MINT)
-            .ok_or_else(|| Error::MissingSystemContractHash(MINT.to_string()))?;
-        let auction_hash = registry
-            .get(AUCTION)
-            .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
-        let standard_payment_hash = registry
-            .get(STANDARD_PAYMENT)
-            .ok_or_else(|| Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string()))?;
-        let handle_payment_hash = registry
-            .get(HANDLE_PAYMENT)
-            .ok_or_else(|| Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string()))?;
+        let mint_hash = registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            Error::MissingSystemContractHash(MINT.to_string())
+        })?;
+        let auction_hash = registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
+        let standard_payment_hash = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
+            error!("Missing system standard_payment contract hash");
+            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
+        })?;
+        let handle_payment_hash = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
+            error!("Missing system handle_payment contract hash");
+            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+        })?;
 
         // 3.1.1.1.1.5 bump system contract major versions
         if upgrade_check_result.is_major_version() {
@@ -568,9 +572,10 @@ where
             .borrow_mut()
             .get_system_contracts(correlation_id)?;
 
-        let mint_contract_hash = system_contract_registry
-            .get(MINT)
-            .ok_or_else(|| Error::MissingSystemContractHash(MINT.to_string()))?;
+        let mint_contract_hash = system_contract_registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            Error::MissingSystemContractHash(MINT.to_string())
+        })?;
 
         let mint_contract = match tracking_copy
             .borrow_mut()
@@ -592,7 +597,10 @@ where
 
         let handle_payment_contract_hash = system_contract_registry
             .get(HANDLE_PAYMENT)
-            .ok_or_else(|| Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string()))?;
+            .ok_or_else(|| {
+                error!("Missing system handle payment contract hash");
+                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+            })?;
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
@@ -1314,13 +1322,16 @@ where
             .borrow_mut()
             .get_system_contracts(correlation_id)?;
 
-        let handle_payment_hash = system_contract_registry
+        let handle_payment_contract_hash = system_contract_registry
             .get(HANDLE_PAYMENT)
-            .ok_or_else(|| Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string()))?;
+            .ok_or_else(|| {
+                error!("Missing system handle payment contract hash");
+                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+            })?;
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, *handle_payment_hash)
+            .get_contract(correlation_id, *handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -1557,7 +1568,10 @@ where
 
             let handle_payment_contract_hash = system_contract_registry
                 .get(HANDLE_PAYMENT)
-                .ok_or_else(|| Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string()))?;
+                .ok_or_else(|| {
+                    error!("Missing system handle payment contract hash");
+                    Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+                })?;
 
             let handle_payment_contract = match finalization_tc
                 .borrow_mut()
@@ -1592,7 +1606,7 @@ where
                     handle_payment_args,
                     &mut handle_payment_keys,
                     &extra_keys,
-                    Key::from(*handle_payment_hash),
+                    Key::from(*handle_payment_contract_hash),
                     &system_account,
                     authorization_keys,
                     blocktime,
@@ -1700,9 +1714,10 @@ where
             .get_system_contracts(correlation_id)
             .map_err(Error::from)?;
 
-        let auction_contract_hash = system_contract_registry
-            .get(AUCTION)
-            .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
+        let auction_contract_hash = system_contract_registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
 
         let auction_contract: Contract = tracking_copy
             .borrow_mut()
@@ -1831,9 +1846,10 @@ where
             .get_system_contracts(correlation_id)
             .map_err(Error::from)?;
 
-        let auction_contract_hash = system_contract_registry
-            .get(AUCTION)
-            .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
+        let auction_contract_hash = system_contract_registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
 
         let auction_contract = match tracking_copy
             .borrow_mut()
@@ -2123,15 +2139,26 @@ where
             .borrow_mut()
             .get(correlation_id, &Key::SystemContractRegistry)
             .map_err(Into::into)?
-            .ok_or(Error::MissingSystemContractRegistry)?;
+            .ok_or({
+                error!("Missing system contract registry");
+                Error::MissingSystemContractRegistry
+            })?;
 
         stored_registry
             .as_cl_value()
-            .ok_or_else(|| Error::Bytesrepr("Failed to serialize registry as CLValue".to_string()))?
+            .ok_or_else(|| {
+                error!("Failed to serialize registry as CLValue");
+                Error::Bytesrepr("Failed to serialize registry as CLValue".to_string())
+            })?
             .clone()
             .into_t::<BTreeMap<String, ContractHash>>()
-            .map_err(|error| Error::Bytesrepr(error.to_string()))
-            .map_err(Error::from)
+            .map_err(|error| {
+                error!(
+                    "Failed to convert CLValue registry into BTreemap: {:?}",
+                    error
+                );
+                Error::Bytesrepr(error.to_string())
+            })
     }
 
     pub fn get_system_mint_hash(
@@ -2140,9 +2167,10 @@ where
         state_hash: Blake2bHash,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
-        let mint_hash = registry
-            .get(MINT)
-            .ok_or_else(|| Error::MissingSystemContractHash(MINT.to_string()))?;
+        let mint_hash = registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            Error::MissingSystemContractHash(MINT.to_string())
+        })?;
         Ok(*mint_hash)
     }
 
@@ -2152,9 +2180,10 @@ where
         state_hash: Blake2bHash,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
-        let auction_hash = registry
-            .get(AUCTION)
-            .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
+        let auction_hash = registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
         Ok(*auction_hash)
     }
 
@@ -2164,9 +2193,10 @@ where
         state_hash: Blake2bHash,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
-        let handle_payment = registry
-            .get(HANDLE_PAYMENT)
-            .ok_or_else(|| Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string()))?;
+        let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
+            error!("Missing system handle payment contract hash");
+            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+        })?;
         Ok(*handle_payment)
     }
 
@@ -2176,9 +2206,10 @@ where
         state_hash: Blake2bHash,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
-        let standard_payment = registry
-            .get(STANDARD_PAYMENT)
-            .ok_or_else(|| Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string()))?;
+        let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
+            error!("Missing system standard payment contract hash");
+            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
+        })?;
         Ok(*standard_payment)
     }
 }

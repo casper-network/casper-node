@@ -151,9 +151,13 @@ impl ExecutableDeployItem {
                 if module_bytes.is_empty() && phase == Phase::Payment =>
             {
                 let base_key = account_hash.into();
-                let contract_hash = *system_contract_registry
-                    .get(STANDARD_PAYMENT)
-                    .ok_or_else(|| Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string()))?;
+                let contract_hash =
+                    *system_contract_registry
+                        .get(STANDARD_PAYMENT)
+                        .ok_or_else(|| {
+                            error!("Missing handle payment contract hash");
+                            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+                        })?;
                 let module = wasm::do_nothing_module(preprocessor)?;
                 return Ok(DeployMetadata {
                     kind: DeployKind::System,

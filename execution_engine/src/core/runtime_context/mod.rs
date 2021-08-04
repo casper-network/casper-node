@@ -1131,21 +1131,21 @@ where
     }
 
     pub fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
-        let hash = *self
-            .tracking_copy
-            .borrow_mut()
-            .get_system_contracts(self.correlation_id)
-            .map_err(Error::from)
-            .expect("should have system contracts registry")
-            .get(name)
-            .ok_or_else(|| Error::MissingSystemContractHash(name.to_string()))?;
-        Ok(hash)
+        let registry = self.system_contract_registry()?;
+        let hash = registry.get(name).ok_or_else(|| {
+            error!("Missing system contract hash: {}", name);
+            Error::MissingSystemContractHash(name.to_string())
+        })?;
+        Ok(*hash)
     }
 
     pub fn system_contract_registry(&self) -> Result<BTreeMap<String, ContractHash>, Error> {
         self.tracking_copy
             .borrow_mut()
             .get_system_contracts(self.correlation_id)
-            .map_err(|_| Error::MissingSystemContractRegistry)
+            .map_err(|_| {
+                error!("Missing system contract registry");
+                Error::MissingSystemContractRegistry
+            })
     }
 }
