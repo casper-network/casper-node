@@ -77,8 +77,8 @@ fn version_string(color: bool) -> String {
         "{}-{}{}",
         env!("CARGO_PKG_VERSION"),
         env!("VERGEN_SHA_SHORT"),
-        if cfg!(feature = "enable-legacy-hashing") {
-            "-legacy"
+        if cfg!(feature = "casper-mainnet") {
+            "-casper-mainnet"
         } else {
             ""
         }

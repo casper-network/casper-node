@@ -9,7 +9,7 @@ CARGO_OPTS := --locked
 CARGO := $(CARGO) $(CARGO_TOOLCHAIN) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
-LEGACY = RUSTFLAGS='--cfg feature="enable-legacy-hashing"'
+LEGACY = RUSTFLAGS='--cfg feature="casper-mainnet"'
 
 # Rust Contracts
 # Directory names should match crate names

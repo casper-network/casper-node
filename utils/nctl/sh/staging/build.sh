@@ -50,9 +50,9 @@ function set_stage_binaries()
 
     # Set node binary.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        cargo build --package casper-node --features enable-legacy-hashing
+        cargo build --package casper-node --features casper-mainnet
     else
-        cargo build --release --package casper-node --features enable-legacy-hashing
+        cargo build --release --package casper-node --features casper-mainnet
     fi
 
     # Set client binary.
