@@ -261,6 +261,10 @@ where
     }
 
     /// Returns an iterator over era IDs of `num_eras` past eras, plus the provided one.
+    ///
+    /// Note: Excludes the activation point era and earlier eras. The activation point era itself
+    /// contains only the single switch block we created after the upgrade. There is no consensus
+    /// instance for it.
     pub(crate) fn iter_past(&self, era_id: EraId, num_eras: u64) -> impl Iterator<Item = EraId> {
         (self
             .protocol_config
@@ -272,6 +276,10 @@ where
     }
 
     /// Returns an iterator over era IDs of `num_eras` past eras, excluding the provided one.
+    ///
+    /// Note: Excludes the activation point era and earlier eras. The activation point era itself
+    /// contains only the single switch block we created after the upgrade. There is no consensus
+    /// instance for it.
     pub(crate) fn iter_past_other(
         &self,
         era_id: EraId,
