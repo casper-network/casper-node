@@ -488,8 +488,6 @@ where
             let start_height = key_block.height() + 1;
             let era_start_time = key_block.timestamp();
             let seed = Self::era_seed(*booking_block_hash, key_block.accumulated_seed());
-            // If it's neither genesis nor upgrade nor restart, we use the validators from
-            // the key block and ban validators that were faulty in previous eras.
             let new_faulty = key_block
                 .era_end()
                 .expect("key block must be a switch block")
