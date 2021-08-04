@@ -1,5 +1,6 @@
 use std::str;
 
+use async_trait::async_trait;
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
 use casper_client::{Error, GlobalStateStrParams};
@@ -82,6 +83,7 @@ fn global_state_str_params<'a>(matches: &'a ArgMatches) -> GlobalStateStrParams<
     unreachable!("clap arg groups and parsing should prevent this for global state params")
 }
 
+#[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
     const NAME: &'static str = "query-global-state";
     const ABOUT: &'static str =
@@ -108,7 +110,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
             )
     }
 
-    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
+    async fn run(matches: &ArgMatches<'a>) -> Result<Success, Error> {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
@@ -124,6 +126,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
             &key,
             path,
         )
+        .await
         .map(Success::from)
     }
 }

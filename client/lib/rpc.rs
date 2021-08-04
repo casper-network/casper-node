@@ -293,7 +293,7 @@ impl RpcCall {
         GetAccountInfo::request_with_map_params(self, params).await
     }
 
-    pub(crate) fn query_global_state(
+    pub(crate) async fn query_global_state(
         self,
         global_state_str_params: GlobalStateStrParams<'_>,
         key: &str,
@@ -323,7 +323,7 @@ impl RpcCall {
             path: path.clone(),
         };
 
-        let response = QueryGlobalState::request_with_map_params(self, params)?;
+        let response = QueryGlobalState::request_with_map_params(self, params).await?;
         validation::validate_query_global_state(&response, global_state_identifier, &key, &path)?;
         Ok(response)
     }

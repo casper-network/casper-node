@@ -556,7 +556,7 @@ pub async fn get_account_info(
 /// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
-pub fn query_global_state(
+pub async fn query_global_state(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -564,11 +564,9 @@ pub fn query_global_state(
     key: &str,
     path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).query_global_state(
-        global_state_str_params,
-        key,
-        path,
-    )
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .query_global_state(global_state_str_params, key, path)
+        .await
 }
 
 /// Retrieves information and examples for all currently supported RPCs.

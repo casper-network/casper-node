@@ -118,7 +118,6 @@ async fn main() {
         (GetBalance::NAME, Some(matches)) => (GetBalance::run(matches).await, matches),
         (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches).await, matches),
         (GetStateRootHash::NAME, Some(matches)) => (GetStateRootHash::run(matches).await, matches),
-        (QueryState::NAME, Some(matches)) => (QueryState::run(matches).await, matches),
         (GetEraInfoBySwitchBlock::NAME, Some(matches)) => {
             (GetEraInfoBySwitchBlock::run(matches).await, matches)
         }
@@ -132,6 +131,7 @@ async fn main() {
         (GetDictionaryItem::NAME, Some(matches)) => {
             (GetDictionaryItem::run(matches).await, matches)
         }
+        (QueryGlobalState::NAME, Some(matches)) => (QueryGlobalState::run(matches).await, matches),
 
         _ => {
             let _ = cli().print_long_help();
