@@ -46,7 +46,7 @@ pub enum Error {
     Serialization(#[source] bincode::ErrorKind),
 
     /// Engine state error.
-    #[error("engine state: {0}")]
+    #[error(transparent)]
     EngineState(#[from] engine_state::Error),
 
     /// Block execution error.
