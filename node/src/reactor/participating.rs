@@ -606,7 +606,6 @@ impl reactor::Reactor for Reactor {
                             });
                         }
                     }
-                    let chainspec = chainspec_loader.chainspec();
                     let global_state_update = chainspec.protocol_config.get_update_mapping()?;
                     let UpgradeSuccess {
                         post_state_hash,
