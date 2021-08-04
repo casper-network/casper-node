@@ -95,7 +95,7 @@ pub trait Auction:
     /// The logic works for both founding and non-founding validators, making it possible to adjust
     /// their delegation rate and increase their stakes.
     ///
-    /// A validator with its bid inactive due to slashing can activate his bid again by increasing
+    /// A validator with its bid inactive due to slashing can activate its bid again by increasing
     /// its stake.
     ///
     /// Validators cannot create a bid with 0 amount, and the delegation rate can't exceed
@@ -225,7 +225,7 @@ pub trait Auction:
         Ok(updated_stake)
     }
 
-    /// Adds a new delegator to delegators or tops its current stake. If the target validator is
+    /// Adds a new delegator to delegators or increases its current stake. If the target validator is
     /// missing, the function call returns an error and does nothing.
     ///
     /// The function transfers motes from the source purse to the delegator's bonding purse.
