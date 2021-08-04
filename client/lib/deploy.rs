@@ -252,8 +252,9 @@ impl DeployExt for Deploy {
         const TRANSFER_ARG_TARGET: &str = "target";
         const TRANSFER_ARG_ID: &str = "id";
 
-        let amount = U512::from_dec_str(amount)
-            .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
+        let amount = U512::from_dec_str(amount).map_err(|err| {
+            Error::FailedToParseUint(TRANSFER_ARG_AMOUNT, UIntParseError::FromDecStr(err))
+        })?;
         let target = parsing::get_transfer_target(target)?;
         let transfer_id = parsing::transfer_id(transfer_id)?;
 
