@@ -21,6 +21,24 @@
     unused_qualifications
 )]
 
+pub(crate) mod components;
+mod config_migration;
+mod data_migration;
+pub(crate) mod effect;
+pub(crate) mod logging;
+pub(crate) mod protocol;
+pub(crate) mod reactor;
+#[cfg(test)]
+pub(crate) mod testing;
+pub(crate) mod tls;
+pub(crate) mod utils;
+
+// Public API
+pub mod cli;
+pub mod crypto;
+pub mod types;
+pub use components::rpc_server::rpcs;
+
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
     Arc,
@@ -45,23 +63,6 @@ pub(crate) use components::{
     small_network::Config as SmallNetworkConfig, storage::Config as StorageConfig,
 };
 pub(crate) use types::NodeRng;
-pub(crate) mod components;
-mod config_migration;
-mod data_migration;
-pub(crate) mod effect;
-pub(crate) mod logging;
-pub(crate) mod protocol;
-pub(crate) mod reactor;
-#[cfg(test)]
-pub(crate) mod testing;
-pub(crate) mod tls;
-pub(crate) mod utils;
-
-// Public modules
-pub use components::rpc_server::rpcs;
-pub mod cli;
-pub mod crypto;
-pub mod types;
 
 /// The maximum thread count which should be spawned by the tokio runtime.
 pub const MAX_THREAD_COUNT: usize = 512;
