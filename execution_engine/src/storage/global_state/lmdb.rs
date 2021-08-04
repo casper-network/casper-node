@@ -1,3 +1,5 @@
+//! LMDB-based global state implementation.
+
 use std::{ops::Deref, sync::Arc};
 
 use crate::shared::{
@@ -24,18 +26,19 @@ use crate::storage::{
     },
 };
 
+/// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
-    pub environment: Arc<LmdbEnvironment>,
-    pub trie_store: Arc<LmdbTrieStore>,
-    pub protocol_data_store: Arc<LmdbProtocolDataStore>,
-    pub empty_root_hash: Blake2bHash,
+    pub(crate) environment: Arc<LmdbEnvironment>,
+    pub(crate) trie_store: Arc<LmdbTrieStore>,
+    pub(crate) protocol_data_store: Arc<LmdbProtocolDataStore>,
+    pub(crate) empty_root_hash: Blake2bHash,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct LmdbGlobalStateView {
-    pub environment: Arc<LmdbEnvironment>,
-    pub store: Arc<LmdbTrieStore>,
-    pub root_hash: Blake2bHash,
+    pub(crate) environment: Arc<LmdbEnvironment>,
+    pub(crate) store: Arc<LmdbTrieStore>,
+    pub(crate) root_hash: Blake2bHash,
 }
 
 impl LmdbGlobalState {

@@ -106,7 +106,7 @@ pub struct InMemoryTrieStore {
 }
 
 impl InMemoryTrieStore {
-    pub fn new(_env: &InMemoryEnvironment, maybe_name: Option<&str>) -> Self {
+    pub(crate) fn new(_env: &InMemoryEnvironment, maybe_name: Option<&str>) -> Self {
         let name = maybe_name
             .map(|name| format!("{}-{}", NAME, name))
             .unwrap_or_else(|| String::from(NAME));

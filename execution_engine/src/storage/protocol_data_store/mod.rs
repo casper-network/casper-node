@@ -1,8 +1,12 @@
+//! TODO REMOVE
 //! A store for persisting `ProtocolData` values at their
 //! protocol versions.
+
 use casper_types::ProtocolVersion;
 
+/// TODO REMOVE
 pub mod in_memory;
+/// TODO REMOVE
 pub mod lmdb;
 #[cfg(test)]
 mod tests;

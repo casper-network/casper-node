@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Changed
+* Documented `storage` module and children.
+* Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
 * Support building and testing using stable Rust.
 
 

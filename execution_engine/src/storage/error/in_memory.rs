@@ -4,11 +4,14 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
+/// Error enum encapsulating possible errors from  
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// (De)serialization error.
     #[error("{0}")]
     BytesRepr(bytesrepr::Error),
 
+    /// Concurrency error.
     #[error("Another thread panicked while holding a lock")]
     Poison,
 }

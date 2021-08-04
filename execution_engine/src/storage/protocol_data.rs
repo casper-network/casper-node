@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+//! TODO module is removed in a future pr
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -8,6 +8,8 @@ use casper_types::{
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
+
+/// TODO MOVE, as protocol_data shouldn't exist anymore
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.
@@ -95,18 +97,22 @@ impl ProtocolData {
         &self.system_config
     }
 
+    /// TODO REMOVE
     pub fn mint(&self) -> ContractHash {
         self.mint
     }
 
+    /// TODO REMOVE
     pub fn handle_payment(&self) -> ContractHash {
         self.handle_payment
     }
 
+    /// TODO REMOVE
     pub fn standard_payment(&self) -> ContractHash {
         self.standard_payment
     }
 
+    /// TODO REMOVE
     pub fn auction(&self) -> ContractHash {
         self.auction
     }
@@ -127,23 +133,6 @@ impl ProtocolData {
             vec.push(self.auction)
         }
         vec
-    }
-
-    pub fn update_from(&mut self, updates: BTreeMap<ContractHash, ContractHash>) -> bool {
-        for (old_hash, new_hash) in updates {
-            if old_hash == self.mint {
-                self.mint = new_hash;
-            } else if old_hash == self.handle_payment {
-                self.handle_payment = new_hash;
-            } else if old_hash == self.standard_payment {
-                self.standard_payment = new_hash;
-            } else if old_hash == self.auction {
-                self.auction = new_hash;
-            } else {
-                return false;
-            }
-        }
-        true
     }
 }
 

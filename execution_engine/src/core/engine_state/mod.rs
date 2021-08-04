@@ -1547,9 +1547,16 @@ where
 
             let handle_payment_args = {
                 //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
-                let finalize_cost_motes = match Motes::from_gas(execution_result_builder.total_cost(), deploy_item.gas_price) {
+                let finalize_cost_motes = match Motes::from_gas(
+                    execution_result_builder.total_cost(),
+                    deploy_item.gas_price,
+                ) {
                     Some(motes) => motes,
-                    None => return Ok(ExecutionResult::precondition_failure(Error::GasConversionOverflow)),
+                    None => {
+                        return Ok(ExecutionResult::precondition_failure(
+                            Error::GasConversionOverflow,
+                        ))
+                    }
                 };
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {

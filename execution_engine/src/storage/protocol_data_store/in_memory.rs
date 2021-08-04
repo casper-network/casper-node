@@ -14,7 +14,8 @@ pub struct InMemoryProtocolDataStore {
 }
 
 impl InMemoryProtocolDataStore {
-    pub fn new(_env: &InMemoryEnvironment, maybe_name: Option<&str>) -> Self {
+    /// Constructor for `InMemoryProtocolDataStore`.
+    pub(crate) fn new(_env: &InMemoryEnvironment, maybe_name: Option<&str>) -> Self {
         let name = maybe_name
             .map(|name| format!("{}-{}", protocol_data_store::NAME, name))
             .unwrap_or_else(|| String::from(protocol_data_store::NAME));

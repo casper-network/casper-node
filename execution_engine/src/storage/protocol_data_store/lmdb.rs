@@ -18,6 +18,7 @@ pub struct LmdbProtocolDataStore {
 }
 
 impl LmdbProtocolDataStore {
+    /// TODO REMOVE
     pub fn new(
         env: &LmdbEnvironment,
         maybe_name: Option<&str>,
@@ -28,6 +29,7 @@ impl LmdbProtocolDataStore {
         Ok(LmdbProtocolDataStore { db })
     }
 
+    /// TODO REMOVE
     pub fn open(env: &LmdbEnvironment, maybe_name: Option<&str>) -> Result<Self, error::Error> {
         let name = Self::name(maybe_name);
         let db = env.env().open_db(Some(&name))?;

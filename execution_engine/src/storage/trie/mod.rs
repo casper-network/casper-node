@@ -18,12 +18,13 @@ use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LEN
 #[cfg(test)]
 pub mod gens;
 
+/// Merkle proofs.
 pub mod merkle_proof;
 #[cfg(test)]
 mod tests;
 
-pub const USIZE_EXCEEDS_U8: &str = "usize exceeds u8";
-pub const RADIX: usize = 256;
+pub(crate) const USIZE_EXCEEDS_U8: &str = "usize exceeds u8";
+pub(crate) const RADIX: usize = 256;
 
 /// A parent is represented as a pair of a child index and a node or extension.
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
@@ -31,11 +32,14 @@ pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 /// Represents a pointer to the next object in a Merkle Trie
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Pointer {
+    /// Leaf pointer.
     LeafPointer(Blake2bHash),
+    /// Node pointer.
     NodePointer(Blake2bHash),
 }
 
 impl Pointer {
+    /// Borrows the inner hash from a `Pointer`.
     pub fn hash(&self) -> &Blake2bHash {
         match self {
             Pointer::LeafPointer(hash) => hash,
@@ -43,6 +47,7 @@ impl Pointer {
         }
     }
 
+    /// Takes ownership of the hash, consuming this `Pointer`.
     pub fn into_hash(self) -> Blake2bHash {
         match self {
             Pointer::LeafPointer(hash) => hash,
@@ -50,6 +55,7 @@ impl Pointer {
         }
     }
 
+    /// Creates a new owned `Pointer` with a new `Blake2bHash`.
     pub fn update(&self, hash: Blake2bHash) -> Self {
         match self {
             Pointer::LeafPointer(_) => Pointer::LeafPointer(hash),
@@ -57,6 +63,7 @@ impl Pointer {
         }
     }
 
+    /// Returns the `tag` value for a variant of `Pointer`.
     fn tag(&self) -> u8 {
         match self {
             Pointer::LeafPointer(_) => 0,
@@ -96,7 +103,10 @@ impl FromBytes for Pointer {
     }
 }
 
+/// Type alias for values under pointer blocks.
 pub type PointerBlockValue = Option<Pointer>;
+
+/// Type alias for arrays of pointer block values.
 pub type PointerBlockArray = [PointerBlockValue; RADIX];
 
 /// Represents the underlying structure of a node in a Merkle Trie
@@ -161,10 +171,12 @@ impl<'de> Deserialize<'de> for PointerBlock {
 }
 
 impl PointerBlock {
+    /// No-arg contstructor for `PointerBlock`. Delegates to `Default::default()`.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Constructs a `PointerBlock` from a slice of indexed `Pointer`s.
     pub fn from_indexed_pointers(indexed_pointers: &[(u8, Pointer)]) -> Self {
         let mut ret = PointerBlock::new();
         for (idx, ptr) in indexed_pointers.iter() {
@@ -173,6 +185,7 @@ impl PointerBlock {
         ret
     }
 
+    /// Deconstructs a `PointerBlock` into an iterator of indexed `Pointer`s.
     pub fn as_indexed_pointers(&self) -> impl Iterator<Item = (u8, Pointer)> + '_ {
         self.0
             .iter()
@@ -183,6 +196,7 @@ impl PointerBlock {
             })
     }
 
+    /// Gets the count of children for this `PointerBlock`.
     pub fn child_count(&self) -> usize {
         self.as_indexed_pointers().count()
     }
@@ -319,12 +333,28 @@ impl ::std::fmt::Debug for PointerBlock {
     }
 }
 
-/// Represents a Merkle Trie
+/// Represents a Merkle Trie.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
-    Leaf { key: K, value: V },
-    Node { pointer_block: Box<PointerBlock> },
-    Extension { affix: Bytes, pointer: Pointer },
+    /// Trie leaf.
+    Leaf {
+        /// Leaf key.
+        key: K,
+        /// Leaf value.
+        value: V,
+    },
+    /// Trie node.
+    Node {
+        /// Node pointer block.
+        pointer_block: Box<PointerBlock>,
+    },
+    /// Trie extension node.
+    Extension {
+        /// Extension node affix bytes.
+        affix: Bytes,
+        /// Extension node pointer.
+        pointer: Pointer,
+    },
 }
 
 impl<K, V> Display for Trie<K, V>
@@ -366,6 +396,7 @@ impl<K, V> Trie<K, V> {
         }
     }
 
+    /// Gets a reference to the root key of this Trie.
     pub fn key(&self) -> Option<&K> {
         match self {
             Trie::Leaf { key, .. } => Some(key),

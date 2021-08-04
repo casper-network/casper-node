@@ -1,13 +1,20 @@
-#![allow(missing_docs)]
-
-// modules
+/// Storage errors.
 pub mod error;
+/// Global State.
 pub mod global_state;
+
+/// TODO REMOVE
 pub mod protocol_data;
+
+/// TODO REMOVE
 pub mod protocol_data_store;
+/// Store module.
 pub mod store;
+/// Transaction Source.
 pub mod transaction_source;
+/// Merkle Trie implementation.
 pub mod trie;
+/// Merkle Trie storage.
 pub mod trie_store;
 
 const MAX_DBS: u32 = 2;
