@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added genesis validation step to ensure there are more genesis validators than validator slots.
+
 ### Changed
 * Support building and testing using stable Rust.
 
