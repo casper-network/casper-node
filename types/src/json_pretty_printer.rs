@@ -7,6 +7,24 @@ use serde_json::{json, Value};
 
 const MAX_STRING_LEN: usize = 150;
 
+/// Represents the information about a substring found in a string.
+#[derive(Debug)]
+struct SubstringSpec {
+    /// Index of the first character.
+    start_index: usize,
+    /// Length of the substring.
+    length: usize,
+}
+
+impl SubstringSpec {
+    fn new(start_index: usize, length: usize) -> Self {
+        Self {
+            start_index,
+            length,
+        }
+    }
+}
+
 /// Serializes the given data structure as a pretty-printed `String` of JSON using
 /// `serde_json::to_string_pretty()`, but after first reducing any large hex-string values.
 ///
@@ -23,13 +41,15 @@ where
     serde_json::to_string_pretty(&json_value)
 }
 
-fn find_hex_strings_longer_than(s: &str, max_len: usize) -> Vec<(usize, usize)> {
+/// Searches the given string for all occurrences of hex substrings
+/// that are longer than the specified `max_len`.
+fn find_hex_strings_longer_than(string: &str, max_len: usize) -> Vec<SubstringSpec> {
     let mut ranges_to_remove = Vec::new();
     let mut start_index = 0;
     let mut contiguous_hex_count = 0;
 
     // Record all large hex-strings' start positions and lengths.
-    for (index, char) in s.char_indices() {
+    for (index, char) in string.char_indices() {
         if char.is_ascii_hexdigit() {
             if contiguous_hex_count == 0 {
                 // This is the start of a new hex-string.
@@ -39,14 +59,14 @@ fn find_hex_strings_longer_than(s: &str, max_len: usize) -> Vec<(usize, usize)> 
         } else if contiguous_hex_count != 0 {
             // This is the end of a hex-string: if it's too long, record it.
             if contiguous_hex_count > max_len {
-                ranges_to_remove.push((start_index, contiguous_hex_count));
+                ranges_to_remove.push(SubstringSpec::new(start_index, contiguous_hex_count));
             }
             contiguous_hex_count = 0;
         }
     }
     // If the string contains a large hex-string at the end, record it now.
     if contiguous_hex_count > max_len {
-        ranges_to_remove.push((start_index, contiguous_hex_count));
+        ranges_to_remove.push(SubstringSpec::new(start_index, contiguous_hex_count));
     }
     ranges_to_remove
 }
@@ -59,10 +79,15 @@ fn shorten_string_field(value: &mut Value) {
             find_hex_strings_longer_than(string, MAX_STRING_LEN)
                 .into_iter()
                 .rev()
-                .for_each(|(start_index, length)| {
-                    let range = start_index..(start_index + length);
-                    string.replace_range(range, &format!("[{} hex chars]", length));
-                })
+                .for_each(
+                    |SubstringSpec {
+                         start_index,
+                         length,
+                     }| {
+                        let range = start_index..(start_index + length);
+                        string.replace_range(range, &format!("[{} hex chars]", length));
+                    },
+                )
         }
         Value::Array(values) => {
             for value in values {
@@ -84,6 +109,12 @@ mod tests {
 
     fn hex_string(length: usize) -> String {
         "0123456789abcdef".chars().cycle().take(length).collect()
+    }
+
+    impl PartialEq<(usize, usize)> for SubstringSpec {
+        fn eq(&self, other: &(usize, usize)) -> bool {
+            self.start_index == other.0 && self.length == other.1
+        }
     }
 
     #[test]
