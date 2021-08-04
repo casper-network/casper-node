@@ -79,7 +79,7 @@ fn global_state_str_params<'a>(matches: &'a ArgMatches) -> GlobalStateStrParams<
             hash_value: block_hash,
         };
     }
-    unreachable!("clap arg groups and parsing should prevent this")
+    unreachable!("clap arg groups and parsing should prevent this for global state params")
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for QueryGlobalState {
