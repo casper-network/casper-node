@@ -17,6 +17,7 @@ struct SubstringSpec {
 }
 
 impl SubstringSpec {
+    /// Constructs a new StringSpec with the given start index and length.
     fn new(start_index: usize, length: usize) -> Self {
         Self {
             start_index,
