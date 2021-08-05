@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Support building and testing using stable Rust.
 * Changed price of `create_purse` to 2.5CSPR to discourage people from creating purses in the payment code.
+* Improve doc comments to clarify behavior of the bidding functionality.
 
 
 
