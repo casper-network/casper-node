@@ -1267,8 +1267,13 @@ pub enum HashingAlgorithmVersion {
 }
 
 impl HashingAlgorithmVersion {
+    #[cfg(feature = "casper-mainnet")]
     pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
         ProtocolVersion::from_parts(1, 4, 0);
+
+    #[cfg(not(feature = "casper-mainnet"))]
+    const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(0, 0, 0);
+
     fn from_protocol_version(protocol_version: &ProtocolVersion) -> Self {
         if *protocol_version < Self::HASH_V2_PROTOCOL_VERSION {
             HashingAlgorithmVersion::V1

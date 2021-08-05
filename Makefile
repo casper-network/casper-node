@@ -9,6 +9,7 @@ CARGO_OPTS := --locked
 CARGO := $(CARGO) $(CARGO_TOOLCHAIN) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
+LEGACY = RUSTFLAGS='--cfg feature="casper-mainnet"'
 
 # Rust Contracts
 # Directory names should match crate names
@@ -49,7 +50,7 @@ all: build build-contracts
 
 .PHONY: build
 build:
-	$(CARGO) build $(CARGO_FLAGS)
+	$(LEGACY) $(CARGO) build $(CARGO_FLAGS)
 
 build-contract-rs/%:
 	$(CARGO) build \
@@ -86,7 +87,7 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 
 .PHONY: test-rs
 test-rs: resources/local/chainspec.toml
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=types/Cargo.toml
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=smart_contracts/contract/Cargo.toml
 
@@ -160,7 +161,7 @@ clean:
 
 .PHONY: build-for-packaging
 build-for-packaging: build-client-contracts
-	$(CARGO) build --release
+	$(LEGACY) $(CARGO) build --release
 
 .PHONY: deb
 deb: setup build-for-packaging
