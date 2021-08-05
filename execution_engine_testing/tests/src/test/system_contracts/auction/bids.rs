@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
         SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
     },
@@ -36,7 +36,7 @@ use casper_types::{
             ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -154,7 +154,7 @@ const WEEK_TIMESTAMPS: [u64; 14] = [
 
 #[ignore]
 #[test]
-fn should_run_add_bid() {
+fn should_add_new_bid() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
@@ -183,18 +183,51 @@ fn should_run_add_bid() {
     )
     .build();
 
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.exec(exec_request_1).expect_success().commit();
 
     let bids: Bids = builder.get_bids();
 
     assert_eq!(bids.len(), 1);
-
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
         builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
+}
+
+#[ignore]
+#[test]
+fn should_increase_existing_bid() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            BID_ACCOUNT_1_PK.clone(),
+            Motes::new(BID_ACCOUNT_1_BALANCE.into()),
+            None,
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).expect_success().commit();
 
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -220,9 +253,42 @@ fn should_run_add_bid() {
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_2);
+}
 
-    // 3. withdraw some amount
-    let exec_request_3 = ExecuteRequestBuilder::standard(
+#[ignore]
+#[test]
+fn should_decrease_existing_bid() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            BID_ACCOUNT_1_PK.clone(),
+            Motes::new(BID_ACCOUNT_1_BALANCE.into()),
+            None,
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let bid_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+    builder.exec(bid_request).expect_success().commit();
+
+    // withdraw some amount
+    let withdraw_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
@@ -231,7 +297,7 @@ fn should_run_add_bid() {
         },
     )
     .build();
-    builder.exec(exec_request_3).commit().expect_success();
+    builder.exec(withdraw_request).commit().expect_success();
 
     let bids: Bids = builder.get_bids();
 
@@ -241,20 +307,20 @@ fn should_run_add_bid() {
     assert_eq!(
         builder.get_purse_balance(*active_bid.bonding_purse()),
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
-        U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
+        U512::from(ADD_BID_AMOUNT_1)
     );
     let unbonding_purses: UnbondingPurses = builder.get_withdraws();
     let unbond_list = unbonding_purses
         .get(&BID_ACCOUNT_1_ADDR)
-        .expect("should have unbond");
+        .expect("should have unbonded");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].unbonder_public_key(), &*BID_ACCOUNT_1_PK);
-    assert_eq!(unbond_list[0].validator_public_key(), &*BID_ACCOUNT_1_PK);
+    let unbonding_purse = unbond_list[0].clone();
+    assert_eq!(unbonding_purse.unbonder_public_key(), &*BID_ACCOUNT_1_PK);
+    assert_eq!(unbonding_purse.validator_public_key(), &*BID_ACCOUNT_1_PK);
+
     // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
-
-    assert_eq!(unbond_list[0].amount(), &U512::from(WITHDRAW_BID_AMOUNT_2),);
-
-    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID,);
+    assert_eq!(unbonding_purse.amount(), &U512::from(WITHDRAW_BID_AMOUNT_2),);
+    assert_eq!(unbonding_purse.era_of_creation(), INITIAL_ERA_ID,);
 }
 
 #[ignore]
@@ -2949,4 +3015,51 @@ fn should_validate_genesis_delegators_bond_amount() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
+}
+
+fn check_validator_slots_for_accounts(accounts: usize) {
+    let accounts = {
+        let range = 1..=accounts;
+
+        let mut tmp: Vec<GenesisAccount> = Vec::with_capacity(accounts);
+
+        for count in range.map(U256::from) {
+            let secret_key = {
+                let mut secret_key_bytes = [0; 32];
+                count.to_big_endian(&mut secret_key_bytes);
+                SecretKey::ed25519_from_bytes(&secret_key_bytes).expect("should create ed25519 key")
+            };
+
+            let public_key = PublicKey::from(&secret_key);
+
+            let account = GenesisAccount::account(
+                public_key,
+                Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+                Some(GenesisValidator::new(Motes::new(ACCOUNT_1_BOND.into()), 80)),
+            );
+
+            tmp.push(account)
+        }
+
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+}
+
+#[should_panic(expected = "InvalidValidatorSlots")]
+#[ignore]
+#[test]
+fn should_fail_with_more_accounts_than_slots() {
+    check_validator_slots_for_accounts(DEFAULT_EXEC_CONFIG.validator_slots() as usize + 1);
+}
+
+#[ignore]
+#[test]
+fn should_run_genesis_with_exact_validator_slots() {
+    check_validator_slots_for_accounts(DEFAULT_EXEC_CONFIG.validator_slots() as usize);
 }

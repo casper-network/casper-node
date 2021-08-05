@@ -43,8 +43,12 @@ unit_hashes_folder = "../node-storage"
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '1min'
 
-# If the current era's protocol state has not progressed for this long, shut down.
+# If the current era's protocol state has not progressed for this long, request the latest state
+# from peers.
 standstill_timeout = '5min'
+
+# If after another `standstill_timeout` there still was no progress, shut down.
+shutdown_on_standstill = false
 
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
@@ -309,3 +313,23 @@ verify_accounts = true
 #
 # If unset, defaults to 5.
 #max_query_depth = 5
+
+
+# ========================================================
+# Configuration options for synchronizing the linear chain
+# ========================================================
+[linear_chain_sync]
+
+# The amount of time that the node will try to sync without making progress before shutting down.
+sync_timeout = '1hr'
+
+
+# ====================================================================
+# Configuration options for selecting deploys to propose in new blocks
+# ====================================================================
+[block_proposer]
+
+# Deploys are only proposed in a new block if they have been received at least this long ago.
+# A longer delay makes it more likely that many proposed deploys are already known by the
+# other nodes, and don't have to be requested from the proposer afterwards.
+#deploy_delay = '1min'

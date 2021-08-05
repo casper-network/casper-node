@@ -20,9 +20,6 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
-#![feature(test)]
-
-extern crate test;
 
 pub mod components;
 mod config_migration;
@@ -53,12 +50,14 @@ use signal_hook::{
 };
 
 pub use components::{
+    block_proposer::Config as BlockProposerConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
     event_stream_server::Config as EventStreamServerConfig,
     fetcher::Config as FetcherConfig,
     gossiper::{Config as GossipConfig, Error as GossipError},
+    linear_chain_sync::Config as LinearChainSyncConfig,
     rest_server::Config as RestServerConfig,
     rpc_server::{rpcs, Config as RpcServerConfig},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},

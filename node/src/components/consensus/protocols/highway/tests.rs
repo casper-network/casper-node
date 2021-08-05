@@ -75,6 +75,7 @@ where
         highway: HighwayConfig {
             pending_vertex_timeout: "1min".parse().unwrap(),
             standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
+            shutdown_on_standstill: true,
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
             ..HighwayConfig::default()
