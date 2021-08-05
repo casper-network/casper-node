@@ -520,4 +520,43 @@ mod tests {
             signed_deploy
         );
     }
+
+    #[test]
+    fn should_create_transfer() {
+        use casper_types::{AsymmetricType, PublicKey};
+
+        let secret_key = SecretKey::generate_ed25519().unwrap();
+        let public_key = PublicKey::from(&secret_key).to_hex();
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            &public_key,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+    }
+
+    #[test]
+    fn should_fail_to_create_transfer_with_bad_args() {
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            "bad public key.",
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(matches!(
+            transfer_deploy,
+            Err(Error::InvalidArgument("target_account", _))
+        ));
+    }
 }
