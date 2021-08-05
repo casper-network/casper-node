@@ -11,7 +11,6 @@ use crate::{
     shared::stored_value::StoredValue,
     storage::global_state::StateReader,
 };
-use chrono::Month::April;
 
 pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 

@@ -2135,13 +2135,14 @@ where
             None => return Err(Error::RootNotFound(state_root_hash)),
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
         };
-        tracking_copy
+        let result = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
             .map_err(|_| {
                 error!("Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
-            })
+            });
+        result
     }
 
     pub fn get_system_mint_hash(
