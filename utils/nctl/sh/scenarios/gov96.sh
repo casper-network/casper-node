@@ -6,7 +6,7 @@ source "$NCTL"/sh/scenarios/common/itst.sh
 set -e
 
 #######################################
-# Runs an integration tests that tries to simulate
+# Runs an integration test that tries to simulate
 # stalling consensus by stopping all but one node. It
 # then restarts the nodes and checks for the chain
 # to progress.
@@ -28,35 +28,35 @@ function main() {
     do_await_era_change
     # 2. Verify all nodes are in sync
     check_network_sync
-    # 3-5. Stop three nodes
+    # 3-6. Stop four nodes
     do_stop_node "5"
     do_stop_node "4"
     do_stop_node "3"
     do_stop_node "2"
-    # 6. Ensure chain stalled
+    # 7. Ensure chain stalled
     # Eras are less than a minute long. 
     # We want to make sure that consensus handles being resumed,
     # even after being "paused" for multiples of era length.
     assert_chain_stalled "300"
-    # 7. Verify that the running node can still handle queries.
+    # 8. Verify that the running node can still handle queries.
     assert_node_operational "1"
-    # 8-10. Restart three nodes
+    # 9-12. Restart four nodes
     do_start_node "5" "$STALLED_LFB"
     do_start_node "4" "$STALLED_LFB"
     do_start_node "3" "$STALLED_LFB"
     do_start_node "2" "$STALLED_LFB"
-    # 11. Verify all nodes are in sync
-    check_network_sync
-    # 12. Ensure era proceeds after restart
-    do_await_era_change "2"
     # 13. Verify all nodes are in sync
     check_network_sync
-    # 14-16. Compare stalled lfb hash to currentm
+    # 14. Ensure era proceeds after restart
+    do_await_era_change "2"
+    # 15. Verify all nodes are in sync
+    check_network_sync
+    # 16-17. Compare stalled lfb hash to current
     assert_chain_progressed "5" "$STALLED_LFB"
     assert_chain_progressed "4" "$STALLED_LFB"
     assert_chain_progressed "3" "$STALLED_LFB"
     assert_chain_progressed "2" "$STALLED_LFB"
-    # 17. Check for Equivocators
+    # 18. Check for Equivocators
     assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
@@ -88,8 +88,8 @@ function assert_node_operational() {
 }
 
 function assert_chain_stalled() {
-    # Fucntion checks that the remaining node's LFB checked
-    # n-seconds apart doesnt progress
+    # Function checks that the remaining node's LFB checked
+    # n-seconds apart doesn't progress
     log_step "ensuring chain stalled"
     local SLEEP_TIME=${1}
     # Sleep 5 seconds to allow for final message propagation.
