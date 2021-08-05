@@ -100,6 +100,8 @@ pub trait Auction:
     ///
     /// Validators cannot create a bid with 0 amount, and the delegation rate can't exceed
     /// [`DELEGATION_RATE_DENOMINATOR`].
+    ///
+    /// Returns a [`U512`] value indicating total amount of tokens staked for given `public_key`.
     fn add_bid(
         &mut self,
         public_key: PublicKey,
@@ -159,14 +161,17 @@ pub trait Auction:
         Ok(updated_amount)
     }
 
-    /// For a non-founder validator, this entry point implements essentially the same logic as
-    /// `add_bid` but reducing the number of tokens staked in the bid.
+    /// For a non-founder validator, this method simply decreases a stake.
     ///
     /// For a founding validator, this function first checks whether they are released and fails if
     /// they are not.
     ///
-    /// All the delegators that bid their tokens on a particular validator are automatically
-    /// unbonded with their total staked amount.
+    /// When a validator's stake reaches 0 all the delegators that bid their tokens to it are
+    /// automatically unbonded with their total staked amount and the bid is deactivated. A bid can
+    /// be activated again by staking tokens.
+    ///
+    /// You can't withdraw higher amount than its currently staked. Withdrawing zero is allowed,
+    /// although it does not change the state of the auction.
     ///
     /// The function returns the new amount of motes remaining in the bid. If the target bid does
     /// not exist, the function call returns an error.
@@ -301,8 +306,9 @@ pub trait Auction:
     /// remaining amount is 0) from the entry in delegators map for given validator and creates a
     /// new unbonding request to the queue.
     ///
-    /// The arguments are the delegator's key, the validator's key, and the remaining stake and
-    /// return the remaining bid amount.
+    /// The arguments are the delegator's key, the validator's key, and the amount.
+    ///
+    /// Returns the remaining bid amount after the stake was decreased.
     fn undelegate(
         &mut self,
         delegator_public_key: PublicKey,
