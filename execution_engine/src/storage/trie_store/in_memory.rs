@@ -1,5 +1,36 @@
 //! An in-memory trie store, intended to be used for testing.
 
+use super::{Blake2bHash, Store, Trie, TrieStore, NAME};
+use crate::storage::{error::in_memory::Error, transaction_source::in_memory::InMemoryEnvironment};
+
+/// An in-memory trie store.
+pub struct InMemoryTrieStore {
+    maybe_name: Option<String>,
+}
+
+impl InMemoryTrieStore {
+    pub(crate) fn new(_env: &InMemoryEnvironment, maybe_name: Option<&str>) -> Self {
+        let name = maybe_name
+            .map(|name| format!("{}-{}", NAME, name))
+            .unwrap_or_else(|| String::from(NAME));
+        InMemoryTrieStore {
+            maybe_name: Some(name),
+        }
+    }
+}
+
+impl<K, V> Store<Blake2bHash, Trie<K, V>> for InMemoryTrieStore {
+    type Error = Error;
+
+    type Handle = Option<String>;
+
+    fn handle(&self) -> Self::Handle {
+        self.maybe_name.to_owned()
+    }
+}
+
+impl<K, V> TrieStore<K, V> for InMemoryTrieStore {}
+
 #[cfg(test)]
 mod test {
     use crate::{
@@ -107,34 +138,3 @@ mod test {
         }
     }
 }
-
-use super::{Blake2bHash, Store, Trie, TrieStore, NAME};
-use crate::storage::{error::in_memory::Error, transaction_source::in_memory::InMemoryEnvironment};
-
-/// An in-memory trie store.
-pub struct InMemoryTrieStore {
-    maybe_name: Option<String>,
-}
-
-impl InMemoryTrieStore {
-    pub(crate) fn new(_env: &InMemoryEnvironment, maybe_name: Option<&str>) -> Self {
-        let name = maybe_name
-            .map(|name| format!("{}-{}", NAME, name))
-            .unwrap_or_else(|| String::from(NAME));
-        InMemoryTrieStore {
-            maybe_name: Some(name),
-        }
-    }
-}
-
-impl<K, V> Store<Blake2bHash, Trie<K, V>> for InMemoryTrieStore {
-    type Error = Error;
-
-    type Handle = Option<String>;
-
-    fn handle(&self) -> Self::Handle {
-        self.maybe_name.to_owned()
-    }
-}
-
-impl<K, V> TrieStore<K, V> for InMemoryTrieStore {}
