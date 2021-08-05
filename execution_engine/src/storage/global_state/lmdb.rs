@@ -56,13 +56,11 @@ impl LmdbGlobalState {
     pub(crate) fn new(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
-
         empty_root_hash: Blake2bHash,
     ) -> Self {
         LmdbGlobalState {
             environment,
             trie_store,
-
             empty_root_hash,
         }
     }

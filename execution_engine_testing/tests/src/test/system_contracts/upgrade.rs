@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
 
+use num_rational::Ratio;
+
 use casper_engine_test_support::internal::{
     InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
 };
 
 use casper_execution_engine::{
-    core::engine_state::EngineConfig,
+    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::{
@@ -32,7 +34,6 @@ use casper_types::{
     },
     CLValue, EraId, ProtocolVersion, U512,
 };
-use num_rational::Ratio;
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
@@ -121,7 +122,11 @@ fn should_allow_only_wasm_costs_patch_version() {
             .build()
     };
 
-    let engine_config = EngineConfig::new(5, new_wasm_config, SystemConfig::default());
+    let engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        new_wasm_config,
+        SystemConfig::default(),
+    );
 
     builder
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
@@ -157,7 +162,11 @@ fn should_allow_only_wasm_costs_minor_version() {
             .build()
     };
 
-    let engine_config = EngineConfig::new(5, new_wasm_config, SystemConfig::default());
+    let engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        new_wasm_config,
+        SystemConfig::default(),
+    );
 
     builder
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)

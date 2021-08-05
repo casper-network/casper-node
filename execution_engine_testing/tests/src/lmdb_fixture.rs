@@ -100,7 +100,6 @@ pub fn generate_fixture(
 
     // You can customize the fixture post genesis with a callable.
     post_genesis_setup(&mut builder);
-    // Pass in a function taking the builder
 
     let post_state_hash = builder.get_post_state_hash();
 

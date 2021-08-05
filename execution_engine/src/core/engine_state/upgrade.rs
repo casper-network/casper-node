@@ -136,6 +136,8 @@ pub enum ProtocolUpgradeError {
     FailedToDisablePreviousVersion(String),
     #[error(transparent)]
     Bytesrepr(#[from] bytesrepr::Error),
+    #[error("Failed to insert system contract registry")]
+    FailedToCreateSystemRegistry,
 }
 
 pub(crate) struct SystemUpgrader<S>

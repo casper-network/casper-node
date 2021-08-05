@@ -11,6 +11,7 @@ use crate::{
     shared::stored_value::StoredValue,
     storage::global_state::StateReader,
 };
+use chrono::Month::April;
 
 pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
@@ -50,13 +51,9 @@ where
         target: URef,
         amount: U512,
     ) -> Result<(), ApiError> {
-        let mint_contract_hash = match self.get_mint_contract() {
-            Ok(mint_hash) => mint_hash,
-            Err(exec_error) => {
-                let maybe_api_error: Option<ApiError> = exec_error.into();
-                return Err(maybe_api_error.unwrap_or(ApiError::Transfer));
-            }
-        };
+        let mint_contract_hash = self
+            .get_mint_contract()
+            .map_err(|_| ApiError::MissingSystemContractHash)?;
         match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(mint_error)) => Err(mint_error.into()),
@@ -74,12 +71,9 @@ where
     R::Error: Into<execution::Error>,
 {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
-        let handle_payment_contract_hash =
-            self.get_handle_payment_contract().map_err(|exec_error| {
-                let maybe_api_error: Option<ApiError> = exec_error.into();
-                maybe_api_error
-                    .unwrap_or_else(|| handle_payment::Error::PaymentPurseNotFound.into())
-            })?;
+        let handle_payment_contract_hash = self
+            .get_handle_payment_contract()
+            .map_err(|_| ApiError::MissingSystemContractHash)?;
 
         let cl_value = self
             .call_contract(

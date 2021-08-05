@@ -389,6 +389,7 @@ impl Executor {
         R::Error: Into<Error>,
         T: FromBytes + CLTyped,
     {
+        // TODO See if these panics can be removed.
         let system_contract_registry = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
@@ -398,6 +399,7 @@ impl Executor {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
+                // TODO See if these panics can be removed.
                 let auction_hash = system_contract_registry
                     .get(AUCTION)
                     .expect("should have auction hash")
@@ -412,6 +414,7 @@ impl Executor {
             }
             DirectSystemContractCall::FinalizePayment
             | DirectSystemContractCall::GetPaymentPurse => {
+                // TODO See if these panics can be removed.
                 let handle_payment = system_contract_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
@@ -423,6 +426,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
+                // TODO See if these panics can be removed.
                 let mint_hash = system_contract_registry
                     .get(MINT)
                     .expect("should have mint hash");
@@ -434,6 +438,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::GetEraValidators => {
+                // TODO See if these panics can be removed.
                 let auction_hash = system_contract_registry
                     .get(AUCTION)
                     .expect("should have auction hash")

@@ -23,7 +23,7 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, UpgradeConfig, UpgradeSuccess,
+            QueryResult, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -66,7 +66,6 @@ use casper_types::{
 use crate::internal::{
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
-use casper_execution_engine::core::engine_state::genesis::SystemContractRegistry;
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///

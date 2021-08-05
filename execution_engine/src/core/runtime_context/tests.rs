@@ -22,8 +22,10 @@ use casper_types::{
 use super::{Address, Error, RuntimeContext};
 use crate::{
     core::{
-        engine_state::EngineConfig, execution::AddressGenerator,
-        runtime::extract_access_rights_from_keys, tracking_copy::TrackingCopy,
+        engine_state::{EngineConfig, SystemContractRegistry},
+        execution::AddressGenerator,
+        runtime::extract_access_rights_from_keys,
+        tracking_copy::TrackingCopy,
     },
     shared::{
         account::{Account, AssociatedKeys},
@@ -38,7 +40,6 @@ use crate::{
         StateProvider,
     },
 };
-use std::collections::BTreeMap;
 
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
@@ -350,7 +351,7 @@ fn contract_key_addable_valid() {
     tracking_copy.borrow_mut().write(contract_key, contract);
 
     let default_system_registry = {
-        let mut registry = BTreeMap::<String, ContractHash>::new();
+        let mut registry = SystemContractRegistry::new();
         registry.insert(MINT.to_string(), ContractHash::default());
         registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
         registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());

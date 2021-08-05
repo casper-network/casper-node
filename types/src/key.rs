@@ -65,7 +65,7 @@ const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADD
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
-const KEY_SYSTEM_CONTRACT_REGISTRY_LENGTH: usize =
+const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY.len();
 
 /// An alias for [`Key`]s hash variant.
@@ -133,6 +133,7 @@ pub enum FromStrError {
     Bid(String),
     Withdraw(String),
     Dictionary(String),
+    SystemContractRegistry(String),
     UnknownPrefix,
 }
 
@@ -168,8 +169,17 @@ impl Display for FromStrError {
             FromStrError::Balance(error) => write!(f, "balance-key from string error: {}", error),
             FromStrError::Bid(error) => write!(f, "bid-key from string error: {}", error),
             FromStrError::Withdraw(error) => write!(f, "withdraw-key from string error: {}", error),
+            FromStrError::Dictionary(error) => {
+                write!(f, "dictionary-key from string error: {}", error)
+            }
+            FromStrError::SystemContractRegistry(error) => {
+                write!(
+                    f,
+                    "system-contract-registry-key from string error: {}",
+                    error
+                )
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
-            FromStrError::Dictionary(error) => write!(f, "dictionary from string error: {}", error),
         }
     }
 }
@@ -324,10 +334,14 @@ impl Key {
             return Ok(Key::Dictionary(addr));
         }
 
-        if input
-            .strip_prefix(SYSTEM_CONTRACT_REGISTRY_PREFIX)
-            .is_some()
-        {
+        if let Some(registry_padding) = input.strip_prefix(SYSTEM_CONTRACT_REGISTRY_PREFIX) {
+            let padded_bytes = base16::decode(registry_padding)
+                .map_err(|error| FromStrError::SystemContractRegistry(error.to_string()))?;
+            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::SystemContractRegistry(
+                    "Failed to deserialize system registry key".to_string(),
+                )
+            })?;
             return Ok(Key::SystemContractRegistry);
         }
 
@@ -544,7 +558,7 @@ impl ToBytes for Key {
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
-            Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_LENGTH,
+            Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
         }
     }
 }
@@ -604,7 +618,7 @@ impl FromBytes for Key {
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=9) {
+        match rng.gen_range(0..=10) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -615,6 +629,7 @@ impl Distribution<Key> for Standard {
             7 => Key::Bid(rng.gen()),
             8 => Key::Withdraw(rng.gen()),
             9 => Key::Dictionary(rng.gen()),
+            10 => Key::SystemContractRegistry,
             _ => unreachable!(),
         }
     }
@@ -796,7 +811,9 @@ mod tests {
     const BALANCE_KEY: Key = Key::Balance([42; 32]);
     const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
-    const KEYS: [Key; 9] = [
+    const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
+    const REGISTRY_KEY: Key = Key::SystemContractRegistry;
+    const KEYS: [Key; 11] = [
         ACCOUNT_KEY,
         HASH_KEY,
         UREF_KEY,
@@ -806,6 +823,8 @@ mod tests {
         BALANCE_KEY,
         BID_KEY,
         WITHDRAW_KEY,
+        DICTIONARY_KEY,
+        REGISTRY_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
 
@@ -889,6 +908,17 @@ mod tests {
             format!("{}", WITHDRAW_KEY),
             format!("Key::Withdraw({})", HEX_STRING)
         );
+        assert_eq!(
+            format!("{}", DICTIONARY_KEY),
+            format!("Key::Dictionary({})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", REGISTRY_KEY),
+            format!(
+                "Key::SystemContractRegistry({})",
+                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+            )
+        )
     }
 
     #[test]
@@ -997,6 +1027,14 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("withdraw-key from string error: "));
+        assert!(Key::from_formatted_str(DICTIONARY_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("dictionary-key from string error: "));
+        assert!(Key::from_formatted_str(SYSTEM_CONTRACT_REGISTRY_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("system-contract-registry-key from string error: "));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
@@ -1034,6 +1072,11 @@ mod tests {
             format!(r#"{{"Balance":"balance-{}"}}"#, HEX_STRING),
             format!(r#"{{"Bid":"bid-{}"}}"#, HEX_STRING),
             format!(r#"{{"Withdraw":"withdraw-{}"}}"#, HEX_STRING),
+            format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
+            format!(
+                r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
+                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+            ),
         ];
 
         assert_eq!(
@@ -1079,5 +1122,7 @@ mod tests {
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(zeros)));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
+        round_trip(&Key::Dictionary(zeros));
+        round_trip(&Key::SystemContractRegistry);
     }
 }

@@ -56,7 +56,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisSuccess},
+    genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
     query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_cache::SystemContractCache,
@@ -68,8 +68,8 @@ use crate::{
         engine_state::{
             executable_deploy_item::DeployKind,
             execution_result::ExecutionResultBuilder,
-            genesis::{GenesisError, GenesisInstaller},
-            upgrade::SystemUpgrader,
+            genesis::GenesisInstaller,
+            upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
         execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -221,30 +221,32 @@ where
             return Err(Error::InvalidProtocolVersion(new_protocol_version));
         }
 
-        let registry = {
-            // Check if the registry exists in global state.
-            let correlation_id = CorrelationId::new();
-            let maybe_stored_registry = tracking_copy
-                .borrow_mut()
-                .get(correlation_id, &Key::SystemContractRegistry)
-                .map_err(Into::into)?;
-            let stored_registry = match maybe_stored_registry {
-                Some(registry) => registry,
-                None => {
-                    // Check the upgrade config for the registry
-                    let upgrade_registry = upgrade_config
-                        .global_state_update()
-                        .get(&Key::SystemContractRegistry)
-                        .expect("should posses registry in upgrade config")
-                        .to_owned();
-                    upgrade_registry
-                }
-            };
-            if let StoredValue::CLValue(cl_registry) = stored_registry {
-                CLValue::into_t::<BTreeMap<String, ContractHash>>(cl_registry)
-                    .map_err(|error| GenesisError::CLValue(format!("{:?}", error)))?
+        let registry = if let Ok(registry) = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)
+        {
+            registry
+        } else {
+            // Check the upgrade config for the registry
+            let upgrade_registry = upgrade_config
+                .global_state_update()
+                .get(&Key::SystemContractRegistry)
+                .ok_or_else(|| {
+                    error!("Registry is absent in upgrade config");
+                    Error::ProtocolUpgrade(ProtocolUpgradeError::FailedToCreateSystemRegistry)
+                })?
+                .to_owned();
+            if let StoredValue::CLValue(cl_registry) = upgrade_registry {
+                CLValue::into_t::<SystemContractRegistry>(cl_registry).map_err(|error| {
+                    let error_msg = format!("Conversion to system registry failed: {:?}", error);
+                    error!("{}", error_msg);
+                    Error::Bytesrepr(error_msg)
+                })?
             } else {
-                return Err(GenesisError::FailedToCreateRegistry.into());
+                error!("Failed to create registry as StoreValue in upgrade config is not CLValue");
+                return Err(Error::ProtocolUpgrade(
+                    ProtocolUpgradeError::FailedToCreateSystemRegistry,
+                ));
             }
         };
 
@@ -257,11 +259,11 @@ where
             Error::MissingSystemContractHash(AUCTION.to_string())
         })?;
         let standard_payment_hash = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
-            error!("Missing system standard_payment contract hash");
+            error!("Missing system standard payment contract hash");
             Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
         })?;
         let handle_payment_hash = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
-            error!("Missing system handle_payment contract hash");
+            error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
 
@@ -1122,8 +1124,6 @@ where
                 }
             }
         };
-
-        // vestigial system_contract_cache
 
         // Get addr bytes from `address` (which is actually a Key)
         // validation_spec_3: account validity
@@ -2130,34 +2130,17 @@ where
         &self,
         correlation_id: CorrelationId,
         state_root_hash: Blake2bHash,
-    ) -> Result<BTreeMap<String, ContractHash>, Error> {
+    ) -> Result<SystemContractRegistry, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
         };
-        let stored_registry = tracking_copy
+        tracking_copy
             .borrow_mut()
-            .get(correlation_id, &Key::SystemContractRegistry)
-            .map_err(Into::into)?
-            .ok_or({
-                error!("Missing system contract registry");
+            .get_system_contracts(correlation_id)
+            .map_err(|_| {
+                error!("Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
-            })?;
-
-        stored_registry
-            .as_cl_value()
-            .ok_or_else(|| {
-                error!("Failed to serialize registry as CLValue");
-                Error::Bytesrepr("Failed to serialize registry as CLValue".to_string())
-            })?
-            .clone()
-            .into_t::<BTreeMap<String, ContractHash>>()
-            .map_err(|error| {
-                error!(
-                    "Failed to convert CLValue registry into BTreemap: {:?}",
-                    error
-                );
-                Error::Bytesrepr(error.to_string())
             })
     }
 

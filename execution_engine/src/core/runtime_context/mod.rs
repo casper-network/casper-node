@@ -1,10 +1,12 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::Debug,
     rc::Rc,
 };
+
+use tracing::error;
 
 use casper_types::{
     account::{
@@ -23,7 +25,7 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig},
+        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
         execution::{AddressGenerator, Error},
         runtime_context::dictionary::DictionaryValue,
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
@@ -32,8 +34,6 @@ use crate::{
     shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
     storage::global_state::StateReader,
 };
-
-use tracing::error;
 
 pub(crate) mod dictionary;
 #[cfg(test)]
@@ -765,21 +765,20 @@ where
     }
 
     /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(&self) -> bool {
+    pub(crate) fn is_system_contract(&self) -> Result<bool, Error> {
         if let Some(hash) = self.base_key().into_hash() {
             let contract_hash = ContractHash::new(hash);
-            return self
-                .system_contract_registry()
-                .expect("must get system contract registry")
+            return Ok(self
+                .system_contract_registry()?
                 .values()
-                .any(|&system_hash| system_hash == contract_hash);
+                .any(|&system_hash| system_hash == contract_hash));
         }
-        false
+        Ok(false)
     }
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if self.is_system_contract() {
+        if self.is_system_contract()? {
             // Don't charge storage used while executing a system contract.
             return Ok(());
         }
@@ -1139,7 +1138,7 @@ where
         Ok(*hash)
     }
 
-    pub fn system_contract_registry(&self) -> Result<BTreeMap<String, ContractHash>, Error> {
+    pub fn system_contract_registry(&self) -> Result<SystemContractRegistry, Error> {
         self.tracking_copy
             .borrow_mut()
             .get_system_contracts(self.correlation_id)

@@ -22,7 +22,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
-    system::{mint::ARG_AMOUNT, CallStackElement, STANDARD_PAYMENT},
+    system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
     EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, U512,
 };
@@ -40,7 +40,6 @@ use crate::{
     },
     storage::global_state::StateReader,
 };
-use casper_types::system::HANDLE_PAYMENT;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const MODULE_BYTES_TAG: u8 = 0;

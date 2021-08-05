@@ -2,16 +2,16 @@ use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
     internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-
-use crate::lmdb_fixture;
-use casper_engine_test_support::internal::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_execution_engine::{
-    core::{engine_state::Error, execution},
+    core::{
+        engine_state::{Error, SystemContractRegistry},
+        execution,
+    },
     shared::{newtypes::Blake2bHash, stored_value::StoredValue, TypeMismatch},
 };
 use casper_types::{
@@ -20,6 +20,8 @@ use casper_types::{
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,
     RuntimeArgs, URef, U512,
 };
+
+use crate::lmdb_fixture;
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const GH_1470_REGRESSION: &str = "gh_1470_regression.wasm";
@@ -65,7 +67,7 @@ fn apply_global_state_update(
         .as_cl_value()
         .expect("must be CLValue")
         .clone()
-        .into_t::<BTreeMap<String, ContractHash>>()
+        .into_t::<SystemContractRegistry>()
         .expect("must convert to btree map");
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();

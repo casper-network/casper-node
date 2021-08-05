@@ -15,6 +15,7 @@ use std::{
 
 use itertools::Itertools;
 use parity_wasm::elements::Module;
+use tracing::error;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
 use casper_types::{
@@ -1305,33 +1306,36 @@ where
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        key.into_hash()
-            == Some(
-                self.context
-                    .get_system_contract(MINT)
-                    .expect("should have mint hash")
-                    .value(),
-            )
+        let hash = match self.context.get_system_contract(MINT) {
+            Ok(hash) => hash,
+            Err(_) => {
+                error!("Failed to get system mint contract hash");
+                return false;
+            }
+        };
+        key.into_hash() == Some(hash.value())
     }
 
     pub fn is_handle_payment(&self, key: Key) -> bool {
-        key.into_hash()
-            == Some(
-                self.context
-                    .get_system_contract(HANDLE_PAYMENT)
-                    .expect("should have handle_payment hash")
-                    .value(),
-            )
+        let hash = match self.context.get_system_contract(HANDLE_PAYMENT) {
+            Ok(hash) => hash,
+            Err(_) => {
+                error!("Failed to get system handle payment contract hash");
+                return false;
+            }
+        };
+        key.into_hash() == Some(hash.value())
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
-        key.into_hash()
-            == Some(
-                self.context
-                    .get_system_contract(AUCTION)
-                    .expect("should have auction hash")
-                    .value(),
-            )
+        let hash = match self.context.get_system_contract(AUCTION) {
+            Ok(hash) => hash,
+            Err(_) => {
+                error!("Failed to get system auction contract hash");
+                return false;
+            }
+        };
+        key.into_hash() == Some(hash.value())
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(

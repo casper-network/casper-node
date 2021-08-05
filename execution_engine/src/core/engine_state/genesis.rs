@@ -656,7 +656,7 @@ pub enum GenesisError {
     InvalidDelegatedAmount {
         public_key: PublicKey,
     },
-    FailedToCreateRegistry,
+    FailedToCreateSystemRegistry,
     MissingSystemContractHash(String),
 }
 
@@ -801,11 +801,12 @@ where
         let (_, mint_hash) = self.store_contract(access_key, named_keys, entry_points);
 
         {
+            // Insert a partial registry into global state.
+            // This allows for default values to be accessible when the remaining system contracts
+            // call the `call_host_mint` function during their creation.
             let mut partial_registry = BTreeMap::<String, ContractHash>::new();
             partial_registry.insert(MINT.to_string(), mint_hash);
             partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
-            partial_registry.insert(AUCTION.to_string(), DEFAULT_ADDRESS.into());
-            partial_registry.insert(STANDARD_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
             let cl_registry = CLValue::from_t(partial_registry)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
             self.tracking_copy.borrow_mut().write(
@@ -1280,16 +1281,15 @@ where
             .tracking_copy
             .borrow_mut()
             .read(self.correlation_id, &Key::SystemContractRegistry)
-            .map_err(|_| GenesisError::FailedToCreateRegistry)?
+            .map_err(|_| GenesisError::FailedToCreateSystemRegistry)?
             .ok_or_else(|| {
                 GenesisError::CLValue("failed to convert registry as stored value".to_string())
             })?
             .as_cl_value()
             .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?
             .to_owned();
-        let mut partial_registry =
-            CLValue::into_t::<BTreeMap<String, ContractHash>>(partial_cl_registry)
-                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+        let mut partial_registry = CLValue::into_t::<SystemContractRegistry>(partial_cl_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
         partial_registry.insert(contract_name.to_string(), contract_hash);
         let cl_registry = CLValue::from_t(partial_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;

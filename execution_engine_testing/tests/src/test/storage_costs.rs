@@ -1,3 +1,4 @@
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
@@ -11,7 +12,17 @@ use casper_engine_test_support::{
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
-use casper_execution_engine::shared::{storage_costs::StorageCosts, stored_value::StoredValue};
+use casper_execution_engine::{
+    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
+    shared::{
+        host_function_costs::{HostFunction, HostFunctionCosts},
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        stored_value::StoredValue,
+        system_config::SystemConfig,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+    },
+};
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
@@ -24,17 +35,6 @@ use casper_types::{
         AUCTION,
     },
 };
-
-use casper_execution_engine::{
-    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
-    shared::{
-        host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::OpcodeCosts,
-        system_config::SystemConfig,
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
-};
-use num_rational::Ratio;
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(0);
 const STORAGE_COSTS_NAME: &str = "storage_costs.wasm";

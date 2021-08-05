@@ -8,14 +8,13 @@ use casper_types::{
 };
 
 use crate::{
-    core::{execution, tracking_copy::TrackingCopy},
+    core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy},
     shared::{
         account::Account, motes::Motes, newtypes::CorrelationId, stored_value::StoredValue, wasm,
         wasm_prep::Preprocessor, TypeMismatch,
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
-use std::collections::BTreeMap;
 
 pub trait TrackingCopyExt<R> {
     type Error;
@@ -89,7 +88,7 @@ pub trait TrackingCopyExt<R> {
     fn get_system_contracts(
         &mut self,
         correlation_id: CorrelationId,
-    ) -> Result<BTreeMap<String, ContractHash>, Self::Error>;
+    ) -> Result<SystemContractRegistry, Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -257,18 +256,18 @@ where
     fn get_system_contracts(
         &mut self,
         correlation_id: CorrelationId,
-    ) -> Result<BTreeMap<String, ContractHash>, Self::Error> {
+    ) -> Result<SystemContractRegistry, Self::Error> {
         match self
             .get(correlation_id, &Key::SystemContractRegistry)
             .map_err(Into::into)?
         {
             Some(StoredValue::CLValue(registry)) => {
-                let registry: BTreeMap<String, ContractHash> =
+                let registry: SystemContractRegistry =
                     CLValue::into_t(registry).map_err(Self::Error::from)?;
                 Ok(registry)
             }
             Some(other) => Err(execution::Error::TypeMismatch(TypeMismatch::new(
-                "StoredValue".to_string(),
+                "CLValue".to_string(),
                 other.type_name(),
             ))),
             None => Err(execution::Error::KeyNotFound(Key::SystemContractRegistry)),
