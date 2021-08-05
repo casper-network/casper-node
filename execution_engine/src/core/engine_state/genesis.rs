@@ -658,6 +658,10 @@ pub enum GenesisError {
     },
     FailedToCreateSystemRegistry,
     MissingSystemContractHash(String),
+    InvalidValidatorSlots {
+        validators: usize,
+        validator_slots: u32,
+    },
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -853,6 +857,12 @@ where
         let mut named_keys = NamedKeys::new();
 
         let genesis_validators: Vec<_> = self.exec_config.get_bonded_validators().collect();
+        if (self.exec_config.validator_slots() as usize) < genesis_validators.len() {
+            return Err(GenesisError::InvalidValidatorSlots {
+                validators: genesis_validators.len(),
+                validator_slots: self.exec_config.validator_slots(),
+            });
+        }
 
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
