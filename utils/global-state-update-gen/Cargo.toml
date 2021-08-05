@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 base16 = "0.2.1"
 base64 = "0.13"
-clap = "2.33"
 casper-engine-test-support = { path = "../../execution_engine_testing/test_support" }
 casper-execution-engine = { path = "../../execution_engine" }
-casper-types = { path = "../../types" }
+casper-types = { path = "../../types", default-features = false, features = ["std"] }
+clap = "2.33"

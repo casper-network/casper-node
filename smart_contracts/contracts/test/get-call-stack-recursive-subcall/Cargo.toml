@@ -12,8 +12,10 @@ doctest = false
 test = false
 
 [features]
+default = ["no-std"]
+no-std = ["casper-contract/no-std", "casper-contract/provide-allocator", "casper-types/no-std"]
 std = ["casper-contract/std", "casper-types/std"]
 
 [dependencies]
-casper-contract = { path = "../../../contract", features = ["test-support"] }
-casper-types = { path = "../../../../types" }
+casper-contract = { path = "../../../contract", default-features = false }
+casper-types = { path = "../../../../types", default-features = false }
