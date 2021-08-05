@@ -539,6 +539,7 @@ mod tests {
         );
 
         assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
     }
 
     #[test]
