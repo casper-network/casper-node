@@ -45,7 +45,6 @@ pub static RESOURCES_PATH: Lazy<PathBuf> =
 pub(crate) enum External {
     /// Value that should be loaded from an external path.
     Path(PathBuf),
-    /// Loaded or immediate value.
     /// The value has not been specified, but a default has been requested.
     #[serde(skip)]
     Missing,
