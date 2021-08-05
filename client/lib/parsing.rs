@@ -573,7 +573,7 @@ pub(super) fn parse_payment_info(params: PaymentStrParams) -> Result<ExecutableD
     })
 }
 
-pub(crate) fn get_target_account(target_account: &str) -> Result<PublicKey> {
+pub(crate) fn parse_public_key(target_account: &str) -> Result<PublicKey> {
     let account = PublicKey::from_hex(target_account).map_err(|error| Error::InvalidArgument {
         context: "target_account",
         error: format!("failed to parse as a public key: {}", error),

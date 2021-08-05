@@ -210,7 +210,7 @@ pub async fn transfer(
         error: UIntParseError::FromDecStr(err),
     })?;
     let source_purse = None;
-    let target_account = parsing::get_target_account(target_account)?;
+    let target_account = parsing::parse_public_key(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
@@ -259,7 +259,7 @@ pub fn make_transfer(
         error: UIntParseError::FromDecStr(err),
     })?;
     let source_purse = None;
-    let target_account = parsing::get_target_account(target_account)?;
+    let target_account = parsing::parse_public_key(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
     let output = if maybe_output_path.is_empty() {
