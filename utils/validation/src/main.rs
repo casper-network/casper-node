@@ -2,8 +2,9 @@ mod generators;
 
 use std::{fs::File, io::BufWriter, path::PathBuf};
 
-use casper_validation::{Fixture, ABI_TEST_FIXTURES};
 use clap::Clap;
+
+use casper_validation::{Fixture, ABI_TEST_FIXTURES};
 
 #[derive(Clap)]
 #[clap(version = "1.0")]
@@ -52,7 +53,6 @@ impl Generate {
 fn main() -> anyhow::Result<()> {
     let opts: Opts = Opts::parse();
     match opts.subcmd {
-        SubCommand::Generate(generate) => generate.run()?,
+        SubCommand::Generate(generate) => generate.run(),
     }
-    Ok(())
 }

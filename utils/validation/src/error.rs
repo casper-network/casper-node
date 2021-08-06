@@ -1,6 +1,8 @@
-use casper_types::bytesrepr;
 use std::{io, path::PathBuf};
+
 use thiserror::Error;
+
+use casper_types::bytesrepr;
 
 #[derive(Error, Debug)]
 pub enum Error {
