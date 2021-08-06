@@ -214,7 +214,7 @@ impl RpcCall {
         self,
         amount: &str,
         source_purse: Option<URef>,
-        target: &str,
+        target_account: &str,
         transfer_id: &str,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,

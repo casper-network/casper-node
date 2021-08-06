@@ -11,9 +11,7 @@ use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::{
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, UIntParseError, URef, U512,
-};
+use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, UIntParseError, URef, U512};
 
 use crate::{
     error::{Error, Result},
@@ -254,10 +252,11 @@ impl DeployExt for Deploy {
         const TRANSFER_ARG_TARGET: &str = "target";
         const TRANSFER_ARG_ID: &str = "id";
 
-        let amount = U512::from_dec_str(amount).map_err(|err| {
-            Error::FailedToParseUint(TRANSFER_ARG_AMOUNT, UIntParseError::FromDecStr(err))
+        let amount = U512::from_dec_str(amount).map_err(|err| Error::FailedToParseUint {
+            context: TRANSFER_ARG_AMOUNT,
+            error: UIntParseError::FromDecStr(err),
         })?;
-        let target = parsing::get_transfer_target(target)?;
+        let target_account = parsing::parse_public_key(target_account)?;
         let transfer_id = parsing::transfer_id(transfer_id)?;
 
         let mut transfer_args = RuntimeArgs::new();
@@ -560,7 +559,10 @@ mod tests {
 
         assert!(matches!(
             transfer_deploy,
-            Err(Error::InvalidArgument("target_account", _))
+            Err(Error::InvalidArgument {
+                context: "target_account",
+                error: _
+            })
         ));
     }
 }

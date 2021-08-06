@@ -205,13 +205,6 @@ pub async fn transfer(
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let amount = U512::from_dec_str(amount).map_err(|err| Error::FailedToParseUint {
-        context: "amount",
-        error: UIntParseError::FromDecStr(err),
-    })?;
-    let target_account = parsing::parse_public_key(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .transfer(
             amount,
@@ -253,13 +246,6 @@ pub fn make_transfer(
     payment_params: PaymentStrParams<'_>,
     force: bool,
 ) -> Result<()> {
-    let amount = U512::from_dec_str(amount).map_err(|err| Error::FailedToParseUint {
-        context: "amount",
-        error: UIntParseError::FromDecStr(err),
-    })?;
-    let target_account = parsing::parse_public_key(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     let output = if maybe_output_path.is_empty() {
         OutputKind::Stdout
     } else {
