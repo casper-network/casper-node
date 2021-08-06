@@ -36,7 +36,7 @@ pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
-use rpc::{RpcCall, TransferTarget};
+use rpc::RpcCall;
 pub use validation::ValidateResponseError;
 
 /// Creates a `Deploy` and sends it to the network for execution.
@@ -693,31 +693,7 @@ impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let PaymentStrParams {
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        } = self;
-
-        parsing::parse_payment_info(
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            &payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        )
+        parsing::parse_payment_info(self)
     }
 }
 
@@ -854,31 +830,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let SessionStrParams {
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        } = self;
-
-        parsing::parse_session_info(
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            &session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        )
+        parsing::parse_session_info(self)
     }
 }
 
@@ -1384,10 +1336,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimestamp(
-                    "timestamp",
-                    TimestampError::InvalidFormat
-                ))
+                Err(Error::FailedToParseTimestamp {
+                    context: "timestamp",
+                    error: TimestampError::InvalidFormat
+                })
             ));
         }
 
@@ -1397,7 +1349,7 @@ mod param_tests {
             params.gas_price = "fifteen";
             let result: StdResult<DeployParams, Error> = params.try_into();
             let result = result.map(|_| ());
-            if let Err(Error::FailedToParseInt(context, _)) = result {
+            if let Err(Error::FailedToParseInt { context, error: _ }) = result {
                 assert_eq!(context, "gas_price");
             } else {
                 panic!("should be an error");
@@ -1419,10 +1371,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimeDiff(
-                    "ttl",
-                    DurationError::NumberExpected(0)
-                ))
+                Err(Error::FailedToParseTimeDiff {
+                    context: "ttl",
+                    error: DurationError::NumberExpected(0)
+                })
             ));
         }
 

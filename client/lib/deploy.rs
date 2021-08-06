@@ -16,7 +16,7 @@ use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, UIntParseError, URef
 use crate::{
     error::{Error, Result},
     parsing,
-    rpc::{RpcClient, TransferTarget},
+    rpc::RpcClient,
 };
 
 /// The maximum permissible size in bytes of a Deploy when serialized via `ToBytes`.
@@ -187,7 +187,7 @@ pub(super) trait DeployExt {
     fn new_transfer(
         amount: &str,
         source_purse: Option<URef>,
-        target: &str,
+        target_account: &str,
         transfer_id: &str,
         params: DeployParams,
         payment: ExecutableDeployItem,
@@ -242,7 +242,7 @@ impl DeployExt for Deploy {
     fn new_transfer(
         amount: &str,
         source_purse: Option<URef>,
-        target: &str,
+        target_account: &str,
         transfer_id: &str,
         params: DeployParams,
         payment: ExecutableDeployItem,
@@ -252,28 +252,30 @@ impl DeployExt for Deploy {
         const TRANSFER_ARG_TARGET: &str = "target";
         const TRANSFER_ARG_ID: &str = "id";
 
-        let amount = U512::from_dec_str(amount).map_err(|err| {
-            Error::FailedToParseUint(TRANSFER_ARG_AMOUNT, UIntParseError::FromDecStr(err))
+        let amount = U512::from_dec_str(amount).map_err(|err| Error::FailedToParseUint {
+            context: TRANSFER_ARG_AMOUNT,
+            error: UIntParseError::FromDecStr(err),
         })?;
-        let target = parsing::get_transfer_target(target)?;
+        let target_account = parsing::parse_public_key(target_account)?;
         let transfer_id = parsing::transfer_id(transfer_id)?;
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
+
         if let Some(source_purse) = source_purse {
             transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
         }
-        match target {
-            TransferTarget::Account(target_account) => {
-                let target_account_hash = target_account.to_account_hash().value();
-                transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
-            }
-        }
+
+        let target_account_hash = target_account.to_account_hash().value();
+        transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
+
         let maybe_transfer_id = Some(transfer_id);
         transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
+
         let session = ExecutableDeployItem::Transfer {
             args: transfer_args,
         };
+
         Deploy::with_payment_and_session(params, payment, session)
     }
 
@@ -557,7 +559,10 @@ mod tests {
 
         assert!(matches!(
             transfer_deploy,
-            Err(Error::InvalidArgument("target_account", _))
+            Err(Error::InvalidArgument {
+                context: "target_account",
+                error: _
+            })
         ));
     }
 }

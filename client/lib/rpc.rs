@@ -34,12 +34,6 @@ use crate::{
     validation, DictionaryItemStrParams,
 };
 
-/// Target for a given transfer.
-pub(crate) enum TransferTarget {
-    /// Transfer to another account.
-    Account(PublicKey),
-}
-
 /// Struct representing a single JSON-RPC call to the casper node.
 #[derive(Debug)]
 pub(crate) struct RpcCall {
@@ -170,8 +164,11 @@ impl RpcCall {
                 context: "state_root_hash",
                 error,
             })?;
-        let uref = URef::from_formatted_str(purse_uref)
-            .map_err(|error| Error::FailedToParseURef("purse_uref", error))?;
+        let uref =
+            URef::from_formatted_str(purse_uref).map_err(|error| Error::FailedToParseURef {
+                context: "purse_uref",
+                error,
+            })?;
         let key = Key::from(uref);
 
         let params = GetBalanceParams {
@@ -217,7 +214,7 @@ impl RpcCall {
         self,
         amount: &str,
         source_purse: Option<URef>,
-        target: &str,
+        target_account: &str,
         transfer_id: &str,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
@@ -225,7 +222,7 @@ impl RpcCall {
         let deploy = Deploy::new_transfer(
             amount,
             source_purse,
-            target,
+            target_account,
             transfer_id,
             deploy_params,
             payment,
@@ -305,9 +302,13 @@ impl RpcCall {
                 })?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
-            let height = maybe_block_identifier
-                .parse()
-                .map_err(|error| Error::FailedToParseInt("block_identifier", error))?;
+            let height =
+                maybe_block_identifier
+                    .parse()
+                    .map_err(|error| Error::FailedToParseInt {
+                        context: "block_identifier",
+                        error,
+                    })?;
             Ok(Some(BlockIdentifier::Height(height)))
         }
     }
