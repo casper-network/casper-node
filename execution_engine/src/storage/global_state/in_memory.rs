@@ -30,19 +30,27 @@ use crate::storage::{
     },
 };
 
-/// Global state implemented purely in memory only. No state is saved to disk, and this is mostly
+/// Global state implemented purely in memory only. No state is saved to disk. This is mostly
 /// used for testing purposes.
 pub struct InMemoryGlobalState {
+    /// Environment for `InMemoryGlobalState`.
+    /// Basically empty because this global state does not support transactions.
     pub(crate) environment: Arc<InMemoryEnvironment>,
+    /// Trie store for `InMemoryGlobalState`.
     pub(crate) trie_store: Arc<InMemoryTrieStore>,
+    /// TODO: remove
     pub(crate) protocol_data_store: Arc<InMemoryProtocolDataStore>,
+    /// Empty state root hash.
     pub(crate) empty_root_hash: Blake2bHash,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct InMemoryGlobalStateView {
+    /// Environment for `InMemoryGlobalState`.
     pub(crate) environment: Arc<InMemoryEnvironment>,
+    /// Trie store for `InMemoryGlobalState`.
     pub(crate) store: Arc<InMemoryTrieStore>,
+    /// State root hash for this "view".
     pub(crate) root_hash: Blake2bHash,
 }
 
