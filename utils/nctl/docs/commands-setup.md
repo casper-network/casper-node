@@ -41,7 +41,7 @@ If `chainspec_path` points to a valid custom chainspec.toml, then the template i
 ```
 nctl-assets-setup
 
-nctl-assets-setup net=1 nodes=5 deelay=30  (same as above)
+nctl-assets-setup net=1 nodes=5 delay=30  (same as above)
 
 nctl-assets-setup net=2 nodes=10 delay=60
 ```
