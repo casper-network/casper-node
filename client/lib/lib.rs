@@ -29,7 +29,7 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
-use casper_types::{Key, UIntParseError, U512};
+use casper_types::Key;
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
@@ -209,14 +209,13 @@ pub async fn transfer(
         context: "amount",
         error: UIntParseError::FromDecStr(err),
     })?;
-    let source_purse = None;
     let target_account = parsing::parse_public_key(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .transfer(
             amount,
-            source_purse,
+            None,
             target_account,
             transfer_id,
             deploy_params.try_into()?,
@@ -258,7 +257,6 @@ pub fn make_transfer(
         context: "amount",
         error: UIntParseError::FromDecStr(err),
     })?;
-    let source_purse = None;
     let target_account = parsing::parse_public_key(target_account)?;
     let transfer_id = parsing::transfer_id(transfer_id)?;
 
@@ -270,7 +268,7 @@ pub fn make_transfer(
 
     Deploy::new_transfer(
         amount,
-        source_purse,
+        None,
         target_account,
         transfer_id,
         deploy_params.try_into()?,
@@ -1226,7 +1224,7 @@ mod param_tests {
     mod payment_params {
         use std::collections::BTreeMap;
 
-        use casper_types::CLValue;
+        use casper_types::{CLValue, U512};
 
         use super::*;
 

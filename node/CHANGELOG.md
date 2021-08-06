@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Support building and testing using stable Rust.
+* Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
 
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
