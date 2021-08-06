@@ -120,11 +120,12 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
-const LMDB_FILES: [&str; 4] = [
+const STORAGE_FILES: [&str; 5] = [
     "data.lmdb",
     "data.lmdb-lock",
     "storage.lmdb",
     "storage.lmdb-lock",
+    "sse_index",
 ];
 
 #[derive(Debug, From, Serialize)]
@@ -297,8 +298,8 @@ impl Storage {
                 .map_err(|err| Error::CreateDatabaseDirectory(network_subdir.clone(), err))?;
         }
 
-        if should_move_storage_files_to_network_subdir(&root, &LMDB_FILES)? {
-            move_storage_files_to_network_subdir(&root, &network_subdir, &LMDB_FILES)?;
+        if should_move_storage_files_to_network_subdir(&root, &STORAGE_FILES)? {
+            move_storage_files_to_network_subdir(&root, &network_subdir, &STORAGE_FILES)?;
         }
 
         root = network_subdir;
