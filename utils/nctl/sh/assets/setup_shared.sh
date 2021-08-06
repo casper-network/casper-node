@@ -444,8 +444,6 @@ function setup_asset_global_state_toml() {
         if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/data.lmdb" ]; then
             GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                     system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
-
-            #echo "$GLOBAL_STATE_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$PROTOCOL_VERSION/global_state.toml"
         else
             GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                     system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage)
