@@ -85,10 +85,10 @@ pub enum CLType {
     /// Fixed-length list of a single `CLType` (comparable to a Rust array).
     ByteArray(u32),
     /// `Result` with `Ok` and `Err` variants of `CLType`s.
-    #[allow(missing_docs)] // generated docs are explicit enough.
+    #[allow(missing_docs)]
     Result { ok: Box<CLType>, err: Box<CLType> },
     /// Map with keys of a single `CLType` and values of a single `CLType`.
-    #[allow(missing_docs)] // generated docs are explicit enough.
+    #[allow(missing_docs)]
     Map {
         key: Box<CLType>,
         value: Box<CLType>,

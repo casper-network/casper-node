@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult};
+use casper_execution_engine::core::engine_state::BalanceResult;
 use casper_types::{
     bytesrepr::ToBytes, CLType, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
 };
@@ -415,11 +415,12 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let maybe_bids = if let Ok(GetBidsResult::Success { bids, .. }) = get_bids_result {
-                Some(bids)
+            let maybe_bids = if let Ok(get_bids_result) = get_bids_result {
+                get_bids_result.into_success()
             } else {
                 None
             };
+
             let era_validators_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::QueryEraValidators {

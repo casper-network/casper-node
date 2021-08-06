@@ -1,3 +1,4 @@
+//! Outcome of a an `ExecutionRequest`.
 use std::collections::VecDeque;
 
 use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, TransferAddr};
@@ -43,19 +44,28 @@ fn make_payment_error_effects(
     Ok(ExecutionEffect::new(ops, transforms))
 }
 
+/// Represents a result of a contract execution specified by
+/// [`crate::core::engine_state::ExecuteRequest`].
 #[derive(Clone, Debug)]
 pub enum ExecutionResult {
     /// An error condition that happened during execution
     Failure {
+        /// Error condition.
         error: error::Error,
+        /// Contains all the effects that occurred during execution up to the point of a failure.
         execution_effect: ExecutionEffect,
+        /// List of transfers that happened during execution up to the point of a failure.
         transfers: Vec<TransferAddr>,
+        /// Gas cost.
         cost: Gas,
     },
     /// Execution was finished successfully
     Success {
+        /// Execution effect.
         execution_effect: ExecutionEffect,
+        /// List of transfers.
         transfers: Vec<TransferAddr>,
+        /// Gas cost.
         cost: Gas,
     },
 }
@@ -73,6 +83,7 @@ impl Default for ExecutionResult {
 /// A type alias that represents multiple execution results.
 pub type ExecutionResults = VecDeque<ExecutionResult>;
 
+/// Indicates the forced payme
 pub enum ForcedTransferResult {
     /// Payment code ran out of gas during execution
     InsufficientPayment,
@@ -95,6 +106,7 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns `true` if this is a successful variant.
     pub fn is_success(&self) -> bool {
         match self {
             ExecutionResult::Failure { .. } => false,
@@ -102,6 +114,7 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns `true` if this is a failure variant.
     pub fn is_failure(&self) -> bool {
         match self {
             ExecutionResult::Failure { .. } => true,
@@ -109,6 +122,10 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns `true` if this is a precondition variant.
+    ///
+    /// Precondition variant is further described as an execution failure which does not have any
+    /// effects, and has a gas cost of 0.
     pub fn has_precondition_failure(&self) -> bool {
         match self {
             ExecutionResult::Failure {
@@ -120,6 +137,7 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns gas cost of execution regardless of variant.
     pub fn cost(&self) -> Gas {
         match self {
             ExecutionResult::Failure { cost, .. } => *cost,
@@ -127,6 +145,7 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns execution effects regardless of variant.
     pub fn effect(&self) -> &ExecutionEffect {
         match self {
             ExecutionResult::Failure {
@@ -138,6 +157,7 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns list of transfers regardless of variant.
     pub fn transfers(&self) -> &Vec<TransferAddr> {
         match self {
             ExecutionResult::Failure { transfers, .. } => transfers,
@@ -145,6 +165,10 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns new execution result with updated gas cost.
+    ///
+    /// This method supports preserves the [`ExecutionResult`] variant and updates the cost field
+    /// only.
     pub fn with_cost(self, cost: Gas) -> Self {
         match self {
             ExecutionResult::Failure {
@@ -170,6 +194,10 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns new execution result with updated execution effects.
+    ///
+    /// This method supports preserves the [`ExecutionResult`] variant and updates the cost field
+    /// only.
     pub fn with_effect(self, execution_effect: ExecutionEffect) -> Self {
         match self {
             ExecutionResult::Failure {
@@ -193,6 +221,10 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns new execution result with updated transfers field.
+    ///
+    /// This method supports preserves the [`ExecutionResult`] variant and updates the cost field
+    /// only.
     pub fn with_transfers(self, transfers: Vec<TransferAddr>) -> Self {
         match self {
             ExecutionResult::Failure {
@@ -218,6 +250,10 @@ impl ExecutionResult {
         }
     }
 
+    /// Returns error value, if possible.
+    ///
+    /// Returns a reference to a wrapped [`error::Error`] instance if the object is a failure
+    /// variant.
     pub fn as_error(&self) -> Option<&error::Error> {
         match self {
             ExecutionResult::Failure { error, .. } => Some(error),
@@ -234,6 +270,15 @@ impl ExecutionResult {
         }
     }
 
+    /// Checks the transfer status of a payment code.
+    ///
+    /// This method converts a gas cost of the execution result into motes using supplied
+    /// `gas_price`, and then a check is made to ensure that user deposited enough funds in the
+    /// payment purse (in motes) to cover the execution of a payment code.
+    ///
+    /// Returns `None` if user deposited enough funds in payment purse and the execution result was
+    /// a success variant, otherwise a wrapped [`ForcedTransferResult`] that indicates an error
+    /// codition.
     pub fn check_forced_transfer(
         &self,
         payment_purse_balance: Motes,
@@ -263,6 +308,10 @@ impl ExecutionResult {
         }
     }
 
+    /// Creates a new payment code error.
+    ///
+    /// Method below creates an [`ExecutionResult`] with a precomputed effects of a
+    /// "finalize_payment".
     pub fn new_payment_code_error(
         error: error::Error,
         max_payment_cost: Motes,
@@ -286,11 +335,13 @@ impl ExecutionResult {
         })
     }
 
-    pub fn take_with_ret<T: FromBytes + CLTyped>(self, ret: T) -> (Option<T>, Self) {
+    /// Returns a wrapped `ret` by consuming object.
+    pub(crate) fn take_with_ret<T: FromBytes + CLTyped>(self, ret: T) -> (Option<T>, Self) {
         (Some(ret), self)
     }
 
-    pub fn take_without_ret<T: FromBytes + CLTyped>(self) -> (Option<T>, Self) {
+    /// Returns a self and has a return type compatible with [`ExecutionResult::take_with_ret`].
+    pub(crate) fn take_without_ret<T: FromBytes + CLTyped>(self) -> (Option<T>, Self) {
         (None, self)
     }
 }
@@ -322,13 +373,19 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
     }
 }
 
+/// Represents error conditions of a execution result builder.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ExecutionResultBuilderError {
+    /// Missing a payment execution result.
     MissingPaymentExecutionResult,
+    /// Missing a session execution result.
     MissingSessionExecutionResult,
+    /// Missing a finalize execution result.
     MissingFinalizeExecutionResult,
 }
 
+/// Builder object that will construct a final [`ExecutionResult`] given payment, session and
+/// finalize [`ExecutionResult`]s.
 pub struct ExecutionResultBuilder {
     payment_execution_result: Option<ExecutionResult>,
     session_execution_result: Option<ExecutionResult>,
@@ -346,15 +403,18 @@ impl Default for ExecutionResultBuilder {
 }
 
 impl ExecutionResultBuilder {
+    /// Creates new execution result builder.
     pub fn new() -> ExecutionResultBuilder {
         ExecutionResultBuilder::default()
     }
 
+    /// Sets a payment execution result.
     pub fn set_payment_execution_result(&mut self, payment_result: ExecutionResult) -> &mut Self {
         self.payment_execution_result = Some(payment_result);
         self
     }
 
+    /// Sets a session execution result.
     pub fn set_session_execution_result(
         &mut self,
         session_execution_result: ExecutionResult,
@@ -363,6 +423,7 @@ impl ExecutionResultBuilder {
         self
     }
 
+    /// Sets a finalize execution result.
     pub fn set_finalize_execution_result(
         &mut self,
         finalize_execution_result: ExecutionResult,
@@ -371,6 +432,10 @@ impl ExecutionResultBuilder {
         self
     }
 
+    /// Calculates a total gas cost of the execution result.
+    ///
+    /// Takes a payment execution result, and a session execution result and returns a sum. If
+    /// either a payment or session code is not specified then a 0 is used.
     pub fn total_cost(&self) -> Gas {
         let payment_cost = self
             .payment_execution_result
@@ -385,6 +450,9 @@ impl ExecutionResultBuilder {
         payment_cost + session_cost
     }
 
+    /// Returns transfers from a session's execution result.
+    ///
+    /// If session's execution result is not supplied then an empty [`Vec`] is returned.
     pub fn transfers(&self) -> Vec<TransferAddr> {
         self.session_execution_result
             .as_ref()
@@ -393,6 +461,8 @@ impl ExecutionResultBuilder {
             .unwrap_or_default()
     }
 
+    /// Builds a final [`ExecutionResult`] based on session result, payment result and a
+    /// finalization result.
     pub fn build<R: StateReader<Key, StoredValue>>(
         self,
         reader: &R,

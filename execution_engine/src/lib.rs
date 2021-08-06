@@ -15,5 +15,7 @@
 
 pub mod config;
 pub mod core;
+#[allow(missing_docs)]
 pub mod shared;
+#[allow(missing_docs)]
 pub mod storage;

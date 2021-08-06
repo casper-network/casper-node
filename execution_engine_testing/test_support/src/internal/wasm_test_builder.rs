@@ -893,7 +893,7 @@ where
             .get_bids(CorrelationId::new(), get_bids_request)
             .unwrap();
 
-        get_bids_result.bids().cloned().unwrap()
+        get_bids_result.into_success().unwrap()
     }
 
     pub fn get_withdraws(&mut self) -> UnbondingPurses {

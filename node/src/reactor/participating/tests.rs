@@ -7,7 +7,7 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::{core::engine_state::query::GetBidsRequest, shared::motes::Motes};
+use casper_execution_engine::{core::engine_state::get_bids::GetBidsRequest, shared::motes::Motes};
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     EraId, PublicKey, SecretKey, U512,
@@ -189,7 +189,7 @@ fn get_bids(nodes: &Nodes, header: &BlockHeader) -> Bids {
     let bids_result = engine_state
         .get_bids(correlation_id, request)
         .expect("get_bids failed");
-    bids_result.bids().expect("no bids returned").clone()
+    bids_result.into_success().expect("no bids returned")
 }
 
 #[tokio::test]

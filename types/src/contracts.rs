@@ -259,8 +259,7 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 /// Collection of named groups.
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
-/// A newtype wrapping a `HashAddr` which is the raw bytes of
-/// the ContractHash
+/// A newtype wrapping a `HashAddr` which references a [`Contract`] in the global state.
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ContractHash(HashAddr);
 
@@ -405,8 +404,7 @@ impl JsonSchema for ContractHash {
     }
 }
 
-/// A newtype wrapping a `HashAddr` which is the raw bytes of
-/// the ContractPackageHash
+/// A newtype wrapping a `HashAddr` which references a [`ContractPackage`] in the global state.
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ContractPackageHash(HashAddr);
 

@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 pub mod additive_map;
 #[macro_use]
 pub mod gas;

@@ -71,20 +71,28 @@ macro_rules! on_fail_charge {
     };
 }
 
+/// Executor object deals with execution of WASM modules.
 pub struct Executor {
     config: EngineConfig,
 }
 
 #[allow(clippy::too_many_arguments)]
 impl Executor {
+    /// Creates new executor object.
     pub fn new(config: EngineConfig) -> Self {
         Executor { config }
     }
 
+    /// Returns config.
     pub fn config(&self) -> EngineConfig {
         self.config
     }
 
+    /// Executes a WASM module.
+    ///
+    /// This method checks if a given contract hash is a system contract, and then short circuits to
+    /// a specific native implementation of it. Otherwise, a supplied WASM module is executed.
+    #[allow(clippy::too_many_arguments)]
     pub fn exec<R>(
         &self,
         module: Module,
@@ -279,6 +287,7 @@ impl Executor {
         }
     }
 
+    /// Executes a standard payment code natively.
     pub fn exec_standard_payment<R>(
         &self,
         system_module: Module,
@@ -367,6 +376,12 @@ impl Executor {
         }
     }
 
+    /// Executes a system contract.
+    ///
+    /// System contracts are implemented as a native code, and no WASM execution is involved at all.
+    /// This approach has a benefit of speed as compared to executing WASM modules.
+    ///
+    /// Returns an optional return value from the system contract call, and an [`ExecutionResult`].
     pub fn exec_system_contract<R, T>(
         &self,
         direct_system_contract_call: DirectSystemContractCall,
@@ -587,7 +602,13 @@ impl Executor {
         Ok(ret)
     }
 
-    pub fn create_runtime<'a, R>(
+    /// Creates new runtime object.
+    ///
+    /// This method also deals with proper initialiation of a WASM module by pre-allocating a memory
+    /// instance, and attaching a host function resolver.
+    ///
+    /// Returns a module and an instance of [`Runtime`] which is ready to execute the WASM modules.
+    pub(crate) fn create_runtime<'a, R>(
         &self,
         module: Module,
         entry_point_type: EntryPointType,
@@ -666,14 +687,23 @@ impl Executor {
     }
 }
 
+/// Represents a variant of a system contract call.
 pub enum DirectSystemContractCall {
+    /// Calls auction's `slash` entry point.
     Slash,
+    /// Calls auction's `run_auction` entry point.
     RunAuction,
+    /// Calls auction's `distribute` entry point.
     DistributeRewards,
+    /// Calls handle payment's `finalize` entry point.
     FinalizePayment,
+    /// Calls mint's `create` entry point.
     CreatePurse,
+    /// Calls mint's `transfer` entry point.
     Transfer,
+    /// Calls auction's `get_era_validators` entry point.
     GetEraValidators,
+    /// Calls handle payment's `
     GetPaymentPurse,
 }
 

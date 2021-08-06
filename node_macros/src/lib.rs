@@ -6,7 +6,7 @@
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
     test(attr(forbid(warnings)))
 )]
-#![warn(missing_docs, trivial_casts, trivial_numeric_casts)]
+#![warn(trivial_casts, trivial_numeric_casts)]
 
 mod gen;
 mod parse;

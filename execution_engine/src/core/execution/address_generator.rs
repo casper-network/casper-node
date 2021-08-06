@@ -1,3 +1,5 @@
+//! Address generator is used to generate unique addresses that have length of 32 bytes.
+
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -23,12 +25,15 @@ impl AddressGenerator {
             .build()
     }
 
+    /// Creates a new [`Address`] by using an internal instance of PRNG.
     pub fn create_address(&mut self) -> Address {
         let mut buff = [0u8; ADDRESS_LENGTH];
         self.0.fill_bytes(&mut buff);
         buff
     }
 
+    /// Creates a new [`Address`] by hashing an output from [`AddressGenerator::create_address`]
+    /// with a blake2b256.
     pub fn new_hash_address(&mut self) -> Address {
         // TODO: this appears to duplicate the logic of AddressGeneratorBuilder::build()
         let pre_hash_bytes = self.create_address();
@@ -40,6 +45,7 @@ impl AddressGenerator {
         hash_bytes
     }
 
+    /// Creates a new [`URef`] with a new address generated.
     pub fn new_uref(&mut self, access_rights: AccessRights) -> URef {
         let addr = self.create_address();
         URef::new(addr, access_rights)
@@ -53,15 +59,20 @@ pub struct AddressGeneratorBuilder {
 }
 
 impl AddressGeneratorBuilder {
+    /// Creates a new builder.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Extends the seed with more data.
     pub fn seed_with(mut self, bytes: &[u8]) -> Self {
         self.data.extend(bytes);
         self
     }
 
+    /// Creates a new [`AddressGenerator`].
+    ///
+    /// This method hashes the seed bytes, and seeds the PRNG with it.
     pub fn build(self) -> AddressGenerator {
         let mut seed: [u8; SEED_LENGTH] = [0u8; SEED_LENGTH];
         // NOTE: Unwrap below is assumed safe as output size of `SEED_LENGTH` is a valid value.

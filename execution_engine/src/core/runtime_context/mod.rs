@@ -1,3 +1,4 @@
+//! This module contains a context of execution of the WASM code.
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap, HashSet},
@@ -11,7 +12,6 @@ use casper_types::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::auction::EraInfo,
@@ -54,6 +54,16 @@ pub(crate) fn uref_has_access_rights(
     }
 }
 
+/// Validates an entry point access with a special validator callback.
+///
+/// If the passed `access` object is a `Groups` variant, then this function will return a
+/// [`Error::InvalidContext`] if there are no groups specified as such entry point is uncallable.
+/// For each [`URef`] in every group that this `access` object refers a validator callback is
+/// called. If a validator functions returns `false` for any of the `URef` in the set, an
+/// [`Error::InvalidContext`] is returned.
+///
+/// Otherwise, if `access` object is a `Public` variant, then the entry point is considered callable
+/// and an unit value is returned.
 pub fn validate_entry_point_access_with(
     contract_package: &ContractPackage,
     access: &EntryPointAccess,
@@ -115,6 +125,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<Error>,
 {
+    /// Creates new runtime context.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -162,27 +173,32 @@ where
         }
     }
 
+    /// Returns all authorization keys for this deploy.
     pub fn authorization_keys(&self) -> &BTreeSet<AccountHash> {
         &self.authorization_keys
     }
 
+    /// Returns a named key by a name if it exists.
     pub fn named_keys_get(&self, name: &str) -> Option<&Key> {
         self.named_keys.get(name)
     }
 
+    /// Returns named keys.
     pub fn named_keys(&self) -> &NamedKeys {
         self.named_keys
     }
 
+    /// Returns mutable reference to named keys.
     pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
         &mut self.named_keys
     }
 
+    /// Checks if named keys contains a key referenced by name.
     pub fn named_keys_contains_key(&self, name: &str) -> bool {
         self.named_keys.contains_key(name)
     }
 
-    // Helper function to avoid duplication in `remove_uref`.
+    /// Helper function to avoid duplication in `remove_uref`.
     fn remove_key_from_contract(
         &mut self,
         key: Key,
@@ -270,74 +286,95 @@ where
         }
     }
 
+    /// Returns caller of the contract.
     pub fn get_caller(&self) -> AccountHash {
         self.account.account_hash()
     }
 
+    /// Returns block time.
     pub fn get_blocktime(&self) -> BlockTime {
         self.blocktime
     }
 
+    /// Returns deploy hash.
     pub fn get_deploy_hash(&self) -> DeployHash {
         self.deploy_hash
     }
 
+    /// Extends access rights with a new map.
     pub fn access_rights_extend(&mut self, access_rights: HashMap<Address, HashSet<AccessRights>>) {
         self.access_rights.extend(access_rights);
     }
 
+    /// Returns a mapping of access rights for each [`URef`]s address.
     pub fn access_rights(&self) -> &HashMap<Address, HashSet<AccessRights>> {
         &self.access_rights
     }
 
+    /// Returns account of the caller.
     pub fn account(&self) -> &'a Account {
         self.account
     }
 
+    /// Returns arguments.
     pub fn args(&self) -> &RuntimeArgs {
         &self.args
     }
 
+    /// Returns new shared instance of an address generator.
     pub fn uref_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
         Rc::clone(&self.uref_address_generator)
     }
 
+    /// Returns new shared instance of a hash generator.
     pub fn hash_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
         Rc::clone(&self.hash_address_generator)
     }
 
+    /// Returns new shared instance of a transfer address generator.
     pub fn transfer_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
         Rc::clone(&self.transfer_address_generator)
     }
 
+    /// Returns new shared instance of a tracking copy.
     pub(super) fn state(&self) -> Rc<RefCell<TrackingCopy<R>>> {
         Rc::clone(&self.tracking_copy)
     }
 
+    /// Returns gas limit.
     pub fn gas_limit(&self) -> Gas {
         self.gas_limit
     }
 
+    /// Returns current gas counter.
     pub fn gas_counter(&self) -> Gas {
         self.gas_counter
     }
 
+    /// Sets new value to the gas counter.
     pub fn set_gas_counter(&mut self, new_gas_counter: Gas) {
         self.gas_counter = new_gas_counter;
     }
 
+    /// Returns base key.
+    ///
+    /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
+    /// type.
     pub fn base_key(&self) -> Key {
         self.base_key
     }
 
+    /// Returns protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
+    /// Returns correlation id.
     pub fn correlation_id(&self) -> CorrelationId {
         self.correlation_id
     }
 
+    /// Returns current phase.
     pub fn phase(&self) -> Phase {
         self.phase
     }
@@ -347,6 +384,7 @@ where
         Ok(self.hash_address_generator.borrow_mut().new_hash_address())
     }
 
+    /// Creates new [`URef`] instance.
     pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, Error> {
         let uref = self
             .uref_address_generator
@@ -362,6 +400,7 @@ where
         self.new_uref(StoredValue::CLValue(CLValue::unit()))
     }
 
+    /// Creates new transfer address using at transfer address generator.
     pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
         let transfer_addr = self
             .transfer_address_generator
@@ -381,7 +420,11 @@ where
         Ok(())
     }
 
-    pub fn read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
+    /// Reads new purse [`URef`].
+    ///
+    /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
+    #[cfg(test)]
+    pub(crate) fn read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
         match self
             .tracking_copy
             .borrow_mut()
@@ -393,10 +436,16 @@ where
         }
     }
 
-    pub fn write_purse_uref(&mut self, purse_uref: URef, cl_value: CLValue) -> Result<(), Error> {
+    #[cfg(test)]
+    pub(crate) fn write_purse_uref(
+        &mut self,
+        purse_uref: URef,
+        cl_value: CLValue,
+    ) -> Result<(), Error> {
         self.metered_write_gs_unsafe(Key::Hash(purse_uref.addr()), cl_value)
     }
 
+    /// Read a stored value under a [`Key`].
     pub fn read_gs(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
         self.validate_readable(key)?;
         self.validate_key(key)?;
@@ -407,7 +456,12 @@ where
             .map_err(Into::into)
     }
 
-    /// DO NOT EXPOSE THIS VIA THE FFI
+    /// Reads a value from a global state directly.
+    ///
+    /// # Usage
+    ///
+    /// DO NOT EXPOSE THIS VIA THE FFI - This function bypasses security checks and should be used
+    /// with caution.
     pub fn read_gs_direct(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
         self.tracking_copy
             .borrow_mut()
@@ -437,6 +491,7 @@ where
         })
     }
 
+    /// Returns all keys based on the tag prefix.
     pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
         self.tracking_copy
             .borrow_mut()
@@ -444,6 +499,7 @@ where
             .map_err(Into::into)
     }
 
+    /// Read an account from the global state.
     pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
         if let Key::Account(_) = key {
             self.validate_key(key)?;
@@ -456,6 +512,7 @@ where
         }
     }
 
+    /// Write an account to the global state.
     pub fn write_account(&mut self, key: Key, account: Account) -> Result<(), Error> {
         if let Key::Account(_) = key {
             self.validate_key(&key)?;
@@ -467,6 +524,7 @@ where
         }
     }
 
+    /// Write a transfer instance to the global state.
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
         if let Key::Transfer(_) = key {
             self.tracking_copy
@@ -477,6 +535,7 @@ where
         }
     }
 
+    /// Write an era info instance to the global state.
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
         if let Key::EraInfo(_) = key {
             self.tracking_copy
@@ -487,24 +546,9 @@ where
         }
     }
 
-    pub fn store_function(
-        &mut self,
-        contract: StoredValue,
-    ) -> Result<[u8; KEY_HASH_LENGTH], Error> {
-        self.validate_value(&contract)?;
-        self.new_uref(contract).map(|uref| uref.addr())
-    }
-
-    pub fn store_function_at_hash(
-        &mut self,
-        contract: StoredValue,
-    ) -> Result<[u8; KEY_HASH_LENGTH], Error> {
-        let new_hash = self.new_hash_address()?;
-        self.validate_value(&contract)?;
-        self.metered_write_gs_unsafe(Key::Hash(new_hash), contract)?;
-        Ok(new_hash)
-    }
-
+    /// Adds a named key.
+    ///
+    /// If given `Key` refers to an [`URef`] then
     pub fn insert_key(&mut self, name: String, key: Key) {
         if let Key::URef(uref) = key {
             self.insert_uref(uref);
@@ -512,6 +556,9 @@ where
         self.named_keys.insert(name, key);
     }
 
+    /// Adds a new [`URef`] into the context.
+    ///
+    /// Once an [`URef`] is inserted, it's considered a valid [`URef`] in this runtime context.
     pub fn insert_uref(&mut self, uref: URef) {
         let rights = uref.access_rights();
         let entry = self
@@ -521,14 +568,17 @@ where
         entry.insert(rights);
     }
 
+    /// Returns current effects of a tracking copy.
     pub fn effect(&self) -> ExecutionEffect {
         self.tracking_copy.borrow_mut().effect()
     }
 
+    /// Returns list of transfers.
     pub fn transfers(&self) -> &Vec<TransferAddr> {
         &self.transfers
     }
 
+    /// Returns mutable list of transfers.
     pub fn transfers_mut(&mut self) -> &mut Vec<TransferAddr> {
         &mut self.transfers
     }
@@ -602,7 +652,7 @@ where
     /// `named_keys`) and whether the version of a key that contract wants
     /// to use, has access rights that are less powerful than access rights'
     /// of the key in the `named_keys`.
-    pub fn validate_key(&self, key: &Key) -> Result<(), Error> {
+    pub(crate) fn validate_key(&self, key: &Key) -> Result<(), Error> {
         let uref = match key {
             Key::URef(uref) => uref,
             _ => return Ok(()),
@@ -610,7 +660,11 @@ where
         self.validate_uref(uref)
     }
 
-    pub fn validate_uref(&self, uref: &URef) -> Result<(), Error> {
+    /// Validate [`URef`] access rights.
+    ///
+    /// Returns unit if [`URef`]s address exists in the context, and has correct access rights bit
+    /// set.
+    pub(crate) fn validate_uref(&self, uref: &URef) -> Result<(), Error> {
         if self.account.main_purse().addr() == uref.addr() {
             // If passed uref matches account's purse then we have to also validate their
             // access rights.
@@ -630,18 +684,7 @@ where
         }
     }
 
-    pub fn deserialize_keys(&self, bytes: Vec<u8>) -> Result<Vec<Key>, Error> {
-        let keys: Vec<Key> = bytesrepr::deserialize(bytes)?;
-        keys.iter().try_for_each(|k| self.validate_key(k))?;
-        Ok(keys)
-    }
-
-    pub fn deserialize_urefs(&self, bytes: Vec<u8>) -> Result<Vec<URef>, Error> {
-        let keys: Vec<URef> = bytesrepr::deserialize(bytes)?;
-        keys.iter().try_for_each(|k| self.validate_uref(k))?;
-        Ok(keys)
-    }
-
+    /// Validates if a [`Key`] refers to a [`URef`] and has a read bit set.
     fn validate_readable(&self, key: &Key) -> Result<(), Error> {
         if self.is_readable(key) {
             Ok(())
@@ -652,6 +695,7 @@ where
         }
     }
 
+    /// Validates if a [`Key`] refers to a [`URef`] and has a add bit set.
     fn validate_addable(&self, key: &Key) -> Result<(), Error> {
         if self.is_addable(key) {
             Ok(())
@@ -662,6 +706,7 @@ where
         }
     }
 
+    /// Validates if a [`Key`] refers to a [`URef`] and has a write bit set.
     fn validate_writeable(&self, key: &Key) -> Result<(), Error> {
         if self.is_writeable(key) {
             Ok(())
@@ -795,7 +840,10 @@ where
         self.charge_gas(amount)
     }
 
-    /// Writes data to global state with a measurement
+    /// Writes data to global state with a measurement.
+    ///
+    /// Use with caution - there is no validation done as the key is assumed to be validated
+    /// already.
     pub(crate) fn metered_write_gs_unsafe<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
     where
         K: Into<Key>,
@@ -813,7 +861,10 @@ where
         Ok(())
     }
 
-    pub fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), Error>
+    /// Writes data to a global state and charges for bytes stored.
+    ///
+    /// This method performs full validation of the key to be written.
+    pub(crate) fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), Error>
     where
         T: Into<StoredValue>,
     {
@@ -825,6 +876,9 @@ where
         Ok(())
     }
 
+    /// Adds data to a global state key and charges for bytes stored.
+    ///
+    /// This method performs full validation of the key to be written.
     pub(crate) fn metered_add_gs_unsafe(
         &mut self,
         key: Key,
@@ -864,7 +918,8 @@ where
         self.metered_add_gs_unsafe(key, value)
     }
 
-    pub fn add_associated_key(
+    /// Adds new associated key.
+    pub(crate) fn add_associated_key(
         &mut self,
         account_hash: AccountHash,
         weight: Weight,
@@ -904,7 +959,8 @@ where
         Ok(())
     }
 
-    pub fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), Error> {
+    /// Remove associated key.
+    pub(crate) fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), Error> {
         // Check permission to modify associated keys
         if !self.is_valid_context() {
             // Exit early with error to avoid mutations
@@ -938,7 +994,8 @@ where
         Ok(())
     }
 
-    pub fn update_associated_key(
+    /// Update associated key.
+    pub(crate) fn update_associated_key(
         &mut self,
         account_hash: AccountHash,
         weight: Weight,
@@ -976,7 +1033,8 @@ where
         Ok(())
     }
 
-    pub fn set_action_threshold(
+    /// Set threshold of an associated key.
+    pub(crate) fn set_action_threshold(
         &mut self,
         action_type: ActionType,
         threshold: Weight,
@@ -1014,7 +1072,7 @@ where
         Ok(())
     }
 
-    pub fn protocol_data(&self) -> &ProtocolData {
+    pub(crate) fn protocol_data(&self) -> &ProtocolData {
         &self.protocol_data
     }
 
@@ -1055,6 +1113,7 @@ where
         Ok(contract_package)
     }
 
+    /// Gets a dictionary item key from a dictionary referenced by a `uref`.
     pub(crate) fn dictionary_get(
         &mut self,
         uref: URef,
@@ -1088,6 +1147,7 @@ where
         }
     }
 
+    /// Puts a dictionary item key from a dictionary referenced by a `uref`.
     pub fn dictionary_put(
         &mut self,
         seed_uref: URef,

@@ -1,3 +1,4 @@
+//! Execution of smart contracts.
 mod address_generator;
 mod error;
 #[macro_use]

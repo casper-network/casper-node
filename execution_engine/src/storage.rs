@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 // modules
 pub mod error;
 pub mod global_state;

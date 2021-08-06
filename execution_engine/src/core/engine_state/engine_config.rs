@@ -1,8 +1,11 @@
+//! Support for runtime configuration of the execution engine - as an integral property of the
+//! `EngineState` instance.
 const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Copy, Clone)]
 pub struct EngineConfig {
+    /// Max query depth of the query.
     pub(crate) max_query_depth: u64,
 }
 

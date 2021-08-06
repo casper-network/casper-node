@@ -1,3 +1,4 @@
+//! Ways a smart contract execution can be expressed as.
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
@@ -49,50 +50,81 @@ const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
 const TRANSFER_TAG: u8 = 5;
 
+/// Represents possible variants of an executable deploy.
 #[derive(
     Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
+    /// Executable is specifed as a raw bytes that represents a WASM code and an instance of
+    /// [`RuntimeArgs`].
     ModuleBytes {
+        /// Raw WASM module bytes with assumed "call" export as an entrypoint.
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")]
         module_bytes: Bytes,
-        // assumes implicit `call` noarg entrypoint
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored contract referenced by its [`ContractHash`], entry point and an instance of
+    /// [`RuntimeArgs`].
     StoredContractByHash {
+        /// Contract hash.
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractHash,
+        /// Name of an entry point.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored contract referenced by a named key existing in the signer's account context, entry
+    /// point and an instance of [`RuntimeArgs`].
     StoredContractByName {
+        /// Named key.
         name: String,
+        /// Name of an entry point.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an
+    /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
+        /// Contract package hash
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractPackageHash,
-        version: Option<ContractVersion>, // defaults to highest enabled version
+        /// An optional version of the contract to call. It will default to the highest enabled
+        /// version if no value is specified.
+        version: Option<ContractVersion>,
+        /// Entry point name.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored versioned contract referenced by a named key existing in the signer's account
+    /// context, entry point and an instance of [`RuntimeArgs`].
     StoredVersionedContractByName {
+        /// Named key.
         name: String,
-        version: Option<ContractVersion>, // defaults to highest enabled version
+        /// An optional version of the contract to call. It will default to the highest enabled
+        /// version if no value is specified.
+        version: Option<ContractVersion>,
+        /// Entry point name.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// A native transfer which does not contain or reference a WASM code.
     Transfer {
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
 }
 
 impl ExecutableDeployItem {
+    /// Returns an entry point name.
     pub fn entry_point_name(&self) -> &str {
         match self {
             ExecutableDeployItem::ModuleBytes { .. } | ExecutableDeployItem::Transfer { .. } => {
@@ -105,6 +137,7 @@ impl ExecutableDeployItem {
         }
     }
 
+    /// Returns a runtime arguments.
     pub fn args(&self) -> &RuntimeArgs {
         match self {
             ExecutableDeployItem::ModuleBytes { args, .. }
@@ -116,10 +149,14 @@ impl ExecutableDeployItem {
         }
     }
 
+    /// Checks if this deploy item is a native transfer.
     pub fn is_transfer(&self) -> bool {
         matches!(self, ExecutableDeployItem::Transfer { .. })
     }
 
+    /// Returns a [`DeployMetadata`] which contains all the details necessary to execute a smart
+    /// contract. This object is generated based on information provided by
+    /// [`ExecutableDeployItem`].
     #[allow(clippy::too_many_arguments)]
     pub fn get_deploy_metadata<R>(
         &self,
@@ -743,31 +780,52 @@ impl Distribution<ExecutableDeployItem> for Standard {
     }
 }
 
+/// The metadata whose is a result of resolving an instance of [`ExecutableDeployItem`] into values
+/// that will be later used to create a [`crate::core::runtime::Runtime`] and
+/// [`crate::core::runtime_context::RuntimeContext`].
 #[derive(Clone, Debug)]
 pub struct DeployMetadata {
+    /// This will be a [`DeployKind::System`] if the resolved contract is a system one based on
+    /// it's [`ContractHash`] or either a [`DeployKind::Session`] or [`DeployKind::Contract`]
+    /// depending on an [`EntryPointType`] of the contract referenced by [`ExecutableDeployItem`]
+    /// variants.
     pub kind: DeployKind,
+    /// Account hash of the account that initiates the deploy.
     pub account_hash: AccountHash,
+    /// Key pointing to the entity we will be running as.
     pub base_key: Key,
+    /// An instance of WASM module.
     pub module: Module,
+    /// Contract hash of the running contract.
     pub contract_hash: ContractHash,
+    /// Contract instance.
     pub contract: Contract,
+    /// Contract package that contains a reference to `contract`.
     pub contract_package: ContractPackage,
+    /// Entry point that will be executed.
     pub entry_point: EntryPoint,
+    /// Indicates if a given contract is stored in the global state.
     pub is_stored: bool,
 }
 
+/// Represents a kind of a deploy.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DeployKind {
+    /// Session code.
     Session,
+    /// Contract code.
     Contract,
+    /// System contract.
     System,
 }
 
 impl DeployMetadata {
+    /// Returns the module, consuming the object.
     pub fn take_module(self) -> Module {
         self.module
     }
 
+    /// Returns an initial call stack based on the metadata.
     pub fn initial_call_stack(&self) -> Result<Vec<CallStackElement>, Error> {
         match (
             self.kind,

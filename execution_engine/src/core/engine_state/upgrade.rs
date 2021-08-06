@@ -1,3 +1,4 @@
+//! Support for applying upgrades on the execution engine.
 use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
@@ -23,9 +24,12 @@ use crate::{
     storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
 
+/// Represents a successfuly executed upgrade.
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
+    /// New state root hash generated after effects were applied.
     pub post_state_hash: Blake2bHash,
+    /// Effects of executing a upgrade request.
     pub execution_effect: ExecutionEffect,
 }
 
@@ -39,6 +43,7 @@ impl fmt::Display for UpgradeSuccess {
     }
 }
 
+/// Represents a configuration of a protocol upgrade.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpgradeConfig {
     pre_state_hash: Blake2bHash,
@@ -56,6 +61,7 @@ pub struct UpgradeConfig {
 }
 
 impl UpgradeConfig {
+    /// Create new upgrade config.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pre_state_hash: Blake2bHash,
@@ -87,73 +93,93 @@ impl UpgradeConfig {
         }
     }
 
+    /// Returns the current state root state hash
     pub fn pre_state_hash(&self) -> Blake2bHash {
         self.pre_state_hash
     }
 
+    /// Returns current protocol version of this upgrade.
     pub fn current_protocol_version(&self) -> ProtocolVersion {
         self.current_protocol_version
     }
 
+    /// Returns new protocol version of this upgrade.
     pub fn new_protocol_version(&self) -> ProtocolVersion {
         self.new_protocol_version
     }
 
+    /// Returns new wrapped wasm config to be applied if exists.
     pub fn wasm_config(&self) -> Option<&WasmConfig> {
         self.wasm_config.as_ref()
     }
 
+    /// Returns new wrapped system config to be applied if exists.
     pub fn system_config(&self) -> Option<&SystemConfig> {
         self.system_config.as_ref()
     }
 
+    /// Returns activation point of this upgrade.
     pub fn activation_point(&self) -> Option<EraId> {
         self.activation_point
     }
 
+    /// Returns new validator slots if specified.
     pub fn new_validator_slots(&self) -> Option<u32> {
         self.new_validator_slots
     }
 
+    /// Returns new auction delay if specified.
     pub fn new_auction_delay(&self) -> Option<u64> {
         self.new_auction_delay
     }
 
+    /// Returns new locked funds period if specified.
     pub fn new_locked_funds_period_millis(&self) -> Option<u64> {
         self.new_locked_funds_period_millis
     }
 
+    /// Returns new round seigniorage rate if specified.
     pub fn new_round_seigniorage_rate(&self) -> Option<Ratio<u64>> {
         self.new_round_seigniorage_rate
     }
 
+    /// Returns new unbonding delay if specified.
     pub fn new_unbonding_delay(&self) -> Option<u64> {
         self.new_unbonding_delay
     }
 
+    /// Returns new map of emergency global state updates.
     pub fn global_state_update(&self) -> &BTreeMap<Key, StoredValue> {
         &self.global_state_update
     }
 
+    /// Sets new pre state hash.
     pub fn with_pre_state_hash(&mut self, pre_state_hash: Blake2bHash) {
         self.pre_state_hash = pre_state_hash;
     }
 }
 
+/// Represents outcomes of a failed protocol upgrade.
 #[derive(Clone, Error, Debug)]
 pub enum ProtocolUpgradeError {
+    /// Error validating a protocol upgrade config.
     #[error("Invalid upgrade config")]
     InvalidUpgradeConfig,
+    /// Unable to retrieve a system contract.
     #[error("Unable to retrieve system contract: {0}")]
     UnableToRetrieveSystemContract(String),
+    /// Unable to retrieve a system contract package.
     #[error("Unable to retrieve system contract package: {0}")]
     UnableToRetrieveSystemContractPackage(String),
+    /// Unable to disable previous version of a system contract.
     #[error("Failed to disable previous version of system contract: {0}")]
     FailedToDisablePreviousVersion(String),
+    /// (De)serialization error.
     #[error(transparent)]
     Bytesrepr(#[from] bytesrepr::Error),
 }
 
+/// System upgrader deals with conducting actual protocol upgrade.
 pub(crate) struct SystemUpgrader<S>
 where
     S: StateProvider,
@@ -167,6 +193,7 @@ impl<S> SystemUpgrader<S>
 where
     S: StateProvider,
 {
+    /// Creates new system upgrader instance.
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
         protocol_data: ProtocolData,
@@ -212,6 +239,7 @@ where
         Ok(())
     }
 
+    /// Store new system contract.
     fn store_contract(
         &self,
         correlation_id: CorrelationId,

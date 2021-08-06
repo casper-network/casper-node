@@ -6,7 +6,7 @@ pub mod storage;
 pub mod system;
 
 #[cfg(feature = "no-std")]
-use alloc::{
+use ::alloc::{
     alloc::{alloc, Layout},
     vec::Vec,
 };
