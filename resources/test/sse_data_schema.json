@@ -523,8 +523,10 @@
       "minimum": 0.0
     },
     "ExecutableDeployItem": {
+      "description": "Represents possible variants of an executable deploy.",
       "anyOf": [
         {
+          "description": "Executable is specifed as a raw bytes that represents a WASM code and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "ModuleBytes"
@@ -542,7 +544,12 @@
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -551,6 +558,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredContractByHash"
@@ -569,10 +577,16 @@
                   "type": "string"
                 },
                 "entry_point": {
+                  "description": "Name of an entry point.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -581,6 +595,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredContractByName"
@@ -595,13 +610,20 @@
               ],
               "properties": {
                 "name": {
+                  "description": "Named key.",
                   "type": "string"
                 },
                 "entry_point": {
+                  "description": "Name of an entry point.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -610,6 +632,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByHash"
@@ -628,6 +651,7 @@
                   "type": "string"
                 },
                 "version": {
+                  "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                   "type": [
                     "integer",
                     "null"
@@ -636,10 +660,16 @@
                   "minimum": 0.0
                 },
                 "entry_point": {
+                  "description": "Entry point name.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -648,6 +678,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored versioned contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByName"
@@ -662,9 +693,11 @@
               ],
               "properties": {
                 "name": {
+                  "description": "Named key.",
                   "type": "string"
                 },
                 "version": {
+                  "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                   "type": [
                     "integer",
                     "null"
@@ -673,10 +706,16 @@
                   "minimum": 0.0
                 },
                 "entry_point": {
+                  "description": "Entry point name.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -685,6 +724,7 @@
           "additionalProperties": false
         },
         {
+          "description": "A native transfer which does not contain or reference a WASM code.",
           "type": "object",
           "required": [
             "Transfer"
@@ -697,7 +737,12 @@
               ],
               "properties": {
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false

@@ -1,7 +1,9 @@
 use std::{
     collections::HashMap,
     error::Error,
-    fs, io, iter, str,
+    fs::{self, File},
+    io::{self, BufReader},
+    iter, str,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -9,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+use assert_json_diff::assert_json_include;
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
@@ -1170,10 +1173,14 @@ fn schema() {
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    let expected_schema = fs::read_to_string(schema_path).unwrap();
-    let schema = schema_for!(SseData);
-    assert_eq!(
-        serde_json::to_string_pretty(&schema).unwrap(),
-        expected_schema.trim()
-    );
+    let expected_schema: serde_json::Value = {
+        let schema_file = File::open(&schema_path)
+            .unwrap_or_else(|error| panic!("should open schema at {}: {}", schema_path, error));
+        let schema_reader = BufReader::new(schema_file);
+        serde_json::from_reader(schema_reader).expect("should read a json file with schema")
+    };
+
+    let current_schema = schema_for!(SseData);
+
+    assert_json_include!(actual: current_schema, expected: expected_schema);
 }
