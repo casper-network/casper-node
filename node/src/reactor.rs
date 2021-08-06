@@ -39,6 +39,7 @@ use std::{
     fmt::{Debug, Display},
     fs::File,
     mem,
+    num::NonZeroU64,
     str::FromStr,
     sync::atomic::Ordering,
 };
@@ -167,7 +168,10 @@ pub enum ReactorExit {
 /// is the central hook for any part of the program that schedules events directly.
 ///
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
-pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
+///
+/// Schedule tuples contain an optional ancestor ID and the actual event. The ancestor ID indicates
+/// which potential previous event resulted in the event being created.
+pub type Scheduler<Ev> = WeightedRoundRobin<(Option<NonZeroU64>, Ev), QueueKind>;
 
 /// Event queue handle
 ///
@@ -193,12 +197,27 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Schedule an event on a specific queue.
+    ///
+    /// The scheduled event will not have an ancestor.
     #[inline]
     pub(crate) async fn schedule<Ev>(self, event: Ev, queue_kind: QueueKind)
     where
         REv: From<Ev>,
     {
-        self.0.push(event.into(), queue_kind).await
+        self.schedule_with_ancestor(None, event, queue_kind).await
+    }
+
+    /// Schedule an event on a specific queue.
+    #[inline]
+    pub(crate) async fn schedule_with_ancestor<Ev>(
+        self,
+        ancestor: Option<NonZeroU64>,
+        event: Ev,
+        queue_kind: QueueKind,
+    ) where
+        REv: From<Ev>,
+    {
+        self.0.push((ancestor, event.into()), queue_kind).await
     }
 
     /// Returns number of events in each of the scheduler's queues.
@@ -552,7 +571,7 @@ where
             QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
-        let (event, queue) = self.scheduler.pop().await;
+        let ((_ancestor, event), queue) = self.scheduler.pop().await;
 
         // Create another span for tracing the processing of one event.
         let event_span = debug_span!("dispatch", event_count = self.event_count, %event, %queue);
@@ -709,7 +728,9 @@ where
                         // since that workaround of making two attempts with the first wrapped in a
                         // timeout should no longer be required.
 
-                        for event in self.scheduler.drain_queue(QueueKind::Control).await {
+                        for (ancestor, event) in
+                            self.scheduler.drain_queue(QueueKind::Control).await
+                        {
                             if let Some(ctrl_ann) = event.as_control() {
                                 match ctrl_ann {
                                     ControlAnnouncement::FatalError { file, line, msg } => {
@@ -718,7 +739,7 @@ where
                                     }
                                 }
                             } else {
-                                debug!(%event, "found non-control announcement while draining queue")
+                                debug!(?ancestor, %event, "found non-control announcement while draining queue")
                             }
                         }
 
@@ -752,8 +773,8 @@ where
     #[inline]
     pub async fn drain_into_inner(self) -> R {
         self.scheduler.seal();
-        for event in self.scheduler.drain_queues().await {
-            debug!(event=%event, "drained event");
+        for (ancestor, event) in self.scheduler.drain_queues().await {
+            debug!(?ancestor, %event, "drained event");
         }
         self.reactor
     }
@@ -785,7 +806,9 @@ impl Runner<InitializerReactor> {
         Ok(Runner {
             scheduler,
             reactor,
-            event_count: 0,
+            // It is important to initial event count to 1, as we use an ancestor event of 0
+            // to mean "no ancestor".
+            event_count: 1,
             metrics: RunnerMetrics::new(&registry)?,
             // Calculate the `last_metrics` timestamp to be exactly one delay in the past. This will
             // cause the runner to collect metrics at the first opportunity.
@@ -810,7 +833,7 @@ where
     for effect in effects {
         tokio::spawn(async move {
             for event in effect.await {
-                scheduler.push(event, queue_kind).await
+                scheduler.push((None, event), queue_kind).await
             }
         });
     }
