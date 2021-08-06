@@ -695,7 +695,7 @@ where
                 // bits are verified from within API call.
                 false
             }
-            Key::SystemContractRegistry => true,
+            Key::SystemContractRegistry => false,
         }
     }
 
