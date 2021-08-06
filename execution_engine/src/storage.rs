@@ -3,8 +3,6 @@
 // modules
 pub mod error;
 pub mod global_state;
-pub mod protocol_data;
-pub mod protocol_data_store;
 pub mod store;
 pub mod transaction_source;
 pub mod trie;

@@ -29,10 +29,12 @@ use casper_execution_engine::{
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
+        system_config::SystemConfig,
+        wasm_config::WasmConfig,
     },
     storage::{
-        global_state::lmdb::LmdbGlobalState, protocol_data_store::lmdb::LmdbProtocolDataStore,
-        transaction_source::lmdb::LmdbEnvironment, trie::Trie, trie_store::lmdb::LmdbTrieStore,
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
+        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{Key, ProtocolVersion};
@@ -250,17 +252,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            ContractRuntimeRequest::GetProtocolData {
-                protocol_version,
-                responder,
-            } => {
-                let result = self
-                    .engine_state
-                    .get_protocol_data(protocol_version)
-                    .map(|inner| inner.map(Box::new));
-
-                responder.respond(result).ignore()
-            }
             ContractRuntimeRequest::CommitGenesis {
                 chainspec,
                 responder,
@@ -495,10 +486,13 @@ where
 }
 
 impl ContractRuntime {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
         contract_runtime_config: &Config,
+        wasm_config: WasmConfig,
+        system_config: SystemConfig,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -521,14 +515,12 @@ impl ContractRuntime {
             DatabaseFlags::empty(),
         )?);
 
-        let protocol_data_store = Arc::new(LmdbProtocolDataStore::new(
-            &environment,
-            None,
-            DatabaseFlags::empty(),
-        )?);
-
-        let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
-        let engine_config = EngineConfig::new(contract_runtime_config.max_query_depth());
+        let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+        let engine_config = EngineConfig::new(
+            contract_runtime_config.max_query_depth(),
+            wasm_config,
+            system_config,
+        );
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 

@@ -15,6 +15,7 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
+use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 use casper_types::ProtocolVersion;
 
 use super::*;
@@ -189,6 +190,8 @@ impl reactor::Reactor for Reactor {
             ProtocolVersion::from_parts(1, 0, 0),
             storage.root_path(),
             &contract_runtime_config,
+            WasmConfig::default(),
+            SystemConfig::default(),
             registry,
         )
         .unwrap();
