@@ -53,7 +53,7 @@ use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, instrument, warn};
+use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 #[cfg(target_os = "linux")]
@@ -327,7 +327,7 @@ where
     reactor: R,
 
     /// Counter for events, to aid tracing.
-    current_event_id: usize,
+    current_event_id: u64,
 
     /// Timestamp of last reactor metrics update.
     last_metrics: Instant,
@@ -336,7 +336,7 @@ where
     metrics: RunnerMetrics,
 
     /// Check if we need to update reactor metrics every this many events.
-    event_metrics_threshold: usize,
+    event_metrics_threshold: u64,
 
     /// Only update reactor metrics if at least this much time has passed.
     event_metrics_min_delay: Duration,
@@ -476,7 +476,7 @@ where
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
-        process_effects(scheduler, initial_effects)
+        process_effects(None, scheduler, initial_effects)
             .instrument(debug_span!("process initial effects"))
             .await;
 
@@ -507,7 +507,7 @@ where
 
         let effects = create_effects(effect_builder);
 
-        process_effects(self.scheduler, effects)
+        process_effects(None, self.scheduler, effects)
             .instrument(debug_span!(
                 "process injected effects",
                 ev = self.current_event_id
@@ -519,7 +519,7 @@ where
     ///
     /// Returns `false` if processing should stop.
     #[inline]
-    #[instrument("crank", level = "debug", fields(ev = self.current_event_id), skip(self, rng))]
+    #[instrument("dispatch", level = "debug", fields(a, ev = self.current_event_id), skip(self, rng))]
     pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         self.metrics.events.inc();
 
@@ -571,48 +571,54 @@ where
             QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
-        let ((_ancestor, event), queue) = self.scheduler.pop().await;
+        let ((ancestor, event), queue) = self.scheduler.pop().await;
+        trace!(%event, %queue, "current");
 
         // Create another span for tracing the processing of one event.
-        let event_span = debug_span!("dispatch", ev = self.current_event_id);
-        let (effects, keep_going) = event_span.in_scope(|| {
-            // Dispatch the event, then execute the resulting effect.
-            let start = self.clock.start();
+        Span::current().record("ev", &self.current_event_id);
 
-            let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
-                // We've received a control event, which will _not_ be handled by the reactor.
-                match ctrl_ann {
-                    ControlAnnouncement::FatalError { file, line, msg } => {
-                        error!(%file, %line, %msg, "fatal error via control announcement");
-                        (Default::default(), false)
-                    }
+        // If we know the ancestor of an event, record it.
+        if let Some(ancestor) = ancestor {
+            Span::current().record("a", &ancestor.get());
+        }
+
+        // Dispatch the event, then execute the resulting effect.
+        let start = self.clock.start();
+
+        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+            // We've received a control event, which will _not_ be handled by the reactor.
+            match ctrl_ann {
+                ControlAnnouncement::FatalError { file, line, msg } => {
+                    error!(%file, %line, %msg, "fatal error via control announcement");
+                    (Default::default(), false)
                 }
-            } else {
-                (
-                    self.reactor.dispatch_event(effect_builder, rng, event),
-                    true,
-                )
-            };
-
-            let end = self.clock.end();
-
-            // Warn if processing took a long time, record to histogram.
-            let delta = self.clock.delta(start, end);
-            if delta > *DISPATCH_EVENT_THRESHOLD {
-                warn!(ev=%self.event_count,
-                      ns = delta.into_nanos(),
-                      "event took very long to dispatch");
             }
-            self.metrics
-                .event_dispatch_duration
-                .observe(delta.into_nanos() as f64);
+        } else {
+            (
+                self.reactor.dispatch_event(effect_builder, rng, event),
+                true,
+            )
+        };
 
-            (effects, keep_going)
-        });
+        let end = self.clock.end();
 
-        process_effects(self.scheduler, effects)
-            .instrument(debug_span!("process effects", ev = self.current_event_id))
-            .await;
+        // Warn if processing took a long time, record to histogram.
+        let delta = self.clock.delta(start, end);
+        if delta > *DISPATCH_EVENT_THRESHOLD {
+            warn!(ns = delta.into_nanos(), "event took very long to dispatch");
+        }
+        self.metrics
+            .event_dispatch_duration
+            .observe(delta.into_nanos() as f64);
+
+        // Run effects, with the current event ID as the ancestor for resulting set of events.
+        process_effects(
+            NonZeroU64::new(self.current_event_id),
+            self.scheduler,
+            effects,
+        )
+        .in_current_span()
+        .await;
 
         self.current_event_id += 1;
 
@@ -794,7 +800,7 @@ impl Runner<InitializerReactor> {
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");
-        process_effects(scheduler, initial_effects)
+        process_effects(None, scheduler, initial_effects)
             .instrument(span)
             .await;
 
@@ -821,9 +827,14 @@ impl Runner<InitializerReactor> {
 }
 
 /// Spawns tasks that will process the given effects.
+///
+/// Result events from processing the events will be scheduled with the given ancestor.
 #[inline]
-async fn process_effects<Ev>(scheduler: &'static Scheduler<Ev>, effects: Effects<Ev>)
-where
+async fn process_effects<Ev>(
+    ancestor: Option<NonZeroU64>,
+    scheduler: &'static Scheduler<Ev>,
+    effects: Effects<Ev>,
+) where
     Ev: Send + 'static,
 {
     // TODO: Properly carry around priorities.
@@ -832,7 +843,7 @@ where
     for effect in effects {
         tokio::spawn(async move {
             for event in effect.await {
-                scheduler.push((None, event), queue_kind).await
+                scheduler.push((ancestor, event), queue_kind).await
             }
         });
     }
