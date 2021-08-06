@@ -15,17 +15,21 @@ pub struct DictionaryValue {
     /// Actual [`CLValue`] written to global state.
     cl_value: CLValue,
     /// [`URef`] seed bytes.
-    uref_addr: Bytes,
+    seed_uref_addr: Bytes,
     /// Original key bytes.
-    key_bytes: Bytes,
+    dictionary_item_key_bytes: Bytes,
 }
 
 impl DictionaryValue {
-    pub fn new(cl_value: CLValue, key_bytes: Vec<u8>, uref_addr: Vec<u8>) -> Self {
+    pub fn new(
+        cl_value: CLValue,
+        seed_uref_addr: Vec<u8>,
+        dictionary_item_key_bytes: Vec<u8>,
+    ) -> Self {
         Self {
             cl_value,
-            uref_addr: uref_addr.into(),
-            key_bytes: key_bytes.into(),
+            seed_uref_addr: seed_uref_addr.into(),
+            dictionary_item_key_bytes: dictionary_item_key_bytes.into(),
         }
     }
 
@@ -48,8 +52,8 @@ impl FromBytes for DictionaryValue {
         let (key_bytes, remainder) = FromBytes::from_bytes(remainder)?;
         let dictionary_value = DictionaryValue {
             cl_value,
-            uref_addr,
-            key_bytes,
+            seed_uref_addr: uref_addr,
+            dictionary_item_key_bytes: key_bytes,
         };
         Ok((dictionary_value, remainder))
     }
@@ -59,15 +63,15 @@ impl ToBytes for DictionaryValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.cl_value.to_bytes()?);
-        buffer.extend(self.uref_addr.to_bytes()?);
-        buffer.extend(self.key_bytes.to_bytes()?);
+        buffer.extend(self.seed_uref_addr.to_bytes()?);
+        buffer.extend(self.dictionary_item_key_bytes.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         self.cl_value.serialized_length()
-            + self.uref_addr.serialized_length()
-            + self.key_bytes.serialized_length()
+            + self.seed_uref_addr.serialized_length()
+            + self.dictionary_item_key_bytes.serialized_length()
     }
 }
 

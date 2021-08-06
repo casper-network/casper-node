@@ -1,0 +1,15 @@
+[package]
+name = "dictionary-item-key-length"
+version = "0.1.0"
+edition = "2018"
+
+[[bin]]
+name = "dictionary-item-key-check"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

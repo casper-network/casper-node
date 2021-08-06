@@ -11,13 +11,15 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/smart_contra
 license-file = "../../LICENSE"
 
 [dependencies]
-casper-types = { version = "1.0.0", path = "../../types" }
+casper-types = { version = "1.0.0", path = "../../types", default-features = false }
 hex_fmt = "0.3.0"
 thiserror = "1.0.18"
 version-sync = { version = "0.9", optional = true }
-wee_alloc = "0.4.5"
+wee_alloc = { version = "0.4.5", optional = true }
 
 [features]
-default = []
+default = ["no-std", "provide-allocator"]
+no-std = ["casper-types/no-std"]
+provide-allocator = ["wee_alloc"]
 std = ["casper-types/std", "version-sync"]
 test-support = []

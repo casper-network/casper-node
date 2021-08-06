@@ -11,9 +11,6 @@ doctest = false
 test = false
 bench = false
 
-[features]
-std = ["casper-contract/std", "casper-types/std"]
-
 [dependencies]
 casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }
