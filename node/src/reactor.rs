@@ -327,7 +327,7 @@ where
     reactor: R,
 
     /// Counter for events, to aid tracing.
-    event_count: usize,
+    current_event_id: usize,
 
     /// Timestamp of last reactor metrics update.
     last_metrics: Instant,
@@ -485,7 +485,7 @@ where
         Ok(Runner {
             scheduler,
             reactor,
-            event_count: 0,
+            current_event_id: 0,
             metrics: RunnerMetrics::new(registry)?,
             last_metrics: Instant::now(),
             event_metrics_min_delay: Duration::from_secs(30),
@@ -510,7 +510,7 @@ where
         process_effects(self.scheduler, effects)
             .instrument(debug_span!(
                 "process injected effects",
-                ev = self.event_count
+                ev = self.current_event_id
             ))
             .await;
     }
@@ -519,7 +519,7 @@ where
     ///
     /// Returns `false` if processing should stop.
     #[inline]
-    #[instrument("crank", level = "debug", fields(ev = self.event_count), skip(self, rng))]
+    #[instrument("crank", level = "debug", fields(ev = self.current_event_id), skip(self, rng))]
     pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         self.metrics.events.inc();
 
@@ -527,7 +527,7 @@ where
         let effect_builder = EffectBuilder::new(event_queue);
 
         // Update metrics like memory usage and event queue sizes.
-        if self.event_count % self.event_metrics_threshold == 0 {
+        if self.current_event_id % self.event_metrics_threshold == 0 {
             // We update metrics on the first very event as well to get a good baseline.
             if self.last_metrics.elapsed() >= self.event_metrics_min_delay {
                 self.reactor.update_metrics(event_queue);
@@ -574,7 +574,7 @@ where
         let ((_ancestor, event), queue) = self.scheduler.pop().await;
 
         // Create another span for tracing the processing of one event.
-        let event_span = debug_span!("dispatch", event_count = self.event_count, %event, %queue);
+        let event_span = debug_span!("dispatch", ev = self.current_event_id);
         let (effects, keep_going) = event_span.in_scope(|| {
             // Dispatch the event, then execute the resulting effect.
             let start = self.clock.start();
@@ -611,10 +611,10 @@ where
         });
 
         process_effects(self.scheduler, effects)
-            .instrument(debug_span!("process effects", ev = self.event_count))
+            .instrument(debug_span!("process effects", ev = self.current_event_id))
             .await;
 
-        self.event_count += 1;
+        self.current_event_id += 1;
 
         keep_going
     }
@@ -807,7 +807,7 @@ impl Runner<InitializerReactor> {
             reactor,
             // It is important to initial event count to 1, as we use an ancestor event of 0
             // to mean "no ancestor".
-            event_count: 1,
+            current_event_id: 1,
             metrics: RunnerMetrics::new(&registry)?,
             // Calculate the `last_metrics` timestamp to be exactly one delay in the past. This will
             // cause the runner to collect metrics at the first opportunity.
