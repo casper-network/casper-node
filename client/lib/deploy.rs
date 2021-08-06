@@ -11,10 +11,11 @@ use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, URef, U512};
+use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, UIntParseError, URef, U512};
 
 use crate::{
     error::{Error, Result},
+    parsing,
     rpc::{RpcClient, TransferTarget},
 };
 
@@ -184,10 +185,10 @@ pub(super) trait DeployExt {
 
     /// Constructs a transfer `Deploy`.
     fn new_transfer(
-        amount: U512,
+        amount: &str,
         source_purse: Option<URef>,
-        target: TransferTarget,
-        transfer_id: u64,
+        target: &str,
+        transfer_id: &str,
         params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<Deploy>;
@@ -239,10 +240,10 @@ impl DeployExt for Deploy {
     }
 
     fn new_transfer(
-        amount: U512,
+        amount: &str,
         source_purse: Option<URef>,
-        target: TransferTarget,
-        transfer_id: u64,
+        target: &str,
+        transfer_id: &str,
         params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<Deploy> {
@@ -250,6 +251,12 @@ impl DeployExt for Deploy {
         const TRANSFER_ARG_SOURCE: &str = "source";
         const TRANSFER_ARG_TARGET: &str = "target";
         const TRANSFER_ARG_ID: &str = "id";
+
+        let amount = U512::from_dec_str(amount).map_err(|err| {
+            Error::FailedToParseUint(TRANSFER_ARG_AMOUNT, UIntParseError::FromDecStr(err))
+        })?;
+        let target = parsing::get_transfer_target(target)?;
+        let transfer_id = parsing::transfer_id(transfer_id)?;
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
@@ -512,5 +519,45 @@ mod tests {
             "deploy should be is_valid() because it has been signed {:#?}",
             signed_deploy
         );
+    }
+
+    #[test]
+    fn should_create_transfer() {
+        use casper_types::{AsymmetricType, PublicKey};
+
+        let secret_key = SecretKey::generate_ed25519().unwrap();
+        let public_key = PublicKey::from(&secret_key).to_hex();
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            &public_key,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
+    }
+
+    #[test]
+    fn should_fail_to_create_transfer_with_bad_args() {
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            "bad public key.",
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(matches!(
+            transfer_deploy,
+            Err(Error::InvalidArgument("target_account", _))
+        ));
     }
 }

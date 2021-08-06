@@ -26,7 +26,7 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{AsymmetricType, Key, PublicKey, URef, U512};
+use casper_types::{AsymmetricType, Key, PublicKey, URef};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
@@ -215,10 +215,10 @@ impl RpcCall {
 
     pub(crate) async fn transfer(
         self,
-        amount: U512,
+        amount: &str,
         source_purse: Option<URef>,
-        target: TransferTarget,
-        transfer_id: u64,
+        target: &str,
+        transfer_id: &str,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
