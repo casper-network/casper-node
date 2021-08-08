@@ -357,6 +357,13 @@ where
                 .event(|_| Event::SweepOutgoing),
         );
 
+        // Trigger asymmetric connection sweeps.
+        effects.extend(
+            effect_builder
+                .set_timeout(SYMMETRY_SWEEP_INTERVAL)
+                .event(|_| Event::SweepSymmetries),
+        );
+
         Ok((component, effects))
     }
 
