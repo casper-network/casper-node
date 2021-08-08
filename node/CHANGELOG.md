@@ -63,6 +63,7 @@ All notable changes to this project will be documented in this file.  The format
 * Limit the maximum number of clients connected to the event stream server via the `[event_stream_server][max_concurrent_subscribers]` config option.
 * Avoid emitting duplicate events in the event stream.
 * Change `BlockIdentifier` params in the Open-RPC schema to be optional.
+* Asymmetric connections are now swept regularly again.
 
 
 
