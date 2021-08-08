@@ -156,13 +156,13 @@ impl Display for NodeId {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NodeId::Tls(key_fingerprint) => {
-                write!(formatter, "{:10}", HexFmt(key_fingerprint.as_ref()))
+                write!(formatter, "tls:{:10}", HexFmt(key_fingerprint.as_ref()))
             }
             NodeId::P2p(peer_id) => {
                 let base58_peer_id = peer_id.to_base58();
                 write!(
                     formatter,
-                    "NodeId::P2p({}..{})",
+                    "p2p:{}..{}",
                     &base58_peer_id[8..12],
                     &base58_peer_id[(base58_peer_id.len() - 4)..]
                 )
