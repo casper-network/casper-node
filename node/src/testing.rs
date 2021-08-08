@@ -73,15 +73,15 @@ pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T
 /// Create an unused port on localhost.
 ///
 /// Returns a random port on localhost, provided that no other applications are binding ports inside
-/// `TEST_PORT_RANGE` and no other testing process is run in parallel. Should the latter happens,
-/// some randomization is used but no guarantees are given.
+/// `TEST_PORT_RANGE` and no other testing process is run in parallel. Should the latter happen,
+/// some randomization is used to avoid conflicts, without guarantee of success.
 pub(crate) fn unused_port_on_localhost() -> u16 {
-    // Previous iterations of things functions tried other approaches such as binding an ephemeral
-    // port and using that. This ran into race condition issues when the port was reused in the
-    // timespan where it was released and rebound.
+    // Previous iterations of this implementation tried other approaches such as binding an
+    // ephemeral port and using that. This ran into race condition issues when the port was reused
+    // in the timespan where it was released and rebound.
 
-    // The simpler approach of this function is to select a random port from the non-ephemeral range
-    // and hope that no daemons are already bound/listening on it.
+    // The simpler approach is to select a random port from the non-ephemeral range and hope that no
+    // daemons are already bound/listening on it, which should not be the case on a CI system.
 
     // We use a random offset and stride to stretch this a little bit, should two processes run at
     // the same time.
