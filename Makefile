@@ -176,7 +176,7 @@ setup-cargo-packagers:
 
 .PHONY: setup-audit
 setup-audit:
-	$(CARGO) install cargo-audit
+	cargo install cargo-audit
 
 .PHONY: setup-rs
 setup-rs: smart_contracts/rust-toolchain

@@ -540,6 +540,8 @@ pub enum ApiError {
     DictionaryItemKeyExceedsLength,
     /// The `dictionary_item_key` is invalid.
     InvalidDictionaryItemKey,
+    /// Unable to retrieve the requested system contract hash.
+    MissingSystemContractHash,
     /// Error specific to Auction contract.
     AuctionError(u8),
     /// Contract header errors.
@@ -692,6 +694,7 @@ impl From<ApiError> for u32 {
             ApiError::AllocLayout => 35,
             ApiError::DictionaryItemKeyExceedsLength => 36,
             ApiError::InvalidDictionaryItemKey => 37,
+            ApiError::MissingSystemContractHash => 38,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -741,6 +744,7 @@ impl From<u32> for ApiError {
             35 => ApiError::AllocLayout,
             36 => ApiError::DictionaryItemKeyExceedsLength,
             37 => ApiError::InvalidDictionaryItemKey,
+            38 => ApiError::MissingSystemContractHash,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -795,6 +799,7 @@ impl Debug for ApiError {
                 write!(f, "ApiError::DictionaryItemKeyTooLarge")?
             }
             ApiError::InvalidDictionaryItemKey => write!(f, "ApiError::InvalidDictionaryItemKey")?,
+            ApiError::MissingSystemContractHash => write!(f, "ApiError::MissingContractHash")?,
             ApiError::AuctionError(value) => write!(f, "ApiError::AuctionError({})", value)?,
             ApiError::ContractHeader(value) => write!(f, "ApiError::ContractHeader({})", value)?,
             ApiError::Mint(value) => write!(f, "ApiError::Mint({})", value)?,

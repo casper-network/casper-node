@@ -21,10 +21,10 @@ fn set_last_error(error: Error) {
     *last_error = Some(error)
 }
 
-/// FFI representation of [super::Error](super::Error)
+/// FFI representation of [Error](super::Error)
 ///
-/// The full error can be extracted with get_last_error.
-/// See [super::Error](super::Error) for more details on what these mean.
+/// The full error can be extracted with get_last_error. See [Error](super::Error) for more details
+/// on what these mean.
 #[allow(non_snake_case, non_camel_case_types, missing_docs)]
 #[repr(C)]
 pub enum casper_error_t {
@@ -65,11 +65,13 @@ impl AsFFIError for Error {
     fn as_ffi_error(&self) -> casper_error_t {
         match self {
             Error::FailedToParseKey => casper_error_t::CASPER_FAILED_TO_PARSE_KEY,
-            Error::FailedToParseURef(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_UREF,
-            Error::FailedToParseInt(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_INT,
-            Error::FailedToParseTimeDiff(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIME_DIFF,
-            Error::FailedToParseTimestamp(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIMESTAMP,
-            Error::FailedToParseUint(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_UINT,
+            Error::FailedToParseURef { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_UREF,
+            Error::FailedToParseInt { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_INT,
+            Error::FailedToParseTimeDiff { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_TIME_DIFF,
+            Error::FailedToParseTimestamp { .. } => {
+                casper_error_t::CASPER_FAILED_TO_PARSE_TIMESTAMP
+            }
+            Error::FailedToParseUint { .. } => casper_error_t::CASPER_FAILED_TO_PARSE_UINT,
             Error::FailedToGetResponse(_) => casper_error_t::CASPER_FAILED_TO_GET_RESPONSE,
             Error::FailedToParseResponse(_) => casper_error_t::CASPER_FAILED_TO_PARSE_RESPONSE,
             Error::FileAlreadyExists(_) => casper_error_t::CASPER_FILE_ALREADY_EXISTS,
@@ -82,7 +84,7 @@ impl AsFFIError for Error {
             Error::ToBytesError(_) => casper_error_t::CASPER_TO_BYTES_ERROR,
             Error::CryptoError { .. } => casper_error_t::CASPER_CRYPTO_ERROR,
             Error::InvalidCLValue(_) => casper_error_t::CASPER_INVALID_CL_VALUE,
-            Error::InvalidArgument(_, _) => casper_error_t::CASPER_INVALID_ARGUMENT,
+            Error::InvalidArgument { .. } => casper_error_t::CASPER_INVALID_ARGUMENT,
             Error::InvalidResponse(_) => casper_error_t::CASPER_INVALID_RESPONSE,
             Error::FFISetupNotCalled => casper_error_t::CASPER_FFI_SETUP_NOT_CALLED,
             Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
@@ -170,15 +172,13 @@ fn unsafe_str_arg(arg: *const c_char, arg_name: &'static str) -> Result<&'static
         }
         CStr::from_ptr(arg).to_str()
     }
-    .map_err(|error| {
-        Error::InvalidArgument(
-            arg_name,
-            format!(
-                "invalid utf8 value passed for arg '{}': {:?}",
-                stringify!($arg),
-                error,
-            ),
-        )
+    .map_err(|error| Error::InvalidArgument {
+        context: arg_name,
+        error: format!(
+            "invalid utf8 value passed for arg '{}': {:?}",
+            stringify!($arg),
+            error,
+        ),
     })
 }
 
@@ -260,7 +260,7 @@ pub extern "C" fn casper_get_last_error(buf: *mut c_uchar, len: usize) -> usize 
 
 /// Creates a `Deploy` and sends it to the network for execution.
 ///
-/// See [super::put_deploy](super::put_deploy) for more details.
+/// See [put_deploy](super::put_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_put_deploy(
     maybe_rpc_id: *const c_char,
@@ -297,7 +297,7 @@ pub extern "C" fn casper_put_deploy(
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
 ///
-/// See [super::make_deploy](super::make_deploy) for more details.
+/// See [make_deploy](super::make_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_make_deploy(
     maybe_output_path: *const c_char,
@@ -324,7 +324,7 @@ pub extern "C" fn casper_make_deploy(
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
 /// file or stdout.
 ///
-/// See [super::sign_deploy_file](super::sign_deploy_file) for more details.
+/// See [sign_deploy_file](super::sign_deploy_file) for more details.
 #[no_mangle]
 pub extern "C" fn casper_sign_deploy_file(
     input_path: *const c_char,
@@ -342,7 +342,7 @@ pub extern "C" fn casper_sign_deploy_file(
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
 ///
-/// See [super::send_deploy_file](super::send_deploy_file) for more details.
+/// See [send_deploy_file](super::send_deploy_file) for more details.
 #[no_mangle]
 pub extern "C" fn casper_send_deploy_file(
     maybe_rpc_id: *const c_char,
@@ -368,14 +368,14 @@ pub extern "C" fn casper_send_deploy_file(
 
 /// Transfers funds between purses.
 ///
-/// See [super::transfer](super::transfer) for more details.
+/// See [transfer](super::transfer) for more details.
 #[no_mangle]
 pub extern "C" fn casper_transfer(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
     verbosity_level: u64,
     amount: *const c_char,
-    maybe_target_account: *const c_char,
+    target_account: *const c_char,
     transfer_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
@@ -387,7 +387,7 @@ pub extern "C" fn casper_transfer(
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
     let node_address = try_unsafe_arg!(node_address);
     let amount = try_unsafe_arg!(amount);
-    let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let target_account = try_unsafe_arg!(target_account);
     let transfer_id = try_unsafe_arg!(transfer_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
@@ -397,7 +397,7 @@ pub extern "C" fn casper_transfer(
             node_address,
             verbosity_level,
             amount,
-            maybe_target_account,
+            target_account,
             transfer_id,
             deploy_params,
             payment_params,
@@ -411,12 +411,12 @@ pub extern "C" fn casper_transfer(
 
 /// Creates a transfer `Deploy` and outputs it to a file or stdout.
 ///
-/// See [super::make_transfer](super::make_transfer) for more details.
+/// See [make_transfer](super::make_transfer) for more details.
 #[no_mangle]
 pub extern "C" fn casper_make_transfer(
     maybe_output_path: *const c_char,
     amount: *const c_char,
-    maybe_target_account: *const c_char,
+    target_account: *const c_char,
     transfer_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
@@ -424,14 +424,14 @@ pub extern "C" fn casper_make_transfer(
 ) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let amount = try_unsafe_arg!(amount);
-    let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let target_account = try_unsafe_arg!(target_account);
     let transfer_id = try_unsafe_arg!(transfer_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
     let result = super::make_transfer(
         maybe_output_path,
         amount,
-        maybe_target_account,
+        target_account,
         transfer_id,
         deploy_params,
         payment_params,
@@ -443,7 +443,7 @@ pub extern "C" fn casper_make_transfer(
 
 /// Retrieves a `Deploy` from the network.
 ///
-/// See [super::get_deploy](super::get_deploy) for more details.
+/// See [get_deploy](super::get_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_deploy(
     maybe_rpc_id: *const c_char,
@@ -469,7 +469,7 @@ pub extern "C" fn casper_get_deploy(
 
 /// Retrieves a `Block` from the network.
 ///
-/// See [super::get_block](super::get_block) for more details.
+/// See [get_block](super::get_block) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block(
     maybe_rpc_id: *const c_char,
@@ -495,7 +495,7 @@ pub extern "C" fn casper_get_block(
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
 ///
-/// See [super::get_block_transfers](super::get_block_transfers) for more details.
+/// See [get_block_transfers](super::get_block_transfers) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block_transfers(
     maybe_rpc_id: *const c_char,
@@ -522,7 +522,7 @@ pub extern "C" fn casper_get_block_transfers(
 
 /// Retrieves a state root hash at a given `Block`.
 ///
-/// See [super::get_state_root_hash](super::get_state_root_hash) for more details.
+/// See [get_state_root_hash](super::get_state_root_hash) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_state_root_hash(
     maybe_rpc_id: *const c_char,
@@ -549,7 +549,7 @@ pub extern "C" fn casper_get_state_root_hash(
 
 /// Retrieves a stored value from the network.
 ///
-/// See [super::get_item](super::get_item) for more details.
+/// See [get_item](super::get_item) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_item(
     maybe_rpc_id: *const c_char,
@@ -586,7 +586,7 @@ pub extern "C" fn casper_get_item(
 
 /// Retrieves a purse's balance from the network.
 ///
-/// See [super::get_balance](super::get_balance) for more details.
+/// See [get_balance](super::get_balance) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_balance(
     maybe_rpc_id: *const c_char,
@@ -620,7 +620,7 @@ pub extern "C" fn casper_get_balance(
 
 /// Retrieves era information from the network.
 ///
-/// See [super::get_era_info_by_switch_block](super::get_era_info_by_switch_block) for more details.
+/// See [get_era_info_by_switch_block](super::get_era_info_by_switch_block) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_era_info_by_switch_block(
     maybe_rpc_id: *const c_char,
@@ -651,7 +651,7 @@ pub extern "C" fn casper_get_era_info_by_switch_block(
 
 /// Retrieves the bids and validators as of the most recently added `Block`.
 ///
-/// See [super::get_auction_info](super::get_auction_info) for more details.
+/// See [get_auction_info](super::get_auction_info) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_auction_info(
     maybe_rpc_id: *const c_char,
@@ -678,7 +678,7 @@ pub extern "C" fn casper_get_auction_info(
 
 /// Generates key files.
 ///
-/// See [super::keygen::generate_files](super::keygen::generate_files) for more details.
+/// See [keygen::generate_files](super::keygen::generate_files) for more details.
 #[no_mangle]
 pub extern "C" fn casper_keygen(
     output_dir: *const c_char,
@@ -706,6 +706,7 @@ pub struct casper_deploy_params_t {
     dependencies: *const *const c_char,
     dependencies_len: usize,
     chain_name: *const c_char,
+    session_account: *const c_char,
 }
 
 impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
@@ -722,6 +723,10 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             self.dependencies_len,
             "casper_deploy_params_t.dependencies",
         )?;
+        let session_account = unsafe_str_arg(
+            self.session_account,
+            "casper_deploy_params_t.session_account",
+        )?;
         Ok(super::DeployStrParams {
             secret_key,
             timestamp,
@@ -729,6 +734,7 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             gas_price,
             dependencies,
             chain_name,
+            session_account,
         })
     }
 }
