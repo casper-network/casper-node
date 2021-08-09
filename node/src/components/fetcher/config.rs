@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::TimeDiff;
 
-const DEFAULT_GET_FROM_PEER_TIMEOUT_SECS: &str = "3sec";
+const DEFAULT_GET_FROM_PEER_TIMEOUT: &str = "3sec";
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -22,7 +22,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            get_from_peer_timeout: TimeDiff::from_str(DEFAULT_GET_FROM_PEER_TIMEOUT_SECS).unwrap(),
+            get_from_peer_timeout: TimeDiff::from_str(DEFAULT_GET_FROM_PEER_TIMEOUT).unwrap(),
         }
     }
 }

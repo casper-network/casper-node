@@ -475,7 +475,7 @@ mod tests {
 
     use rand::Rng;
 
-    use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION_SECS, *};
+    use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION, *};
     use crate::{logging, testing::TestRng, types::TimeDiff, utils::DisplayIter};
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
@@ -547,7 +547,7 @@ mod tests {
 
         // Time the finished data out, then check same partial data causes `GetRemainder` to be
         // returned as per a completely new entry.
-        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION_SECS)
+        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
             .unwrap()
             .millis();
         Instant::advance_time(millis + 1);
@@ -629,7 +629,7 @@ mod tests {
 
         // Time the finished data out, then check same complete data causes `ShouldGossip` to be
         // returned as per a completely new entry.
-        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION_SECS)
+        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
             .unwrap()
             .millis();
         Instant::advance_time(millis + 1);
@@ -959,7 +959,7 @@ mod tests {
         assert!(gossip_table.finished.contains(&data_id));
 
         // Time the finished data out and check it has been purged.
-        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION_SECS)
+        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
             .unwrap()
             .millis();
         Instant::advance_time(millis + 1);
