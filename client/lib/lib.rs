@@ -29,12 +29,12 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
-    rpcs::state::DictionaryIdentifier,
+    crypto::hash::Digest,
+    rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
     types::{BlockHash, Deploy},
 };
 use casper_types::Key;
 
-use casper_node::{crypto::hash::Digest, rpcs::state::GlobalStateIdentifier};
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
@@ -368,8 +368,7 @@ pub async fn get_state_root_hash(
         .await
 }
 
-/// Retrieves a stored value from the network. This function is deprecated, use
-/// `casper_client::query_global_state` instead.
+/// Retrieves a stored value from the network.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
 ///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
@@ -392,8 +391,10 @@ pub async fn get_state_root_hash(
 /// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
 /// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
 /// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Dictionary
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
+#[deprecated(note = "Users should use `casper_client::query_global_state` instead.")]
 pub async fn get_item(
     maybe_rpc_id: &str,
     node_address: &str,
@@ -531,7 +532,8 @@ pub async fn get_account_info(
 ///   either a `Block` hash or a specific `state_root_hash`.
 /// * `hash` is a 32-byte hex encoded hash which can either be the block hash or state root hash and
 ///   is identified by the `state_identifier` arg.
-/// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
+/// * `global_state_str_params` contains global state identifier related options for this query. See
+///   [`GlobalStateStrParams`](struct.GlobalStateStrParams.html) for more details.
 /// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
 ///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
 ///   take one of the following forms:
@@ -542,6 +544,7 @@ pub async fn get_account_info(
 /// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
 /// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
 /// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Dictionary
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
 pub async fn query_global_state(
@@ -1135,13 +1138,13 @@ impl<'a> TryInto<DictionaryIdentifier> for DictionaryItemStrParams<'a> {
     }
 }
 
-/// Container for `GlobalStateIdentifier` construction options.
+/// The two ways of constructing a query to global state.
 #[derive(Default, Debug)]
 pub struct GlobalStateStrParams<'a> {
     /// Identifier to mark the hash as either a Block hash or `state_root_hash`
     /// When true, the hash provided is a Block hash.
     pub is_block_hash: bool,
-    /// The hash value.
+    /// The hex-encoded hash value.
     pub hash_value: &'a str,
 }
 
@@ -1150,14 +1153,14 @@ impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
 
     fn try_into(self) -> Result<GlobalStateIdentifier> {
         let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
-            context: "block_identifier",
+            context: "global_state_identifier",
             error,
         })?;
 
         if self.is_block_hash {
-            Ok(GlobalStateIdentifier::Block(BlockHash::new(hash)))
+            Ok(GlobalStateIdentifier::BlockHash(BlockHash::new(hash)))
         } else {
-            Ok(GlobalStateIdentifier::StateRoot(hash))
+            Ok(GlobalStateIdentifier::StateRootHash(hash))
         }
     }
 }

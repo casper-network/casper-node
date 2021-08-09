@@ -48,6 +48,8 @@ enum DisplayOrder {
     GetBlockTransfers,
     ListDeploys,
     GetStateRootHash,
+    QueryGlobalState,
+    GetDictionaryItem,
     GetBalance,
     GetAccountInfo,
     GetEraInfo,
@@ -56,8 +58,6 @@ enum DisplayOrder {
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
-    GetDictionaryItem,
-    QueryGlobalState,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {

@@ -99,7 +99,7 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
     });
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
-        state_identifier: GlobalStateIdentifier::Block(*Block::doc_example().hash()),
+        state_identifier: GlobalStateIdentifier::BlockHash(*Block::doc_example().hash()),
         key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
         path: vec![],
     });
@@ -848,9 +848,9 @@ impl RpcWithParamsExt for GetDictionaryItem {
 #[serde(deny_unknown_fields)]
 pub enum GlobalStateIdentifier {
     /// Query using a block hash.
-    Block(BlockHash),
+    BlockHash(BlockHash),
     /// Query using the state root hash.
-    StateRoot(Digest),
+    StateRootHash(Digest),
 }
 
 /// Params for "query_global_state" RPC
@@ -911,7 +911,7 @@ impl RpcWithParamsExt for QueryGlobalState {
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let (state_root_hash, maybe_block_header) = match params.state_identifier {
-                GlobalStateIdentifier::Block(block_hash) => {
+                GlobalStateIdentifier::BlockHash(block_hash) => {
                     match effect_builder
                         .get_block_header_from_storage(block_hash)
                         .await
@@ -931,7 +931,7 @@ impl RpcWithParamsExt for QueryGlobalState {
                         }
                     }
                 }
-                GlobalStateIdentifier::StateRoot(state_root_hash) => (state_root_hash, None),
+                GlobalStateIdentifier::StateRootHash(state_root_hash) => (state_root_hash, None),
             };
 
             let base_key = match Key::from_formatted_str(&params.key)

@@ -224,15 +224,15 @@ pub(crate) fn validate_query_global_state(
         serde_json::from_value(json_block_header_value.to_owned())?;
 
     let state_root_hash = match (state_identifier, maybe_json_block_header) {
-        (GlobalStateIdentifier::Block(_), None)
-        | (GlobalStateIdentifier::StateRoot(_), Some(_)) => {
+        (GlobalStateIdentifier::BlockHash(_), None)
+        | (GlobalStateIdentifier::StateRootHash(_), Some(_)) => {
             return Err(ValidateResponseError::InvalidGlobalStateResponse);
         }
-        (GlobalStateIdentifier::Block(_), Some(json_header)) => {
+        (GlobalStateIdentifier::BlockHash(_), Some(json_header)) => {
             let block_header = BlockHeader::from(json_header);
             *block_header.state_root_hash()
         }
-        (GlobalStateIdentifier::StateRoot(hash), None) => hash,
+        (GlobalStateIdentifier::StateRootHash(hash), None) => hash,
     };
 
     core::validate_query_proof(

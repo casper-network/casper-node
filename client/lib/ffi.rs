@@ -551,6 +551,8 @@ pub extern "C" fn casper_get_state_root_hash(
 ///
 /// See [get_item](super::get_item) for more details.
 #[no_mangle]
+#[allow(deprecated)]
+#[deprecated(note = "Users should use `casper_client::query_global_state` instead.")]
 pub extern "C" fn casper_get_item(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
@@ -574,6 +576,43 @@ pub extern "C" fn casper_get_item(
             node_address,
             verbosity_level,
             state_root_hash,
+            key,
+            path,
+        )
+        .await;
+        let response = try_unwrap_rpc!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        casper_error_t::CASPER_SUCCESS
+    })
+}
+
+/// Retrieves information from global state using either a Block hash or a state root hash.
+///
+/// See [query_global_state](super::query_global_state) for more info.
+#[no_mangle]
+pub extern "C" fn casper_query_global_state(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbosity_level: u64,
+    global_state_params: *const casper_global_state_params_t,
+    key: *const c_char,
+    path: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> casper_error_t {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
+    let node_address = try_unsafe_arg!(node_address);
+    let global_state_params = try_arg_into!(global_state_params);
+    let key = try_unsafe_arg!(key);
+    let path = try_unsafe_arg!(path);
+    runtime.block_on(async move {
+        let result = super::query_global_state(
+            maybe_rpc_id,
+            node_address,
+            verbosity_level,
+            global_state_params,
             key,
             path,
         )
@@ -879,6 +918,30 @@ impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
             session_version,
             session_entry_point,
             is_session_transfer: self.is_session_transfer,
+        })
+    }
+}
+
+/// The two ways to construct a query to global state.
+///
+/// See [GlobalStateStrParams](super::GlobalStateStrParams) for more info.
+#[allow(non_snake_case)]
+#[repr(C)]
+#[derive(Clone)]
+pub struct casper_global_state_params_t {
+    is_block_hash: bool,
+    hash_value: *const c_char,
+}
+
+impl TryInto<super::GlobalStateStrParams<'static>> for casper_global_state_params_t {
+    type Error = Error;
+
+    fn try_into(self) -> Result<super::GlobalStateStrParams<'static>> {
+        let hash_value =
+            unsafe_str_arg(self.hash_value, "casper_global_state_params_t.hash_value")?;
+        Ok(super::GlobalStateStrParams {
+            hash_value,
+            is_block_hash: self.is_block_hash,
         })
     }
 }
