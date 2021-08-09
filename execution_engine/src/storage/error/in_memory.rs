@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
-/// Error enum encapsulating possible errors from  
+/// Error enum encapsulating possible errors from in-memory implementation of data storage.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
     /// (De)serialization error.

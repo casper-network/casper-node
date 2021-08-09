@@ -8,7 +8,7 @@ pub use self::store_ext::StoreExt;
 use crate::storage::transaction_source::{Readable, Writable};
 
 /// Store is reponsible for abstracting `get` and `put` operations over the underlying store
-/// specified by it's associated `Handle` type.
+/// specified by its associated `Handle` type.
 pub trait Store<K, V> {
     /// Errors possible from this store.
     type Error: From<bytesrepr::Error>;
@@ -19,7 +19,7 @@ pub trait Store<K, V> {
     /// `handle` returns the underlying store.
     fn handle(&self) -> Self::Handle;
 
-    /// `get` gets an optional value (may exist or not) as read through a transaction, or an error
+    /// Returns an optional value (may exist or not) as read through a transaction, or an error
     /// of the associated `Self::Error` variety.
     fn get<T>(&self, txn: &T, key: &K) -> Result<Option<V>, Self::Error>
     where
@@ -38,7 +38,7 @@ pub trait Store<K, V> {
         }
     }
 
-    /// `put` puts a `value` into the store at `key` within a transaction, potentially returning an
+    /// Puts a `value` into the store at `key` within a transaction, potentially returning an
     /// error of type `Self::Error` if that fails.
     fn put<T>(&self, txn: &mut T, key: &K, value: &V) -> Result<(), Self::Error>
     where

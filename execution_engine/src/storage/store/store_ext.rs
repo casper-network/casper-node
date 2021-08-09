@@ -9,7 +9,7 @@ use crate::storage::{
 
 /// Extension trait for Store.
 pub trait StoreExt<K, V>: Store<K, V> {
-    /// Get many key/value pairs from the store.
+    /// Returns multiple optional values (each may exist or not) from the store in one transaction.
     fn get_many<'a, T>(
         &self,
         txn: &T,
@@ -29,7 +29,8 @@ pub trait StoreExt<K, V>: Store<K, V> {
         Ok(ret)
     }
 
-    /// Put many key/value pairs into the store.
+    /// Puts multiple key/value pairs into the store in one transaction, potentially returning an
+    /// error of type `Self::Error` if that fails.
     fn put_many<'a, T>(
         &self,
         txn: &mut T,

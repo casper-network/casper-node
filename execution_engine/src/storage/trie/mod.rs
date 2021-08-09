@@ -171,7 +171,7 @@ impl<'de> Deserialize<'de> for PointerBlock {
 }
 
 impl PointerBlock {
-    /// No-arg contstructor for `PointerBlock`. Delegates to `Default::default()`.
+    /// No-arg constructor for `PointerBlock`. Delegates to `Default::default()`.
     pub fn new() -> Self {
         Default::default()
     }
