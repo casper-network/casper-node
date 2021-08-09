@@ -450,7 +450,7 @@ where
 
     /// Creates a new runner from a given configuration, using existing metrics.
     #[inline]
-    #[instrument("runner creation", level = "debug", skip(cfg, rng, registry))]
+    #[instrument("init", level = "debug", skip(cfg, rng, registry))]
     pub async fn with_metrics(
         cfg: R::Config,
         rng: &mut NodeRng,
@@ -485,7 +485,7 @@ where
         Ok(Runner {
             scheduler,
             reactor,
-            current_event_id: 0,
+            current_event_id: 1,
             metrics: RunnerMetrics::new(registry)?,
             last_metrics: Instant::now(),
             event_metrics_min_delay: Duration::from_secs(30),
