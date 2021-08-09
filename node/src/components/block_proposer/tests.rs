@@ -90,6 +90,13 @@ fn generate_deploy(
     )
 }
 
+fn create_test_proposer(deploy_delay: TimeDiff) -> BlockProposerReady {
+    BlockProposerReady {
+        local_config: Config { deploy_delay },
+        ..Default::default()
+    }
+}
+
 impl From<StorageRequest> for Event {
     fn from(_: StorageRequest) -> Self {
         // we never send a storage request in our unit tests, but if this does become
@@ -112,7 +119,7 @@ fn should_add_and_take_deploys() {
     let block_time2 = Timestamp::from(120);
     let block_time3 = Timestamp::from(220);
 
-    let mut proposer = BlockProposerReady::default();
+    let mut proposer = create_test_proposer(0.into());
     let mut rng = crate::new_rng();
     let deploy1 = generate_deploy(
         &mut rng,
@@ -157,8 +164,16 @@ fn should_add_and_take_deploys() {
     assert!(block.transfer_hashes().is_empty());
 
     // add two deploys
-    proposer.add_deploy(block_time2, Box::new(deploy1.clone()));
-    proposer.add_deploy(block_time2, Box::new(deploy2.clone()));
+    proposer.add_deploy(
+        block_time2,
+        deploy1.deploy_or_transfer_hash(),
+        deploy1.deploy_info().unwrap(),
+    );
+    proposer.add_deploy(
+        block_time2,
+        deploy2.deploy_or_transfer_hash(),
+        deploy2.deploy_info().unwrap(),
+    );
 
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
     // deploys
@@ -219,8 +234,16 @@ fn should_add_and_take_deploys() {
     proposer.finalized_deploys(deploy_hashes.iter().copied());
 
     // add more deploys
-    proposer.add_deploy(block_time2, Box::new(deploy3.clone()));
-    proposer.add_deploy(block_time2, Box::new(deploy4.clone()));
+    proposer.add_deploy(
+        block_time2,
+        deploy3.deploy_or_transfer_hash(),
+        deploy3.deploy_info().unwrap(),
+    );
+    proposer.add_deploy(
+        block_time2,
+        deploy4.deploy_or_transfer_hash(),
+        deploy4.deploy_info().unwrap(),
+    );
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
@@ -276,13 +299,29 @@ fn should_successfully_prune() {
         default_gas_payment(),
         DEFAULT_TEST_GAS_PRICE,
     );
-    let mut proposer = BlockProposerReady::default();
+    let mut proposer = create_test_proposer(0.into());
 
     // pending
-    proposer.add_deploy(creation_time, Box::new(deploy1.clone()));
-    proposer.add_deploy(creation_time, Box::new(deploy2));
-    proposer.add_deploy(creation_time, Box::new(deploy3));
-    proposer.add_deploy(creation_time, Box::new(deploy4));
+    proposer.add_deploy(
+        creation_time,
+        deploy1.deploy_or_transfer_hash(),
+        deploy1.deploy_info().unwrap(),
+    );
+    proposer.add_deploy(
+        creation_time,
+        deploy2.deploy_or_transfer_hash(),
+        deploy2.deploy_info().unwrap(),
+    );
+    proposer.add_deploy(
+        creation_time,
+        deploy3.deploy_or_transfer_hash(),
+        deploy3.deploy_info().unwrap(),
+    );
+    proposer.add_deploy(
+        creation_time,
+        deploy4.deploy_or_transfer_hash(),
+        deploy4.deploy_info().unwrap(),
+    );
 
     // pending => finalized
     proposer.finalized_deploys(vec![deploy1.deploy_or_transfer_hash()]);
@@ -329,10 +368,14 @@ fn should_keep_track_of_unhandled_deploys() {
         default_gas_payment(),
         DEFAULT_TEST_GAS_PRICE,
     );
-    let mut proposer = BlockProposerReady::default();
+    let mut proposer = create_test_proposer(0.into());
 
     // We do NOT add deploy2...
-    proposer.add_deploy(creation_time, Box::new(deploy1.clone()));
+    proposer.add_deploy(
+        creation_time,
+        deploy1.deploy_or_transfer_hash(),
+        deploy1.deploy_info().unwrap(),
+    );
     // But we DO mark it as finalized, by it's hash
     proposer.finalized_deploys(vec![
         deploy1.deploy_or_transfer_hash(),
@@ -364,7 +407,11 @@ fn should_keep_track_of_unhandled_deploys() {
     );
 
     // Now we add Deploy2
-    proposer.add_deploy(creation_time, Box::new(deploy2.clone()));
+    proposer.add_deploy(
+        creation_time,
+        deploy2.deploy_or_transfer_hash(),
+        deploy2.deploy_info().unwrap(),
+    );
     assert!(
         proposer.sets.finalized_deploys.contains_key(deploy2.id()),
         "deploy2 should now be in finalized_deploys"
@@ -540,7 +587,7 @@ fn test_proposer_with(
     let ttl = TimeDiff::from(Duration::from_millis(100));
 
     let mut rng = crate::new_rng();
-    let mut proposer = BlockProposerReady::default();
+    let mut proposer = create_test_proposer(0.into());
     let mut config = proposer.deploy_config;
     // defaults are 10, 1000 respectively
     config.block_max_deploy_count = max_deploy_count;
@@ -559,11 +606,19 @@ fn test_proposer_with(
             payment_amount,
             DEFAULT_TEST_GAS_PRICE,
         );
-        proposer.add_deploy(creation_time, Box::new(deploy));
+        proposer.add_deploy(
+            creation_time,
+            deploy.deploy_or_transfer_hash(),
+            deploy.deploy_info().unwrap(),
+        );
     }
     for _ in 0..transfer_count {
         let transfer = generate_transfer(&mut rng, creation_time, ttl, vec![], payment_amount);
-        proposer.add_deploy(creation_time, Box::new(transfer));
+        proposer.add_deploy(
+            creation_time,
+            transfer.deploy_or_transfer_hash(),
+            transfer.deploy_info().unwrap(),
+        );
     }
 
     let block =
@@ -612,10 +667,14 @@ fn should_return_deploy_dependencies() {
         DEFAULT_TEST_GAS_PRICE,
     );
 
-    let mut proposer = BlockProposerReady::default();
+    let mut proposer = create_test_proposer(0.into());
 
     // add deploy2
-    proposer.add_deploy(creation_time, Box::new(deploy2.clone()));
+    proposer.add_deploy(
+        creation_time,
+        deploy2.deploy_or_transfer_hash(),
+        deploy2.deploy_info().unwrap(),
+    );
 
     // deploy2 has an unsatisfied dependency
     let block = proposer.propose_block_payload(
@@ -628,7 +687,11 @@ fn should_return_deploy_dependencies() {
     assert!(block.transfer_hashes().is_empty());
 
     // add deploy1
-    proposer.add_deploy(creation_time, Box::new(deploy1.clone()));
+    proposer.add_deploy(
+        creation_time,
+        deploy1.deploy_or_transfer_hash(),
+        deploy1.deploy_info().unwrap(),
+    );
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
@@ -654,4 +717,42 @@ fn should_return_deploy_dependencies() {
     let deploys2 = block.deploy_hashes();
     assert_eq!(deploys2.len(), 1);
     assert!(deploys2.contains(deploy2.id()));
+}
+
+#[test]
+fn should_respect_deploy_delay() {
+    let mut rng = crate::new_rng();
+    let creation_time = Timestamp::from(0);
+    let ttl = TimeDiff::from(10000);
+    let deploy_config = DeployConfig::default();
+    let deploy = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        DEFAULT_TEST_GAS_PRICE,
+    );
+    let mut proposer = create_test_proposer(10.into()); // Deploy delay: 10 milliseconds
+
+    // Add the deploy at time 100. So at 109 it cannot be proposed yet, but at time 110 it can.
+    proposer.add_deploy(
+        100.into(),
+        deploy.deploy_or_transfer_hash(),
+        deploy.deploy_info().unwrap(),
+    );
+    let block = proposer.propose_block_payload(
+        deploy_config,
+        BlockContext::new(109.into(), vec![]),
+        vec![],
+        true,
+    );
+    assert!(block.deploy_hashes().is_empty());
+    let block = proposer.propose_block_payload(
+        deploy_config,
+        BlockContext::new(110.into(), vec![]),
+        vec![],
+        true,
+    );
+    assert_eq!(&vec![*deploy.id()], block.deploy_hashes());
 }

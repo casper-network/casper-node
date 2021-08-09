@@ -540,8 +540,6 @@ impl ChainspecLoader {
             (*block.state_root_hash()).into(),
             previous_version,
             new_version,
-            Some(self.chainspec.wasm_config),
-            Some(self.chainspec.system_costs_config),
             Some(self.chainspec.protocol_config.activation_point.era_id()),
             Some(self.chainspec.core_config.validator_slots),
             Some(self.chainspec.core_config.auction_delay),

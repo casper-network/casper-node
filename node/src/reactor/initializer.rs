@@ -195,12 +195,15 @@ impl Reactor {
             hard_reset_to_start_of_era,
             chainspec_loader.chainspec().protocol_config.version,
             crashed,
+            &chainspec_loader.chainspec().network_config.name,
         )?;
 
         let contract_runtime = ContractRuntime::new(
             chainspec_loader.chainspec().protocol_config.version,
-            storage_config,
+            storage.root_path(),
             &config.value().contract_runtime,
+            chainspec_loader.chainspec().wasm_config,
+            chainspec_loader.chainspec().system_costs_config,
             registry,
         )?;
 
