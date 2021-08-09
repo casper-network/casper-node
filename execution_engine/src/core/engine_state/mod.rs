@@ -40,23 +40,23 @@ use casper_types::{
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
-        CallStackElement,
+        CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, KeyTag,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
+    Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
-    engine_config::EngineConfig,
+    engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
     executable_deploy_item::ExecutableDeployItem,
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisSuccess},
+    genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
     query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_cache::SystemContractCache,
@@ -66,8 +66,10 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
-            executable_deploy_item::DeployKind, execution_result::ExecutionResultBuilder,
-            genesis::GenesisInstaller, upgrade::SystemUpgrader,
+            executable_deploy_item::DeployKind,
+            execution_result::ExecutionResultBuilder,
+            genesis::GenesisInstaller,
+            upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
         execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -82,7 +84,7 @@ use crate::{
         transform::Transform,
         wasm_prep::Preprocessor,
     },
-    storage::{global_state::StateProvider, protocol_data::ProtocolData, trie::Trie},
+    storage::{global_state::StateProvider, trie::Trie},
 };
 
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -117,15 +119,8 @@ where
         &self.config
     }
 
-    pub fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Error> {
-        match self.state.get_protocol_data(protocol_version) {
-            Ok(Some(protocol_data)) => Ok(Some(protocol_data)),
-            Err(error) => Err(Error::Exec(error.into())),
-            _ => Ok(None),
-        }
+    pub fn update_config(&mut self, new_config: EngineConfig) {
+        self.config = new_config
     }
 
     pub fn commit_genesis(
@@ -137,7 +132,6 @@ where
     ) -> Result<GenesisSuccess, Error> {
         // Preliminaries
         let initial_root_hash = self.state.empty_root();
-        let system_config = ee_config.system_config();
 
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
@@ -158,42 +152,25 @@ where
             genesis_config_hash,
             protocol_version,
             correlation_id,
-            self.config,
+            *self.config(),
             ee_config.clone(),
             tracking_copy,
             system_module,
         );
 
-        // Create mint
-        let mint_hash = genesis_installer.create_mint()?;
+        genesis_installer.create_mint()?;
 
         // Create accounts
         genesis_installer.create_accounts()?;
 
         // Create handle payment
-        let handle_payment_hash = genesis_installer.create_handle_payment()?;
+        genesis_installer.create_handle_payment()?;
 
         // Create auction
-        let auction_hash = genesis_installer.create_auction()?;
+        genesis_installer.create_auction()?;
 
         // Create standard payment
-        let standard_payment_hash = genesis_installer.create_standard_payment();
-
-        // Associate given CostTable with given ProtocolVersion.
-        {
-            let protocol_data = ProtocolData::new(
-                *wasm_config,
-                *system_config,
-                mint_hash,
-                handle_payment_hash,
-                standard_payment_hash,
-                auction_hash,
-            );
-
-            self.state
-                .put_protocol_data(protocol_version, &protocol_data)
-                .map_err(Into::into)?;
-        }
+        genesis_installer.create_standard_payment()?;
 
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
@@ -232,15 +209,6 @@ where
 
         // 3.1.1.1.1.2 current protocol version is required
         let current_protocol_version = upgrade_config.current_protocol_version();
-        let current_protocol_data = match self.state.get_protocol_data(current_protocol_version) {
-            Ok(Some(protocol_data)) => protocol_data,
-            Ok(None) => {
-                return Err(Error::InvalidProtocolVersion(current_protocol_version));
-            }
-            Err(error) => {
-                return Err(Error::Exec(error.into()));
-            }
-        };
 
         // 3.1.1.1.1.3 activation point is not currently used by EE; skipping
         // 3.1.1.1.1.4 upgrade point protocol version validation
@@ -253,50 +221,74 @@ where
             return Err(Error::InvalidProtocolVersion(new_protocol_version));
         }
 
+        let registry = if let Ok(registry) = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)
+        {
+            registry
+        } else {
+            // Check the upgrade config for the registry
+            let upgrade_registry = upgrade_config
+                .global_state_update()
+                .get(&Key::SystemContractRegistry)
+                .ok_or_else(|| {
+                    error!("Registry is absent in upgrade config");
+                    Error::ProtocolUpgrade(ProtocolUpgradeError::FailedToCreateSystemRegistry)
+                })?
+                .to_owned();
+            if let StoredValue::CLValue(cl_registry) = upgrade_registry {
+                CLValue::into_t::<SystemContractRegistry>(cl_registry).map_err(|error| {
+                    let error_msg = format!("Conversion to system registry failed: {:?}", error);
+                    error!("{}", error_msg);
+                    Error::Bytesrepr(error_msg)
+                })?
+            } else {
+                error!("Failed to create registry as StoreValue in upgrade config is not CLValue");
+                return Err(Error::ProtocolUpgrade(
+                    ProtocolUpgradeError::FailedToCreateSystemRegistry,
+                ));
+            }
+        };
+
+        let mint_hash = registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            Error::MissingSystemContractHash(MINT.to_string())
+        })?;
+        let auction_hash = registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
+        let standard_payment_hash = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
+            error!("Missing system standard payment contract hash");
+            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
+        })?;
+        let handle_payment_hash = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
+            error!("Missing system handle payment contract hash");
+            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+        })?;
+
         // 3.1.1.1.1.5 bump system contract major versions
         if upgrade_check_result.is_major_version() {
-            let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
-                new_protocol_version,
-                current_protocol_data,
-                tracking_copy.clone(),
-            );
+            let system_upgrader: SystemUpgrader<S> =
+                SystemUpgrader::new(new_protocol_version, tracking_copy.clone());
 
             system_upgrader
-                .upgrade_system_contracts_major_version(correlation_id)
+                .upgrade_system_contracts_major_version(
+                    correlation_id,
+                    mint_hash,
+                    auction_hash,
+                    handle_payment_hash,
+                    standard_payment_hash,
+                )
                 .map_err(Error::ProtocolUpgrade)?;
         }
-
-        // 3.1.1.1.1.6 resolve wasm CostTable for new protocol version
-        let new_wasm_config = match upgrade_config.wasm_config() {
-            Some(new_wasm_costs) => new_wasm_costs,
-            None => current_protocol_data.wasm_config(),
-        };
-
-        let new_system_config = match upgrade_config.system_config() {
-            Some(new_system_config) => new_system_config,
-            None => current_protocol_data.system_config(),
-        };
-
-        // 3.1.2.2 persist wasm CostTable
-        let new_protocol_data = ProtocolData::new(
-            *new_wasm_config,
-            *new_system_config,
-            current_protocol_data.mint(),
-            current_protocol_data.handle_payment(),
-            current_protocol_data.standard_payment(),
-            current_protocol_data.auction(),
-        );
-
-        self.state
-            .put_protocol_data(new_protocol_version, &new_protocol_data)
-            .map_err(Into::into)?;
 
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
             let auction_contract = tracking_copy
                 .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+                .get_contract(correlation_id, *auction_hash)?;
 
             let validator_slots_key = auction_contract.named_keys()[VALIDATOR_SLOTS_KEY];
             let value = StoredValue::CLValue(
@@ -309,7 +301,7 @@ where
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             let auction_contract = tracking_copy
                 .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+                .get_contract(correlation_id, *auction_hash)?;
 
             let auction_delay_key = auction_contract.named_keys()[AUCTION_DELAY_KEY];
             let value = StoredValue::CLValue(
@@ -322,7 +314,7 @@ where
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
             let auction_contract = tracking_copy
                 .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+                .get_contract(correlation_id, *auction_hash)?;
 
             let locked_funds_period_key = auction_contract.named_keys()[LOCKED_FUNDS_PERIOD_KEY];
             let value = StoredValue::CLValue(
@@ -337,7 +329,7 @@ where
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
             let auction_contract = tracking_copy
                 .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+                .get_contract(correlation_id, *auction_hash)?;
 
             let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
             let value = StoredValue::CLValue(
@@ -355,7 +347,7 @@ where
 
             let mint_contract = tracking_copy
                 .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.mint())?;
+                .get_contract(correlation_id, *mint_hash)?;
 
             let locked_funds_period_key = mint_contract.named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
             let value = StoredValue::CLValue(
@@ -416,7 +408,7 @@ where
         Ok(tracking_copy
             .query(
                 correlation_id,
-                &self.config,
+                self.config(),
                 query_request.key(),
                 query_request.path(),
             )
@@ -429,7 +421,7 @@ where
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
     ) -> Result<ExecutionResults, Error> {
-        let executor = Executor::new(self.config);
+        let executor = Executor::new(*self.config());
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -526,19 +518,6 @@ where
         deploy_item: DeployItem,
         proposer: PublicKey,
     ) -> Result<ExecutionResult, Error> {
-        let protocol_data = match self.state.get_protocol_data(protocol_version) {
-            Ok(Some(protocol_data)) => protocol_data,
-            Ok(None) => {
-                let error = Error::InvalidProtocolVersion(protocol_version);
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(Error::Exec(
-                    error.into(),
-                )));
-            }
-        };
-
         let tracking_copy = match self.tracking_copy(prestate_hash) {
             Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
@@ -546,8 +525,8 @@ where
         };
 
         let preprocessor = {
-            let wasm_config = protocol_data.wasm_config();
-            Preprocessor::new(*wasm_config)
+            let wasm_config = *self.config().wasm_config();
+            Preprocessor::new(wasm_config)
         };
 
         let system_module = {
@@ -591,11 +570,18 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
 
-        let mint_contract_hash = protocol_data.mint();
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)?;
+
+        let mint_contract_hash = system_contract_registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            Error::MissingSystemContractHash(MINT.to_string())
+        })?;
 
         let mint_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, mint_contract_hash)
+            .get_contract(correlation_id, *mint_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -605,13 +591,22 @@ where
 
         let mut mint_named_keys = mint_contract.named_keys().to_owned();
         let mut mint_extra_keys: Vec<Key> = vec![];
-        let mint_base_key = Key::from(mint_contract_hash);
+        let mint_base_key = Key::from(*mint_contract_hash);
 
-        let handle_payment_contract_hash = protocol_data.handle_payment();
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)?;
+
+        let handle_payment_contract_hash = system_contract_registry
+            .get(HANDLE_PAYMENT)
+            .ok_or_else(|| {
+                error!("Missing system handle payment contract hash");
+                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+            })?;
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, handle_payment_contract_hash)
+            .get_contract(correlation_id, *handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -621,12 +616,12 @@ where
 
         let mut handle_payment_named_keys = handle_payment_contract.named_keys().to_owned();
         let handle_payment_extra_keys: Vec<Key> = vec![];
-        let handle_payment_base_key = Key::from(handle_payment_contract_hash);
+        let handle_payment_base_key = Key::from(*handle_payment_contract_hash);
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
         let wasmless_transfer_gas_cost = Gas::new(U512::from(
-            protocol_data.system_config().wasmless_transfer_cost(),
+            self.config().system_config().wasmless_transfer_cost(),
         ));
 
         let wasmless_transfer_motes = match Motes::from_gas(
@@ -711,7 +706,7 @@ where
                         let system = CallStackElement::session(PublicKey::System.to_account_hash());
                         let mint = CallStackElement::stored_contract(
                             mint_contract.contract_package_hash(),
-                            mint_contract_hash,
+                            *mint_contract_hash,
                         );
                         vec![system, mint]
                     };
@@ -732,7 +727,6 @@ where
                             correlation_id,
                             Rc::clone(&tracking_copy),
                             Phase::Session,
-                            protocol_data,
                             SystemContractCache::clone(&self.system_contract_cache),
                             create_purse_call_stack,
                         );
@@ -812,7 +806,7 @@ where
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
-                    handle_payment_contract_hash,
+                    *handle_payment_contract_hash,
                 );
                 vec![system, handle_payment]
             };
@@ -833,7 +827,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
                     get_payment_purse_call_stack,
                 );
@@ -866,7 +859,7 @@ where
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let mint = CallStackElement::stored_contract(
                     mint_contract.contract_package_hash(),
-                    mint_contract_hash,
+                    *mint_contract_hash,
                 );
                 vec![system, mint]
             };
@@ -887,7 +880,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
                     transfer_to_payment_purse_call_stack,
                 );
@@ -962,7 +954,7 @@ where
             let deploy_account = CallStackElement::session(deploy_item.address);
             let mint = CallStackElement::stored_contract(
                 mint_contract.contract_package_hash(),
-                mint_contract_hash,
+                *mint_contract_hash,
             );
             vec![deploy_account, mint]
         };
@@ -983,7 +975,6 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                protocol_data,
                 SystemContractCache::clone(&self.system_contract_cache),
                 transfer_call_stack,
             );
@@ -1034,7 +1025,7 @@ where
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
-                    handle_payment_contract_hash,
+                    *handle_payment_contract_hash,
                 );
                 vec![system, handle_payment]
             };
@@ -1047,7 +1038,7 @@ where
                     handle_payment_args,
                     &mut handle_payment_named_keys,
                     &extra_keys,
-                    Key::from(handle_payment_contract_hash),
+                    Key::from(*handle_payment_contract_hash),
                     &system_account,
                     authorization_keys,
                     blocktime,
@@ -1057,7 +1048,6 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
                     finalize_payment_call_stack,
                 );
@@ -1111,23 +1101,9 @@ where
     ) -> Result<ExecutionResult, Error> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
-        // Obtain current protocol data for given version
-        // do this first, as there is no reason to proceed if protocol version is invalid
-        let protocol_data = match self.state.get_protocol_data(protocol_version) {
-            Ok(Some(protocol_data)) => protocol_data,
-            Ok(None) => {
-                let error = Error::InvalidProtocolVersion(protocol_version);
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(Error::Exec(
-                    error.into(),
-                )));
-            }
-        };
-
         let preprocessor = {
-            let wasm_config = protocol_data.wasm_config();
+            let config = self.config();
+            let wasm_config = config.wasm_config();
             Preprocessor::new(*wasm_config)
         };
 
@@ -1148,10 +1124,6 @@ where
                 }
             }
         };
-
-        // vestigial system_contract_cache
-        self.system_contract_cache
-            .initialize_with_protocol_data(&protocol_data, &system_module);
 
         // Get addr bytes from `address` (which is actually a Key)
         // validation_spec_3: account validity
@@ -1180,13 +1152,15 @@ where
         // Create session code `A` from provided session bytes
         // validation_spec_1: valid wasm bytes
         // we do this upfront as there is no reason to continue if session logic is invalid
+        let system_contract_registry =
+            self.get_system_contract_registry(correlation_id, prestate_hash)?;
         let session_metadata = match session.get_deploy_metadata(
             Rc::clone(&tracking_copy),
             &account,
             correlation_id,
             &preprocessor,
             &protocol_version,
-            &protocol_data,
+            system_contract_registry,
             Phase::Session,
         ) {
             Ok(metadata) => metadata,
@@ -1256,6 +1230,10 @@ where
                 }
             };
 
+            let system_contract_registry = tracking_copy
+                .borrow_mut()
+                .get_system_contracts(correlation_id)?;
+
             // Create payment code module from bytes
             // validation_spec_1: valid wasm bytes
             let phase = Phase::Payment;
@@ -1265,7 +1243,7 @@ where
                 correlation_id,
                 &preprocessor,
                 &protocol_version,
-                &protocol_data,
+                system_contract_registry,
                 phase,
             ) {
                 Ok(metadata) => metadata,
@@ -1306,7 +1284,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    protocol_data,
                     system_contract_cache,
                     payment_call_stack,
                 )
@@ -1326,7 +1303,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    protocol_data,
                     system_contract_cache,
                     &payment_package,
                     payment_call_stack,
@@ -1342,9 +1318,20 @@ where
 
         // Get handle payment system contract details
         // payment_code_spec_6: system contract validity
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)?;
+
+        let handle_payment_contract_hash = system_contract_registry
+            .get(HANDLE_PAYMENT)
+            .ok_or_else(|| {
+                error!("Missing system handle payment contract hash");
+                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+            })?;
+
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, protocol_data.handle_payment())
+            .get_contract(correlation_id, *handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -1502,7 +1489,6 @@ where
                 correlation_id,
                 Rc::clone(&session_tracking_copy),
                 Phase::Session,
-                protocol_data,
                 system_contract_cache,
                 &session_package,
                 session_call_stack,
@@ -1576,11 +1562,20 @@ where
 
             // The Handle Payment keys may have changed because of effects during payment and/or
             // session, so we need to look them up again from the tracking copy
-            let handle_payment_contract_hash = protocol_data.handle_payment();
+            let system_contract_registry = finalization_tc
+                .borrow_mut()
+                .get_system_contracts(correlation_id)?;
+
+            let handle_payment_contract_hash = system_contract_registry
+                .get(HANDLE_PAYMENT)
+                .ok_or_else(|| {
+                    error!("Missing system handle payment contract hash");
+                    Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+                })?;
 
             let handle_payment_contract = match finalization_tc
                 .borrow_mut()
-                .get_contract(correlation_id, handle_payment_contract_hash)
+                .get_contract(correlation_id, *handle_payment_contract_hash)
             {
                 Ok(info) => info,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -1595,7 +1590,7 @@ where
                 let deploy_account = CallStackElement::session(deploy_item.address);
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
-                    handle_payment_contract_hash,
+                    *handle_payment_contract_hash,
                 );
                 vec![deploy_account, handle_payment]
             };
@@ -1611,7 +1606,7 @@ where
                     handle_payment_args,
                     &mut handle_payment_keys,
                     &extra_keys,
-                    Key::from(protocol_data.handle_payment()),
+                    Key::from(*handle_payment_contract_hash),
                     &system_account,
                     authorization_keys,
                     blocktime,
@@ -1621,7 +1616,6 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    protocol_data,
                     system_contract_cache,
                     handle_payment_call_stack,
                 );
@@ -1710,20 +1704,24 @@ where
             None => return Err(GetEraValidatorsError::RootNotFound),
         };
 
-        let protocol_data = match self.get_protocol_data(protocol_version)? {
-            Some(protocol_data) => protocol_data,
-            None => return Err(Error::InvalidProtocolVersion(protocol_version).into()),
-        };
-
-        let wasm_config = protocol_data.wasm_config();
+        let engine_config = self.config();
+        let wasm_config = engine_config.wasm_config();
 
         let preprocessor = Preprocessor::new(*wasm_config);
 
-        let auction_contract_hash = protocol_data.auction();
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)
+            .map_err(Error::from)?;
+
+        let auction_contract_hash = system_contract_registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
 
         let auction_contract: Contract = tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, auction_contract_hash)
+            .get_contract(correlation_id, *auction_contract_hash)
             .map_err(Error::from)?;
 
         let system_module = {
@@ -1733,10 +1731,10 @@ where
                 .map_err(Error::from)?
         };
 
-        let executor = Executor::new(self.config);
+        let executor = Executor::new(*self.config());
 
         let mut named_keys = auction_contract.named_keys().to_owned();
-        let base_key = Key::from(auction_contract_hash);
+        let base_key = Key::from(*auction_contract_hash);
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
@@ -1760,7 +1758,7 @@ where
             let system = CallStackElement::session(PublicKey::System.to_account_hash());
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
-                auction_contract_hash,
+                *auction_contract_hash,
             );
             vec![system, auction]
         };
@@ -1781,7 +1779,6 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                protocol_data,
                 SystemContractCache::clone(&self.system_contract_cache),
                 get_era_validators_call_stack,
             );
@@ -1830,34 +1827,33 @@ where
         correlation_id: CorrelationId,
         step_request: StepRequest,
     ) -> Result<StepSuccess, StepError> {
-        let protocol_data = match self.state.get_protocol_data(step_request.protocol_version) {
-            Ok(Some(protocol_data)) => protocol_data,
-            Ok(None) => {
-                return Err(StepError::InvalidProtocolVersion(
-                    step_request.protocol_version,
-                ));
-            }
-            Err(error) => return Err(StepError::GetProtocolDataError(Error::Exec(error.into()))),
-        };
-
         let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
             Err(error) => return Err(StepError::TrackingCopyError(error)),
             Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
-        let executor = Executor::new(self.config);
+        let executor = Executor::new(*self.config());
 
         let preprocessor = {
-            let wasm_config = protocol_data.wasm_config();
+            let config = self.config();
+            let wasm_config = config.wasm_config();
             Preprocessor::new(*wasm_config)
         };
 
-        let auction_contract_hash = protocol_data.auction();
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)
+            .map_err(Error::from)?;
+
+        let auction_contract_hash = system_contract_registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
 
         let auction_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, auction_contract_hash)
+            .get_contract(correlation_id, *auction_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -1871,9 +1867,6 @@ where
                 return Err(StepError::GetSystemModuleError(error.into()));
             }
         };
-
-        self.system_contract_cache
-            .initialize_with_protocol_data(&protocol_data, &system_module);
 
         let system_account_addr = PublicKey::System.to_account_hash();
 
@@ -1895,7 +1888,7 @@ where
             DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
-        let base_key = Key::from(protocol_data.auction());
+        let base_key = Key::from(*auction_contract_hash);
 
         let reward_factors = match step_request.reward_factors() {
             Ok(reward_factors) => reward_factors,
@@ -1917,7 +1910,7 @@ where
             let system = CallStackElement::session(PublicKey::System.to_account_hash());
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
-                auction_contract_hash,
+                *auction_contract_hash,
             );
             vec![system, auction]
         };
@@ -1937,7 +1930,6 @@ where
             correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
-            protocol_data,
             SystemContractCache::clone(&self.system_contract_cache),
             distribute_rewards_call_stack,
         );
@@ -1969,7 +1961,7 @@ where
             let system = CallStackElement::session(PublicKey::System.to_account_hash());
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
-                auction_contract_hash,
+                *auction_contract_hash,
             );
             vec![system, auction]
         };
@@ -1989,7 +1981,6 @@ where
             correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
-            protocol_data,
             SystemContractCache::clone(&self.system_contract_cache),
             slash_call_stack,
         );
@@ -2019,7 +2010,7 @@ where
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let auction = CallStackElement::stored_contract(
                     auction_contract.contract_package_hash(),
-                    auction_contract_hash,
+                    *auction_contract_hash,
                 );
                 vec![system, auction]
             };
@@ -2040,7 +2031,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Session,
-                    protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
                     run_auction_call_stack,
                 );
@@ -2134,5 +2124,76 @@ where
         let proof = Box::new(proof);
         let motes = account_balance.value();
         Ok(BalanceResult::Success { motes, proof })
+    }
+
+    fn get_system_contract_registry(
+        &self,
+        correlation_id: CorrelationId,
+        state_root_hash: Blake2bHash,
+    ) -> Result<SystemContractRegistry, Error> {
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+            None => return Err(Error::RootNotFound(state_root_hash)),
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+        };
+        let result = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)
+            .map_err(|_| {
+                error!("Failed to retrieve system contract registry");
+                Error::MissingSystemContractRegistry
+            });
+        result
+    }
+
+    pub fn get_system_mint_hash(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Blake2bHash,
+    ) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+        let mint_hash = registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            Error::MissingSystemContractHash(MINT.to_string())
+        })?;
+        Ok(*mint_hash)
+    }
+
+    pub fn get_system_auction_hash(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Blake2bHash,
+    ) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+        let auction_hash = registry.get(AUCTION).ok_or_else(|| {
+            error!("Missing system auction contract hash");
+            Error::MissingSystemContractHash(AUCTION.to_string())
+        })?;
+        Ok(*auction_hash)
+    }
+
+    pub fn get_handle_payment_hash(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Blake2bHash,
+    ) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+        let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
+            error!("Missing system handle payment contract hash");
+            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+        })?;
+        Ok(*handle_payment)
+    }
+
+    pub fn get_standard_payment_hash(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Blake2bHash,
+    ) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+        let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
+            error!("Missing system standard payment contract hash");
+            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
+        })?;
+        Ok(*standard_payment)
     }
 }

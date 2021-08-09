@@ -11,7 +11,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// Describes whether a connection is uni- or bi-directional.
 #[derive(DataSize, Debug)]
@@ -30,7 +30,7 @@ pub(super) enum ConnectionSymmetry {
     },
     /// The connection is fully symmetric.
     Symmetric {
-        /// The outgoing address of the peer that is connected to us.
+        /// The outgoing address on the peer that is connected to us.
         peer_addrs: BTreeSet<SocketAddr>,
     },
     /// The connection is invalid/missing and should be removed.
@@ -54,6 +54,10 @@ impl ConnectionSymmetry {
             } => {
                 // Already incoming connection, just add it to the pile.
                 peer_addrs.insert(peer_addr);
+                debug!(
+                    total_incoming_count = peer_addrs.len(),
+                    "added additional incoming connection on non-symmetric"
+                );
                 false
             }
             ConnectionSymmetry::OutgoingOnly { .. } => {
@@ -61,17 +65,23 @@ impl ConnectionSymmetry {
                 let mut peer_addrs = BTreeSet::new();
                 peer_addrs.insert(peer_addr);
                 *self = ConnectionSymmetry::Symmetric { peer_addrs };
+                debug!("added incoming connection, now symmetric");
                 true
             }
             ConnectionSymmetry::Symmetric { peer_addrs } => {
                 // Just record an additional incoming connection.
                 peer_addrs.insert(peer_addr);
+                debug!(
+                    total_incoming_count = peer_addrs.len(),
+                    "added additional incoming connection on symmetric"
+                );
                 false
             }
             ConnectionSymmetry::Gone => {
                 let mut peer_addrs = BTreeSet::new();
                 peer_addrs.insert(peer_addr);
                 *self = ConnectionSymmetry::IncomingOnly { peer_addrs, since };
+                debug!("added incoming connection, now incoming only");
                 false
             }
         }
@@ -91,8 +101,15 @@ impl ConnectionSymmetry {
                 // Indicate removal if this was the last incoming connection.
                 if peer_addrs.is_empty() {
                     *self = ConnectionSymmetry::Gone;
+                    debug!("removed incoming connection, now gone");
+
                     false
                 } else {
+                    debug!(
+                        total_incoming_count = peer_addrs.len(),
+                        "removed incoming connection, still has remaining incoming"
+                    );
+
                     true
                 }
             }
@@ -106,6 +123,7 @@ impl ConnectionSymmetry {
                 }
                 if peer_addrs.is_empty() {
                     *self = ConnectionSymmetry::OutgoingOnly { since: now };
+                    debug!("removed incoming connection, now incoming-only");
                 }
                 true
             }
@@ -124,6 +142,7 @@ impl ConnectionSymmetry {
         match self {
             ConnectionSymmetry::IncomingOnly { peer_addrs, .. } => {
                 // Connection is now complete.
+                debug!("incoming connection marked outgoing, now complete");
                 *self = ConnectionSymmetry::Symmetric {
                     peer_addrs: mem::take(peer_addrs),
                 };
@@ -139,6 +158,7 @@ impl ConnectionSymmetry {
             }
             ConnectionSymmetry::Gone => {
                 *self = ConnectionSymmetry::OutgoingOnly { since: now };
+                debug!("absent connection marked outgoing");
                 false
             }
         }
@@ -156,6 +176,7 @@ impl ConnectionSymmetry {
             ConnectionSymmetry::OutgoingOnly { .. } => {
                 // With neither incoming, nor outgoing connections, the symmetry is finally gone.
                 *self = ConnectionSymmetry::Gone;
+                debug!("outgoing connection unmarked, now gone");
 
                 false
             }
@@ -164,6 +185,8 @@ impl ConnectionSymmetry {
                     peer_addrs: mem::take(peer_addrs),
                     since: now,
                 };
+                debug!("symmetric connection unmarked, now outgoing only");
+
                 true
             }
             ConnectionSymmetry::Gone => {

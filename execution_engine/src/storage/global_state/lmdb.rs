@@ -1,5 +1,3 @@
-//! LMDB-based global state implementation.
-
 use std::{ops::Deref, sync::Arc};
 
 use crate::shared::{
@@ -8,13 +6,11 @@ use crate::shared::{
     stored_value::StoredValue,
     transform::Transform,
 };
-use casper_types::{Key, ProtocolVersion};
+use casper_types::Key;
 
 use crate::storage::{
     error,
     global_state::{commit, StateProvider, StateReader},
-    protocol_data::ProtocolData,
-    protocol_data_store::lmdb::LmdbProtocolDataStore,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
     trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
@@ -26,27 +22,17 @@ use crate::storage::{
     },
 };
 
-/// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
-    /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) trie_store: Arc<LmdbTrieStore>,
-    // TODO: remove
-    pub(crate) protocol_data_store: Arc<LmdbProtocolDataStore>,
-    // TODO: make this a lazy-static
-    /// Empty root hash used for a new trie.
-    pub(crate) empty_root_hash: Blake2bHash,
+    pub environment: Arc<LmdbEnvironment>,
+    pub trie_store: Arc<LmdbTrieStore>,
+    pub empty_root_hash: Blake2bHash,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct LmdbGlobalStateView {
-    /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) store: Arc<LmdbTrieStore>,
-    /// Root hash of this "view".
-    pub(crate) root_hash: Blake2bHash,
+    pub environment: Arc<LmdbEnvironment>,
+    pub store: Arc<LmdbTrieStore>,
+    pub root_hash: Blake2bHash,
 }
 
 impl LmdbGlobalState {
@@ -54,7 +40,6 @@ impl LmdbGlobalState {
     pub fn empty(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
-        protocol_data_store: Arc<LmdbProtocolDataStore>,
     ) -> Result<Self, error::Error> {
         let root_hash: Blake2bHash = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
@@ -63,12 +48,7 @@ impl LmdbGlobalState {
             txn.commit()?;
             root_hash
         };
-        Ok(LmdbGlobalState::new(
-            environment,
-            trie_store,
-            protocol_data_store,
-            root_hash,
-        ))
+        Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
     }
 
     /// Creates a state from an existing environment, store, and root_hash.
@@ -76,13 +56,11 @@ impl LmdbGlobalState {
     pub(crate) fn new(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
-        protocol_data_store: Arc<LmdbProtocolDataStore>,
         empty_root_hash: Blake2bHash,
     ) -> Self {
         LmdbGlobalState {
             environment,
             trie_store,
-            protocol_data_store,
             empty_root_hash,
         }
     }
@@ -195,27 +173,6 @@ impl StateProvider for LmdbGlobalState {
             effects,
         )
         .map_err(Into::into)
-    }
-
-    fn put_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-        protocol_data: &ProtocolData,
-    ) -> Result<(), Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        self.protocol_data_store
-            .put(&mut txn, &protocol_version, protocol_data)?;
-        txn.commit().map_err(Into::into)
-    }
-
-    fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let result = self.protocol_data_store.get(&txn, &protocol_version)?;
-        txn.commit()?;
-        Ok(result)
     }
 
     fn empty_root(&self) -> Blake2bHash {
@@ -332,10 +289,8 @@ mod tests {
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
-        let protocol_data_store = Arc::new(
-            LmdbProtocolDataStore::new(&environment, None, DatabaseFlags::empty()).unwrap(),
-        );
-        let ret = LmdbGlobalState::empty(environment, trie_store, protocol_data_store).unwrap();
+
+        let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
         let mut current_root = ret.empty_root_hash;
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();

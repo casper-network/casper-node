@@ -267,7 +267,7 @@ async fn run_equivocator_network() {
         }
 
         let expected = [alice_pk.clone()];
-        // Returns true if alice is listed as an equivocator in that block.
+        // Returns true if Alice is listed as an equivocator in that block.
         let alice_is_equivocator = |header: &BlockHeader| {
             header.era_end().expect("missing era end").equivocators == expected
         };
@@ -301,6 +301,16 @@ async fn run_equivocator_network() {
         }
     }
 
+    assert!(
+        !switch_blocks
+            .last()
+            .expect("missing switch block")
+            .next_era_validator_weights()
+            .expect("missing validator weights")
+            .contains_key(&alice_pk),
+        "Alice should have been evicted."
+    );
+
     // The auction delay is 1, so if Alice's equivocation was detected before the switch block in
     // era N, the switch block of era N should list her as faulty. Starting with the switch block
     // in era N + 1, she should be removed from the validator set, because she gets evicted in era
@@ -316,6 +326,7 @@ async fn run_equivocator_network() {
             // We've found era N: This is the last switch block that still lists Alice as a
             // validator.
             let era_end = header.era_end().expect("missing era end");
+            assert_eq!(*era_end.inactive_validators, []);
             assert_eq!(*era_end.equivocators, [alice_pk.clone()]);
             return;
         } else {

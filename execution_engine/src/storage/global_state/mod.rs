@@ -1,16 +1,11 @@
-//! Global state.
-
-/// In-memory implementation of global state.
 pub mod in_memory;
-
-/// Lmdb implementation of global state.
 pub mod lmdb;
 
 use std::hash::BuildHasher;
 
 use tracing::error;
 
-use casper_types::{bytesrepr, Key, ProtocolVersion};
+use casper_types::{bytesrepr, Key};
 
 use crate::{
     shared::{
@@ -20,7 +15,6 @@ use crate::{
         transform::{self, Transform},
     },
     storage::{
-        protocol_data::ProtocolData,
         transaction_source::{Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::{
@@ -30,7 +24,7 @@ use crate::{
     },
 };
 
-/// A trait expressing the reading of state. This trait is used to abstract the underlying store.
+/// A reader of state
 pub trait StateReader<K, V> {
     /// An error which occurs when reading state
     type Error;
@@ -56,29 +50,20 @@ pub trait StateReader<K, V> {
 /// An error emitted by the execution engine on commit
 #[derive(Clone, Debug, thiserror::Error, Eq, PartialEq)]
 pub enum CommitError {
-    /// Root not found.
     #[error("Root not found: {0:?}")]
     RootNotFound(Blake2bHash),
-    /// Root not found while attempting to read.
     #[error("Root not found while attempting to read: {0:?}")]
     ReadRootNotFound(Blake2bHash),
-    /// Root not found while attempting to write.
     #[error("Root not found while writing: {0:?}")]
     WriteRootNotFound(Blake2bHash),
-    /// Key not found.
     #[error("Key not found: {0}")]
     KeyNotFound(Key),
-    /// Transform error.
     #[error(transparent)]
     TransformError(transform::Error),
 }
 
-/// A trait expressing operations over the trie.
 pub trait StateProvider {
-    /// Associated error type for `StateProvider`.
     type Error;
-
-    /// Associated reader type for `StateProvider`.
     type Reader: StateReader<Key, StoredValue, Error = Self::Error>;
 
     /// Checkouts to the post state of a specific block.
@@ -93,20 +78,6 @@ pub trait StateProvider {
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Blake2bHash, Self::Error>;
 
-    /// TODO REMOVE
-    fn put_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-        protocol_data: &ProtocolData,
-    ) -> Result<(), Self::Error>;
-
-    /// TODO REMOVE
-    fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Self::Error>;
-
-    /// Returns an empty root hash.
     fn empty_root(&self) -> Blake2bHash;
 
     /// Reads a `Trie` from the state if it is present
@@ -131,7 +102,6 @@ pub trait StateProvider {
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 
-/// Commit `effects` to the store.
 pub fn commit<'a, R, S, H, E>(
     environment: &'a R,
     store: &S,
