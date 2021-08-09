@@ -3,11 +3,13 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+
 use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
 };
+
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,

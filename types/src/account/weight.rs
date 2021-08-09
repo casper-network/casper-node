@@ -1,5 +1,7 @@
 use alloc::vec::Vec;
+
 use serde::{Deserialize, Serialize};
+
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLType, CLTyped,
