@@ -1,6 +1,6 @@
 [package]
 name = "global-state-update-gen"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Bartłomiej Kamiński <bart@casperlabs.io>"]
 edition = "2018"
 
@@ -11,3 +11,4 @@ casper-engine-test-support = { path = "../../execution_engine_testing/test_suppo
 casper-execution-engine = { path = "../../execution_engine" }
 casper-types = { path = "../../types", default-features = false, features = ["std"] }
 clap = "2.33"
+lmdb = "0.8"

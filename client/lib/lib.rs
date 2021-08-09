@@ -29,14 +29,14 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
-use casper_types::{Key, UIntParseError, U512};
+use casper_types::Key;
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
-use rpc::{RpcCall, TransferTarget};
+use rpc::RpcCall;
 pub use validation::ValidateResponseError;
 
 /// Creates a `Deploy` and sends it to the network for execution.
@@ -205,17 +205,11 @@ pub async fn transfer(
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-    let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .transfer(
             amount,
-            source_purse,
-            target,
+            None,
+            target_account,
             transfer_id,
             deploy_params.try_into()?,
             payment_params.try_into()?,
@@ -252,12 +246,6 @@ pub fn make_transfer(
     payment_params: PaymentStrParams<'_>,
     force: bool,
 ) -> Result<()> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-    let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     let output = if maybe_output_path.is_empty() {
         OutputKind::Stdout
     } else {
@@ -266,8 +254,8 @@ pub fn make_transfer(
 
     Deploy::new_transfer(
         amount,
-        source_purse,
-        target,
+        None,
+        target_account,
         transfer_id,
         deploy_params.try_into()?,
         payment_params.try_into()?,
@@ -705,31 +693,7 @@ impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let PaymentStrParams {
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        } = self;
-
-        parsing::parse_payment_info(
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            &payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        )
+        parsing::parse_payment_info(self)
     }
 }
 
@@ -866,31 +830,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let SessionStrParams {
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        } = self;
-
-        parsing::parse_session_info(
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            &session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        )
+        parsing::parse_session_info(self)
     }
 }
 
@@ -1270,7 +1210,7 @@ mod param_tests {
     mod payment_params {
         use std::collections::BTreeMap;
 
-        use casper_types::CLValue;
+        use casper_types::{CLValue, U512};
 
         use super::*;
 
@@ -1396,10 +1336,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimestamp(
-                    "timestamp",
-                    TimestampError::InvalidFormat
-                ))
+                Err(Error::FailedToParseTimestamp {
+                    context: "timestamp",
+                    error: TimestampError::InvalidFormat
+                })
             ));
         }
 
@@ -1409,7 +1349,7 @@ mod param_tests {
             params.gas_price = "fifteen";
             let result: StdResult<DeployParams, Error> = params.try_into();
             let result = result.map(|_| ());
-            if let Err(Error::FailedToParseInt(context, _)) = result {
+            if let Err(Error::FailedToParseInt { context, error: _ }) = result {
                 assert_eq!(context, "gas_price");
             } else {
                 panic!("should be an error");
@@ -1431,10 +1371,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimeDiff(
-                    "ttl",
-                    DurationError::NumberExpected(0)
-                ))
+                Err(Error::FailedToParseTimeDiff {
+                    context: "ttl",
+                    error: DurationError::NumberExpected(0)
+                })
             ));
         }
 

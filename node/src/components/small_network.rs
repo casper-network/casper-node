@@ -454,7 +454,7 @@ where
                 peer_consensus_public_key,
                 stream,
             } => {
-                info!("new incoming connection established");
+                info!(%public_addr, "new incoming connection established");
 
                 // Learn the address the peer gave us.
                 let dial_requests =

@@ -557,6 +557,7 @@ pub(crate) enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
+
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
@@ -601,6 +602,7 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers {}", block_hash)
             }
+
             RpcRequest::QueryGlobalState {
                 state_root_hash,
                 base_key,
@@ -810,6 +812,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }
+
             ContractRuntimeRequest::IsBonded {
                 public_key, era_id, ..
             } => {

@@ -52,7 +52,7 @@ use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, instrument, trace, warn};
+use tracing::{debug, debug_span, error, info, instrument, warn};
 use tracing_futures::Instrument;
 
 #[cfg(target_os = "linux")]
@@ -522,16 +522,11 @@ where
             QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
-        let (event, q) = self.scheduler.pop().await;
+        let (event, queue) = self.scheduler.pop().await;
 
         // Create another span for tracing the processing of one event.
-        let event_span = debug_span!("dispatch events", ev = self.event_count);
+        let event_span = debug_span!("dispatch", event_count = self.event_count, %event, %queue);
         let (effects, keep_going) = event_span.in_scope(|| {
-            // We log events twice, once in display and once in debug mode.
-            let event_as_string = format!("{}", event);
-            debug!(event=%event_as_string, ?q);
-            trace!(?event, ?q);
-
             // Dispatch the event, then execute the resulting effect.
             let start = self.clock.start();
 
@@ -555,11 +550,9 @@ where
             // Warn if processing took a long time, record to histogram.
             let delta = self.clock.delta(start, end);
             if delta > *DISPATCH_EVENT_THRESHOLD {
-                warn!(
-                    ns = delta.into_nanos(),
-                    event = %event_as_string,
-                    "event took very long to dispatch"
-                );
+                warn!(ev=%self.event_count,
+                      ns = delta.into_nanos(),
+                      "event took very long to dispatch");
             }
             self.metrics
                 .event_dispatch_duration

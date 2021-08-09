@@ -57,6 +57,10 @@ pub enum Error {
     InvalidDeployItemVariant(String),
     #[error(transparent)]
     CommitError(#[from] CommitError),
+    #[error("Missing SystemContractRegistry")]
+    MissingSystemContractRegistry,
+    #[error("Missing system contract hash: {0}")]
+    MissingSystemContractHash(String),
 }
 
 impl From<execution::Error> for Error {
