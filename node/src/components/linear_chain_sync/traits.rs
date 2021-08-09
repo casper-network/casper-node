@@ -9,7 +9,7 @@ use crate::{
     types::{Block, BlockByHeight},
 };
 
-pub trait ReactorEventT<I>:
+pub(crate) trait ReactorEventT<I>:
     From<StorageRequest>
     + From<FetcherRequest<I, Block>>
     + From<FetcherRequest<I, BlockByHeight>>

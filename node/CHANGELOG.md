@@ -52,9 +52,11 @@ All notable changes to this project will be documented in this file.  The format
 * Major rewrite of the contract runtime component.
 * Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.
 * At log level `DEBUG`, single events are no longer logged (use `TRACE` instead).
+* More node modules are now `pub(crate)`.
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
+* Removed dead code revealed by making modules `pub(crate)`.
 
 ### Fixed
 * Avoid redundant requests caused by the Highway synchronizer.

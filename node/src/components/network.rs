@@ -42,14 +42,13 @@ use serde::{Deserialize, Serialize};
 use tokio::{select, sync::watch, task::JoinHandle, time};
 use tracing::{debug, error, info, trace, warn};
 
-pub(crate) use self::event::Event;
 use self::{
     behavior::{Behavior, SwarmBehaviorEvent},
     gossip::GossipMessage,
     one_way_messaging::{Codec as OneWayCodec, Outgoing as OneWayOutgoingMessage},
     protocol_id::ProtocolId,
 };
-pub use self::{config::Config, error::Error};
+pub(crate) use self::{config::Config, error::Error, event::Event};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
@@ -72,7 +71,7 @@ const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 
 /// A helper trait whose bounds represent the requirements for a payload that `Network` can
 /// work with.
-pub trait PayloadT:
+pub(crate) trait PayloadT:
     Serialize + for<'de> Deserialize<'de> + Clone + Debug + Display + Send + 'static
 {
 }
@@ -84,7 +83,7 @@ impl<P> PayloadT for P where
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `Network` can
 /// work with.
-pub trait ReactorEventT<P: PayloadT>:
+pub(crate) trait ReactorEventT<P: PayloadT>:
     ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static
 {
 }
@@ -109,7 +108,7 @@ fn estimate_known_addresses(map: &Arc<Mutex<HashMap<Multiaddr, ConnectionState>>
 }
 
 #[derive(DataSize)]
-pub struct Network<REv, P> {
+pub(crate) struct Network<REv, P> {
     #[data_size(skip)]
     network_identity: NetworkIdentity,
     our_id: NodeId,
@@ -1025,7 +1024,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
 
 /// An ephemeral [libp2p::identity::Keypair] which uniquely identifies this node
 #[derive(Clone)]
-pub struct NetworkIdentity {
+pub(crate) struct NetworkIdentity {
     keypair: Keypair,
 }
 
@@ -1041,7 +1040,7 @@ impl Debug for NetworkIdentity {
 
 impl NetworkIdentity {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let keypair = Keypair::generate_ed25519();
         NetworkIdentity { keypair }
     }
