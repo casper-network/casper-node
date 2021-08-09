@@ -13,17 +13,20 @@ use std::{
     any::type_name,
     fmt::Debug,
     marker::PhantomData,
-    net::{Ipv4Addr, TcpListener},
+    ops::Range,
+    sync::atomic::{AtomicU16, Ordering},
     time,
 };
 
 use anyhow::Context;
 use derive_more::From;
 use futures::channel::oneshot;
+use once_cell::sync::Lazy;
+use rand::Rng;
 use serde::{de::DeserializeOwned, Serialize};
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::{
     components::Component,
@@ -39,6 +42,28 @@ pub(crate) use test_rng::TestRng;
 /// problem.
 const FATAL_GRACE_TIME: time::Duration = time::Duration::from_secs(3);
 
+/// The range of ports used to allocate ports for network ports.
+///
+/// The IANA ephemeral port range is 49152–65535, while Linux uses 32768–60999 by default. Windows
+/// on the other hand uses 1025–60000. Mac OS X seems to use 49152-65535. For this reason this
+/// constant uses different values on different systems.
+
+// Note: Ensure the range is prime, so that any chosen `TEST_PORT_STRIDE` wraps around without
+// conflicting.
+
+// All reasonable non-Windows systems seem to have a "hole" just below port 30000.
+//
+// This also does not conflict with nctl ports.
+#[cfg(not(target_os = "windows"))]
+const TEST_PORT_RANGE: Range<u16> = 29000..29997;
+
+// On windows, we sneak into the upper end instead.
+#[cfg(target_os = "windows")]
+const TEST_PORT_RANGE: Range<u16> = 60001..60998;
+
+/// Random offset + stride for port generation.
+const TEST_PORT_STRIDE: u16 = 29;
+
 pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
     let serialized = bincode::serialize(value).unwrap();
     let deserialized = bincode::deserialize(serialized.as_slice()).unwrap();
@@ -46,39 +71,27 @@ pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T
 }
 
 /// Create an unused port on localhost.
+///
+/// Returns a random port on localhost, provided that no other applications are binding ports inside
+/// `TEST_PORT_RANGE` and no other testing process is run in parallel. Should the latter happen,
+/// some randomization is used to avoid conflicts, without guarantee of success.
 pub(crate) fn unused_port_on_localhost() -> u16 {
-    // Unfortunately a randomly generated port by a random number generator still has a chance to
-    // hit the occasional duplicate or an already bound port once in a while, due to the small port
-    // space. For this reason, we ask the OS for an unused port instead and hope that no one binds
-    // to it in the meantime.
+    // Previous iterations of this implementation tried other approaches such as binding an
+    // ephemeral port and using that. This ran into race condition issues when the port was reused
+    // in the timespan where it was released and rebound.
 
-    // For a collision to occur, it is now required that after running this function, but before
-    // rebinding the port, an unrelated program or a parallel running test must manage to bind to
-    // precisely this port, hitting the same port randomly.
+    // The simpler approach is to select a random port from the non-ephemeral range and hope that no
+    // daemons are already bound/listening on it, which should not be the case on a CI system.
 
-    // This is slightly better than a strictly random port, since it takes already bound ports
-    // across the entire interface into account, but it does rely on the OS providing random ports
-    // when asked for a _unused_ one.
+    // We use a random offset and stride to stretch this a little bit, should two processes run at
+    // the same time.
+    static NEXT_PORT: Lazy<AtomicU16> = Lazy::new(|| {
+        rand::thread_rng()
+            .gen_range(TEST_PORT_RANGE.start..(TEST_PORT_RANGE.start + TEST_PORT_STRIDE))
+            .into()
+    });
 
-    // An alternative approach is to create a bound port with `SO_REUSEPORT`, which would close the
-    // gap between calling this function and binding again, never calling listening on the instance
-    // created by this function, but still blocking it from being reassigned by accident. This
-    // approach requires the networking component to either accept arbitrary incoming sockets to be
-    // passed in or bind with `SO_REUSEPORT` as well, both are undesirable options. See
-    // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ for
-    // a detailed description on port reuse flags.
-
-    let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 0))
-        .expect("could not bind new random port on localhost");
-    let local_addr = listener
-        .local_addr()
-        .expect("local listener has no address?");
-
-    let port = local_addr.port();
-    info!(%port, "OS generated random localhost port");
-
-    // Once we drop the listener, the port should be closed.
-    port
+    NEXT_PORT.fetch_add(TEST_PORT_STRIDE, Ordering::SeqCst)
 }
 
 /// Sets up logging for testing.
@@ -319,7 +332,21 @@ impl ReactorEvent for UnitTestEvent {
     }
 }
 
-#[test]
-fn default_works_without_panicking_for_component_harness() {
-    let _harness = ComponentHarness::<()>::default();
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::{unused_port_on_localhost, ComponentHarness};
+
+    #[test]
+    fn default_works_without_panicking_for_component_harness() {
+        let _harness = ComponentHarness::<()>::default();
+    }
+
+    #[test]
+    fn can_generate_at_least_100_unused_ports() {
+        let ports: HashSet<u16> = (0..100).map(|_| unused_port_on_localhost()).collect();
+
+        assert_eq!(ports.len(), 100);
+    }
 }

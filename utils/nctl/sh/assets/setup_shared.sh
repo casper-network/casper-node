@@ -428,6 +428,31 @@ function setup_asset_node_configs()
     done
 }
 
+function setup_asset_global_state_toml() {
+    log "... setting node global_state.toml"
+
+    local COUNT_NODES=${1}
+    local PROTOCOL_VERSION=${2}
+    local IDX
+    local GLOBAL_STATE_OUTPUT
+    local PATH_TO_NET
+
+    PATH_TO_NET="$(get_path_to_net)"
+
+    for IDX in $(seq 1 "$COUNT_NODES")
+    do
+        if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/data.lmdb" ]; then
+            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
+        else
+            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage)
+        fi
+
+        echo "$GLOBAL_STATE_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$PROTOCOL_VERSION/global_state.toml"
+    done
+}
+
 #######################################
 # Sets node configuration file workaround related to 'unit_hashes_folder' setting change.
 # Arguments:

@@ -15,6 +15,11 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Support building and testing using stable Rust.
+* Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
+
+### Removed
+* The unofficial support for nix-related derivations and support tooling has been removed.
+* Experimental, nix-based kubernetes testing support has been removed.
 
 
 
@@ -39,12 +44,12 @@ All notable changes to this project will be documented in this file.  The format
 * Persist event stream event index across node restarts.
 * Separate transfers from other deploys in the block proposer.
 * Enable getting validators for future eras in `EffectBuilder::get_era_validators()`.
-* Replace config option `[block_propser][deploy_delay]` (which specified a fixed delay before proposing a deploy) with a gossip-finished announcement.
 * Improve logging around stalled consensus detection.
 * Skip storage integrity checks if the node didn't previously crash.
 * Update pinned version of Rust to `nightly-2021-06-17`.
 * Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
 * Major rewrite of the contract runtime component.
+* Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
@@ -59,6 +64,7 @@ All notable changes to this project will be documented in this file.  The format
 * Limit the maximum number of clients connected to the event stream server via the `[event_stream_server][max_concurrent_subscribers]` config option.
 * Avoid emitting duplicate events in the event stream.
 * Change `BlockIdentifier` params in the Open-RPC schema to be optional.
+* Asymmetric connections are now swept regularly again.
 
 
 

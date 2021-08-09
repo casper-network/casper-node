@@ -11,12 +11,12 @@ use crate::types::{DeployHash, DeployHeader, Timestamp};
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Default)]
 pub(super) struct BlockProposerDeploySets {
-    /// The collection of deploys pending for inclusion in a block, each added when the gossiper
-    /// announces it has finished gossiping it.
-    pub(super) pending_deploys: HashMap<DeployHash, DeployInfo>,
-    /// The collection of transfers pending for inclusion in a block, each added when the gossiper
-    /// announces it has finished gossiping it.
-    pub(super) pending_transfers: HashMap<DeployHash, DeployInfo>,
+    /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
+    /// received them.
+    pub(super) pending_deploys: HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    /// The collection of transfers pending for inclusion in a block, with a timestamp of when we
+    /// received them.
+    pub(super) pending_transfers: HashMap<DeployHash, (DeployInfo, Timestamp)>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -79,10 +79,10 @@ pub(super) fn prune_deploys(
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// total deploys pruned
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, DeployInfo>,
+    deploys: &mut HashMap<DeployHash, (DeployInfo, Timestamp)>,
     current_instant: Timestamp,
 ) -> usize {
     let initial_len = deploys.len();
-    deploys.retain(|_hash, deploy_info| !deploy_info.header.expired(current_instant));
+    deploys.retain(|_hash, (deploy_info, _)| !deploy_info.header.expired(current_instant));
     initial_len - deploys.len()
 }
