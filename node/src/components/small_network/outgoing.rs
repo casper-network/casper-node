@@ -69,6 +69,7 @@
 //! │       │                                                 │
 //! │       │ block                                           │
 //! └───────┴─────────────────────────────────────────────────┘
+//! ```
 //!
 //! # Timeouts/safety
 //!
@@ -85,7 +86,6 @@
 //! If a conflict (multiple successful dial results) occurs, the more recent connection takes
 //! precedence over the previous one. This prevents problems when a notification of a terminated
 //! connection is overtaken by the new connection announcement.
-//! ```
 
 // Clippy has a lot of false positives due to `span.clone()`-closures.
 #![allow(clippy::redundant_clone)]
