@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use datasize::DataSize;
 use serde::{
     de::{Deserializer, Error as SerdeError, Unexpected},
@@ -5,21 +7,23 @@ use serde::{
 };
 use tracing::error;
 
+use crate::types::TimeDiff;
+
 #[cfg(test)]
 use super::error::Error;
 
 const DEFAULT_INFECTION_TARGET: u8 = 3;
 const DEFAULT_SATURATION_LIMIT_PERCENT: u8 = 80;
 pub(super) const MAX_SATURATION_LIMIT_PERCENT: u8 = 99;
-pub(super) const DEFAULT_FINISHED_ENTRY_DURATION_SECS: u64 = 60;
-const DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS: u64 = 10;
-const DEFAULT_GET_REMAINDER_TIMEOUT_SECS: u64 = 60;
+pub(super) const DEFAULT_FINISHED_ENTRY_DURATION_SECS: &str = "60sec";
+const DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS: &str = "10sec";
+const DEFAULT_GET_REMAINDER_TIMEOUT_SECS: &str = "60sec";
 #[cfg(test)]
-const SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION_SECS: u64 = 2;
+const SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION_SECS: &str = "2sec";
 #[cfg(test)]
-const SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT_SECS: u64 = 1;
+const SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT_SECS: &str = "1sec";
 #[cfg(test)]
-const SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT_SECS: u64 = 1;
+const SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT_SECS: &str = "1sec";
 
 /// Configuration options for gossiping.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -38,14 +42,14 @@ pub struct Config {
     ///
     /// The longer they are retained, the lower the likelihood of re-gossiping a piece of data.
     /// However, the longer they are retained, the larger the list of finished entries can grow.
-    finished_entry_duration_secs: u64,
+    finished_entry_duration_secs: TimeDiff,
     /// The timeout duration in seconds for a single gossip request, i.e. for a single gossip
     /// message sent from this node, it will be considered timed out if the expected response from
     /// that peer is not received within this specified duration.
-    gossip_request_timeout_secs: u64,
+    gossip_request_timeout_secs: TimeDiff,
     /// The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered
     /// data from a peer which gossiped information about that data to this node.
-    get_remainder_timeout_secs: u64,
+    get_remainder_timeout_secs: TimeDiff,
 }
 
 impl Config {
@@ -53,9 +57,9 @@ impl Config {
     pub(crate) fn new(
         infection_target: u8,
         saturation_limit_percent: u8,
-        finished_entry_duration_secs: u64,
-        gossip_request_timeout_secs: u64,
-        get_remainder_timeout_secs: u64,
+        finished_entry_duration_secs: u32,
+        gossip_request_timeout_secs: u32,
+        get_remainder_timeout_secs: u32,
     ) -> Result<Self, Error> {
         if saturation_limit_percent > MAX_SATURATION_LIMIT_PERCENT {
             return Err(Error::InvalidSaturationLimit);
@@ -63,18 +67,27 @@ impl Config {
         Ok(Config {
             infection_target,
             saturation_limit_percent,
-            finished_entry_duration_secs,
-            gossip_request_timeout_secs,
-            get_remainder_timeout_secs,
+            finished_entry_duration_secs: TimeDiff::from_seconds(finished_entry_duration_secs),
+            gossip_request_timeout_secs: TimeDiff::from_seconds(gossip_request_timeout_secs),
+            get_remainder_timeout_secs: TimeDiff::from_seconds(get_remainder_timeout_secs),
         })
     }
 
     #[cfg(test)]
     pub(crate) fn new_with_small_timeouts() -> Self {
         Config {
-            finished_entry_duration_secs: SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION_SECS,
-            gossip_request_timeout_secs: SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT_SECS,
-            get_remainder_timeout_secs: SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT_SECS,
+            finished_entry_duration_secs: TimeDiff::from_str(
+                SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION_SECS,
+            )
+            .unwrap(),
+            gossip_request_timeout_secs: TimeDiff::from_str(
+                SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT_SECS,
+            )
+            .unwrap(),
+            get_remainder_timeout_secs: TimeDiff::from_str(
+                SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT_SECS,
+            )
+            .unwrap(),
             ..Default::default()
         }
     }
@@ -88,15 +101,15 @@ impl Config {
     }
 
     pub(crate) fn finished_entry_duration_secs(&self) -> u64 {
-        self.finished_entry_duration_secs
+        self.finished_entry_duration_secs.millis() / 1000 // TODO[RC]: Rethink this
     }
 
     pub(crate) fn gossip_request_timeout_secs(&self) -> u64 {
-        self.gossip_request_timeout_secs
+        self.gossip_request_timeout_secs.millis() / 1000
     }
 
     pub(crate) fn get_remainder_timeout_secs(&self) -> u64 {
-        self.get_remainder_timeout_secs
+        self.get_remainder_timeout_secs.millis() / 1000
     }
 }
 
@@ -105,9 +118,12 @@ impl Default for Config {
         Config {
             infection_target: DEFAULT_INFECTION_TARGET,
             saturation_limit_percent: DEFAULT_SATURATION_LIMIT_PERCENT,
-            finished_entry_duration_secs: DEFAULT_FINISHED_ENTRY_DURATION_SECS,
-            gossip_request_timeout_secs: DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS,
-            get_remainder_timeout_secs: DEFAULT_GET_REMAINDER_TIMEOUT_SECS,
+            finished_entry_duration_secs: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION_SECS)
+                .unwrap(),
+            gossip_request_timeout_secs: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS)
+                .unwrap(),
+            get_remainder_timeout_secs: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT_SECS)
+                .unwrap(),
         }
     }
 }
@@ -142,9 +158,12 @@ mod tests {
         let invalid_config = Config {
             infection_target: 3,
             saturation_limit_percent: MAX_SATURATION_LIMIT_PERCENT + 1,
-            finished_entry_duration_secs: DEFAULT_FINISHED_ENTRY_DURATION_SECS,
-            gossip_request_timeout_secs: DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS,
-            get_remainder_timeout_secs: DEFAULT_GET_REMAINDER_TIMEOUT_SECS,
+            finished_entry_duration_secs: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION_SECS)
+                .unwrap(),
+            gossip_request_timeout_secs: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS)
+                .unwrap(),
+            get_remainder_timeout_secs: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT_SECS)
+                .unwrap(),
         };
 
         // Parsing should fail.
@@ -155,9 +174,15 @@ mod tests {
         assert!(Config::new(
             3,
             MAX_SATURATION_LIMIT_PERCENT + 1,
-            DEFAULT_FINISHED_ENTRY_DURATION_SECS,
-            DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS,
-            DEFAULT_GET_REMAINDER_TIMEOUT_SECS,
+            TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION_SECS)
+                .unwrap()
+                .seconds(),
+            TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS)
+                .unwrap()
+                .seconds(),
+            TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT_SECS)
+                .unwrap()
+                .seconds(),
         )
         .is_err())
     }

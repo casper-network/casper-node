@@ -228,6 +228,12 @@ impl TimeDiff {
         self.0
     }
 
+    #[cfg(test)]
+    /// Returns the time difference as the number of seconds since the Unix epoch
+    pub(crate) fn seconds(&self) -> u32 {
+        (self.millis() / 1_000) as u32 // TODO[RC]: Handle when doesn't fit in u32
+    }
+
     /// Creates a new time difference from seconds.
     pub const fn from_seconds(seconds: u32) -> Self {
         TimeDiff(seconds as u64 * 1_000)
