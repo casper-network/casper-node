@@ -26,6 +26,7 @@ pub mod account;
 pub mod api_error;
 mod block_time;
 pub mod bytesrepr;
+pub mod check_summed_hex;
 mod cl_type;
 mod cl_value;
 mod contract_wasm;
@@ -54,6 +55,7 @@ pub use access_rights::{AccessRights, ACCESS_RIGHTS_SERIALIZED_LENGTH};
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+pub use check_summed_hex::{CheckSummedHex, CheckSummedHexForm};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};

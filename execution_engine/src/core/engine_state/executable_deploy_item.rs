@@ -8,8 +8,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use hex_buffer_serde::{Hex, HexForm};
-use hex_fmt::HexFmt;
 use parity_wasm::elements::Module;
 use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
@@ -21,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    check_summed_hex::{self, CheckSummedHex, CheckSummedHexForm},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -55,15 +54,18 @@ const TRANSFER_TAG: u8 = 5;
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
-        #[serde(with = "HexForm")]
-        #[schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")]
+        #[serde(with = "CheckSummedHexForm")]
+        #[schemars(
+            with = "String",
+            description = "Check-summed hex-encoded raw Wasm bytes."
+        )]
         module_bytes: Bytes,
         // assumes implicit `call` noarg entrypoint
         args: RuntimeArgs,
     },
     StoredContractByHash {
-        #[serde(with = "HexForm")]
-        #[schemars(with = "String", description = "Hex-encoded hash.")]
+        #[serde(with = "CheckSummedHexForm")]
+        #[schemars(with = "String", description = "Check-summed hex-encoded hash.")]
         hash: ContractHash,
         entry_point: String,
         args: RuntimeArgs,
@@ -74,8 +76,8 @@ pub enum ExecutableDeployItem {
         args: RuntimeArgs,
     },
     StoredVersionedContractByHash {
-        #[serde(with = "HexForm")]
-        #[schemars(with = "String", description = "Hex-encoded hash.")]
+        #[serde(with = "CheckSummedHexForm")]
+        #[schemars(with = "String", description = "Check-summed hex-encoded hash.")]
         hash: ContractPackageHash,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
@@ -580,7 +582,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-contract-by-hash: {:10}, entry-point: {}",
-                HexFmt(hash),
+                check_summed_hex::encode(hash),
                 entry_point,
             ),
             ExecutableDeployItem::StoredContractByName {
@@ -598,7 +600,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-versioned-contract-by-hash: {:10}, version: {}, entry-point: {}",
-                HexFmt(hash),
+                check_summed_hex::encode(hash),
                 ver,
                 entry_point,
             ),
@@ -607,7 +609,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-versioned-contract-by-hash: {:10}, version: latest, entry-point: {}",
-                HexFmt(hash),
+                check_summed_hex::encode(hash),
                 entry_point,
             ),
             ExecutableDeployItem::StoredVersionedContractByName {
@@ -646,7 +648,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredContractByHash")
-                .field("hash", &HexFmt(hash))
+                .field("hash", &check_summed_hex::encode(hash))
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
@@ -667,7 +669,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredVersionedContractByHash")
-                .field("hash", &HexFmt(hash))
+                .field("hash", &check_summed_hex::encode(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
                 .field("args", args)

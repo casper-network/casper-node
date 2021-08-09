@@ -1,5 +1,5 @@
 /// The number of bytes in a Blake2b hash
-use std::{array::TryFromSliceError, convert::TryFrom};
+use std::{array::TryFromSliceError, borrow::Cow, convert::TryFrom};
 
 use blake2::{
     digest::{Update, VariableOutput},
@@ -7,7 +7,10 @@ use blake2::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    check_summed_hex, CheckSummedHex, CheckSummedHexForm,
+};
 
 /// Represents a 32-byte BLAKE2b hash digest
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
@@ -37,31 +40,9 @@ impl Blake2bHash {
     }
 }
 
-impl core::fmt::LowerHex for Blake2bHash {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        let hex_string = base16::encode_lower(&self.value());
-        if f.alternate() {
-            write!(f, "0x{}", hex_string)
-        } else {
-            write!(f, "{}", hex_string)
-        }
-    }
-}
-
-impl core::fmt::UpperHex for Blake2bHash {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        let hex_string = base16::encode_upper(&self.value());
-        if f.alternate() {
-            write!(f, "0x{}", hex_string)
-        } else {
-            write!(f, "{}", hex_string)
-        }
-    }
-}
-
 impl core::fmt::Display for Blake2bHash {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "Blake2bHash({:#x})", self)
+        write!(f, "Blake2bHash({})", check_summed_hex::encode(self))
     }
 }
 
@@ -116,10 +97,24 @@ impl FromBytes for Blake2bHash {
     }
 }
 
-impl hex::FromHex for Blake2bHash {
-    type Error = hex::FromHexError;
+impl CheckSummedHex<Blake2bHash> for Blake2bHash {
+    type Error = &'static str; // TODO: replace with proper error type.
 
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        Ok(Blake2bHash(hex::FromHex::from_hex(hex)?))
+    fn create_bytes(value: &Blake2bHash) -> std::borrow::Cow<[u8]> {
+        Cow::from(value.to_bytes().unwrap())
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Blake2bHash, Self::Error> {
+        FromBytes::from_bytes(bytes)
+            .map(|(b, rem)| b)
+            .map_err(|_| "replace me with real error.")
     }
 }
+
+// impl hex::FromHex for Blake2bHash {
+//     type Error = hex::FromHexError;
+
+//     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+//         Ok(Blake2bHash(hex::FromHex::from_hex(hex)?))
+//     }
+// }

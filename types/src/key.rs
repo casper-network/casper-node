@@ -15,7 +15,6 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -25,6 +24,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::{self, AccountHash, ACCOUNT_HASH_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    check_summed_hex,
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
@@ -223,27 +223,31 @@ impl Key {
     pub fn to_formatted_string(self) -> String {
         match self {
             Key::Account(account_hash) => account_hash.to_formatted_string(),
-            Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(&addr)),
+            Key::Hash(addr) => format!("{}{}", HASH_PREFIX, check_summed_hex::encode(&addr)),
             Key::URef(uref) => uref.to_formatted_string(),
             Key::Transfer(transfer_addr) => transfer_addr.to_formatted_string(),
             Key::DeployInfo(addr) => {
                 format!(
                     "{}{}",
                     DEPLOY_INFO_PREFIX,
-                    base16::encode_lower(addr.as_bytes())
+                    check_summed_hex::encode(addr.as_bytes())
                 )
             }
             Key::EraInfo(era_id) => {
                 format!("{}{}", ERA_INFO_PREFIX, era_id.value())
             }
             Key::Balance(uref_addr) => {
-                format!("{}{}", BALANCE_PREFIX, base16::encode_lower(&uref_addr))
+                format!("{}{}", BALANCE_PREFIX, check_summed_hex::encode(&uref_addr))
             }
             Key::Bid(account_hash) => {
-                format!("{}{}", BID_PREFIX, base16::encode_lower(&account_hash))
+                format!("{}{}", BID_PREFIX, check_summed_hex::encode(&account_hash))
             }
             Key::Withdraw(account_hash) => {
-                format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
+                format!(
+                    "{}{}",
+                    WITHDRAW_PREFIX,
+                    check_summed_hex::encode(&account_hash)
+                )
             }
             Key::Dictionary(dictionary_addr) => {
                 format!(
@@ -271,8 +275,8 @@ impl Key {
         }
 
         if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
-            let addr =
-                base16::decode(hex).map_err(|error| FromStrError::Hash(error.to_string()))?;
+            let addr = check_summed_hex::decode(hex)
+                .map_err(|error| FromStrError::Hash(error.to_string()))?;
             let hash_addr = HashAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::Hash(error.to_string()))?;
             return Ok(Key::Hash(hash_addr));
@@ -418,19 +422,27 @@ impl Display for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
-            Key::Hash(addr) => write!(f, "Key::Hash({})", HexFmt(addr)),
+            Key::Hash(addr) => write!(f, "Key::Hash({})", check_summed_hex::encode(&addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
-            Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
+            Key::DeployInfo(addr) => write!(
+                f,
+                "Key::DeployInfo({})",
+                check_summed_hex::encode(addr.as_bytes())
+            ),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
-            Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
+            Key::Balance(uref_addr) => {
+                write!(f, "Key::Balance({})", check_summed_hex::encode(uref_addr))
+            }
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
-            Key::Dictionary(addr) => write!(f, "Key::Dictionary({})", HexFmt(addr)),
+            Key::Dictionary(addr) => {
+                write!(f, "Key::Dictionary({})", check_summed_hex::encode(addr))
+            }
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         }
     }
@@ -827,7 +839,7 @@ mod tests {
         DICTIONARY_KEY,
         REGISTRY_KEY,
     ];
-    const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+    const HEX_STRING: &str = "2A2A2a2a2a2A2a2A2A2a2A2a2a2a2A2a2A2A2A2A2a2A2A2a2A2A2a2A2a2a2a2A";
 
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)
@@ -917,7 +929,7 @@ mod tests {
             format!("{}", REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
             )
         )
     }
@@ -1076,7 +1088,7 @@ mod tests {
             format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         ];
 
