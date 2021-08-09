@@ -307,11 +307,14 @@ where
 
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
-        let server_join_handle = tokio::spawn(tasks::server(
-            context.clone(),
-            tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-            server_shutdown_receiver,
-        ));
+        let server_join_handle = tokio::spawn(
+            tasks::server(
+                context.clone(),
+                tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
+                server_shutdown_receiver,
+            )
+            .in_current_span(),
+        );
 
         let mut component = SmallNetwork {
             cfg,
@@ -355,6 +358,13 @@ where
             effect_builder
                 .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
                 .event(|_| Event::SweepOutgoing),
+        );
+
+        // Trigger asymmetric connection sweeps.
+        effects.extend(
+            effect_builder
+                .set_timeout(SYMMETRY_SWEEP_INTERVAL)
+                .event(|_| Event::SweepSymmetries),
         );
 
         Ok((component, effects))
@@ -459,7 +469,7 @@ where
                 peer_consensus_public_key,
                 stream,
             } => {
-                info!("new incoming connection established");
+                info!(%public_addr, "new incoming connection established");
 
                 // Learn the address the peer gave us.
                 let dial_requests =
@@ -684,7 +694,7 @@ where
             .into_iter()
             .filter_map(|(peer_id, sym)| {
                 if sym.should_be_reaped(now, MAX_ASYMMETRIC_TIME) {
-                    info!(%peer_id, "reaping asymmetric connection");
+                    debug!(%peer_id, "reaping asymmetric connection");
 
                     // Get the outgoing connection and block it.
                     if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {

@@ -103,6 +103,8 @@ function _main()
                                  "$PROTOCOL_VERSION" \
                                  "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
                                  false
+        setup_asset_global_state_toml "$COUNT_NODES" \
+                                      "$PROTOCOL_VERSION"
         sleep 10.0
     else
         log "ATTENTION :: no more staged upgrades to rollout !!!"

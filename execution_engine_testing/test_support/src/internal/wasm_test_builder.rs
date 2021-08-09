@@ -23,7 +23,7 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, UpgradeConfig, UpgradeSuccess,
+            QueryResult, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -41,7 +41,6 @@ use casper_execution_engine::{
         global_state::{
             in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider, StateReader,
         },
-        protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment,
         trie::merkle_proof::TrieMerkleProof,
         trie_store::lmdb::LmdbTrieStore,
@@ -57,6 +56,7 @@ use casper_types::{
             ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
+        AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
     DeployHash, DeployInfo, EraId, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr,
@@ -209,12 +209,9 @@ impl LmdbWasmTestBuilder {
             LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())
                 .expect("should create LmdbTrieStore"),
         );
-        let protocol_data_store = Arc::new(
-            LmdbProtocolDataStore::new(&environment, None, DatabaseFlags::empty())
-                .expect("should create LmdbProtocolDataStore"),
-        );
-        let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)
-            .expect("should create LmdbGlobalState");
+
+        let global_state =
+            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -290,12 +287,9 @@ impl LmdbWasmTestBuilder {
         );
         let trie_store =
             Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
-        let protocol_data_store = Arc::new(
-            LmdbProtocolDataStore::open(&environment, None)
-                .expect("should open LmdbProtocolDataStore"),
-        );
-        let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)
-            .expect("should create LmdbGlobalState");
+
+        let global_state =
+            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -370,22 +364,38 @@ where
             .expect("Unable to get genesis response");
 
         let transforms = execution_effect.transforms;
+        let empty_path: Vec<String> = vec![];
 
         let genesis_account =
             utils::get_account(&transforms, &system_account).expect("Unable to get system account");
 
-        let maybe_protocol_data = self
-            .engine_state
-            .get_protocol_data(run_genesis_request.protocol_version())
-            .expect("should read protocol data");
-        let protocol_data = maybe_protocol_data.expect("should have protocol data stored");
+        let registry = match self.query(
+            Some(post_state_hash),
+            Key::SystemContractRegistry,
+            &empty_path,
+        ) {
+            Ok(StoredValue::CLValue(cl_registry)) => {
+                CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap()
+            }
+            Ok(_) => panic!("Failed to get system registry"),
+            Err(err) => panic!("{}", err),
+        };
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.mint_contract_hash = Some(protocol_data.mint());
-        self.handle_payment_contract_hash = Some(protocol_data.handle_payment());
-        self.standard_payment_hash = Some(protocol_data.standard_payment());
-        self.auction_contract_hash = Some(protocol_data.auction());
+        self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"));
+        self.handle_payment_contract_hash = Some(
+            *registry
+                .get(HANDLE_PAYMENT)
+                .expect("should have handle payment hash"),
+        );
+        self.standard_payment_hash = Some(
+            *registry
+                .get(STANDARD_PAYMENT)
+                .expect("should have standard payment hash"),
+        );
+        self.auction_contract_hash =
+            Some(*registry.get(AUCTION).expect("should have auction hash"));
         self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
@@ -524,10 +534,14 @@ where
 
     pub fn upgrade_with_upgrade_request(
         &mut self,
+        engine_config: EngineConfig,
         upgrade_config: &mut UpgradeConfig,
     ) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
+
+        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
+        engine_state.update_config(engine_config);
 
         let result = self
             .engine_state
@@ -959,5 +973,37 @@ where
     pub fn get_auction_delay(&mut self) -> u64 {
         let auction_contract = self.get_auction_contract_hash();
         self.get_value(auction_contract, AUCTION_DELAY_KEY)
+    }
+
+    pub fn get_system_auction_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_system_auction_hash(correlation_id, state_root_hash)
+            .expect("should have auction hash")
+    }
+
+    pub fn get_system_mint_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_system_mint_hash(correlation_id, state_root_hash)
+            .expect("should have auction hash")
+    }
+
+    pub fn get_system_handle_payment_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_handle_payment_hash(correlation_id, state_root_hash)
+            .expect("should have handle payment hash")
+    }
+
+    pub fn get_system_standard_payment_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_standard_payment_hash(correlation_id, state_root_hash)
+            .expect("should have standard payment hash")
     }
 }

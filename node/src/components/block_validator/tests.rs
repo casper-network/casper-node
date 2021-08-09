@@ -49,7 +49,7 @@ impl MockReactor {
     }
 
     async fn expect_block_validator_event(&self) -> Event<NodeId> {
-        let (reactor_event, _) = self.scheduler.pop().await;
+        let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         if let ReactorEvent::BlockValidator(event) = reactor_event {
             event
         } else {
@@ -61,7 +61,7 @@ impl MockReactor {
     where
         T: Into<Option<Deploy>>,
     {
-        let (reactor_event, _) = self.scheduler.pop().await;
+        let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         if let ReactorEvent::Fetcher(FetcherRequest::Fetch {
             id,
             peer,

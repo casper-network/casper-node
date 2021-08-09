@@ -2,7 +2,7 @@
 
 ### nctl-erc20-approve owner={X:-1} spender={Y:-1} amount={Z:-1000000000} 
 
-Allows a user (the spender) to withdraw upto Z tokens from the account of a token holder (the owner).  
+Allows a user (the spender) to withdraw up to Z tokens from the account of a token holder (the owner).  
 
 ```
 nctl-erc20-approve 
