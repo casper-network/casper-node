@@ -356,6 +356,7 @@ pub(super) fn parse_deploy_params(
     gas_price: &str,
     dependencies: &[&str],
     chain_name: &str,
+    session_account: &str,
 ) -> Result<DeployParams> {
     let secret_key = self::secret_key(secret_key)?;
     let timestamp = self::timestamp(timestamp)?;
@@ -363,6 +364,13 @@ pub(super) fn parse_deploy_params(
     let gas_price = self::gas_price(gas_price)?;
     let dependencies = self::dependencies(dependencies)?;
     let chain_name = chain_name.to_string();
+    let session_account = if !session_account.is_empty() {
+        let public_key =
+            PublicKey::from_hex(session_account).map_err(|_| Error::FailedToParseKey)?;
+        Some(public_key)
+    } else {
+        None
+    };
 
     Ok(DeployParams {
         secret_key,
@@ -371,6 +379,7 @@ pub(super) fn parse_deploy_params(
         gas_price,
         dependencies,
         chain_name,
+        session_account,
     })
 }
 
@@ -982,6 +991,7 @@ mod tests {
             "10000",
             &[happy::HASH],
             "test",
+            "",
         );
 
         assert!(params.is_ok());
@@ -1002,7 +1012,8 @@ mod tests {
         let timestamp = Timestamp::now().to_string();
         let timestamp = timestamp.as_str();
 
-        let result = parse_deploy_params("bad file path", timestamp, "2sec", "10000", &[], "test");
+        let result =
+            parse_deploy_params("bad file path", timestamp, "2sec", "10000", &[], "test", "");
 
         // failed to parse secret key file path.
         assert!(matches!(
@@ -1017,6 +1028,7 @@ mod tests {
             "10000",
             &[],
             "test",
+            "",
         );
 
         // failed to parse timestamp.
@@ -1032,6 +1044,7 @@ mod tests {
             "10000",
             &[],
             "test",
+            "",
         );
 
         // failed to parse ttl.
@@ -1047,6 +1060,7 @@ mod tests {
             "bad gas price",
             &[],
             "test",
+            "",
         );
 
         // failed to parse gas price.
@@ -1062,6 +1076,7 @@ mod tests {
             "10000",
             &["bad deploy hash"],
             "test",
+            "",
         );
 
         // failed to parse deploy hash.
