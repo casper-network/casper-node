@@ -1,8 +1,3 @@
-use super::{blake2b, FromStrError};
-use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
-};
 use alloc::{string::String, vec::Vec};
 use core::{
     convert::{From, TryFrom},
@@ -16,6 +11,11 @@ use rand::{
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use super::{blake2b, FromStrError};
+use crate::{
+    bytesrepr::{Error, FromBytes, ToBytes},
+    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+};
 
 /// The length in bytes of a [`AccountHash`].
 pub const ACCOUNT_HASH_LENGTH: usize = 32;

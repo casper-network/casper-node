@@ -8,7 +8,6 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
 };
-
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,

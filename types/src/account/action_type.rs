@@ -1,5 +1,5 @@
-use super::TryFromIntError;
 use core::convert::TryFrom;
+use super::TryFromIntError;
 
 /// The various types of action which can be performed in the context of a given account.
 #[repr(u32)]
