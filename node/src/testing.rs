@@ -269,7 +269,7 @@ impl<REv: 'static> ComponentHarness<REv> {
 
             // Iterate over all events that currently are inside the queue and fish out any fatal.
             for _ in 0..(self.scheduler.item_count()) {
-                let (ev, _queue_kind) = self.runtime.block_on(self.scheduler.pop());
+                let ((_ancestor, ev), _queue_kind) = self.runtime.block_on(self.scheduler.pop());
 
                 if let Some(ctrl_ann) = ev.as_control() {
                     match ctrl_ann {
