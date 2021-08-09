@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add optional incoming message limiter to the networking component, controllable via new `[network][max_incoming_message_rate_non_validators]` config option.
 * Add optional in-memory deduplication of deploys, controllable via new `[storage]` config options `[enable_mem_deduplication]` and `[mem_pool_prune_interval]`.
 * Add a new event stream to SSE server accessed via `<IP:Port>/events/deploys` which emits deploys in full as they are accepted.
+* Events now log their ancestors, so detailed tracing of events is possible.
 
 ### Changed
 * Major rewrite of the network component, covering connection negotiation and management, periodic housekeeping and logging.
@@ -50,6 +51,7 @@ All notable changes to this project will be documented in this file.  The format
 * Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
 * Major rewrite of the contract runtime component.
 * Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.
+* At log level `DEBUG`, single events are no longer logged (use `TRACE` instead).
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
