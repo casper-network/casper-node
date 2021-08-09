@@ -302,11 +302,14 @@ where
 
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
-        let server_join_handle = tokio::spawn(tasks::server(
-            context.clone(),
-            tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-            server_shutdown_receiver,
-        ));
+        let server_join_handle = tokio::spawn(
+            tasks::server(
+                context.clone(),
+                tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
+                server_shutdown_receiver,
+            )
+            .in_current_span(),
+        );
 
         let mut component = SmallNetwork {
             cfg,

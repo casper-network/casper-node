@@ -164,7 +164,7 @@ where
 {
     // Note: This will keep waiting forever if the sending end disappears, which is fine for tests.
     loop {
-        let (event, queue_kind) = source.pop().await;
+        let ((_ancestor, event), queue_kind) = source.pop().await;
         target_queue.schedule(event, queue_kind).await;
     }
 }
