@@ -18,18 +18,16 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Support building and testing using stable Rust.
-* Changed price of `create_purse` to 2.5CSPR to discourage people from creating purses in the payment code.
+* Increased price of `create_purse` to 2.5CSPR.
 * Improve doc comments to clarify behavior of the bidding functionality.
 
-
+### Fixed
+* Fix a case where user could potentially supply a refund purse as a payment purse.
 
 ## [1.3.0] - 2021-07-19
 
 ### Changed
 * Update pinned version of Rust to `nightly-2021-06-17`.
-
-### Fixed
-* Fix a case where user could potentially supply a refund purse as a payment purse.
 
 
 
