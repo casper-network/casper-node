@@ -601,7 +601,7 @@ fn manage_associated_keys() {
         };
         account
             .associated_keys()
-            .get(&account_hash)
+            .find(|(&h, _)| h == account_hash)
             .expect("Account hash wasn't added to associated keys");
 
         let new_weight = Weight::new(100);
@@ -617,8 +617,9 @@ fn manage_associated_keys() {
         };
         let value = account
             .associated_keys()
-            .get(&account_hash)
-            .expect("Account hash wasn't added to associated keys");
+            .find(|(&h, _)| h == account_hash)
+            .expect("Account hash wasn't added to associated keys")
+            .1;
 
         assert_eq!(value, &new_weight, "value was not updated");
 
@@ -635,7 +636,9 @@ fn manage_associated_keys() {
             _ => panic!("Invalid transform operation found"),
         };
 
-        assert!(account.associated_keys().get(&account_hash).is_none());
+        let actual = account.associated_keys().find(|(&h, _)| h == account_hash);
+
+        assert!(actual.is_none());
 
         // Remove a key that was already removed
         runtime_context

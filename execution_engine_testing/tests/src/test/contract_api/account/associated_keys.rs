@@ -56,8 +56,9 @@ fn should_manage_associated_key() {
 
     let gen_weight = account_1
         .associated_keys()
-        .get(&genesis_key)
-        .expect("weight");
+        .find(|(&h, _)| h == genesis_key)
+        .expect("weight")
+        .1;
 
     let expected_weight = Weight::new(2);
     assert_eq!(*gen_weight, expected_weight, "unexpected weight");
@@ -75,7 +76,7 @@ fn should_manage_associated_key() {
         .get_account(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let new_weight = account_1.associated_keys().get(&genesis_key);
+    let new_weight = account_1.associated_keys().find(|(&h, _)| h == genesis_key);
 
     assert_eq!(new_weight, None, "key should be removed");
 
