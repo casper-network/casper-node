@@ -113,7 +113,7 @@ impl Chainspec {
         let highway_config = HighwayConfig::random(rng);
         let deploy_config = DeployConfig::random(rng);
         let wasm_costs_config = rng.gen();
-        let system_config = rng.gen();
+        let system_costs_config = rng.gen();
 
         Chainspec {
             protocol_config,
@@ -122,7 +122,7 @@ impl Chainspec {
             highway_config,
             deploy_config,
             wasm_config: wasm_costs_config,
-            system_costs_config: system_config,
+            system_costs_config,
         }
     }
 }

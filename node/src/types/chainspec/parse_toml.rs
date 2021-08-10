@@ -68,7 +68,7 @@ impl From<&Chainspec> for TomlChainspec {
         let deploys = chainspec.deploy_config;
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
-        let system_config = chainspec.system_costs_config;
+        let system_costs = chainspec.system_costs_config;
 
         TomlChainspec {
             protocol,
@@ -77,7 +77,7 @@ impl From<&Chainspec> for TomlChainspec {
             deploys,
             highway,
             wasm,
-            system_costs: system_config,
+            system_costs,
         }
     }
 }
