@@ -253,6 +253,21 @@ steps:
     event:
       - push
 
+- name: nctl-bucket-pr-clear
+  image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_BRANCH} --recursive"
+  when:
+    branch:
+      - "release-*"
+    event:
+      - push
+
 - name: nctl-bucket-upload-rc
   image: plugins/s3-sync:latest
   settings:
@@ -557,6 +572,16 @@ steps:
   volumes:
   - name: nctl-temp-dir
     path: /tmp/nctl_upgrade_stage
+
+- name: nctl-bucket-tag-clear
+  image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_TAG} --recursive"
 
 - name: nctl-bucket-upload
   image: plugins/s3-sync:latest

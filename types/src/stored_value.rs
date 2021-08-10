@@ -388,12 +388,13 @@ impl<'de> Deserialize<'de> for StoredValue {
     }
 }
 
-/// TODO: doc comment.
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
 
     use crate::{
+        account::gens::account_arb,
         gens::{
             cl_value_arb, contract_arb, contract_package_arb, contract_wasm_arb, deploy_info_arb,
             transfer_arb,
@@ -402,9 +403,7 @@ pub mod gens {
     };
 
     use super::StoredValue;
-    use crate::account::gens::account_arb;
 
-    /// TODO: doc comment.
     pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         prop_oneof![
             cl_value_arb().prop_map(StoredValue::CLValue),

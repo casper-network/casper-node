@@ -102,6 +102,10 @@ pub enum Error {
     MissingArgument { name: String },
     #[error("Dictionary item key exceeded maximum length")]
     DictionaryItemKeyExceedsLength,
+    #[error("Missing system contract registry")]
+    MissingSystemContractRegistry,
+    #[error("Missing system contract hash: {0}")]
+    MissingSystemContractHash(String),
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

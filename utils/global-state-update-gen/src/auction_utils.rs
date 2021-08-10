@@ -7,21 +7,15 @@ use casper_types::{
         Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    AsymmetricType, EraId, Key, ProtocolVersion, PublicKey, U512,
+    AsymmetricType, EraId, Key, PublicKey, U512,
 };
 
 use crate::utils::ValidatorsDiff;
 
 /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
 pub fn read_snapshot(builder: &LmdbWasmTestBuilder) -> (Key, SeigniorageRecipientsSnapshot) {
-    let protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(ProtocolVersion::from_parts(1, 0, 0)) // TODO: make it a parameter?
-        .unwrap()
-        .expect("should have protocol data");
-
     // Find the hash of the auction contract.
-    let auction_contract_hash = protocol_data.auction();
+    let auction_contract_hash = builder.get_system_auction_hash();
 
     // Read the key under which the snapshot is stored.
     let validators_key = builder

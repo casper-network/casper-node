@@ -6,13 +6,14 @@ mod types;
 
 use std::{
     fmt::{self, Debug, Formatter},
+    path::Path,
     sync::Arc,
     time::Instant,
 };
 
-pub use config::Config;
-pub use error::{BlockExecutionError, ConfigError};
-pub use types::{BlockAndExecutionEffects, EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
+pub(crate) use config::Config;
+pub(crate) use error::{BlockExecutionError, ConfigError};
+pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
@@ -25,10 +26,14 @@ use casper_execution_engine::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
         GetEraValidatorsRequest,
     },
-    shared::newtypes::{Blake2bHash, CorrelationId},
+    shared::{
+        newtypes::{Blake2bHash, CorrelationId},
+        system_config::SystemConfig,
+        wasm_config::WasmConfig,
+    },
     storage::{
-        global_state::lmdb::LmdbGlobalState, protocol_data_store::lmdb::LmdbProtocolDataStore,
-        transaction_source::lmdb::LmdbEnvironment, trie::Trie, trie_store::lmdb::LmdbTrieStore,
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
+        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{stored_value::StoredValue, Key, ProtocolVersion};
@@ -43,15 +48,14 @@ use crate::{
     },
     fatal,
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
-    utils::WithDir,
-    NodeRng, StorageConfig,
+    NodeRng,
 };
 use std::collections::BTreeMap;
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
-pub struct ExecutionPreState {
+pub(crate) struct ExecutionPreState {
     /// The height of the next `Block` to be constructed. Note that this must match the height of
     /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
@@ -80,7 +84,7 @@ impl ExecutionPreState {
     }
 
     /// Get the next block height according that will succeed the block specified by `parent_hash`.
-    pub fn next_block_height(&self) -> u64 {
+    pub(crate) fn next_block_height(&self) -> u64 {
         self.next_block_height
     }
 }
@@ -98,7 +102,7 @@ impl From<&BlockHeader> for ExecutionPreState {
 
 /// The contract runtime components.
 #[derive(DataSize)]
-pub struct ContractRuntime {
+pub(crate) struct ContractRuntime {
     execution_pre_state: ExecutionPreState,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
@@ -116,7 +120,7 @@ impl Debug for ContractRuntime {
 
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
-pub struct ContractRuntimeMetrics {
+pub(crate) struct ContractRuntimeMetrics {
     run_execute: Histogram,
     apply_effect: Histogram,
     commit_upgrade: Histogram,
@@ -247,17 +251,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            ContractRuntimeRequest::GetProtocolData {
-                protocol_version,
-                responder,
-            } => {
-                let result = self
-                    .engine_state
-                    .get_protocol_data(protocol_version)
-                    .map(|inner| inner.map(Box::new));
-
-                responder.respond(result).ignore()
-            }
             ContractRuntimeRequest::CommitGenesis {
                 chainspec,
                 responder,
@@ -470,32 +463,18 @@ where
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::MissingTrieKeys {
-                trie_key,
-                responder,
-            } => {
-                trace!(?trie_key, "missing_trie_keys request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
-                    metrics.read_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "missing_trie_keys response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
         }
     }
 }
 
 impl ContractRuntime {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
-        storage_config: WithDir<StorageConfig>,
+        storage_dir: &Path,
         contract_runtime_config: &Config,
+        wasm_config: WasmConfig,
+        system_config: SystemConfig,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -506,9 +485,8 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         };
 
-        let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
-            path.as_path(),
+            storage_dir,
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
         )?);
@@ -519,14 +497,12 @@ impl ContractRuntime {
             DatabaseFlags::empty(),
         )?);
 
-        let protocol_data_store = Arc::new(LmdbProtocolDataStore::new(
-            &environment,
-            None,
-            DatabaseFlags::empty(),
-        )?);
-
-        let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
-        let engine_config = EngineConfig::new(contract_runtime_config.max_query_depth());
+        let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+        let engine_config = EngineConfig::new(
+            contract_runtime_config.max_query_depth(),
+            wasm_config,
+            system_config,
+        );
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
@@ -559,7 +535,7 @@ impl ContractRuntime {
     }
 
     /// Retrieve trie keys for the integrity check.
-    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
+    pub(crate) fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
         let correlation_id = CorrelationId::new();
         match self
             .engine_state
@@ -633,7 +609,7 @@ impl ContractRuntime {
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
-    pub fn read_trie(
+    pub(crate) fn read_trie(
         &mut self,
         trie_key: Blake2bHash,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {

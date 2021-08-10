@@ -43,7 +43,7 @@ use casper_types::ProtocolVersion;
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
-    reactor::participating::Event as ParticipatingReactorEvent,
+    reactor::participating::ParticipatingEvent as ParticipatingReactorEvent,
     types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,

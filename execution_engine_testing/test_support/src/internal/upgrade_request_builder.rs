@@ -2,10 +2,7 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use casper_execution_engine::{
-    core::engine_state::UpgradeConfig,
-    shared::{newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig},
-};
+use casper_execution_engine::{core::engine_state::UpgradeConfig, shared::newtypes::Blake2bHash};
 use casper_types::{stored_value::StoredValue, EraId, Key, ProtocolVersion};
 
 #[derive(Default)]
@@ -13,8 +10,6 @@ pub struct UpgradeRequestBuilder {
     pre_state_hash: Blake2bHash,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
-    new_wasm_config: Option<WasmConfig>,
-    new_system_config: Option<SystemConfig>,
     activation_point: Option<EraId>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
@@ -49,10 +44,6 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_new_wasm_config(mut self, opcode_costs: WasmConfig) -> Self {
-        self.new_wasm_config = Some(opcode_costs);
-        self
-    }
     pub fn with_new_auction_delay(mut self, new_auction_delay: u64) -> Self {
         self.new_auction_delay = Some(new_auction_delay);
         self
@@ -76,11 +67,6 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_new_system_config(mut self, new_system_config: SystemConfig) -> Self {
-        self.new_system_config = Some(new_system_config);
-        self
-    }
-
     pub fn with_global_state_update(
         mut self,
         global_state_update: BTreeMap<Key, StoredValue>,
@@ -99,8 +85,6 @@ impl UpgradeRequestBuilder {
             self.pre_state_hash,
             self.current_protocol_version,
             self.new_protocol_version,
-            self.new_wasm_config,
-            self.new_system_config,
             self.activation_point,
             self.new_validator_slots,
             self.new_auction_delay,

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use clap::{App, ArgMatches, SubCommand};
 
 use casper_client::{DeployStrParams, Error};
@@ -6,6 +7,7 @@ use casper_node::rpcs::account::PutDeploy;
 use super::creation_common::{self, DisplayOrder};
 use crate::{command::ClientCommand, common, Success};
 
+#[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
     const ABOUT: &'static str = "Creates a deploy and sends it to the network for execution";
@@ -21,7 +23,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         creation_common::apply_common_creation_options(subcommand, true)
     }
 
-    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
+    async fn run(matches: &ArgMatches<'a>) -> Result<Success, Error> {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
         let maybe_rpc_id = common::rpc_id::get(matches);
@@ -34,6 +36,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         let gas_price = creation_common::gas_price::get(matches);
         let dependencies = creation_common::dependencies::get(matches);
         let chain_name = creation_common::chain_name::get(matches);
+        let session_account = common::session_account::get(matches)?;
 
         let session_str_params = creation_common::session_str_params(matches);
         let payment_str_params = creation_common::payment_str_params(matches);
@@ -49,10 +52,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
                 gas_price,
                 dependencies,
                 chain_name,
+                session_account: &session_account,
             },
             session_str_params,
             payment_str_params,
         )
+        .await
         .map(Success::from)
     }
 }

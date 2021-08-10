@@ -5,7 +5,7 @@ use std::hash::BuildHasher;
 
 use tracing::error;
 
-use casper_types::{bytesrepr, stored_value::StoredValue, Key, ProtocolVersion};
+use casper_types::{bytesrepr, stored_value::StoredValue, Key};
 
 use crate::{
     shared::{
@@ -14,7 +14,6 @@ use crate::{
         transform::{self, Transform},
     },
     storage::{
-        protocol_data::ProtocolData,
         transaction_source::{Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::{
@@ -77,17 +76,6 @@ pub trait StateProvider {
         state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Blake2bHash, Self::Error>;
-
-    fn put_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-        protocol_data: &ProtocolData,
-    ) -> Result<(), Self::Error>;
-
-    fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Self::Error>;
 
     fn empty_root(&self) -> Blake2bHash;
 

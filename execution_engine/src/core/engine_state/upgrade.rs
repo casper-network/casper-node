@@ -20,7 +20,7 @@ use crate::{
         system_config::SystemConfig,
         wasm_config::WasmConfig,
     },
-    storage::{global_state::StateProvider, protocol_data::ProtocolData},
+    storage::global_state::StateProvider,
 };
 
 #[derive(Debug, Clone)]
@@ -44,8 +44,6 @@ pub struct UpgradeConfig {
     pre_state_hash: Blake2bHash,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
-    wasm_config: Option<WasmConfig>,
-    system_config: Option<SystemConfig>,
     activation_point: Option<EraId>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
@@ -61,8 +59,6 @@ impl UpgradeConfig {
         pre_state_hash: Blake2bHash,
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
-        wasm_config: Option<WasmConfig>,
-        system_config: Option<SystemConfig>,
         activation_point: Option<EraId>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
@@ -75,8 +71,6 @@ impl UpgradeConfig {
             pre_state_hash,
             current_protocol_version,
             new_protocol_version,
-            wasm_config,
-            system_config,
             activation_point,
             new_validator_slots,
             new_auction_delay,
@@ -97,14 +91,6 @@ impl UpgradeConfig {
 
     pub fn new_protocol_version(&self) -> ProtocolVersion {
         self.new_protocol_version
-    }
-
-    pub fn wasm_config(&self) -> Option<&WasmConfig> {
-        self.wasm_config.as_ref()
-    }
-
-    pub fn system_config(&self) -> Option<&SystemConfig> {
-        self.system_config.as_ref()
     }
 
     pub fn activation_point(&self) -> Option<EraId> {
@@ -152,6 +138,8 @@ pub enum ProtocolUpgradeError {
     FailedToDisablePreviousVersion(String),
     #[error(transparent)]
     Bytesrepr(#[from] bytesrepr::Error),
+    #[error("Failed to insert system contract registry")]
+    FailedToCreateSystemRegistry,
 }
 
 pub(crate) struct SystemUpgrader<S>
@@ -159,7 +147,6 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
-    protocol_data: ProtocolData,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -169,12 +156,10 @@ where
 {
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
-        protocol_data: ProtocolData,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
-            protocol_data,
             tracking_copy,
         }
     }
@@ -183,28 +168,27 @@ where
     pub(crate) fn upgrade_system_contracts_major_version(
         &self,
         correlation_id: CorrelationId,
+        mint_hash: &ContractHash,
+        auction_hash: &ContractHash,
+        handle_payment_hash: &ContractHash,
+        standard_payment_hash: &ContractHash,
     ) -> Result<(), ProtocolUpgradeError> {
+        self.store_contract(correlation_id, *mint_hash, MINT, mint::mint_entry_points())?;
         self.store_contract(
             correlation_id,
-            self.protocol_data.mint(),
-            MINT,
-            mint::mint_entry_points(),
-        )?;
-        self.store_contract(
-            correlation_id,
-            self.protocol_data.auction(),
+            *auction_hash,
             AUCTION,
             auction::auction_entry_points(),
         )?;
         self.store_contract(
             correlation_id,
-            self.protocol_data.handle_payment(),
+            *handle_payment_hash,
             HANDLE_PAYMENT,
             handle_payment::handle_payment_entry_points(),
         )?;
         self.store_contract(
             correlation_id,
-            self.protocol_data.standard_payment(),
+            *standard_payment_hash,
             STANDARD_PAYMENT,
             standard_payment::standard_payment_entry_points(),
         )?;

@@ -1,3 +1,4 @@
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
@@ -11,11 +12,15 @@ use casper_engine_test_support::{
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
-use casper_execution_engine::shared::{
-    host_function_costs::{HostFunction, HostFunctionCosts},
-    opcode_costs::OpcodeCosts,
-    storage_costs::StorageCosts,
-    wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+use casper_execution_engine::{
+    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
+    shared::{
+        host_function_costs::{HostFunction, HostFunctionCosts},
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        system_config::SystemConfig,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+    },
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -25,13 +30,12 @@ use casper_types::{
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
     runtime_args,
+    stored_value::StoredValue,
     system::{
         auction::{self, DelegationRate},
         AUCTION,
     },
 };
-
-use num_rational::Ratio;
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(0);
 const STORAGE_COSTS_NAME: &str = "storage_costs.wasm";
@@ -133,6 +137,7 @@ static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
         *NEW_HOST_FUNCTION_COSTS,
     )
 });
+
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     ProtocolVersion::from_parts(
         DEFAULT_PROTOCOL_VERSION.value().major,
@@ -154,10 +159,15 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
         .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
-        .with_new_wasm_config(*STORAGE_COSTS_ONLY)
         .build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        *STORAGE_COSTS_ONLY,
+        SystemConfig::default(),
+    );
+
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     builder
 }

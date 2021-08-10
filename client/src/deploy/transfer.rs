@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use clap::{App, Arg, ArgMatches, SubCommand};
 
 use casper_client::{DeployStrParams, Error};
@@ -85,6 +86,7 @@ pub(super) mod transfer_id {
 
 pub struct Transfer {}
 
+#[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     const NAME: &'static str = "transfer";
     const ABOUT: &'static str = "Transfers funds between purses";
@@ -102,7 +104,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         creation_common::apply_common_creation_options(subcommand, true)
     }
 
-    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
+    async fn run(matches: &ArgMatches<'a>) -> Result<Success, Error> {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
         let amount = amount::get(matches);
@@ -119,6 +121,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let gas_price = creation_common::gas_price::get(matches);
         let dependencies = creation_common::dependencies::get(matches);
         let chain_name = creation_common::chain_name::get(matches);
+        let session_account = common::session_account::get(matches)?;
 
         let payment_str_params = creation_common::payment_str_params(matches);
 
@@ -136,9 +139,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
                 gas_price,
                 dependencies,
                 chain_name,
+                session_account: &session_account,
             },
             payment_str_params,
         )
+        .await
         .map(Success::from)
     }
 }

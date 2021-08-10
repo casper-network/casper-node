@@ -23,7 +23,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     stored_value::StoredValue,
-    system::{mint::ARG_AMOUNT, CallStackElement},
+    system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
     EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, U512,
 };
@@ -31,12 +31,12 @@ use casper_types::{
 use super::error;
 use crate::{
     core::{
-        engine_state::{Error, ExecError, MAX_PAYMENT_AMOUNT},
+        engine_state::{genesis::SystemContractRegistry, Error, ExecError, MAX_PAYMENT_AMOUNT},
         execution,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{newtypes::CorrelationId, wasm, wasm_prep, wasm_prep::Preprocessor},
-    storage::{global_state::StateReader, protocol_data::ProtocolData},
+    storage::global_state::StateReader,
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
@@ -126,7 +126,7 @@ impl ExecutableDeployItem {
         correlation_id: CorrelationId,
         preprocessor: &Preprocessor,
         protocol_version: &ProtocolVersion,
-        protocol_data: &ProtocolData,
+        system_contract_registry: SystemContractRegistry,
         phase: Phase,
     ) -> Result<DeployMetadata, Error>
     where
@@ -148,7 +148,13 @@ impl ExecutableDeployItem {
                 if module_bytes.is_empty() && phase == Phase::Payment =>
             {
                 let base_key = account_hash.into();
-                let contract_hash = protocol_data.standard_payment();
+                let contract_hash =
+                    *system_contract_registry
+                        .get(STANDARD_PAYMENT)
+                        .ok_or_else(|| {
+                            error!("Missing handle payment contract hash");
+                            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+                        })?;
                 let module = wasm::do_nothing_module(preprocessor)?;
                 return Ok(DeployMetadata {
                     kind: DeployKind::System,
@@ -318,7 +324,10 @@ impl ExecutableDeployItem {
                 error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        if protocol_data.system_contracts().contains(&contract_hash) {
+        if system_contract_registry
+            .values()
+            .any(|value| *value == contract_hash)
+        {
             let module = wasm::do_nothing_module(preprocessor)?;
             return Ok(DeployMetadata {
                 kind: DeployKind::System,

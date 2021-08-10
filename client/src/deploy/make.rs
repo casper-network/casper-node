@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use clap::{App, ArgMatches, SubCommand};
 
 use casper_client::{DeployStrParams, Error};
@@ -7,6 +8,7 @@ use crate::{command::ClientCommand, common, Success};
 
 pub struct MakeDeploy;
 
+#[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
     const NAME: &'static str = "make-deploy";
     const ABOUT: &'static str =
@@ -28,7 +30,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         creation_common::apply_common_creation_options(subcommand, false)
     }
 
-    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
+    async fn run(matches: &ArgMatches<'a>) -> Result<Success, Error> {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
         let secret_key = common::secret_key::get(matches);
@@ -42,6 +44,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         let payment_str_params = creation_common::payment_str_params(matches);
 
         let maybe_output_path = creation_common::output::get(matches).unwrap_or_default();
+        let session_account = common::session_account::get(matches).unwrap_or_default();
+
         let force = common::force::get(matches);
 
         casper_client::make_deploy(
@@ -53,6 +57,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
                 gas_price,
                 dependencies,
                 chain_name,
+                session_account: &session_account,
             },
             session_str_params,
             payment_str_params,

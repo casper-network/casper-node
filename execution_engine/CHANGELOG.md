@@ -13,8 +13,16 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added genesis validation step to ensure there are more genesis validators than validator slots.
+
 ### Changed
 * Support building and testing using stable Rust.
+* Increase price of `create_purse` to 2.5CSPR.
+* Improve doc comments to clarify behavior of the bidding functionality.
+
+### Fixed
+* Fix a case where user could potentially supply a refund purse as a payment purse.
 
 
 

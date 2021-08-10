@@ -48,7 +48,12 @@ where
         target: URef,
         amount: U512,
     ) -> Result<(), Error> {
-        let mint_contract_key = self.get_mint_contract();
+        let mint_contract_key = match self.get_mint_contract() {
+            Ok(mint_hash) => mint_hash,
+            Err(exec_error) => {
+                return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))
+            }
+        };
         match self.mint_transfer(mint_contract_key, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(_mint_error)) => Err(Error::Transfer),

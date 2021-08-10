@@ -5,13 +5,11 @@ use crate::shared::{
     newtypes::{Blake2bHash, CorrelationId},
     transform::Transform,
 };
-use casper_types::{stored_value::StoredValue, Key, ProtocolVersion};
+use casper_types::{stored_value::StoredValue, Key};
 
 use crate::storage::{
     error::{self, in_memory},
     global_state::{commit, StateProvider, StateReader},
-    protocol_data::ProtocolData,
-    protocol_data_store::in_memory::InMemoryProtocolDataStore,
     store::Store,
     transaction_source::{
         in_memory::{InMemoryEnvironment, InMemoryReadTransaction, InMemoryReadWriteTransaction},
@@ -30,7 +28,7 @@ use crate::storage::{
 pub struct InMemoryGlobalState {
     pub environment: Arc<InMemoryEnvironment>,
     pub trie_store: Arc<InMemoryTrieStore>,
-    pub protocol_data_store: Arc<InMemoryProtocolDataStore>,
+
     pub empty_root_hash: Blake2bHash,
 }
 
@@ -46,7 +44,6 @@ impl InMemoryGlobalState {
     pub fn empty() -> Result<Self, error::Error> {
         let environment = Arc::new(InMemoryEnvironment::new());
         let trie_store = Arc::new(InMemoryTrieStore::new(&environment, None));
-        let protocol_data_store = Arc::new(InMemoryProtocolDataStore::new(&environment, None));
         let root_hash: Blake2bHash = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
             let mut txn = environment.create_read_write_txn()?;
@@ -54,12 +51,7 @@ impl InMemoryGlobalState {
             txn.commit()?;
             root_hash
         };
-        Ok(InMemoryGlobalState::new(
-            environment,
-            trie_store,
-            protocol_data_store,
-            root_hash,
-        ))
+        Ok(InMemoryGlobalState::new(environment, trie_store, root_hash))
     }
 
     /// Creates a state from an existing environment, trie_Store, and root_hash.
@@ -67,13 +59,12 @@ impl InMemoryGlobalState {
     pub(crate) fn new(
         environment: Arc<InMemoryEnvironment>,
         trie_store: Arc<InMemoryTrieStore>,
-        protocol_data_store: Arc<InMemoryProtocolDataStore>,
         empty_root_hash: Blake2bHash,
     ) -> Self {
         InMemoryGlobalState {
             environment,
             trie_store,
-            protocol_data_store,
+
             empty_root_hash,
         }
     }
@@ -224,27 +215,6 @@ impl StateProvider for InMemoryGlobalState {
             effects,
         )
         .map_err(Into::into)
-    }
-
-    fn put_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-        protocol_data: &ProtocolData,
-    ) -> Result<(), Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        self.protocol_data_store
-            .put(&mut txn, &protocol_version, protocol_data)?;
-        txn.commit().map_err(Into::into)
-    }
-
-    fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let result = self.protocol_data_store.get(&txn, &protocol_version)?;
-        txn.commit()?;
-        Ok(result)
     }
 
     fn empty_root(&self) -> Blake2bHash {

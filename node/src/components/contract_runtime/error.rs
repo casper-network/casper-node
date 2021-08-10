@@ -8,13 +8,13 @@ use casper_types::{bytesrepr, stored_value::TypeMismatch, Key};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
-    crypto::hash::Digest,
     types::{error::BlockCreationError, FinalizedBlock},
 };
+use casper_execution_engine::core::engine_state::GetEraValidatorsError;
 
 /// Error returned from mis-configuring the contract runtime component.
 #[derive(Debug, thiserror::Error)]
-pub enum ConfigError {
+pub(crate) enum ConfigError {
     /// Error initializing the LMDB environment.
     #[error("failed to initialize LMDB environment for contract runtime: {0}")]
     Lmdb(#[from] StorageLmdbError),
@@ -25,7 +25,7 @@ pub enum ConfigError {
 
 /// An error raised by a contract runtime variant.
 #[derive(Debug, thiserror::Error)]
-pub enum BlockExecutionError {
+pub(crate) enum BlockExecutionError {
     /// Currently the contract runtime can only execute one commit at a time, so we cannot handle
     /// more than one execution result.
     #[error("More than one execution result")]
@@ -50,25 +50,17 @@ pub enum BlockExecutionError {
     #[error(transparent)]
     StepError(#[from] StepError),
     /// An error that occurred when committing execution results to the trie.
-    #[error(transparent)]
-    CommitError(#[from] CommitError),
+
     /// An error that occurred while creating a block.
     #[error(transparent)]
     BlockCreationError(#[from] BlockCreationError),
 }
 
-/// An error emitted by the execution engine on commit
+/// An error raised when block execution events are being created for the reactor.
 #[derive(Debug, thiserror::Error)]
-pub enum CommitError {
+pub(crate) enum BlockExecutionEventsError {
     #[error(transparent)]
-    EngineStateError(#[from] EngineStateError),
-
-    #[error("Root not found: {0:?}")]
-    RootNotFound(Digest),
-    #[error("Key not found: {0}")]
-    KeyNotFound(Key),
-    #[error("Type mismatch: {0}")]
-    TypeMismatch(TypeMismatch),
-    #[error("Serialization: {0}")]
-    Serialization(bytesrepr::Error),
+    BlockExecutionError(#[from] BlockExecutionError),
+    #[error(transparent)]
+    GetEraValidatorsError(#[from] GetEraValidatorsError),
 }

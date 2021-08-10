@@ -1,18 +1,27 @@
 use std::collections::BTreeMap;
 
+use num_rational::Ratio;
+
 use casper_engine_test_support::internal::{
     InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
 };
 
-use casper_execution_engine::shared::{
-    host_function_costs::HostFunctionCosts,
-    opcode_costs::{
-        OpcodeCosts, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
-        DEFAULT_CONTROL_FLOW_COST, DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST,
-        DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
-        DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MUL_COST,
-        DEFAULT_NOP_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST,
+use casper_execution_engine::{
+    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
+    shared::{
+        host_function_costs::HostFunctionCosts,
+        opcode_costs::{
+            OpcodeCosts, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
+            DEFAULT_CONTROL_FLOW_COST, DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST,
+            DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
+            DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+            DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST,
+            DEFAULT_UNREACHABLE_COST,
+        },
+        storage_costs::StorageCosts,
+        system_config::SystemConfig,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
     storage_costs::StorageCosts,
     wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
@@ -27,7 +36,6 @@ use casper_types::{
     },
     CLValue, EraId, ProtocolVersion, U512,
 };
-use num_rational::Ratio;
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
@@ -83,18 +91,14 @@ fn should_upgrade_only_protocol_version() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    let upgraded_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
+    let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
         *DEFAULT_WASM_CONFIG,
-        *upgraded_protocol_data.wasm_config(),
+        *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal original costs"
     );
 }
@@ -117,23 +121,24 @@ fn should_allow_only_wasm_costs_patch_version() {
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasm_config(new_wasm_config)
             .build()
     };
 
+    let engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        new_wasm_config,
+        SystemConfig::default(),
+    );
+
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
         .expect_upgrade_success();
 
-    let upgraded_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have upgraded protocol data");
+    let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
         new_wasm_config,
-        *upgraded_protocol_data.wasm_config(),
+        *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal new costs"
     );
 }
@@ -156,23 +161,24 @@ fn should_allow_only_wasm_costs_minor_version() {
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasm_config(new_wasm_config)
             .build()
     };
 
+    let engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        new_wasm_config,
+        SystemConfig::default(),
+    );
+
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
         .expect_upgrade_success();
 
-    let upgraded_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have upgraded protocol data");
+    let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
         new_wasm_config,
-        *upgraded_protocol_data.wasm_config(),
+        *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal new costs"
     );
 }
@@ -195,18 +201,14 @@ fn should_not_downgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    let upgraded_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
+    let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
         *DEFAULT_WASM_CONFIG,
-        *upgraded_protocol_data.wasm_config(),
+        *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal original costs"
     );
 
@@ -218,7 +220,8 @@ fn should_not_downgrade() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut downgrade_request);
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut downgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(1).expect("should have response");
 
@@ -249,7 +252,8 @@ fn should_not_skip_major_versions() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -277,7 +281,8 @@ fn should_allow_skip_minor_versions() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -321,7 +326,7 @@ fn should_upgrade_only_validator_slots() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
@@ -376,7 +381,7 @@ fn should_upgrade_only_auction_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_auction_delay: u64 = builder
@@ -431,7 +436,7 @@ fn should_upgrade_only_locked_funds_period() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_locked_funds_period_millis: u64 = builder
@@ -486,7 +491,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_round_seigniorage_rate: Ratio<U512> = builder
@@ -548,7 +553,7 @@ fn should_upgrade_only_unbonding_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
@@ -612,7 +617,7 @@ fn should_apply_global_state_upgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder

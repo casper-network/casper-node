@@ -36,10 +36,7 @@ where
         let func = FunctionIndex::try_from(index).expect("unknown function index");
         let mut scoped_instrumenter = ScopedInstrumenter::new(func);
 
-        let host_function_costs = self
-            .protocol_data()
-            .wasm_config()
-            .take_host_function_costs();
+        let host_function_costs = self.config.wasm_config().take_host_function_costs();
 
         match func {
             FunctionIndex::ReadFuncIndex => {

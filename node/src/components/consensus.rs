@@ -48,7 +48,7 @@ use crate::{
 };
 
 pub(crate) use cl_context::ClContext;
-pub use config::Config;
+pub(crate) use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
@@ -58,7 +58,7 @@ use traits::NodeIdT;
 pub(crate) use era_supervisor::oldest_bonded_era;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
-pub enum ConsensusMessage {
+pub(crate) enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
     Protocol { era_id: EraId, payload: Vec<u8> },
     /// A request for evidence against the specified validator, from any era that is still bonded
@@ -93,7 +93,7 @@ pub struct ResolveValidity<I> {
 
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
-pub enum Event<I> {
+pub(crate) enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
     /// A scheduled event to be handled by a specified era.
@@ -241,7 +241,7 @@ impl<I: Debug> Display for Event<I> {
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
 /// can work with.
-pub trait ReactorEventT<I>:
+pub(crate) trait ReactorEventT<I>:
     ReactorEvent
     + From<Event<I>>
     + Send

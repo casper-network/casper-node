@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Clone, DataSize, Debug, PartialEq)]
-pub enum FetchResult<T, I> {
+pub(crate) enum FetchResult<T, I> {
     FromStorage(Box<T>),
     FromPeer(Box<T>, I),
 }
@@ -20,7 +20,7 @@ pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T, NodeId>>>;
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]
-pub enum Event<T: Item> {
+pub(crate) enum Event<T: Item> {
     /// The initiating event to fetch an item by its id.
     Fetch {
         id: T::Id,
