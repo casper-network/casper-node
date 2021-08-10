@@ -365,6 +365,7 @@ pub mod gens {
     use proptest::prelude::*;
 
     use casper_types::{
+        account::gens::account_arb,
         gens::{
             cl_value_arb, contract_arb, contract_package_arb, contract_wasm_arb, deploy_info_arb,
             transfer_arb,
@@ -373,7 +374,6 @@ pub mod gens {
     };
 
     use super::StoredValue;
-    use crate::shared::account::gens::account_arb;
 
     pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         prop_oneof![
