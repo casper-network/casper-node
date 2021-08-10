@@ -862,6 +862,7 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 // asymmetric_key signing verification.
 fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
     if deploy.approvals.is_empty() {
+        warn!(?deploy, "deploy has no approvals");
         return Err(DeployValidationFailure::EmptyApprovals);
     }
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
@@ -878,9 +879,6 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
         return Err(DeployValidationFailure::InvalidDeployHash);
     }
 
-    // We don't need to check for an empty set here. EE checks that the correct number and weight of
-    // signatures are provided when executing the deploy, so all we need to do here is check that
-    // any provided signatures are valid.
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(&deploy.hash, &approval.signature, &approval.signer) {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
