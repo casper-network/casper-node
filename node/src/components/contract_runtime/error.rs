@@ -4,7 +4,6 @@ use casper_execution_engine::{
     core::engine_state::{Error as EngineStateError, StepError},
     storage::error::lmdb::Error as StorageLmdbError,
 };
-use casper_types::{bytesrepr, stored_value::TypeMismatch, Key};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,

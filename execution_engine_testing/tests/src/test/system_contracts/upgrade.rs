@@ -23,8 +23,6 @@ use casper_execution_engine::{
         system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
-    storage_costs::StorageCosts,
-    wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
 };
 use casper_types::{
     stored_value::StoredValue,

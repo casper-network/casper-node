@@ -24,7 +24,6 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    stored_value::StoredValue,
     CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]

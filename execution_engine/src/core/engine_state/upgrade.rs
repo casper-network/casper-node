@@ -15,11 +15,7 @@ use casper_types::{
 
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::global_state::StateProvider,
 };
 
