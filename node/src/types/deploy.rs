@@ -139,8 +139,8 @@ pub enum DeployValidationFailure {
     #[error("the provided hash does not match the actual hash of the deploy")]
     InvalidDeployHash,
 
-    /// The deploy has zero approvals
-    #[error("the deploy has zero approvals")]
+    /// The deploy has no approvals.
+    #[error("the deploy has no approvals")]
     EmptyApprovals,
 
     /// Invalid approval.
