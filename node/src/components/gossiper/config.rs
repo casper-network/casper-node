@@ -164,13 +164,16 @@ mod tests {
             MAX_SATURATION_LIMIT_PERCENT + 1,
             TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
                 .unwrap()
-                .seconds(),
+                .seconds()
+                .unwrap(),
             TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT)
                 .unwrap()
-                .seconds(),
+                .seconds()
+                .unwrap(),
             TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT)
                 .unwrap()
-                .seconds(),
+                .seconds()
+                .unwrap(),
         )
         .is_err())
     }
