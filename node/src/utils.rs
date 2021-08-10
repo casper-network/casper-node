@@ -3,10 +3,10 @@
 
 mod counting_channel;
 mod display_error;
-pub mod ds;
+pub(crate) mod ds;
 mod external;
-pub mod milliseconds;
-pub mod pid_file;
+pub(crate) mod milliseconds;
+pub(crate) mod pid_file;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
@@ -29,8 +29,6 @@ use std::{env, str::FromStr};
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
-use libc::{c_long, sysconf, _SC_PAGESIZE};
-use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -38,23 +36,9 @@ use tracing::{error, warn};
 pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, CountingSender};
 pub(crate) use display_error::display_error;
 #[cfg(test)]
-pub use external::RESOURCES_PATH;
-pub use external::{External, LoadError, Loadable};
+pub(crate) use external::RESOURCES_PATH;
+pub(crate) use external::{External, LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
-
-/// Sensible default for many if not all systems.
-const DEFAULT_PAGE_SIZE: usize = 4096;
-
-/// OS page size.
-pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
-    // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
-    let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
-    if value <= 0 {
-        DEFAULT_PAGE_SIZE
-    } else {
-        value as usize
-    }
-});
 
 /// DNS resolution error.
 #[derive(Debug, Error)]

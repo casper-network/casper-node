@@ -3,6 +3,7 @@
 source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/views/utils.sh
 source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
+source "$NCTL"/sh/scenarios/common/itst.sh
 
 # Exit if any of the commands fail.
 set -e

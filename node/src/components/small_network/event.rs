@@ -27,7 +27,7 @@ const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
 /// A small network event.
 #[derive(Debug, From, Serialize)]
-pub enum Event<P> {
+pub(crate) enum Event<P> {
     /// The TLS handshake completed on the incoming connection.
     IncomingConnection {
         incoming: Box<IncomingConnection<P>>,
@@ -82,8 +82,6 @@ pub enum Event<P> {
     /// We received a peer's public listening address via gossip.
     PeerAddressReceived(GossipedAddress),
 
-    /// We are due for a sweep of the connection symmetries.
-    SweepSymmetries,
     /// Housekeeping for the outgoing manager.
     SweepOutgoing,
 
@@ -149,9 +147,6 @@ impl<P: Display> Display for Event<P> {
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
             }
-            Event::SweepSymmetries => {
-                write!(f, "sweep connection symmetries")
-            }
             Event::LinearChainAnnouncement(ann) => {
                 write!(f, "linear chain announcement: {}", ann)
             }
@@ -172,7 +167,7 @@ impl<P: Display> Display for Event<P> {
 
 /// Outcome of an incoming connection negotiation.
 #[derive(Debug, Serialize)]
-pub enum IncomingConnection<P> {
+pub(crate) enum IncomingConnection<P> {
     /// The connection failed early on, before even a peer's [`NodeId`] could be determined.
     FailedEarly {
         /// Remote port the peer dialed us from.
@@ -244,7 +239,7 @@ impl<P> Display for IncomingConnection<P> {
 
 /// Outcome of an outgoing connection attempt.
 #[derive(Debug, Serialize)]
-pub enum OutgoingConnection<P> {
+pub(crate) enum OutgoingConnection<P> {
     /// The outgoing connection failed early on, before a peer's [`NodeId`] could be determined.
     FailedEarly {
         /// Address that was dialed.

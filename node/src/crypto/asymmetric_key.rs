@@ -13,12 +13,15 @@ use k256::elliptic_curve::sec1::ToEncodedPoint;
 
 use casper_types::{PublicKey, SecretKey, Signature};
 
-pub use super::{Error, Result};
+pub(crate) use super::{Error, Result};
+
+#[cfg(test)]
 use crate::crypto::AsymmetricKeyExt;
 
 /// Generates an Ed25519 keypair using the operating system's cryptographically secure random number
 /// generator.
-pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
+#[cfg(test)]
+pub(crate) fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
     let secret_key = SecretKey::generate_ed25519().unwrap();
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)

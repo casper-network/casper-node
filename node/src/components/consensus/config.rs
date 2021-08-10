@@ -16,11 +16,11 @@ use crate::{
 #[derive(DataSize, Debug, Deserialize, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub(crate) struct Config {
     /// Path to secret key file.
-    pub secret_key_path: External<Arc<SecretKey>>,
+    pub(crate) secret_key_path: External,
     /// Highway-specific node configuration.
-    pub highway: HighwayConfig,
+    pub(crate) highway: HighwayConfig,
 }
 
 impl Default for Config {
@@ -39,8 +39,8 @@ impl Config {
         &self,
         root: P,
     ) -> Result<(Arc<SecretKey>, PublicKey), LoadError<<Arc<SecretKey> as Loadable>::Error>> {
-        let secret_signing_key = self.secret_key_path.clone().load(root)?;
-        let public_key = PublicKey::from(secret_signing_key.as_ref());
+        let secret_signing_key: Arc<SecretKey> = self.secret_key_path.clone().load(root)?;
+        let public_key: PublicKey = PublicKey::from(secret_signing_key.as_ref());
         Ok((secret_signing_key, public_key))
     }
 }
