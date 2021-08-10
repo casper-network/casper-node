@@ -10,7 +10,6 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-
 ## [Unreleased]
 
 ### Changed
@@ -21,7 +20,16 @@ All notable changes to this project will be documented in this file.  The format
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 
+## [1.3.2] - 2021-08-02
 
+### Fixed
+* Resolve an issue in the `state_get_dictionary_item` JSON-RPC when a `ContractHash` is used.
+* Corrected network state engine to hold in blocked state for full 10 minutes when encountering out of order race condition.
+
+## [1.3.1] - 2021-07-26
+
+### Fixed
+* Parametrized sync_timeout and increased value to stop possible post upgrade restart loop.
 
 ## [1.3.0] - 2021-07-19
 
