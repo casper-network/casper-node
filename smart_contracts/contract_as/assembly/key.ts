@@ -4,9 +4,11 @@ import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
 import {CLValue} from "./clvalue";
 import {Error, ErrorCode} from "./error";
-import {checkTypedArrayEqual, typedToArray} from "./utils";
+import {checkTypedArrayEqual, typedToArray, encodeUTF8} from "./utils";
 import {Ref} from "./ref";
 import {Result, Error as BytesreprError} from "./bytesrepr";
+
+const BLAKE2B_DIGEST_LENGTH: usize = 32;
 
 /**
  * Enum representing a variant of a [[Key]] - Account, Hash or URef.
@@ -40,6 +42,34 @@ export class AccountHash {
     notEqualsTo(other: AccountHash): bool {
         return !this.equalsTo(other);
     }
+
+    static fromPublicKey(publicKey:PublicKey) : AccountHash{
+
+        let algorithmName:string = publicKey.getAlgorithmName();
+        let algorithmNameBytes = encodeUTF8 (algorithmName);
+        let publicKeyBytes = publicKey.getRawBytes();
+        let dataLength = algorithmNameBytes.length + publicKeyBytes.length +1;
+        
+        let data = new Array<u8>(dataLength);
+        for(let i=0;i<algorithmNameBytes.length;i++){
+            data[i]=algorithmNameBytes[i];
+        }
+
+        data[algorithmNameBytes.length]=0;
+
+        for(let i=algorithmNameBytes.length+1;i<dataLength;i++){
+            data[i]=publicKeyBytes[i];
+        }
+
+        let ret = new Uint8Array(BLAKE2B_DIGEST_LENGTH);
+        let error = Error.fromResult( externals.casper_blake2b(data.dataStart, data.length, ret.dataStart, ret.length));
+
+        if(error != null){
+            error.revert();
+        }
+        return new AccountHash(ret);
+    }
+
 
     /** Deserializes a `AccountHash` from an array of bytes. */
     static fromBytes(bytes: Uint8Array): Result<AccountHash> {
@@ -178,9 +208,8 @@ export class Key {
             bytes = bytes.concat((<AccountHash>this.account).toBytes());
             return bytes;
         }
-        else {
-            return <Array<u8>>unreachable();
-        }
+        unreachable();
+        return [];
     }
 
     /** Checks whether the `Key` is of [[KeyVariant]].UREF_ID. */
@@ -204,7 +233,7 @@ export class Key {
                 return null;
             }
             error.revert();
-            return <Uint8Array>unreachable();
+            unreachable();
         }
         // TODO: How can we have `read<T>` that would deserialize host bytes into T?
         return readHostBuffer(valueSize[0]);

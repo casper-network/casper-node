@@ -6,13 +6,11 @@ use crate::shared::{
     stored_value::StoredValue,
     transform::Transform,
 };
-use casper_types::{Key, ProtocolVersion};
+use casper_types::Key;
 
 use crate::storage::{
     error::{self, in_memory},
-    global_state::{commit, CommitResult, StateProvider, StateReader},
-    protocol_data::ProtocolData,
-    protocol_data_store::in_memory::InMemoryProtocolDataStore,
+    global_state::{commit, StateProvider, StateReader},
     store::Store,
     transaction_source::{
         in_memory::{InMemoryEnvironment, InMemoryReadTransaction, InMemoryReadWriteTransaction},
@@ -31,7 +29,7 @@ use crate::storage::{
 pub struct InMemoryGlobalState {
     pub environment: Arc<InMemoryEnvironment>,
     pub trie_store: Arc<InMemoryTrieStore>,
-    pub protocol_data_store: Arc<InMemoryProtocolDataStore>,
+
     pub empty_root_hash: Blake2bHash,
 }
 
@@ -47,7 +45,6 @@ impl InMemoryGlobalState {
     pub fn empty() -> Result<Self, error::Error> {
         let environment = Arc::new(InMemoryEnvironment::new());
         let trie_store = Arc::new(InMemoryTrieStore::new(&environment, None));
-        let protocol_data_store = Arc::new(InMemoryProtocolDataStore::new(&environment, None));
         let root_hash: Blake2bHash = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
             let mut txn = environment.create_read_write_txn()?;
@@ -55,12 +52,7 @@ impl InMemoryGlobalState {
             txn.commit()?;
             root_hash
         };
-        Ok(InMemoryGlobalState::new(
-            environment,
-            trie_store,
-            protocol_data_store,
-            root_hash,
-        ))
+        Ok(InMemoryGlobalState::new(environment, trie_store, root_hash))
     }
 
     /// Creates a state from an existing environment, trie_Store, and root_hash.
@@ -68,13 +60,12 @@ impl InMemoryGlobalState {
     pub(crate) fn new(
         environment: Arc<InMemoryEnvironment>,
         trie_store: Arc<InMemoryTrieStore>,
-        protocol_data_store: Arc<InMemoryProtocolDataStore>,
         empty_root_hash: Blake2bHash,
     ) -> Self {
         InMemoryGlobalState {
             environment,
             trie_store,
-            protocol_data_store,
+
             empty_root_hash,
         }
     }
@@ -216,36 +207,15 @@ impl StateProvider for InMemoryGlobalState {
         correlation_id: CorrelationId,
         prestate_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, Self::Error> {
-        let commit_result = commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
+    ) -> Result<Blake2bHash, Self::Error> {
+        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
             &self.environment,
             &self.trie_store,
             correlation_id,
             prestate_hash,
             effects,
-        )?;
-        Ok(commit_result)
-    }
-
-    fn put_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-        protocol_data: &ProtocolData,
-    ) -> Result<(), Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        self.protocol_data_store
-            .put(&mut txn, &protocol_version, protocol_data)?;
-        txn.commit().map_err(Into::into)
-    }
-
-    fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let result = self.protocol_data_store.get(&txn, &protocol_version)?;
-        txn.commit()?;
-        Ok(result)
+        )
+        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Blake2bHash {
@@ -387,10 +357,7 @@ mod tests {
             .map(|TestPair { key, value }| (key, Transform::Write(value)))
             .collect();
 
-        let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success { state_root, .. } => state_root,
-            _ => panic!("commit failed"),
-        };
+        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
@@ -417,10 +384,7 @@ mod tests {
             tmp
         };
 
-        let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success { state_root, .. } => state_root,
-            _ => panic!("commit failed"),
-        };
+        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
@@ -453,6 +417,6 @@ mod tests {
             210, 91, 221, 123, 200, 135, 102, 194, 204, 46, 76, 13, 254,
         ];
         let (_, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[]).unwrap();
-        assert_eq!(expected_bytes, root_hash.to_vec())
+        assert_eq!(expected_bytes, root_hash.into_vec())
     }
 }

@@ -13,14 +13,27 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* Support building and testing using stable Rust.
+* Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
+
+### Removed
+* The unofficial support for nix-related derivations and support tooling has been removed.
+* Experimental, nix-based kubernetes testing support has been removed.
+
+
+
+## [1.3.0] - 2021-07-19
+
 ### Added
-* Add support for providing historical auction information via the addition of an optional block ID in the `state_get_auction_info` JSON-RPC. 
+* Add support for providing historical auction information via the addition of an optional block ID in the `state_get_auction_info` JSON-RPC.
 * Exclude inactive validators from proposing blocks.
 * Add validation of the `[protocol]` configuration on startup, to ensure the contained values make sense.
 * Add optional outgoing bandwidth limiter to the networking component, controllable via new `[network][max_outgoing_byte_rate_non_validators]` config option.
 * Add optional incoming message limiter to the networking component, controllable via new `[network][max_incoming_message_rate_non_validators]` config option.
 * Add optional in-memory deduplication of deploys, controllable via new `[storage]` config options `[enable_mem_deduplication]` and `[mem_pool_prune_interval]`.
 * Add a new event stream to SSE server accessed via `<IP:Port>/events/deploys` which emits deploys in full as they are accepted.
+* Events now log their ancestors, so detailed tracing of events is possible.
 
 ### Changed
 * Major rewrite of the network component, covering connection negotiation and management, periodic housekeeping and logging.
@@ -32,11 +45,13 @@ All notable changes to this project will be documented in this file.  The format
 * Persist event stream event index across node restarts.
 * Separate transfers from other deploys in the block proposer.
 * Enable getting validators for future eras in `EffectBuilder::get_era_validators()`.
-* Replace config option `[block_propser][deploy_delay]` (which specified a fixed delay before proposing a deploy) with a gossip-finished announcement.
 * Improve logging around stalled consensus detection.
 * Skip storage integrity checks if the node didn't previously crash.
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
 * Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
+* Major rewrite of the contract runtime component.
+* Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.
+* At log level `DEBUG`, single events are no longer logged (use `TRACE` instead).
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
@@ -50,6 +65,8 @@ All notable changes to this project will be documented in this file.  The format
 * Shut down SSE event streams gracefully.
 * Limit the maximum number of clients connected to the event stream server via the `[event_stream_server][max_concurrent_subscribers]` config option.
 * Avoid emitting duplicate events in the event stream.
+* Change `BlockIdentifier` params in the Open-RPC schema to be optional.
+* Asymmetric connections are now swept regularly again.
 
 
 
@@ -117,7 +134,7 @@ All notable changes to this project will be documented in this file.  The format
 ## [1.1.1] - 2021-04-19
 
 ### Changed
-* Ensure consistent validation when adding deploys and transfers while proposing and validating blocks. 
+* Ensure consistent validation when adding deploys and transfers while proposing and validating blocks.
 
 
 
@@ -149,7 +166,8 @@ All notable changes to this project will be documented in this file.  The format
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.2.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1

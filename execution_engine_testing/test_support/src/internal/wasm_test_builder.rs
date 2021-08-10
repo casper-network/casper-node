@@ -21,9 +21,9 @@ use casper_execution_engine::{
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepResult},
-            BalanceResult, EngineConfig, EngineState, GenesisResult, GetBidsRequest, QueryRequest,
-            QueryResult, UpgradeConfig, UpgradeResult,
+            step::{StepRequest, StepSuccess},
+            BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
+            QueryResult, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -39,10 +39,8 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, CommitResult, StateProvider,
-            StateReader,
+            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider, StateReader,
         },
-        protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment,
         trie::merkle_proof::TrieMerkleProof,
         trie_store::lmdb::LmdbTrieStore,
@@ -58,6 +56,7 @@ use casper_types::{
             ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
+        AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
     DeployHash, DeployInfo, EraId, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr,
@@ -90,7 +89,7 @@ pub struct WasmTestBuilder<S> {
     engine_state: Rc<EngineState<S>>,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
-    upgrade_results: Vec<Result<UpgradeResult, engine_state::Error>>,
+    upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
     genesis_hash: Option<Blake2bHash>,
     post_state_hash: Option<Blake2bHash>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
@@ -212,12 +211,9 @@ impl LmdbWasmTestBuilder {
             LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())
                 .expect("should create LmdbTrieStore"),
         );
-        let protocol_data_store = Arc::new(
-            LmdbProtocolDataStore::new(&environment, None, DatabaseFlags::empty())
-                .expect("should create LmdbProtocolDataStore"),
-        );
-        let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)
-            .expect("should create LmdbGlobalState");
+
+        let global_state =
+            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -288,12 +284,9 @@ impl LmdbWasmTestBuilder {
         );
         let trie_store =
             Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
-        let protocol_data_store = Arc::new(
-            LmdbProtocolDataStore::open(&environment, None)
-                .expect("should open LmdbProtocolDataStore"),
-        );
-        let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)
-            .expect("should create LmdbGlobalState");
+
+        let global_state =
+            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -354,7 +347,10 @@ where
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
 
-        let genesis_result = self
+        let GenesisSuccess {
+            post_state_hash,
+            execution_effect,
+        } = self
             .engine_state
             .commit_genesis(
                 CorrelationId::new(),
@@ -364,36 +360,42 @@ where
             )
             .expect("Unable to get genesis response");
 
-        if let GenesisResult::Success {
-            post_state_hash,
-            effect,
-        } = genesis_result
-        {
-            let state_root_hash = post_state_hash;
+        let transforms = execution_effect.transforms;
+        let empty_path: Vec<String> = vec![];
 
-            let transforms = effect.transforms;
+        let genesis_account =
+            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
 
-            let genesis_account = utils::get_account(&transforms, &system_account)
-                .expect("Unable to get system account");
+        let registry = match self.query(
+            Some(post_state_hash),
+            Key::SystemContractRegistry,
+            &empty_path,
+        ) {
+            Ok(StoredValue::CLValue(cl_registry)) => {
+                CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap()
+            }
+            Ok(_) => panic!("Failed to get system registry"),
+            Err(err) => panic!("{}", err),
+        };
 
-            let maybe_protocol_data = self
-                .engine_state
-                .get_protocol_data(run_genesis_request.protocol_version())
-                .expect("should read protocol data");
-            let protocol_data = maybe_protocol_data.expect("should have protocol data stored");
-
-            self.genesis_hash = Some(state_root_hash);
-            self.post_state_hash = Some(state_root_hash);
-            self.mint_contract_hash = Some(protocol_data.mint());
-            self.handle_payment_contract_hash = Some(protocol_data.handle_payment());
-            self.standard_payment_hash = Some(protocol_data.standard_payment());
-            self.auction_contract_hash = Some(protocol_data.auction());
-            self.genesis_account = Some(genesis_account);
-            self.genesis_transforms = Some(transforms);
-            return self;
-        }
-
-        panic!("genesis failure: {:?}", genesis_result);
+        self.genesis_hash = Some(post_state_hash);
+        self.post_state_hash = Some(post_state_hash);
+        self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"));
+        self.handle_payment_contract_hash = Some(
+            *registry
+                .get(HANDLE_PAYMENT)
+                .expect("should have handle payment hash"),
+        );
+        self.standard_payment_hash = Some(
+            *registry
+                .get(STANDARD_PAYMENT)
+                .expect("should have standard payment hash"),
+        );
+        self.auction_contract_hash =
+            Some(*registry.get(AUCTION).expect("should have auction hash"));
+        self.genesis_account = Some(genesis_account);
+        self.genesis_transforms = Some(transforms);
+        self
     }
 
     pub fn query(
@@ -509,52 +511,42 @@ where
 
         let effects = self.transforms.last().cloned().unwrap_or_default();
 
-        self.commit_effects(prestate_hash, effects)
-    }
-
-    /// Applies effects to global state.
-    pub fn commit_transforms(
-        &self,
-        pre_state_hash: Blake2bHash,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> CommitResult {
-        self.engine_state
-            .apply_effect(CorrelationId::new(), pre_state_hash, effects)
-            .expect("should commit")
+        self.commit_transforms(prestate_hash, effects)
     }
 
     /// Runs a commit request, expects a successful response, and
     /// overwrites existing cached post state hash with a new one.
-    pub fn commit_effects(
+    pub fn commit_transforms(
         &mut self,
-        prestate_hash: Blake2bHash,
+        pre_state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
     ) -> &mut Self {
-        let commit_result = self.commit_transforms(prestate_hash, effects);
-
-        if let CommitResult::Success { state_root } = commit_result {
-            self.post_state_hash = Some(state_root);
-            return self;
-        }
-        panic!(
-            "Expected commit success but received a failure instead: {:?}",
-            commit_result
-        );
+        let post_state_hash = self
+            .engine_state
+            .apply_effect(CorrelationId::new(), pre_state_hash, effects)
+            .expect("should commit");
+        self.post_state_hash = Some(post_state_hash);
+        self
     }
 
     pub fn upgrade_with_upgrade_request(
         &mut self,
+        engine_config: EngineConfig,
         upgrade_config: &mut UpgradeConfig,
     ) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
+        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
+        engine_state.update_config(engine_config);
+
         let result = self
             .engine_state
             .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
 
-        if let Ok(UpgradeResult::Success {
-            post_state_hash, ..
+        if let Ok(UpgradeSuccess {
+            post_state_hash,
+            execution_effect: _,
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
@@ -584,23 +576,14 @@ where
     }
 
     pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
-        let result = self
+        let StepSuccess {
+            post_state_hash, ..
+        } = self
             .engine_state
             .commit_step(CorrelationId::new(), step_request)
             .expect("should step");
-
-        if let StepResult::Success {
-            post_state_hash, ..
-        } = result
-        {
-            self.post_state_hash = Some(post_state_hash);
-            self
-        } else {
-            panic!(
-                "Expected successful step result, but instead got error: {:?}",
-                result,
-            )
-        }
+        self.post_state_hash = Some(post_state_hash);
+        self
     }
 
     /// Expects a successful run
@@ -733,7 +716,7 @@ where
     pub fn get_upgrade_result(
         &self,
         index: usize,
-    ) -> Option<&Result<UpgradeResult, engine_state::Error>> {
+    ) -> Option<&Result<UpgradeSuccess, engine_state::Error>> {
         self.upgrade_results.get(index)
     }
 
@@ -987,5 +970,37 @@ where
     pub fn get_auction_delay(&mut self) -> u64 {
         let auction_contract = self.get_auction_contract_hash();
         self.get_value(auction_contract, AUCTION_DELAY_KEY)
+    }
+
+    pub fn get_system_auction_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_system_auction_hash(correlation_id, state_root_hash)
+            .expect("should have auction hash")
+    }
+
+    pub fn get_system_mint_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_system_mint_hash(correlation_id, state_root_hash)
+            .expect("should have auction hash")
+    }
+
+    pub fn get_system_handle_payment_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_handle_payment_hash(correlation_id, state_root_hash)
+            .expect("should have handle payment hash")
+    }
+
+    pub fn get_system_standard_payment_hash(&self) -> ContractHash {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+        self.engine_state
+            .get_standard_payment_hash(correlation_id, state_root_hash)
+            .expect("should have standard payment hash")
     }
 }

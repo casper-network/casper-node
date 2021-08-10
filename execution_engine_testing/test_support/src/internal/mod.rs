@@ -16,8 +16,7 @@ use casper_execution_engine::{
         run_genesis_request::RunGenesisRequest,
     },
     shared::{
-        core_config::CoreConfig, motes::Motes, newtypes::Blake2bHash, system_costs::SystemCosts,
-        wasm_config::WasmConfig,
+        motes::Motes, newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig,
     },
 };
 use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, SecretKey, U512};
@@ -97,14 +96,12 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
-pub static DEFAULT_CORE_CONFIG: Lazy<CoreConfig> = Lazy::new(CoreConfig::default);
-pub static DEFAULT_SYSTEM_COSTS: Lazy<SystemCosts> = Lazy::new(SystemCosts::default);
+pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     ExecConfig::new(
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_WASM_CONFIG,
-        *DEFAULT_CORE_CONFIG,
-        *DEFAULT_SYSTEM_COSTS,
+        *DEFAULT_SYSTEM_CONFIG,
         DEFAULT_VALIDATOR_SLOTS,
         DEFAULT_AUCTION_DELAY,
         DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,

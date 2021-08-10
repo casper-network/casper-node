@@ -12,7 +12,7 @@ use casper_execution_engine::{
         runtime_context::RuntimeContext,
     },
     shared::{gas::Gas, newtypes::CorrelationId, wasm_prep::Preprocessor},
-    storage::{global_state::StateProvider, protocol_data::ProtocolData},
+    storage::global_state::StateProvider,
 };
 use casper_types::{
     account::AccountHash, bytesrepr::FromBytes, system::CallStackElement, BlockTime, CLTyped,
@@ -20,8 +20,6 @@ use casper_types::{
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
-
-use super::{DEFAULT_CORE_CONFIG, DEFAULT_SYSTEM_COSTS};
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
@@ -86,22 +84,6 @@ where
         ret
     };
 
-    let protocol_data = {
-        let mint = builder.get_mint_contract_hash();
-        let handle_payment = builder.get_mint_contract_hash();
-        let standard_payment = builder.get_standard_payment_contract_hash();
-        let auction = builder.get_auction_contract_hash();
-        ProtocolData::new(
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_CORE_CONFIG,
-            *DEFAULT_SYSTEM_COSTS,
-            mint,
-            handle_payment,
-            standard_payment,
-            auction,
-        )
-    };
-
     let transfers = Vec::default();
 
     let context = RuntimeContext::new(
@@ -123,7 +105,7 @@ where
         protocol_version,
         correlation_id,
         phase,
-        protocol_data,
+        config,
         transfers,
     );
 
@@ -136,6 +118,11 @@ where
     let wasm_config = *DEFAULT_WASM_CONFIG;
 
     let preprocessor = Preprocessor::new(wasm_config);
+
+    let system_contract_registry = context
+        .system_contract_registry()
+        .expect("must have contract registry");
+
     let parity_module = deploy_item
         .get_deploy_metadata(
             tracking_copy,
@@ -143,7 +130,7 @@ where
             correlation_id,
             &preprocessor,
             &protocol_version,
-            &protocol_data,
+            system_contract_registry,
             phase,
         )
         .expect("should get wasm module");

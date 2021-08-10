@@ -663,8 +663,8 @@ impl Deploy {
         };
         Ok(DeployInfo {
             header,
-            size,
             payment_amount,
+            size,
         })
     }
 

@@ -1,4 +1,4 @@
-//! Home of the Handle Payment contract's [`Error`] type.
+//! Home of the Handle Payment contract's [`enum@Error`] type.
 use alloc::vec::Vec;
 use core::result;
 
@@ -129,6 +129,9 @@ pub enum Error {
     #[doc(hidden)]
     #[cfg_attr(feature = "std", error("GasLimit"))]
     GasLimit,
+    /// Refund purse is a payment purse.
+    #[cfg_attr(feature = "std", error("Refund purse is a payment purse."))]
+    RefundPurseIsPaymentPurse,
 }
 
 impl CLTyped for Error {

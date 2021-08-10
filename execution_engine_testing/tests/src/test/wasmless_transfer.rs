@@ -1,24 +1,29 @@
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
+        engine_state::{
+            EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
+            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+        },
         execution::Error as ExecError,
     },
     shared::{
         gas::Gas,
         motes::Motes,
-        system_costs::{
+        system_config::{
             auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemCosts,
+            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
+            DEFAULT_WASMLESS_TRANSFER_COST,
         },
+        wasm_config::WasmConfig,
     },
-    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
     account::AccountHash,
@@ -904,6 +909,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
     let new_wasmless_transfer_cost = Motes::from_gas(
@@ -913,6 +919,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     .expect("gas overflow");
 
     let transfer_amount = U512::one();
+
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
     let new_auction_costs = AuctionCosts::default();
@@ -920,12 +927,19 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_handle_payment_costs = HandlePaymentCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
 
-    let new_system_costs = SystemCosts::new(
+    let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost_value,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        WasmConfig::default(),
+        new_system_config,
     );
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
@@ -947,11 +961,10 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_system_costs(new_system_costs)
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 

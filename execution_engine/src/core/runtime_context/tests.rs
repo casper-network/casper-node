@@ -15,14 +15,18 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    AccessRights, BlockTime, CLValue, Contract, DeployHash, EntryPointType, EntryPoints, Key,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, KEY_HASH_LENGTH, U256, U512,
+    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
+    AccessRights, BlockTime, CLValue, Contract, ContractHash, DeployHash, EntryPointType,
+    EntryPoints, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef,
+    KEY_HASH_LENGTH, U256, U512,
 };
 
 use super::{Address, Error, RuntimeContext};
 use crate::{
     core::{
-        execution::AddressGenerator, runtime::extract_access_rights_from_keys,
+        engine_state::{EngineConfig, SystemContractRegistry},
+        execution::AddressGenerator,
+        runtime::extract_access_rights_from_keys,
         tracking_copy::TrackingCopy,
     },
     shared::{
@@ -33,12 +37,9 @@ use crate::{
         stored_value::StoredValue,
         transform::Transform,
     },
-    storage::{
-        global_state::{
-            in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
-            CommitResult, StateProvider,
-        },
-        protocol_data::ProtocolData,
+    storage::global_state::{
+        in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
+        StateProvider,
     },
 };
 
@@ -46,7 +47,7 @@ const DEPLOY_HASH: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
-static TEST_PROTOCOL_DATA: Lazy<ProtocolData> = Lazy::new(ProtocolData::default);
+static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default);
 
 fn mock_tracking_copy(
     init_key: Key,
@@ -59,14 +60,9 @@ fn mock_tracking_copy(
 
     let mut m = AdditiveMap::new();
     m.insert(init_key, transform);
-    let commit_result = hist
+    let new_hash = hist
         .commit(correlation_id, root_hash, m)
         .expect("Creation of mocked account should be a success.");
-
-    let new_hash = match commit_result {
-        CommitResult::Success { state_root, .. } => state_root,
-        other => panic!("Committing changes to test History failed: {:?}.", other),
-    };
 
     let reader = hist
         .checkout(new_hash)
@@ -137,7 +133,7 @@ fn mock_runtime_context<'a>(
         access_rights,
         RuntimeArgs::new(),
         BTreeSet::from_iter(vec![account.account_hash()]),
-        &account,
+        account,
         base_key,
         BlockTime::new(0),
         DeployHash::new([1u8; 32]),
@@ -149,7 +145,7 @@ fn mock_runtime_context<'a>(
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         Phase::Session,
-        *TEST_PROTOCOL_DATA,
+        *TEST_ENGINE_CONFIG,
         Vec::default(),
     )
 }
@@ -359,6 +355,19 @@ fn contract_key_addable_valid() {
     )));
     tracking_copy.borrow_mut().write(contract_key, contract);
 
+    let default_system_registry = {
+        let mut registry = SystemContractRegistry::new();
+        registry.insert(MINT.to_string(), ContractHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(AUCTION.to_string(), ContractHash::default());
+        StoredValue::CLValue(CLValue::from_t(registry).unwrap())
+    };
+
+    tracking_copy
+        .borrow_mut()
+        .write(Key::SystemContractRegistry, default_system_registry);
+
     let mut named_keys = NamedKeys::new();
     let uref = create_uref(&mut uref_address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();
@@ -386,7 +395,7 @@ fn contract_key_addable_valid() {
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         PHASE,
-        Default::default(),
+        EngineConfig::default(),
         Vec::default(),
     );
 
@@ -459,7 +468,7 @@ fn contract_key_addable_invalid() {
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         PHASE,
-        Default::default(),
+        EngineConfig::default(),
         Vec::default(),
     );
 
@@ -869,7 +878,7 @@ fn should_meter_for_gas_storage_write() {
     let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
     let access_rights = extract_access_rights_from_keys(vec![uref]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let expected_write_cost = TEST_PROTOCOL_DATA
+    let expected_write_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
@@ -899,7 +908,7 @@ fn should_meter_for_gas_storage_add() {
     let uref = create_uref(&mut rng, AccessRights::ADD_WRITE);
     let access_rights = extract_access_rights_from_keys(vec![uref]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let expected_add_cost = TEST_PROTOCOL_DATA
+    let expected_add_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
@@ -927,11 +936,11 @@ fn should_meter_for_gas_storage_add() {
 #[test]
 fn associated_keys_add_full() {
     let final_add_result = test(Default::default(), |mut rc| {
-        let core_config = rc.protocol_data().core_config();
+        let system_config = rc.engine_config().system_config();
 
         let associated_keys_before = rc.account().associated_keys().len();
 
-        for count in 0..(core_config.max_associated_keys() as usize - associated_keys_before) {
+        for count in 0..(system_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {
                 let mut addr = AccountHashBytes::default();
                 U256::from(count).to_big_endian(&mut addr);

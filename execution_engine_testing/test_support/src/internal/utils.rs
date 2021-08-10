@@ -20,10 +20,7 @@ use casper_execution_engine::{
 };
 use casper_types::Key;
 
-use super::{
-    DEFAULT_CORE_CONFIG, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_COSTS,
-    DEFAULT_UNBONDING_DELAY,
-};
+use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{
     DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
@@ -137,8 +134,7 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
 
 pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let wasm_config = *DEFAULT_WASM_CONFIG;
-    let core_config = *DEFAULT_CORE_CONFIG;
-    let system_costs = *DEFAULT_SYSTEM_COSTS;
+    let system_costs = *DEFAULT_SYSTEM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period_millis = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -148,7 +144,6 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     ExecConfig::new(
         accounts,
         wasm_config,
-        core_config,
         system_costs,
         validator_slots,
         auction_delay,

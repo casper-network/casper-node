@@ -3,10 +3,9 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CORE_CONFIG,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_COSTS, DEFAULT_UNBONDING_DELAY,
-        DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+        InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+        DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
     },
     AccountHash,
 };
@@ -69,8 +68,7 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 fn should_run_genesis() {
     let protocol_version = ProtocolVersion::V1_0_0;
     let wasm_config = *DEFAULT_WASM_CONFIG;
-    let core_config = *DEFAULT_CORE_CONFIG;
-    let system_costs = *DEFAULT_SYSTEM_COSTS;
+    let system_costs = *DEFAULT_SYSTEM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -81,7 +79,6 @@ fn should_run_genesis() {
     let exec_config = ExecConfig::new(
         GENESIS_CUSTOM_ACCOUNTS.clone(),
         wasm_config,
-        core_config,
         system_costs,
         validator_slots,
         auction_delay,
@@ -141,8 +138,7 @@ fn should_run_genesis() {
 fn should_track_total_token_supply_in_mint() {
     let accounts = GENESIS_CUSTOM_ACCOUNTS.clone();
     let wasm_config = *DEFAULT_WASM_CONFIG;
-    let core_config = *DEFAULT_CORE_CONFIG;
-    let system_costs = *DEFAULT_SYSTEM_COSTS;
+    let system_config = *DEFAULT_SYSTEM_CONFIG;
     let protocol_version = ProtocolVersion::V1_0_0;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
@@ -153,8 +149,7 @@ fn should_track_total_token_supply_in_mint() {
     let ee_config = ExecConfig::new(
         accounts.clone(),
         wasm_config,
-        core_config,
-        system_costs,
+        system_config,
         validator_slots,
         auction_delay,
         locked_funds_period,

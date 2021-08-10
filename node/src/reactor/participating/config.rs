@@ -2,9 +2,10 @@ use datasize::DataSize;
 use serde::Deserialize;
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, ConsensusConfig, ContractRuntimeConfig,
-    DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig,
-    RpcServerConfig, SmallNetworkConfig, StorageConfig,
+    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig,
+    ContractRuntimeConfig, DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig,
+    GossipConfig, LinearChainSyncConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig,
+    StorageConfig,
 };
 
 /// Root configuration.
@@ -36,4 +37,9 @@ pub struct Config {
     pub contract_runtime: ContractRuntimeConfig,
     /// Deploy acceptor configuration.
     pub deploy_acceptor: DeployAcceptorConfig,
+    /// Linear chain sync configuration.
+    pub linear_chain_sync: LinearChainSyncConfig,
+    /// Block proposer configuration.
+    #[serde(default)]
+    pub block_proposer: BlockProposerConfig,
 }

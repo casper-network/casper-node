@@ -26,6 +26,7 @@ pub struct NetworkConfig {
 }
 
 impl NetworkConfig {
+    #[allow(unused)]
     /// Returns a vector of chainspec validators' public key and their stake.
     pub fn chainspec_validator_stakes(&self) -> Vec<(PublicKey, Motes)> {
         self.accounts_config
@@ -54,8 +55,8 @@ impl NetworkConfig {
 
         NetworkConfig {
             name,
-            accounts_config,
             maximum_net_message_size,
+            accounts_config,
         }
     }
 }
@@ -83,8 +84,8 @@ impl FromBytes for NetworkConfig {
         let (maximum_net_message_size, remainder) = FromBytes::from_bytes(remainder)?;
         let config = NetworkConfig {
             name,
-            accounts_config,
             maximum_net_message_size,
+            accounts_config,
         };
         Ok((config, remainder))
     }

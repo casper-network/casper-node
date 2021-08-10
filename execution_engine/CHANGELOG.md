@@ -13,9 +13,25 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-### Changed
-* Update pinned version of Rust to `nightly-2021-06-17`
+### Added
+* Added genesis validation step to ensure there are more genesis validators than validator slots.
 * Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
+
+### Changed
+* Support building and testing using stable Rust.
+* Increase price of `create_purse` to 2.5CSPR.
+* Improve doc comments to clarify behavior of the bidding functionality.
+
+### Fixed
+* Fix a case where user could potentially supply a refund purse as a payment purse.
+
+
+
+## [1.3.0] - 2021-07-19
+
+### Changed
+* Update pinned version of Rust to `nightly-2021-06-17`.
+
 
 
 ## [1.2.0] - 2021-05-27
@@ -60,7 +76,8 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.2.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1

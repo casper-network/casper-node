@@ -141,7 +141,7 @@ pub mod gens {
 
     use casper_types::gens::{account_hash_arb, weight_arb};
 
-    use crate::storage::protocol_data::DEFAULT_MAX_ASSOCIATED_KEYS;
+    use crate::shared::system_config::DEFAULT_MAX_ASSOCIATED_KEYS;
 
     use super::AssociatedKeys;
 

@@ -4,21 +4,23 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisValidator, GenesisAccount},
+    core::engine_state::{
+        genesis::GenesisValidator, EngineConfig, GenesisAccount, DEFAULT_MAX_QUERY_DEPTH,
+    },
     shared::{
-        core_config::CoreConfig,
         gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        system_costs::{
+        system_config::{
             auction_costs::{
                 AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_DISTRIBUTE_COST,
                 DEFAULT_RUN_AUCTION_COST, DEFAULT_SLASH_COST, DEFAULT_UNDELEGATE_COST,
@@ -32,12 +34,11 @@ use casper_execution_engine::{
                 DEFAULT_REDUCE_TOTAL_SUPPLY_COST, DEFAULT_TRANSFER_COST,
             },
             standard_payment_costs::StandardPaymentCosts,
-            SystemCosts,
+            SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
         },
         wasm,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
-    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
     runtime_args,
@@ -173,6 +174,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
         add_bid: NEW_ADD_BID_COST,
@@ -183,12 +185,19 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
-    let new_system_costs = SystemCosts::new(
+    let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        WasmConfig::default(),
+        new_system_config,
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -199,11 +208,10 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_system_costs(new_system_costs)
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -404,6 +412,7 @@ fn delegate_and_undelegate_have_expected_costs() {
 #[test]
 fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
         delegate: NEW_DELEGATE_COST,
@@ -414,12 +423,19 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
-    let new_system_costs = SystemCosts::new(
+    let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        WasmConfig::default(),
+        new_system_config,
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -447,11 +463,10 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_system_costs(new_system_costs)
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -841,32 +856,33 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     );
 
     let new_wasmless_transfer_cost = 0;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
-    let new_core_config = CoreConfig::default();
 
-    let new_system_costs = SystemCosts::new(
+    let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
     );
 
+    let new_engine_config =
+        EngineConfig::new(DEFAULT_MAX_QUERY_DEPTH, new_wasm_config, new_system_config);
+
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasm_config(new_wasm_config)
-            .with_new_core_config(new_core_config)
-            .with_new_system_costs(new_system_costs)
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
