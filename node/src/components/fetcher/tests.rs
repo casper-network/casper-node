@@ -437,8 +437,8 @@ async fn should_timeout_fetch_from_peer() {
         .await;
 
     // Advance time.
-    let time_to_advance = Config::default().get_from_peer_timeout();
-    let time_to_advance = Duration::from_millis(time_to_advance) + Duration::from_secs(10);
+    let time_to_advance: Duration = Config::default().get_from_peer_timeout().into();
+    let time_to_advance = time_to_advance + Duration::from_secs(10);
     advance_time(time_to_advance).await;
 
     // Settle the network, allowing timeout to avoid panic.

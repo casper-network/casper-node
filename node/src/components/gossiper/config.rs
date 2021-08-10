@@ -57,9 +57,9 @@ impl Config {
     pub(crate) fn new(
         infection_target: u8,
         saturation_limit_percent: u8,
-        finished_entry_duration_secs: u32,
-        gossip_request_timeout_secs: u32,
-        get_remainder_timeout_secs: u32,
+        finished_entry_duration: TimeDiff,
+        gossip_request_timeout: TimeDiff,
+        get_remainder_timeout: TimeDiff,
     ) -> Result<Self, Error> {
         if saturation_limit_percent > MAX_SATURATION_LIMIT_PERCENT {
             return Err(Error::InvalidSaturationLimit);
@@ -67,9 +67,9 @@ impl Config {
         Ok(Config {
             infection_target,
             saturation_limit_percent,
-            finished_entry_duration: TimeDiff::from_seconds(finished_entry_duration_secs),
-            gossip_request_timeout: TimeDiff::from_seconds(gossip_request_timeout_secs),
-            get_remainder_timeout: TimeDiff::from_seconds(get_remainder_timeout_secs),
+            finished_entry_duration,
+            gossip_request_timeout,
+            get_remainder_timeout,
         })
     }
 
@@ -94,16 +94,16 @@ impl Config {
         self.saturation_limit_percent
     }
 
-    pub(crate) fn finished_entry_duration(&self) -> u64 {
-        self.finished_entry_duration.millis()
+    pub(crate) fn finished_entry_duration(&self) -> TimeDiff {
+        self.finished_entry_duration
     }
 
-    pub(crate) fn gossip_request_timeout(&self) -> u64 {
-        self.gossip_request_timeout.millis()
+    pub(crate) fn gossip_request_timeout(&self) -> TimeDiff {
+        self.gossip_request_timeout
     }
 
-    pub(crate) fn get_remainder_timeout(&self) -> u64 {
-        self.get_remainder_timeout.millis()
+    pub(crate) fn get_remainder_timeout(&self) -> TimeDiff {
+        self.get_remainder_timeout
     }
 }
 
@@ -162,18 +162,9 @@ mod tests {
         assert!(Config::new(
             3,
             MAX_SATURATION_LIMIT_PERCENT + 1,
-            TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
-                .unwrap()
-                .seconds()
-                .unwrap(),
-            TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT)
-                .unwrap()
-                .seconds()
-                .unwrap(),
-            TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT)
-                .unwrap()
-                .seconds()
-                .unwrap(),
+            TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION).unwrap(),
+            TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT).unwrap(),
+            TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
         )
         .is_err())
     }

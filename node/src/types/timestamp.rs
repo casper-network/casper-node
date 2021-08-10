@@ -1,9 +1,6 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-#[cfg(test)]
-use std::{convert::TryFrom, num::TryFromIntError};
-
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Add, AddAssign, Div, Mul, Rem},
@@ -229,12 +226,6 @@ impl TimeDiff {
     /// Returns the time difference as the number of milliseconds since the Unix epoch
     pub fn millis(&self) -> u64 {
         self.0
-    }
-
-    #[cfg(test)]
-    /// Returns the time difference as the number of seconds since the Unix epoch
-    pub(crate) fn seconds(&self) -> Result<u32, TryFromIntError> {
-        u32::try_from(self.millis() / 1000)
     }
 
     /// Creates a new time difference from seconds.
