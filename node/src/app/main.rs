@@ -3,9 +3,6 @@
 //! This is the core application for the Casper blockchain. Run with `--help` to see available
 //! command-line arguments.
 
-mod cli;
-pub mod config;
-
 use std::{
     panic::{self, PanicInfo},
     process,
@@ -16,9 +13,7 @@ use structopt::StructOpt;
 use tokio::runtime::Builder;
 use tracing::info;
 
-use casper_node::MAX_THREAD_COUNT;
-
-use cli::Cli;
+use casper_node::{cli::Cli, MAX_THREAD_COUNT};
 
 /// Aborting panic hook.
 ///

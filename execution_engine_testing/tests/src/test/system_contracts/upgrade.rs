@@ -34,7 +34,7 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    account::AccountHashBytes,
+    account::ACCOUNT_HASH_LENGTH,
     runtime_args,
     system::{
         auction::{
@@ -686,7 +686,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
 
     for n in (0..DEFAULT_MAX_ASSOCIATED_KEYS).map(U256::from) {
         let account_hash = {
-            let mut addr = AccountHashBytes::default();
+            let mut addr = [0; ACCOUNT_HASH_LENGTH];
             n.to_big_endian(&mut addr);
             AccountHash::new(addr)
         };

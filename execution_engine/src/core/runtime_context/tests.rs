@@ -10,8 +10,8 @@ use rand::RngCore;
 
 use casper_types::{
     account::{
-        AccountHash, AccountHashBytes, ActionType, AddKeyFailure, RemoveKeyFailure,
-        SetThresholdFailure, Weight,
+        AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, Weight,
+        ACCOUNT_HASH_LENGTH,
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -942,7 +942,7 @@ fn associated_keys_add_full() {
 
         for count in 0..(system_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {
-                let mut addr = AccountHashBytes::default();
+                let mut addr = [0; ACCOUNT_HASH_LENGTH];
                 U256::from(count).to_big_endian(&mut addr);
                 AccountHash::new(addr)
             };

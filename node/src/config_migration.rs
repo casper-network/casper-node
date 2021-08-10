@@ -13,7 +13,7 @@ pub enum Error {}
 ///
 /// This should be executed after a new version is available, but before the casper-node has been
 /// run in validator mode using the new version.
-pub fn migrate_config(
+pub(crate) fn migrate_config(
     _old_config: WithDir<OldConfig>,
     _new_config: WithDir<Config>,
 ) -> Result<(), Error> {

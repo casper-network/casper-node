@@ -31,7 +31,7 @@ use crate::{
         Component,
     },
     effect::{
-        requests::{BlockPayloadRequest, BlockProposerRequest, StateStoreRequest, StorageRequest},
+        requests::{BlockPayloadRequest, BlockProposerRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{
@@ -103,7 +103,7 @@ impl BlockProposer {
         local_config: Config,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
+        REv: From<Event> + From<StorageRequest> + Send + 'static,
     {
         debug!(%next_finalized_block, "creating block proposer");
         let effects = effect_builder
@@ -128,7 +128,7 @@ impl BlockProposer {
 
 impl<REv> Component<REv> for BlockProposer
 where
-    REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
+    REv: From<Event> + From<StorageRequest> + Send + 'static,
 {
     type Event = Event;
     type ConstructionError = Infallible;
@@ -231,7 +231,7 @@ impl BlockProposerReady {
         event: Event,
     ) -> Effects<Event>
     where
-        REv: Send + From<StorageRequest> + From<StateStoreRequest>,
+        REv: Send,
     {
         match event {
             Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {

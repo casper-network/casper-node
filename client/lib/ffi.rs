@@ -702,6 +702,7 @@ pub struct casper_deploy_params_t {
     dependencies: *const *const c_char,
     dependencies_len: usize,
     chain_name: *const c_char,
+    session_account: *const c_char,
 }
 
 impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
@@ -718,6 +719,10 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             self.dependencies_len,
             "casper_deploy_params_t.dependencies",
         )?;
+        let session_account = unsafe_str_arg(
+            self.session_account,
+            "casper_deploy_params_t.session_account",
+        )?;
         Ok(super::DeployStrParams {
             secret_key,
             timestamp,
@@ -725,6 +730,7 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
             gas_price,
             dependencies,
             chain_name,
+            session_account,
         })
     }
 }

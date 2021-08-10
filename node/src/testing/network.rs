@@ -25,10 +25,11 @@ use crate::{
 /// Type alias for set of nodes inside a network.
 ///
 /// Provided as a convenience for writing condition functions for `settle_on` and friends.
-pub type Nodes<R> = HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
+pub(crate) type Nodes<R> =
+    HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
 
 /// A reactor with networking functionality.
-pub trait NetworkedReactor: Sized {
+pub(crate) trait NetworkedReactor: Sized {
     /// The node ID on the networking level.
     type NodeId: Eq + Hash + Clone + Display + Debug;
 
@@ -45,7 +46,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub struct Network<R: Reactor + NetworkedReactor> {
+pub(crate) struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
     nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>,
 }
@@ -64,7 +65,7 @@ where
     ///
     /// Panics if a duplicate node ID is being inserted. This should only happen in case a randomly
     /// generated ID collides.
-    pub async fn add_node(
+    pub(crate) async fn add_node(
         &mut self,
         rng: &mut TestRng,
     ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
@@ -72,7 +73,7 @@ where
     }
 
     /// Adds `count` new nodes to the network, and returns their IDs.
-    pub async fn add_nodes(&mut self, rng: &mut TestRng, count: usize) -> Vec<R::NodeId> {
+    pub(crate) async fn add_nodes(&mut self, rng: &mut TestRng, count: usize) -> Vec<R::NodeId> {
         let mut node_ids = vec![];
         for _ in 0..count {
             let (node_id, _runner) = self.add_node(rng).await.unwrap();
@@ -89,7 +90,7 @@ where
     R::Error: From<prometheus::Error> + From<R::Error>,
 {
     /// Creates a new network.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Network {
             nodes: HashMap::new(),
         }
@@ -100,7 +101,7 @@ where
     /// # Panics
     ///
     /// Panics if a duplicate node ID is being inserted.
-    pub async fn add_node_with_config(
+    pub(crate) async fn add_node_with_config(
         &mut self,
         cfg: R::Config,
         rng: &mut NodeRng,
@@ -122,12 +123,15 @@ where
     }
 
     /// Removes a node from the network.
-    pub fn remove_node(&mut self, node_id: &R::NodeId) -> Option<Runner<ConditionCheckReactor<R>>> {
+    pub(crate) fn remove_node(
+        &mut self,
+        node_id: &R::NodeId,
+    ) -> Option<Runner<ConditionCheckReactor<R>>> {
         self.nodes.remove(node_id)
     }
 
     /// Crank the specified runner once, returning the number of events processed.
-    pub async fn crank(&mut self, node_id: &R::NodeId, rng: &mut TestRng) -> usize {
+    pub(crate) async fn crank(&mut self, node_id: &R::NodeId, rng: &mut TestRng) -> usize {
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
@@ -146,7 +150,7 @@ where
     /// Crank only the specified runner until `condition` is true or until `within` has elapsed.
     ///
     /// Returns `true` if `condition` has been met within the specified timeout.
-    pub async fn crank_until<F>(
+    pub(crate) async fn crank_until<F>(
         &mut self,
         node_id: &R::NodeId,
         rng: &mut TestRng,
@@ -188,7 +192,7 @@ where
     }
 
     /// Crank all runners once, returning the number of events processed.
-    pub async fn crank_all(&mut self, rng: &mut TestRng) -> usize {
+    pub(crate) async fn crank_all(&mut self, rng: &mut TestRng) -> usize {
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
@@ -212,7 +216,12 @@ where
     /// # Panics
     ///
     /// Panics if after `within` the event queues are still not idle.
-    pub async fn settle(&mut self, rng: &mut TestRng, quiet_for: Duration, within: Duration) {
+    pub(crate) async fn settle(
+        &mut self,
+        rng: &mut TestRng,
+        quiet_for: Duration,
+        within: Duration,
+    ) {
         time::timeout(within, self.settle_indefinitely(rng, quiet_for))
             .await
             .unwrap_or_else(|_| {
@@ -247,7 +256,7 @@ where
     /// # Panics
     ///
     /// If the `condition` is not reached inside of `within`, panics.
-    pub async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
+    pub(crate) async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
     where
         F: Fn(&Nodes<R>) -> bool,
     {
@@ -275,22 +284,12 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub(crate) fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
         &self.nodes
     }
 
-    /// Returns the internal map of nodes.
-    pub fn nodes_mut(&mut self) -> &mut HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
-        &mut self.nodes
-    }
-
-    /// Returns an iterator over all reactors.
-    pub fn reactors(&self) -> impl Iterator<Item = &R> {
-        self.nodes.values().map(|runner| runner.reactor().inner())
-    }
-
     /// Returns an iterator over all reactors, mutable.
-    pub fn reactors_mut(&mut self) -> impl Iterator<Item = &mut R> {
+    pub(crate) fn reactors_mut(&mut self) -> impl Iterator<Item = &mut R> {
         self.nodes
             .values_mut()
             .map(|runner| runner.reactor_mut().inner_mut())
@@ -300,8 +299,11 @@ where
     ///
     /// The effects are created via a call to `create_effects` which is itself passed an instance of
     /// an `EffectBuilder`.
-    pub async fn process_injected_effect_on<F>(&mut self, node_id: &R::NodeId, create_effects: F)
-    where
+    pub(crate) async fn process_injected_effect_on<F>(
+        &mut self,
+        node_id: &R::NodeId,
+        create_effects: F,
+    ) where
         F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
     {
         let runner = self.nodes.get_mut(node_id).unwrap();
