@@ -1,3 +1,5 @@
+//! This module contains types and functions for working with keys associated with an account.
+
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     vec::Vec,
@@ -12,12 +14,12 @@ use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
 };
 
-/// TODO: doc comment.
+/// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
 
 impl AssociatedKeys {
-    /// TODO: doc comment.
+    /// Constructs a new AssociatedKeys.
     pub fn new(key: AccountHash, weight: Weight) -> AssociatedKeys {
         let mut bt: BTreeMap<AccountHash, Weight> = BTreeMap::new();
         bt.insert(key, weight);
@@ -60,27 +62,27 @@ impl AssociatedKeys {
         Ok(())
     }
 
-    /// TODO: doc comment.
+    /// Returns the weight of an account hash.
     pub fn get(&self, key: &AccountHash) -> Option<&Weight> {
         self.0.get(key)
     }
 
-    /// TODO: doc comment.
+    /// Returns `true` if a given key exists.
     pub fn contains_key(&self, key: &AccountHash) -> bool {
         self.0.contains_key(key)
     }
 
-    /// TODO: doc comment.
+    /// Returns an iterator over the account hash and the weights.
     pub fn iter(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
         self.0.iter()
     }
 
-    /// TODO: doc comment.
+    /// Returns the count of the associated keys.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    /// TODO: doc comment.
+    /// Returns `true` if the associated keys are empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -150,8 +152,8 @@ impl FromBytes for AssociatedKeys {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
-/// TODO: doc comment.
 pub mod gens {
     use proptest::prelude::*;
 
@@ -162,7 +164,6 @@ pub mod gens {
 
     use super::AssociatedKeys;
 
-    /// TODO: doc comment.
     pub fn associated_keys_arb() -> impl Strategy<Value = AssociatedKeys> {
         proptest::collection::btree_map(account_hash_arb(), weight_arb(), MAX_ASSOCIATED_KEYS - 1)
             .prop_map(|keys| {

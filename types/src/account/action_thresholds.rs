@@ -1,3 +1,5 @@
+//! This module contains types and functions for managing action thresholds.
+
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
@@ -61,12 +63,12 @@ impl ActionThresholds {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns the deployment action threshold.
     pub fn deployment(&self) -> &Weight {
         &self.deployment
     }
 
-    /// TODO: doc comment.
+    /// Returns key management action threshold.
     pub fn key_management(&self) -> &Weight {
         &self.key_management
     }
@@ -119,14 +121,13 @@ impl FromBytes for ActionThresholds {
     }
 }
 
-/// TODO: doc comment.
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
 
     use super::ActionThresholds;
 
-    /// TODO: doc comment.
     pub fn action_thresholds_arb() -> impl Strategy<Value = ActionThresholds> {
         Just(Default::default())
     }
