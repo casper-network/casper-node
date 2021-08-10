@@ -551,7 +551,6 @@ pub extern "C" fn casper_get_state_root_hash(
 ///
 /// See [get_item](super::get_item) for more details.
 #[no_mangle]
-#[allow(deprecated)]
 #[deprecated(note = "Users should use `casper_client::query_global_state` instead.")]
 pub extern "C" fn casper_get_item(
     maybe_rpc_id: *const c_char,
@@ -571,6 +570,7 @@ pub extern "C" fn casper_get_item(
     let key = try_unsafe_arg!(key);
     let path = try_unsafe_arg!(path);
     runtime.block_on(async move {
+        #[allow(deprecated)]
         let result = super::get_item(
             maybe_rpc_id,
             node_address,

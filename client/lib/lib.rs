@@ -385,13 +385,18 @@ pub async fn get_state_root_hash(
 ///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
 ///   take one of the following forms:
 /// ```text
-/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c           # PublicKey
+/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c             # PublicKey
 /// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
-/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::Hash
-/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
-/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
-/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
-/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Dictionary
+/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20          # Key::Hash
+/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007      # Key::URef
+/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Transfer
+/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::DeployInfo
+/// era-1                                                                          # Key::EraInfo
+/// bid-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20           # Key::Bid
+/// withdraw-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Withdraw
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Dictionary
+/// The Key::SystemContractRegistry variant is unique and can only take the following value:
+/// system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
 #[deprecated(note = "Users should use `casper_client::query_global_state` instead.")]
@@ -528,23 +533,24 @@ pub async fn get_account_info(
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
-/// * `state_identifier` is a str value that identifies the supplied 32-byte hex encoded hash as as
-///   either a `Block` hash or a specific `state_root_hash`.
-/// * `hash` is a 32-byte hex encoded hash which can either be the block hash or state root hash and
-///   is identified by the `state_identifier` arg.
 /// * `global_state_str_params` contains global state identifier related options for this query. See
 ///   [`GlobalStateStrParams`](struct.GlobalStateStrParams.html) for more details.
 /// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
-///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
+///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.Key.html). This will
 ///   take one of the following forms:
 /// ```text
-/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c           # PublicKey
+/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c             # PublicKey
 /// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
-/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::Hash
-/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
-/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
-/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
-/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Dictionary
+/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20          # Key::Hash
+/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007      # Key::URef
+/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Transfer
+/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::DeployInfo
+/// era-1                                                                          # Key::EraInfo
+/// bid-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20           # Key::Bid
+/// withdraw-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Withdraw
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Dictionary
+/// The Key::SystemContractRegistry variant is unique and can only take the following value:
+/// system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
 pub async fn query_global_state(
