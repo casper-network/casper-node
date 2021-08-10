@@ -139,6 +139,10 @@ pub enum DeployValidationFailure {
     #[error("the provided hash does not match the actual hash of the deploy")]
     InvalidDeployHash,
 
+    /// The deploy has zero approvals
+    #[error("the deploy has zero approvals")]
+    EmptyApprovals,
+
     /// Invalid approval.
     #[error("the approval at index {index} is invalid: {error_msg}")]
     InvalidApproval {
@@ -857,6 +861,9 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 // Computationally expensive validity check for a given deploy instance, including
 // asymmetric_key signing verification.
 fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
+    if deploy.approvals.is_empty() {
+        return Err(DeployValidationFailure::EmptyApprovals);
+    }
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
     let body_hash = hash::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
@@ -1121,6 +1128,15 @@ mod tests {
 
         deploy.header.gas_price = 2;
         check_is_not_valid(deploy, DeployValidationFailure::InvalidDeployHash);
+    }
+
+    #[test]
+    fn not_valid_due_to_empty_approvals() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+        deploy.approvals = vec![];
+        assert!(deploy.approvals.is_empty());
+        check_is_not_valid(deploy, DeployValidationFailure::EmptyApprovals)
     }
 
     #[test]
