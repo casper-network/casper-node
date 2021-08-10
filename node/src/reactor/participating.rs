@@ -25,6 +25,7 @@ use tracing::{debug, error, trace, warn};
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 
+use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -48,9 +49,8 @@ use crate::{
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -1170,6 +1170,11 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
             ),
+            ParticipatingEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators { .. },
+            ) => {
+                todo!()
+            }
         }
     }
 

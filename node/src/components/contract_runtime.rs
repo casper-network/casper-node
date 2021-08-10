@@ -1,16 +1,19 @@
 //! Contract Runtime component.
+pub(crate) mod announcements;
 mod config;
 mod error;
 mod operations;
 mod types;
 
+use std::collections::BTreeMap;
+use std::path::Path;
 use std::{
     fmt::{self, Debug, Formatter},
-    path::Path,
     sync::Arc,
     time::Instant,
 };
 
+pub(crate) use announcements::ContractRuntimeAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
 pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
@@ -21,6 +24,8 @@ use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
 use tracing::{debug, error, info, trace};
 
+use casper_execution_engine::shared::system_config::SystemConfig;
+use casper_execution_engine::shared::wasm_config::WasmConfig;
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
@@ -29,8 +34,6 @@ use casper_execution_engine::{
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
     },
     storage::{
         global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
@@ -39,19 +42,18 @@ use casper_execution_engine::{
 };
 use casper_types::{Key, ProtocolVersion};
 
+use crate::components::contract_runtime::types::StepEffectAndUpcomingEraValidators;
 use crate::{
     components::Component,
     crypto::hash::Digest,
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
-        requests::ContractRuntimeRequest,
-        EffectBuilder, EffectExt, Effects,
+        announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
+        EffectExt, Effects,
     },
     fatal,
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
-use std::collections::BTreeMap;
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
@@ -256,7 +258,7 @@ where
                 chainspec,
                 responder,
             } => {
-                let result = self.commit_genesis(chainspec);
+                let result = self.commit_genesis(&chainspec);
                 responder.respond(result).ignore()
             }
             ContractRuntimeRequest::Upgrade {
@@ -469,7 +471,6 @@ where
 }
 
 impl ContractRuntime {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
@@ -518,9 +519,9 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis using a chainspec
-    fn commit_genesis(
+    pub(crate) fn commit_genesis(
         &self,
-        chainspec: Arc<Chainspec>,
+        chainspec: &Arc<Chainspec>,
     ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
@@ -568,7 +569,7 @@ impl ContractRuntime {
         let BlockAndExecutionEffects {
             block,
             execution_results,
-            maybe_step_execution_effect,
+            maybe_step_effect_and_upcoming_era_validators,
         } = match operations::execute_finalized_block(
             self.engine_state.as_ref(),
             self.metrics.as_ref(),
@@ -583,15 +584,25 @@ impl ContractRuntime {
 
         self.execution_pre_state = ExecutionPreState::from(block.header());
 
-        let era_id = block.header().era_id();
-        let mut effects = effect_builder
-            .announce_linear_chain_block(block, execution_results)
-            .ignore();
-        if let Some(step_execution_effect) = maybe_step_execution_effect {
+        let current_era_id = block.header().era_id();
+        let mut effects =
+            announcements::linear_chain_block(effect_builder, block, execution_results).ignore();
+        if let Some(StepEffectAndUpcomingEraValidators {
+            step_execution_effect,
+            upcoming_era_validators,
+        }) = maybe_step_effect_and_upcoming_era_validators
+        {
             effects.extend(
-                effect_builder
-                    .announce_step_success(era_id, step_execution_effect)
+                announcements::step_success(effect_builder, current_era_id, step_execution_effect)
                     .ignore(),
+            );
+            effects.extend(
+                announcements::upcoming_era_validators(
+                    effect_builder,
+                    current_era_id,
+                    upcoming_era_validators,
+                )
+                .ignore(),
             );
         }
 
@@ -611,7 +622,7 @@ impl ContractRuntime {
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
     pub(crate) fn read_trie(
-        &mut self,
+        &self,
         trie_key: Blake2bHash,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
         let correlation_id = CorrelationId::new();

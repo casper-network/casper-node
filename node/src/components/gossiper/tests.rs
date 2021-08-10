@@ -19,6 +19,7 @@ use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::
 use casper_types::ProtocolVersion;
 
 use super::*;
+use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
     components::{
         contract_runtime::{self, ContractRuntime},
@@ -28,8 +29,8 @@ use crate::{
     },
     effect::{
         announcements::{
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
         Responder,

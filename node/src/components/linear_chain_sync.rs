@@ -44,10 +44,11 @@ use super::{
     storage::{self, Storage},
     Component,
 };
+use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
     components::contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::ControlAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
@@ -1046,7 +1047,7 @@ async fn execute_block<REv>(
     let BlockAndExecutionEffects {
         block,
         execution_results,
-        maybe_step_execution_effect: _,
+        ..
     } = match effect_builder
         .execute_finalized_block(
             protocol_version,

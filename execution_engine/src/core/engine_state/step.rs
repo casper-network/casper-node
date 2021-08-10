@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, vec::Vec};
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey, U512,
+    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey,
 };
 
 use crate::{
@@ -145,6 +145,5 @@ pub enum StepError {
 #[derive(Debug)]
 pub struct StepSuccess {
     pub post_state_hash: Blake2bHash,
-    pub next_era_validators: BTreeMap<PublicKey, U512>,
     pub execution_effect: ExecutionEffect,
 }

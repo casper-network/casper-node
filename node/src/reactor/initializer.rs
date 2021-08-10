@@ -10,6 +10,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::info;
 
+use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
@@ -21,9 +22,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-        },
+        announcements::{ChainspecLoaderAnnouncement, ControlAnnouncement},
         requests::{
             ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
             RestRequest, StateStoreRequest, StorageRequest,

@@ -17,6 +17,8 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
+use crate::components::contract_runtime::ContractRuntimeAnnouncement;
+use crate::effect::announcements::ChainspecLoaderAnnouncement;
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -40,9 +42,8 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            LinearChainBlock, NetworkAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -899,6 +900,12 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 // no consensus, respond with None
                 responder.respond(None).ignore()
+            }
+            JoinerEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators { .. },
+            ) => {
+                // Upcoming validators are not used by joiner reactor
+                Effects::new()
             }
         }
     }
