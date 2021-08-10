@@ -1,8 +1,3 @@
-use super::{blake2b, FromStrError};
-use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
-};
 use alloc::{string::String, vec::Vec};
 use core::{
     convert::{From, TryFrom},
@@ -17,9 +12,16 @@ use rand::{
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+use super::{blake2b, FromStrError};
+use crate::{
+    bytesrepr::{Error, FromBytes, ToBytes},
+    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+};
+
 /// The length in bytes of a [`AccountHash`].
 pub const ACCOUNT_HASH_LENGTH: usize = 32;
-/// TODO: Document this.
+/// The prefix applied to the hex-encoded `AccountHash` to produce a formatted string
+/// representation.
 pub const ACCOUNT_HASH_FORMATTED_STRING_PREFIX: &str = "account-hash-";
 
 /// A newtype wrapping an array which contains the raw bytes of

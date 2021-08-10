@@ -224,19 +224,25 @@ where
     }
 
     fn read_base_round_reward(&mut self) -> Result<U512, Error> {
-        let mint_contract = self.get_mint_contract();
+        let mint_contract = self.get_mint_contract().map_err(|exec_error| {
+            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
+        })?;
         self.mint_read_base_round_reward(mint_contract)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue))
     }
 
     fn mint(&mut self, amount: U512) -> Result<URef, Error> {
-        let mint_contract = self.get_mint_contract();
+        let mint_contract = self
+            .get_mint_contract()
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))?;
         self.mint_mint(mint_contract, amount)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))
     }
 
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
-        let mint_contract = self.get_mint_contract();
+        let mint_contract = self
+            .get_mint_contract()
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))?;
         self.mint_reduce_total_supply(mint_contract, amount)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))
     }

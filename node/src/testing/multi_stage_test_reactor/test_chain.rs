@@ -173,17 +173,22 @@ impl TestChain {
             ..Default::default()
         };
 
-        // ...and the secret key for our validator.
-        participating_config.consensus.secret_key_path = External::from_value(secret_key);
-
-        // Set a trust hash if one has been provided.
-        participating_config.node.trusted_hash = trusted_hash;
-
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
+        // ...and the secret key for our validator.
+        {
+            let secret_key_path = temp_dir.path().join("secret_key");
+            secret_key
+                .to_file(secret_key_path.clone())
+                .expect("could not write secret key");
+            participating_config.consensus.secret_key_path = External::Path(secret_key_path);
+        }
         participating_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         participating_config.storage = storage_config;
+
+        // Set a trust hash if one has been provided.
+        participating_config.node.trusted_hash = trusted_hash;
 
         // Bundle our config with a chainspec for creating a multi-stage reactor
         let config = InitializerReactorConfigWithChainspec {

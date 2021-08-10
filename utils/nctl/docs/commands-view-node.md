@@ -2,7 +2,7 @@
 
 ### nctl-view-node-config node={X:-1}
 
-Displays configuraiton file node X.
+Displays configuration file node X.
 
 ```
 nctl-view-node-config

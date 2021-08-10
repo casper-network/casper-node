@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Debug, From)]
-pub enum Event<I> {
+pub(crate) enum Event<I> {
     /// A linear chain request issued by another node in the network.
     #[from]
     Request(LinearChainRequest<I>),
@@ -23,8 +23,6 @@ pub enum Event<I> {
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
-    /// Linear chain block we already know but we may refinalize it when syncing protocol state.
-    KnownLinearChainBlock(Box<Block>),
     /// Finality signature received.
     /// Not necessarily _new_ finality signature.
     FinalitySignatureReceived(Box<FinalitySignature>, bool),
@@ -45,9 +43,6 @@ impl<I: Display> Display for Event<I> {
             Event::Request(req) => write!(f, "linear chain request: {}", req),
             Event::NewLinearChainBlock { block, .. } => {
                 write!(f, "linear chain new block: {}", block.hash())
-            }
-            Event::KnownLinearChainBlock(block) => {
-                write!(f, "linear chain known block: {}", block.hash())
             }
             Event::FinalitySignatureReceived(fs, gossiped) => write!(
                 f,

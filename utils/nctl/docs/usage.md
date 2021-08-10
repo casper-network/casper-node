@@ -1,6 +1,6 @@
 # NCTL Usage
 
-Once activated, NCTL commands can be used to setup & control nodes within a local test network.  Most NCTL users will be testing a single local network, however developers wishing to test multiple networks in parallel may do so.  This usage guide focusses upon the former use case, i.e. testing a single network, and thus all NCTL commands described below are executed with their default values.  Please refer [here](commands.md) for full details of supported NCTL commands.
+Once activated, NCTL commands can be used to setup & control nodes within a local test network.  Most NCTL users will be testing a single local network, however developers wishing to test multiple networks in parallel may do so.  This usage guide focuses upon the former use case, i.e. testing a single network, and thus all NCTL commands described below are executed with their default values.  Please refer [here](commands.md) for full details of supported NCTL commands.
 
 ## Step 0: Compile network binaries.
 
@@ -94,7 +94,7 @@ nctl-stop node=1
 
 ## Step 4: Dump logs & other files.
 
-Upon observation of a network behavioural anomaly you can dump relevant assets such as logs & configuration as follows:
+Upon observation of a network behavioral anomaly you can dump relevant assets such as logs & configuration as follows:
 
 ```
 # Writes dumped files -> $NCTL/dumps/net-1

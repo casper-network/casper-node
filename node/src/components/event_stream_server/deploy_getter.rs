@@ -9,9 +9,7 @@ use tracing::error;
 
 use crate::{
     effect::EffectBuilder,
-    reactor::{
-        joiner::Event as JoinerReactorEvent, participating::Event as ParticipatingReactorEvent,
-    },
+    reactor::{joiner::JoinerEvent, participating::ParticipatingEvent},
     types::{Deploy, DeployHash},
 };
 
@@ -22,8 +20,8 @@ use crate::{
 /// participating reactor, the participating effect builder is set.
 #[derive(Clone, Default, Debug)]
 struct CommonEffectBuilder {
-    joiner: OnceCell<EffectBuilder<JoinerReactorEvent>>,
-    participating: OnceCell<EffectBuilder<ParticipatingReactorEvent>>,
+    joiner: OnceCell<EffectBuilder<JoinerEvent>>,
+    participating: OnceCell<EffectBuilder<ParticipatingEvent>>,
 }
 
 /// A struct to enable the event stream server tasks to fetch deploys from storage.
@@ -36,7 +34,7 @@ pub(crate) struct DeployGetter {
 }
 
 impl DeployGetter {
-    pub(crate) fn new(joiner_effect_builder: EffectBuilder<JoinerReactorEvent>) -> Self {
+    pub(crate) fn new(joiner_effect_builder: EffectBuilder<JoinerEvent>) -> Self {
         let effect_builder = CommonEffectBuilder::default();
         let _ = effect_builder.joiner.set(joiner_effect_builder);
         DeployGetter {
@@ -48,7 +46,7 @@ impl DeployGetter {
 
     pub(super) fn set_participating_effect_builder(
         &self,
-        effect_builder: EffectBuilder<ParticipatingReactorEvent>,
+        effect_builder: EffectBuilder<ParticipatingEvent>,
     ) {
         if self
             .effect_builder

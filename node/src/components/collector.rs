@@ -36,7 +36,7 @@ impl<P: Collectable> Collector<P> {
 
 /// Collector event.
 #[derive(Debug, From, Serialize)]
-pub enum Event<P> {
+pub(crate) enum Event<P> {
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, P>),
 }

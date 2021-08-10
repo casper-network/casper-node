@@ -58,14 +58,14 @@ use crate::{
     },
     NodeRng,
 };
-pub use config::Config;
+pub(crate) use config::Config;
 use event::BlockByHeightResult;
-pub use event::Event;
-pub use metrics::LinearChainSyncMetrics;
-pub use peers::PeersState;
+pub(crate) use event::Event;
+pub(crate) use metrics::LinearChainSyncMetrics;
+pub(crate) use peers::PeersState;
 use smallvec::SmallVec;
-pub use state::State;
-pub use traits::ReactorEventT;
+pub(crate) use state::State;
+pub(crate) use traits::ReactorEventT;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainSync<I> {
@@ -94,7 +94,7 @@ pub(crate) struct LinearChainSync<I> {
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     // TODO: fix this
     #[allow(clippy::too_many_arguments)]
-    pub fn new<REv, Err>(
+    pub(crate) fn new<REv, Err>(
         registry: &Registry,
         effect_builder: EffectBuilder<REv>,
         chainspec: &Chainspec,
@@ -217,12 +217,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     /// Returns `true` if we have finished syncing linear chain.
-    pub fn is_synced(&self) -> bool {
+    pub(crate) fn is_synced(&self) -> bool {
         matches!(self.state, State::Done(_))
     }
 
     /// Returns `true` if we should stop for upgrade.
-    pub fn stopped_for_upgrade(&self) -> bool {
+    pub(crate) fn stopped_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
     }
 
@@ -530,7 +530,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    pub fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
+    pub(crate) fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
         match self.state {
             State::SyncingTrustedHash { latest_block, .. } => latest_block.map(Block::take_header),
             State::SyncingDescendants { latest_block, .. } => Some(latest_block.take_header()),

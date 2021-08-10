@@ -1,9 +1,11 @@
+use alloc::vec::Vec;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLType, CLTyped,
 };
-use alloc::vec::Vec;
-use serde::{Deserialize, Serialize};
 
 /// The number of bytes in a serialized [`Weight`].
 pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;

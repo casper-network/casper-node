@@ -9,6 +9,7 @@ use rand::{
     Rng,
 };
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_types::{
     account::{Account, AccountHash},
@@ -28,7 +29,7 @@ use casper_types::{
             self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        standard_payment,
+        standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
@@ -40,7 +41,7 @@ use crate::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig},
         execution,
         execution::{AddressGenerator, Executor},
-        tracking_copy::TrackingCopy,
+        tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
         gas::Gas,
@@ -50,11 +51,13 @@ use crate::{
         system_config::SystemConfig,
         wasm_config::WasmConfig,
     },
-    storage::{global_state::StateProvider, protocol_data::ProtocolData},
+    storage::global_state::StateProvider,
 };
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
+const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
+pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
 #[derive(Debug)]
 pub struct GenesisSuccess {
@@ -652,6 +655,12 @@ pub enum GenesisError {
     InvalidDelegatedAmount {
         public_key: PublicKey,
     },
+    FailedToCreateSystemRegistry,
+    MissingSystemContractHash(String),
+    InvalidValidatorSlots {
+        validators: usize,
+        validator_slots: u32,
+    },
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -669,7 +678,6 @@ where
     transfer_address_generator: Rc<RefCell<AddressGenerator>>,
     executor: Executor,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    protocol_data: ProtocolData,
     system_module: Module,
 }
 
@@ -704,8 +712,6 @@ where
             Rc::new(RefCell::new(generator))
         };
 
-        let protocol_data = ProtocolData::default();
-
         let system_account_addr = PublicKey::System.to_account_hash();
 
         let virtual_system_account = {
@@ -730,7 +736,6 @@ where
             transfer_address_generator,
             executor,
             tracking_copy,
-            protocol_data,
             system_module,
         }
     }
@@ -798,7 +803,20 @@ where
 
         let (_, mint_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        self.protocol_data = ProtocolData::partial_with_mint(mint_hash);
+        {
+            // Insert a partial registry into global state.
+            // This allows for default values to be accessible when the remaining system contracts
+            // call the `call_host_mint` function during their creation.
+            let mut partial_registry = BTreeMap::<String, ContractHash>::new();
+            partial_registry.insert(MINT.to_string(), mint_hash);
+            partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
+            let cl_registry = CLValue::from_t(partial_registry)
+                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+            self.tracking_copy.borrow_mut().write(
+                Key::SystemContractRegistry,
+                StoredValue::CLValue(cl_registry),
+            );
+        }
 
         Ok(mint_hash)
     }
@@ -825,6 +843,8 @@ where
 
         let (_, handle_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
+        self.store_system_contract(HANDLE_PAYMENT, handle_payment_hash)?;
+
         Ok(handle_payment_hash)
     }
 
@@ -836,6 +856,12 @@ where
         let mut named_keys = NamedKeys::new();
 
         let genesis_validators: Vec<_> = self.exec_config.get_bonded_validators().collect();
+        if (self.exec_config.validator_slots() as usize) < genesis_validators.len() {
+            return Err(GenesisError::InvalidValidatorSlots {
+                validators: genesis_validators.len(),
+                validator_slots: self.exec_config.validator_slots(),
+            });
+        }
 
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
@@ -1060,10 +1086,12 @@ where
 
         let (_, auction_hash) = self.store_contract(access_key, named_keys, entry_points);
 
+        self.store_system_contract(AUCTION, auction_hash)?;
+
         Ok(auction_hash)
     }
 
-    pub(crate) fn create_standard_payment(&self) -> ContractHash {
+    pub(crate) fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
         let named_keys = NamedKeys::new();
 
         let entry_points = standard_payment::standard_payment_entry_points();
@@ -1075,7 +1103,9 @@ where
 
         let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        standard_payment_hash
+        self.store_system_contract(STANDARD_PAYMENT, standard_payment_hash)?;
+
+        Ok(standard_payment_hash)
     }
 
     pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
@@ -1134,7 +1164,19 @@ where
             ARG_AMOUNT => amount,
         };
 
-        let base_key = Key::Hash(self.protocol_data.mint().value());
+        let registry = self
+            .tracking_copy
+            .borrow_mut()
+            .get_system_contracts(self.correlation_id)
+            .map_err(execution::Error::from)
+            .map_err(GenesisError::ExecutionError)?;
+
+        let mint_hash = registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            GenesisError::MissingSystemContractHash(MINT.to_string())
+        })?;
+
+        let base_key = Key::Hash(mint_hash.value());
         let mint = {
             if let StoredValue::Contract(contract) = self
                 .tracking_copy
@@ -1174,14 +1216,13 @@ where
                 self.correlation_id,
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
-                self.protocol_data,
                 Default::default(),
                 call_stack,
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
 
         let purse_uref = runtime
-            .call_contract(self.protocol_data.mint(), METHOD_MINT, args)
+            .call_contract(*mint_hash, METHOD_MINT, args)
             .map_err(GenesisError::ExecutionError)?
             .into_t::<Result<URef, mint::Error>>()
             .map_err(|cl_value_error| GenesisError::CLValue(cl_value_error.to_string()))?
@@ -1238,6 +1279,34 @@ where
         );
 
         (contract_package_hash, contract_hash)
+    }
+
+    fn store_system_contract(
+        &self,
+        contract_name: &str,
+        contract_hash: ContractHash,
+    ) -> Result<(), GenesisError> {
+        let partial_cl_registry = self
+            .tracking_copy
+            .borrow_mut()
+            .read(self.correlation_id, &Key::SystemContractRegistry)
+            .map_err(|_| GenesisError::FailedToCreateSystemRegistry)?
+            .ok_or_else(|| {
+                GenesisError::CLValue("failed to convert registry as stored value".to_string())
+            })?
+            .as_cl_value()
+            .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?
+            .to_owned();
+        let mut partial_registry = CLValue::into_t::<SystemContractRegistry>(partial_cl_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+        partial_registry.insert(contract_name.to_string(), contract_hash);
+        let cl_registry = CLValue::from_t(partial_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+        self.tracking_copy.borrow_mut().write(
+            Key::SystemContractRegistry,
+            StoredValue::CLValue(cl_registry),
+        );
+        Ok(())
     }
 }
 
