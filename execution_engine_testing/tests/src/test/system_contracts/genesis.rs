@@ -68,7 +68,7 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 fn should_run_genesis() {
     let protocol_version = ProtocolVersion::V1_0_0;
     let wasm_config = *DEFAULT_WASM_CONFIG;
-    let system_costs = *DEFAULT_SYSTEM_CONFIG;
+    let system_config = *DEFAULT_SYSTEM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -79,7 +79,7 @@ fn should_run_genesis() {
     let exec_config = ExecConfig::new(
         GENESIS_CUSTOM_ACCOUNTS.clone(),
         wasm_config,
-        system_costs,
+        system_config,
         validator_slots,
         auction_delay,
         locked_funds_period,
