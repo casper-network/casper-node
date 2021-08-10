@@ -17,6 +17,7 @@ use crate::{
         linear_chain_sync::error::{FinalitySignatureError, LinearChainSyncError},
     },
     effect::{
+        announcements::BlocklistAnnouncement,
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder,
     },
@@ -244,7 +245,8 @@ async fn fetch_and_store_block_header_by_height<REv, I>(
 where
     REv: From<FetcherRequest<I, BlockHeaderWithMetadata>>
         + From<NetworkInfoRequest<I>>
-        + From<StorageRequest>,
+        + From<StorageRequest>
+        + From<BlocklistAnnouncement<I>>,
     I: Eq + Debug + Clone + Send + 'static,
 {
     for peer in effect_builder.get_peers_in_random_order().await {
@@ -270,7 +272,7 @@ where
                         ?peer,
                         "Error validating finality signatures from peer.",
                     );
-                    // TODO: ban peer
+                    effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
@@ -322,6 +324,7 @@ async fn fetch_and_store_block_by_height<REv, I>(
 where
     REv: From<FetcherRequest<I, BlockWithMetadata>>
         + From<NetworkInfoRequest<I>>
+        + From<BlocklistAnnouncement<I>>
         + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
 {
@@ -343,7 +346,7 @@ where
                         ?peer,
                         "Error validating finality signatures from peer.",
                     );
-                    // TODO: ban peer
+                    effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
@@ -358,7 +361,7 @@ where
                         ?peer,
                         "Error validating finality signatures from peer.",
                     );
-                    // TODO: ban peer
+                    effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
@@ -434,6 +437,7 @@ where
         + From<FetcherRequest<I, Deploy>>
         + From<FetcherRequest<I, Trie<Key, StoredValue>>>
         + From<NetworkInfoRequest<I>>
+        + From<BlocklistAnnouncement<I>>
         + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
 {

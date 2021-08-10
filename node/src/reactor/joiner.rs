@@ -43,9 +43,9 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            LinearChainBlock, NetworkAnnouncement,
+            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -209,6 +209,10 @@ pub enum Event {
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
 
+    /// Network announcement.
+    #[from]
+    BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement<NodeId>),
+
     /// Block executor announcement.
     #[from]
     ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
@@ -280,6 +284,7 @@ impl Display for Event {
             Event::Network(event) => write!(f, "network: {}", event),
             Event::SmallNetwork(event) => write!(f, "small network: {}", event),
             Event::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
+            Event::BlocklistAnnouncement(event) => write!(f, "blocklist announcement: {}", event),
             Event::Storage(request) => write!(f, "storage: {}", request),
             Event::RestServer(event) => write!(f, "rest server: {}", event),
             Event::EventStreamServer(event) => write!(f, "event stream server: {}", event),
@@ -614,6 +619,9 @@ impl reactor::Reactor for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
+            Event::BlocklistAnnouncement(ann) => {
+                self.dispatch_event(effect_builder, rng, Event::SmallNetwork(ann.into()))
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,
@@ -629,7 +637,10 @@ impl reactor::Reactor for Reactor {
                         Some(fetcher_event) => {
                             self.dispatch_event(effect_builder, rng, Event::BlockFetcher(fetcher_event))
                         } ,
-                        None => Effects::new()
+                        None => {
+                            info!("{} sent us a block we couldn't parse! Banning", sender);
+                            effect_builder.announce_disconnect_from_peer(sender).ignore()
+                        }
                     }
                 }
                 Message::GetResponse {
@@ -643,7 +654,10 @@ impl reactor::Reactor for Reactor {
                         Some(fetcher_event) => {
                             self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(fetcher_event))
                         }
-                        None => Effects::new()
+                        None => {
+                            info!("{} sent us a block with metadata we couldn't parse! Banning", sender);
+                            effect_builder.announce_disconnect_from_peer(sender).ignore()
+                        }
                     }
                 }
                 Message::GetResponse {
@@ -657,7 +671,10 @@ impl reactor::Reactor for Reactor {
                         Some(fetcher_event) => {
                             self.dispatch_event(effect_builder, rng, Event::TrieFetcher(fetcher_event))
                         } ,
-                        None => Effects::new()
+                        None => {
+                            info!("{} sent us a trie we couldn't parse! Banning", sender);
+                            effect_builder.announce_disconnect_from_peer(sender).ignore()
+                        }
                     }
                 }
                 Message::GetResponse {
@@ -671,7 +688,10 @@ impl reactor::Reactor for Reactor {
                         Some(fetcher_event) => {
                             self.dispatch_event(effect_builder, rng, Event::BlockHeaderFetcher(fetcher_event))
                         } ,
-                        None => Effects::new()
+                        None => {
+                            info!("{} sent us a block header we couldn't parse! Banning", sender);
+                            effect_builder.announce_disconnect_from_peer(sender).ignore()
+                        }
                     }
                 }
                 Message::GetResponse {
@@ -685,7 +705,10 @@ impl reactor::Reactor for Reactor {
                         Some(fetcher_event) => {
                             self.dispatch_event(effect_builder, rng, Event::BlockHeaderByHeightFetcher(fetcher_event))
                         } ,
-                        None => Effects::new()
+                        None => {
+                            info!("{} sent us a block header with finality signatures we couldn't parse! Banning", sender);
+                            effect_builder.announce_disconnect_from_peer(sender).ignore()
+                        }
                     }
                 }
                 Message::GetResponse {
@@ -699,7 +722,10 @@ impl reactor::Reactor for Reactor {
                         Some(fetcher_event) => {
                             self.dispatch_event(effect_builder, rng, Event::DeployFetcher(fetcher_event))
                         },
-                        None => Effects::new()
+                        None => {
+                            info!("{} sent us a deploy we couldn't parse! Banning", sender);
+                            effect_builder.announce_disconnect_from_peer(sender).ignore()
+                        }
                     }
                 }
                 Message::AddressGossiper(message) => {
