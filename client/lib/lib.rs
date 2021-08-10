@@ -536,8 +536,8 @@ pub async fn get_account_info(
 /// * `global_state_str_params` contains global state identifier related options for this query. See
 ///   [`GlobalStateStrParams`](struct.GlobalStateStrParams.html) for more details.
 /// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
-///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.Key.html). This will
-///   take one of the following forms:
+///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.Key.html). This will take one
+///   of the following forms:
 /// ```text
 /// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c             # PublicKey
 /// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
