@@ -166,7 +166,7 @@ pub mod gens {
     };
 
     prop_compose! {
-        pub fn system_costs_arb()(
+        pub fn system_config_arb()(
             wasmless_transfer_cost in num::u32::ANY,
             max_associated_keys in num::u32::ANY,
             auction_costs in auction_costs_arb(),
