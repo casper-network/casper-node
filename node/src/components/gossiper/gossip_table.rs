@@ -1052,28 +1052,4 @@ mod tests {
         assert_eq!(purged, expected);
         assert_eq!(0, timeouts.values.len());
     }
-
-    // TODO - re-enable using criterion
-    // #[bench]
-    // fn benchmark_purging(bencher: &mut Bencher) {
-    //     const ENTRY_COUNT: usize = 10_000;
-    //     let mut rng = crate::new_rng();
-    //     let node_ids = random_node_ids(&mut rng);
-    //     let deploy_ids = iter::repeat_with(|| DeployHash::new(Digest::random(&mut rng)))
-    //         .take(ENTRY_COUNT)
-    //         .collect::<Vec<_>>();
-    //
-    //     let mut gossip_table = GossipTable::new(Config::default());
-    //
-    //     // Add new complete data and finish via infection limit.
-    //     for deploy_id in &deploy_ids {
-    //         let _ = gossip_table.new_complete_data(deploy_id, None);
-    //         for node_id in &node_ids[0..EXPECTED_DEFAULT_INFECTION_TARGET] {
-    //             let _ = gossip_table.we_infected(deploy_id, *node_id);
-    //         }
-    //         assert!(gossip_table.finished.contains(deploy_id));
-    //     }
-    //
-    //     bencher.iter(|| gossip_table.purge_finished());
-    // }
 }
