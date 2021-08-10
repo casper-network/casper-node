@@ -137,8 +137,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Ok(Gossiper {
             table: GossipTable::new(config),
-            gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            gossip_timeout: Duration::from_millis(config.gossip_request_timeout()),
+            get_from_peer_timeout: Duration::from_millis(config.get_remainder_timeout()),
             get_from_holder: Box::new(get_from_holder),
             metrics: GossiperMetrics::new(name, registry)?,
         })
@@ -160,8 +160,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Ok(Gossiper {
             table: GossipTable::new(config),
-            gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            gossip_timeout: Duration::from_millis(config.gossip_request_timeout()),
+            get_from_peer_timeout: Duration::from_millis(config.get_remainder_timeout()),
             get_from_holder: Box::new(|_, item, _| {
                 panic!("gossiper should never try to get {}", item)
             }),

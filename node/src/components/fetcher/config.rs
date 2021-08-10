@@ -15,7 +15,7 @@ pub struct Config {
 
 impl Config {
     pub(crate) fn get_from_peer_timeout(&self) -> u64 {
-        self.get_from_peer_timeout.millis() / 1000 // TODO[RC]: Rethink this
+        self.get_from_peer_timeout.millis()
     }
 }
 

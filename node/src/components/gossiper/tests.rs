@@ -25,6 +25,7 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
+        tests_common::advance_time,
     },
     effect::{
         announcements::{
@@ -497,11 +498,8 @@ async fn should_get_from_alternate_source() {
     network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
 
     // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
-    let secs_to_advance = Config::default().get_remainder_timeout_secs();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance)).await;
-    time::resume();
-    debug!("advanced time by {} secs", secs_to_advance);
+    let time_to_advance = Config::default().get_remainder_timeout();
+    advance_time(Duration::from_millis(time_to_advance)).await;
 
     // Check node 0 has the deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
@@ -569,11 +567,8 @@ async fn should_timeout_gossip_response() {
     }
 
     // Advance time to trigger node 0's timeout causing it to gossip to the new nodes.
-    let secs_to_advance = Config::default().gossip_request_timeout_secs();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance)).await;
-    time::resume();
-    debug!("advanced time by {} secs", secs_to_advance);
+    let time_to_advance = Config::default().gossip_request_timeout();
+    advance_time(Duration::from_millis(time_to_advance)).await;
 
     // Check every node has every deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {

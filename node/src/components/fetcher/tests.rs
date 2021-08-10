@@ -7,13 +7,14 @@ use casper_node_macros::reactor;
 use futures::FutureExt;
 use tempfile::TempDir;
 use thiserror::Error;
-use tokio::time;
 
 use casper_types::ProtocolVersion;
 
 use super::*;
 use crate::{
-    components::{deploy_acceptor, in_memory_network::NetworkController, storage},
+    components::{
+        deploy_acceptor, in_memory_network::NetworkController, storage, tests_common::advance_time,
+    },
     effect::{
         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
         Responder,
@@ -436,10 +437,9 @@ async fn should_timeout_fetch_from_peer() {
         .await;
 
     // Advance time.
-    let secs_to_advance = Config::default().get_from_peer_timeout();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance + 10)).await;
-    time::resume();
+    let time_to_advance = Config::default().get_from_peer_timeout();
+    let time_to_advance = Duration::from_millis(time_to_advance) + Duration::from_secs(10);
+    advance_time(time_to_advance).await;
 
     // Settle the network, allowing timeout to avoid panic.
     let expected_result = None;

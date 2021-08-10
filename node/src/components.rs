@@ -25,6 +25,8 @@ pub(crate) mod network;
 pub(crate) mod networking_metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
+#[cfg(test)]
+pub(crate) mod tests_common;
 
 use crate::{
     effect::{EffectBuilder, Effects},

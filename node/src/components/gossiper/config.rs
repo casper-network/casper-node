@@ -76,10 +76,8 @@ impl Config {
     #[cfg(test)]
     pub(crate) fn new_with_small_timeouts() -> Self {
         Config {
-            finished_entry_duration: TimeDiff::from_str(
-                SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION,
-            )
-            .unwrap(),
+            finished_entry_duration: TimeDiff::from_str(SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION)
+                .unwrap(),
             gossip_request_timeout: TimeDiff::from_str(SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT)
                 .unwrap(),
             get_remainder_timeout: TimeDiff::from_str(SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT)
@@ -96,16 +94,16 @@ impl Config {
         self.saturation_limit_percent
     }
 
-    pub(crate) fn finished_entry_duration_secs(&self) -> u64 {
-        self.finished_entry_duration.millis() / 1000 // TODO[RC]: Rethink this
+    pub(crate) fn finished_entry_duration(&self) -> u64 {
+        self.finished_entry_duration.millis()
     }
 
-    pub(crate) fn gossip_request_timeout_secs(&self) -> u64 {
-        self.gossip_request_timeout.millis() / 1000
+    pub(crate) fn gossip_request_timeout(&self) -> u64 {
+        self.gossip_request_timeout.millis()
     }
 
-    pub(crate) fn get_remainder_timeout_secs(&self) -> u64 {
-        self.get_remainder_timeout.millis() / 1000
+    pub(crate) fn get_remainder_timeout(&self) -> u64 {
+        self.get_remainder_timeout.millis()
     }
 }
 
@@ -114,10 +112,8 @@ impl Default for Config {
         Config {
             infection_target: DEFAULT_INFECTION_TARGET,
             saturation_limit_percent: DEFAULT_SATURATION_LIMIT_PERCENT,
-            finished_entry_duration: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
-                .unwrap(),
-            gossip_request_timeout: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT)
-                .unwrap(),
+            finished_entry_duration: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION).unwrap(),
+            gossip_request_timeout: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT).unwrap(),
             get_remainder_timeout: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
         }
     }
@@ -153,10 +149,8 @@ mod tests {
         let invalid_config = Config {
             infection_target: 3,
             saturation_limit_percent: MAX_SATURATION_LIMIT_PERCENT + 1,
-            finished_entry_duration: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
-                .unwrap(),
-            gossip_request_timeout: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT)
-                .unwrap(),
+            finished_entry_duration: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION).unwrap(),
+            gossip_request_timeout: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT).unwrap(),
             get_remainder_timeout: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
         };
 

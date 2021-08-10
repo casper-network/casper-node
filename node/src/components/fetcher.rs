@@ -188,7 +188,7 @@ impl<T: Item> Fetcher<T> {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
-            get_from_peer_timeout: Duration::from_secs(config.get_from_peer_timeout()),
+            get_from_peer_timeout: Duration::from_millis(config.get_from_peer_timeout()),
             responders: HashMap::new(),
             metrics: FetcherMetrics::new(name, registry)?,
         })

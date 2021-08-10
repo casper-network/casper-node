@@ -211,7 +211,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             timeouts: Timeouts::new(),
             infection_target: usize::from(config.infection_target()),
             holders_limit,
-            finished_entry_duration: Duration::from_secs(config.finished_entry_duration_secs()),
+            finished_entry_duration: Duration::from_millis(config.finished_entry_duration()),
         }
     }
 
