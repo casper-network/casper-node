@@ -12,6 +12,15 @@
     ],
     "output": "0100"
   },
+  "SerializeEmptyString": {
+    "input": [
+      {
+        "type": "String",
+        "value": ""
+      }
+    ],
+    "output": "00000000"
+  },
   "SerializeString": {
     "input": [
       {

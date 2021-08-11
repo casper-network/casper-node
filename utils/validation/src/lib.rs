@@ -33,8 +33,13 @@ const JSON_FILE_EXT: &str = "json";
 
 #[derive(Debug)]
 pub enum Fixture {
-    /// Name of the test fixture (taken from a file name) and ABI fixture itself.
-    ABI(String, ABIFixture),
+    /// ABI fixture.
+    ABI {
+        /// Name of the test fixture (taken from a file name).
+        name: String,
+        /// ABI fixture itself.
+        fixture: ABIFixture,
+    },
 }
 
 /// Loads a generic test fixture from a file with a reader based on a file extension.
@@ -76,12 +81,16 @@ pub fn load_fixtures(path: &Path) -> Result<TestFixtures, Error> {
         };
 
         for dir_entry in dir_entries {
-            let fixture = load_fixture(dir_entry.path())?;
-            let filename = path
+            let dir_entry_path = dir_entry.path();
+            let fixture = load_fixture(dir_entry_path.clone())?;
+            let filename = dir_entry_path
                 .file_stem()
                 .and_then(OsStr::to_str)
-                .ok_or_else(|| Error::NoStem(path.to_path_buf()))?;
-            test_fixtures.push(Fixture::ABI(filename.to_string(), fixture));
+                .ok_or_else(|| Error::NoStem(dir_entry_path.clone()))?;
+            test_fixtures.push(Fixture::ABI {
+                name: filename.to_string(),
+                fixture,
+            });
         }
     }
     Ok(test_fixtures)

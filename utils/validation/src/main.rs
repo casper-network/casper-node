@@ -2,6 +2,7 @@ mod generators;
 
 use std::{fs::File, io::BufWriter, path::PathBuf};
 
+use anyhow::Context;
 use clap::Clap;
 
 use casper_validation::{Fixture, ABI_TEST_FIXTURES};
@@ -33,7 +34,11 @@ impl Generate {
     fn run(self) -> anyhow::Result<()> {
         let fixtures = generators::make_abi_test_fixtures()?;
 
-        for Fixture::ABI(file_name, fixture) in fixtures {
+        for Fixture::ABI {
+            name: file_name,
+            fixture,
+        } in fixtures
+        {
             let output_path = {
                 let mut output_path = self.output.clone();
                 output_path.push(ABI_TEST_FIXTURES);
@@ -41,7 +46,8 @@ impl Generate {
                 output_path
             };
 
-            let file = File::create(&output_path)?;
+            let file = File::create(&output_path)
+                .context(format!("Unable to create output file {:?}", output_path))?;
             let buffered_writer = BufWriter::new(file);
             serde_json::to_writer_pretty(buffered_writer, &fixture)?;
         }

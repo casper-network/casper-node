@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
     CLValue, Key, Transform, U512,
 };
-
-use serde::{Deserialize, Serialize};
 
 /// Representation of supported input value.
 #[derive(Serialize, Deserialize, Debug, From)]
@@ -95,6 +95,8 @@ impl ABITestCase {
         &self.output
     }
 
+    /// Compares input to output.
+    ///
     /// This gets executed for each test case.
     pub fn run_test(&self) {
         let serialized_length = self.serialized_length();

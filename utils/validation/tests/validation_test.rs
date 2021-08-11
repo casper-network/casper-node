@@ -1,12 +1,11 @@
-extern crate rustc_test as test;
+extern crate rustc_test;
 
 use std::{
     env,
     path::{Path, PathBuf},
 };
 
-use rustc_test::TestDescAndFn;
-use test::{TestDesc, TestFn::DynTestFn, TestName::DynTestName};
+use rustc_test::{TestDesc, TestDescAndFn, TestFn::DynTestFn, TestName::DynTestName};
 
 use casper_validation::{abi::ABIFixture, error::Error, Fixture};
 
@@ -59,9 +58,10 @@ fn make_test_cases() -> Result<Vec<TestDescAndFn>, Error> {
 
     for test_fixture in test_fixtures {
         match test_fixture {
-            Fixture::ABI(name, abi_test_case) => {
-                tests.append(&mut make_abi_tests(&name, abi_test_case))
-            }
+            Fixture::ABI {
+                name,
+                fixture: abi_test_case,
+            } => tests.append(&mut make_abi_tests(&name, abi_test_case)),
         }
     }
 
@@ -70,6 +70,6 @@ fn make_test_cases() -> Result<Vec<TestDescAndFn>, Error> {
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<_> = env::args().collect();
-    test::test_main(&args, make_test_cases()?);
+    rustc_test::test_main(&args, make_test_cases()?);
     Ok(())
 }

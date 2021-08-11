@@ -44,6 +44,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![10829133186225377555u64.into()])?,
         );
         basic.insert(
+            "SerializeEmptyString".to_string(),
+            ABITestCase::from_inputs(vec![String::new().into()])?,
+        );
+        basic.insert(
             "SerializeString".to_string(),
             ABITestCase::from_inputs(vec!["Hello, world!".to_string().into()])?,
         );
@@ -51,7 +55,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             "SerializeBool".to_string(),
             ABITestCase::from_inputs(vec![true.into(), false.into()])?,
         );
-        Fixture::ABI("basic".to_string(), ABIFixture::from(basic))
+        Fixture::ABI {
+            name: "basic".to_string(),
+            fixture: ABIFixture::from(basic),
+        }
     };
 
     let transfer = Transfer::new(
@@ -226,7 +233,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             )
             .into()])?,
         );
-        Fixture::ABI("transform".to_string(), ABIFixture::from(transform))
+        Fixture::ABI {
+            name: "transform".to_string(),
+            fixture: ABIFixture::from(transform),
+        }
     };
 
     let stored_value = {
@@ -372,7 +382,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             .into()])?,
         );
 
-        Fixture::ABI("stored_value".to_string(), ABIFixture::from(stored_value))
+        Fixture::ABI {
+            name: "stored_value".to_string(),
+            fixture: ABIFixture::from(stored_value),
+        }
     };
 
     Ok(vec![basic, transform, stored_value])

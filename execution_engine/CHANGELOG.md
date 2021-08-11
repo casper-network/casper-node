@@ -15,7 +15,6 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Added genesis validation step to ensure there are more genesis validators than validator slots.
-* Added serialized test fixtures for ABI and an automated verification tool.
 
 
 
