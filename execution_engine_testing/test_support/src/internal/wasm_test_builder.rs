@@ -202,6 +202,7 @@ impl LmdbWasmTestBuilder {
                 &global_state_dir,
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
+                true,
             )
             .expect("should create LmdbEnvironment"),
         );
@@ -229,6 +230,7 @@ impl LmdbWasmTestBuilder {
         }
     }
 
+    /// Flushes the LMDB environment to disk.
     pub fn flush_environment(&self) {
         let engine_state = &*self.engine_state;
         engine_state.flush_environment().unwrap();
@@ -282,6 +284,7 @@ impl LmdbWasmTestBuilder {
                 &global_state_dir,
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
+                true,
             )
             .expect("should create LmdbEnvironment"),
         );

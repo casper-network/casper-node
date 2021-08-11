@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+
 ### Changed
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.

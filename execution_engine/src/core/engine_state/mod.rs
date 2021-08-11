@@ -105,8 +105,12 @@ pub struct EngineState<S> {
 }
 
 impl EngineState<LmdbGlobalState> {
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
-        self.state.environment.env().sync(true)
+        if self.state.environment.is_manual_sync_enabled() {
+            self.state.environment.sync()?
+        }
+        Ok(())
     }
 }
 
