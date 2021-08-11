@@ -37,7 +37,7 @@
 //! The following chart illustrates the lifecycle of an outgoing connection.
 //!
 //! ```text
-//!                   forgot (after n tries)
+//!                   forget (after n tries)
 //!          ┌────────────────────────────────────┐
 //!          │                 learn              ▼
 //!          │               ┌──────────────  unknown/forgotten
