@@ -199,7 +199,9 @@ impl From<TryFromSliceError> for Error {
 /// From the view of the consensus protocol this is the "consensus value": The protocol deals with
 /// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
 /// deploys actually get executed, and the executed block gets signed.
-#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
+)]
 pub struct BlockPayload {
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
@@ -754,7 +756,8 @@ impl BlockHeader {
         self.era_end.is_some()
     }
 
-    /// The validators for the upcoming era and their respective weights.
+    /// The validators for the upcoming era and their respective weights (if this is a switch
+    /// block).
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
         match &self.era_end {
             Some(era_end) => {
@@ -763,6 +766,13 @@ impl BlockHeader {
             }
             None => None,
         }
+    }
+
+    /// Takes the validators for the upcoming era and their respective weights (if this is a switch
+    /// block).
+    pub fn maybe_take_next_era_validator_weights(self) -> Option<BTreeMap<PublicKey, U512>> {
+        self.era_end
+            .map(|era_end| era_end.next_era_validator_weights)
     }
 
     /// Hash of the block header.

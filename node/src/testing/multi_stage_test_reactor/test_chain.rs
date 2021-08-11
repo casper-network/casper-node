@@ -281,7 +281,18 @@ async fn run_equivocator_network() {
     }
 }
 
-async fn get_switch_block(
+fn first_node_storage(net: &Network<MultiStageTestReactor>) -> &Storage {
+    net.nodes()
+        .values()
+        .next()
+        .expect("need at least one node")
+        .reactor()
+        .inner()
+        .storage()
+        .expect("Can not access storage of first node")
+}
+
+async fn await_switch_block(
     switch_block_era_num: u64,
     net: &mut Network<MultiStageTestReactor>,
     rng: &mut NodeRng,
@@ -301,16 +312,7 @@ async fn get_switch_block(
     );
 
     // Get the storage for the first reactor
-    let storage: &Storage = net
-        .nodes()
-        .values()
-        .next()
-        .expect("need at least one node")
-        .reactor()
-        .inner()
-        .storage()
-        .expect("Can not access storage of first node");
-    let switch_block = storage
+    let switch_block = first_node_storage(net)
         .read_switch_block_by_era_id(EraId::from(switch_block_era_num))
         .expect("Storage error")
         .expect("Could not find block for era num");
@@ -342,10 +344,14 @@ async fn test_joiner_at_genesis() {
 
     // Get the first switch block hash
     // As part of the fast sync process, we will need to retrieve the first switch block
-    let trusted_hash = *get_switch_block(1, &mut chain.network, &mut rng)
-        .await
-        .header()
-        .parent_hash();
+    let start_era = 2;
+    let _ = await_switch_block(start_era, &mut chain.network, &mut rng).await;
+
+    let trusted_hash = first_node_storage(&chain.network)
+        .read_block_header_by_height(2)
+        .expect("should not have storage error")
+        .expect("should have block header")
+        .hash();
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", trusted_hash);
@@ -360,13 +366,13 @@ async fn test_joiner_at_genesis() {
         "There should be two validators in the network (one bonded and one read only)"
     );
 
-    let era_num = 2;
-    info!("Waiting for Era {} to end", era_num);
+    let end_era = start_era + 1;
+    info!("Waiting for Era {} to end", end_era);
     chain
         .network
         .settle_on(
             &mut rng,
-            has_passed_by_era(era_num),
+            has_passed_by_era(end_era),
             Duration::from_secs(600),
         )
         .await;
@@ -390,13 +396,13 @@ async fn test_joiner() {
         "There should be just one bonded validator in the network"
     );
 
-    // Get the second switch block hash
+    // Get the first switch block hash
     // As part of the fast sync process, we will need to retrieve the first switch block
-    let switch_block_hash = *get_switch_block(2, &mut chain.network, &mut rng)
+    let switch_block_hash = *await_switch_block(1, &mut chain.network, &mut rng)
         .await
         .hash();
 
-    let era_num = 5;
+    let era_num = 3;
     info!("Waiting for Era {} to end", era_num);
     chain
         .network
@@ -455,31 +461,36 @@ async fn test_joiner_network() {
     );
 
     // Get the first switch block hash
-    let first_switch_block_hash = *get_switch_block(1, &mut chain.network, &mut rng)
-        .await
+    let start_era = 2;
+    let _ = await_switch_block(start_era, &mut chain.network, &mut rng).await;
+
+    let trusted_block_hash = first_node_storage(&chain.network)
+        .read_block_header_by_height(2)
+        .expect("should not have storage error")
+        .expect("should have block header")
         .hash();
 
     // Have a node join the network with that hash
-    info!("Joining with trusted hash {}", first_switch_block_hash);
+    info!("Joining with trusted hash {}", trusted_block_hash);
     let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
     chain
         .add_node(
             false,
             joiner_node_secret_key,
-            Some(first_switch_block_hash),
+            Some(trusted_block_hash),
             &mut rng,
         )
         .await;
 
     assert_eq!(chain.network.nodes().len(), INITIAL_NETWORK_SIZE + 1,);
 
-    let era_num = 3;
-    info!("Waiting for Era {} to end", era_num);
+    let end_era = start_era + 1;
+    info!("Waiting for Era {} to end", end_era);
     chain
         .network
         .settle_on(
             &mut rng,
-            has_passed_by_era(era_num),
+            has_passed_by_era(end_era),
             Duration::from_secs(600),
         )
         .await;

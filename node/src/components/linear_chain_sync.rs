@@ -42,6 +42,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
+use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
 use casper_types::{EraId, Key, ProtocolVersion};
 
 use self::event::{BlockByHashResult, DeploysResult};
@@ -54,6 +55,7 @@ use crate::{
     components::{
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchedData, FetcherError},
+        linear_chain_sync::operations::KeyBlockInfo,
     },
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement},
@@ -63,16 +65,15 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
-        Chainspec, Deploy, FinalizedBlock, TimeDiff, Timestamp,
+        Chainspec, Deploy, FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
-use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
+
 pub(crate) use error::FinalitySignatureError;
 use event::BlockByHeightResult;
 pub use event::Event;
 pub use metrics::LinearChainSyncMetrics;
-pub(crate) use operations::check_sufficient_finality_signatures;
 pub use peers::PeersState;
 pub use state::State;
 pub use traits::ReactorEventT;
@@ -385,16 +386,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     );
                     return fatal!(effect_builder, "unexpected block execution result").ignore();
                 }
-                match operations::is_current_era::<I>(
-                    latest_block.header(),
-                    last_switch_block_header.as_ref().map(Box::as_ref),
-                    &self.chainspec,
-                    Timestamp::now(),
-                ) {
-                    Err(err) => {
-                        fatal!(effect_builder, "failed to compute era duration: {:?}", err).ignore()
-                    }
-                    Ok(true) => {
+                match last_switch_block_header
+                    .as_ref()
+                    .and_then(|boxed_header| KeyBlockInfo::maybe_from_block_header(&*boxed_header))
+                {
+                    Some(trusted_switch_block_info)
+                        if operations::is_current_era(
+                            latest_block.header(),
+                            &trusted_switch_block_info,
+                            &self.chainspec,
+                        ) =>
+                    {
                         info!(
                             hash=?block.hash(),
                             height=?block.header().height(),
@@ -404,7 +406,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         self.mark_done(Some(*latest_block.clone()));
                         Effects::new()
                     }
-                    Ok(false) => {
+                    _ => {
                         self.state = curr_state;
                         self.fetch_next_block(effect_builder, rng, &block)
                     }

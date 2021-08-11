@@ -66,13 +66,10 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform, U512};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
 
 use crate::{
-    components::{
-        linear_chain_sync::{self, FinalitySignatureError},
-        Component,
-    },
+    components::{consensus, linear_chain_sync::FinalitySignatureError, Component},
     crypto,
     crypto::hash::{self, Digest},
     effect::{
@@ -636,45 +633,7 @@ impl Storage {
         // average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
-                // Validate the block prior to inserting it into the database
-                block.verify()?;
-                let mut txn = self.env.begin_rw_txn()?;
-
-                {
-                    let block_body_hash = block.header().body_hash();
-                    let block_body = block.body();
-                    let success = match block.header().hashing_algorithm_version() {
-                        HashingAlgorithmVersion::V1 => {
-                            self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
-                        }
-                        HashingAlgorithmVersion::V2 => {
-                            self.put_single_block_body_v2(&mut txn, block_body)?
-                        }
-                    };
-                    if !success {
-                        error!("Could not insert body for: {}", block);
-                        txn.abort();
-                        return Ok(responder.respond(false).ignore());
-                    }
-                }
-
-                if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
-                    error!("Could not insert block header for block: {}", block);
-                    txn.abort();
-                    return Ok(responder.respond(false).ignore());
-                }
-                insert_to_block_header_indices(
-                    &mut self.block_height_index,
-                    &mut self.switch_block_era_id_index,
-                    block.header(),
-                )?;
-                insert_to_deploy_index(
-                    &mut self.deploy_hash_index,
-                    block.header().hash(),
-                    block.body(),
-                )?;
-                txn.commit()?;
-                responder.respond(true).ignore()
+                responder.respond(self.write_block(&*block)?).ignore()
             }
             StorageRequest::GetBlock {
                 block_hash,
@@ -1027,13 +986,63 @@ impl Storage {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
+    /// Write a block to storage, updating indices as necessary
+    pub fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
+        // Validate the block prior to inserting it into the database
+        block.verify()?;
+        let mut txn = self.env.begin_rw_txn()?;
+        // Write the block body
+        {
+            let block_body_hash = block.header().body_hash();
+            let block_body = block.body();
+            let success = match block.header().hashing_algorithm_version() {
+                HashingAlgorithmVersion::V1 => {
+                    self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
+                }
+                HashingAlgorithmVersion::V2 => {
+                    self.put_single_block_body_v2(&mut txn, block_body)?
+                }
+            };
+            if !success {
+                error!("Could not insert body for: {}", block);
+                txn.abort();
+                return Ok(false);
+            }
+        }
+
+        if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
+            error!("Could not insert block header for block: {}", block);
+            txn.abort();
+            return Ok(false);
+        }
+        insert_to_block_header_indices(
+            &mut self.block_height_index,
+            &mut self.switch_block_era_id_index,
+            block.header(),
+        )?;
+        insert_to_deploy_index(
+            &mut self.deploy_hash_index,
+            block.header().hash(),
+            block.body(),
+        )?;
+        txn.commit()?;
+        Ok(true)
+    }
+
+    /// Get the switch block header for a specified [`EraID`].
+    pub fn read_switch_block_header_by_era_id(
+        &self,
+        switch_block_era_id: EraId,
+    ) -> Result<Option<BlockHeader>, Error> {
+        self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, switch_block_era_id)
+    }
+
     /// Retrieves a block header by height.
     /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
     /// before the most recent emergency upgrade.
     pub fn read_block_header_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
@@ -1042,7 +1051,6 @@ impl Storage {
             .get_block_header_and_sufficient_finality_signatures_by_height(
                 &mut txn,
                 height,
-                genesis_validator_weights,
                 finality_threshold_fraction,
                 last_emergency_restart,
             )?;
@@ -1056,7 +1064,6 @@ impl Storage {
     pub fn read_block_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockWithMetadata>, Error> {
@@ -1065,7 +1072,6 @@ impl Storage {
             .get_block_and_sufficient_finality_signatures_by_height(
                 &mut txn,
                 height,
-                genesis_validator_weights,
                 finality_threshold_fraction,
                 last_emergency_restart,
             )?;
@@ -1083,6 +1089,11 @@ impl Storage {
             .get(&height)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
+    }
+
+    /// Retrieves a block header to handle a network request.
+    pub fn read_block_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, Error> {
+        self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1454,7 +1465,6 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockWithMetadata>, Error> {
@@ -1464,7 +1474,6 @@ impl Storage {
         } = match self.get_block_header_and_sufficient_finality_signatures_by_height(
             tx,
             height,
-            genesis_validator_weights,
             finality_threshold_fraction,
             last_emergency_restart,
         )? {
@@ -1489,7 +1498,6 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
@@ -1504,7 +1512,6 @@ impl Storage {
         let block_signatures = match self.get_sufficient_finality_signatures(
             tx,
             &block_header,
-            genesis_validator_weights,
             finality_threshold_fraction,
             last_emergency_restart,
         )? {
@@ -1524,7 +1531,6 @@ impl Storage {
         &self,
         tx: &mut Tx,
         block_header: &BlockHeader,
-        genesis_validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockSignatures>, Error> {
@@ -1542,32 +1548,24 @@ impl Storage {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
-        let finality_check_result = if block_header.era_id().is_genesis() {
-            linear_chain_sync::check_sufficient_finality_signatures(
-                genesis_validator_weights,
+        let switch_block_hash = match self
+            .switch_block_era_id_index
+            .get(&(block_header.era_id() - 1))
+        {
+            None => return Ok(None),
+            Some(switch_block_hash) => switch_block_hash,
+        };
+        let switch_block_header = match self.get_single_block_header(tx, switch_block_hash)? {
+            None => return Ok(None),
+            Some(switch_block_header) => switch_block_header,
+        };
+        let finality_check_result = match switch_block_header.next_era_validator_weights() {
+            None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
+            Some(validator_weights) => consensus::check_sufficient_finality_signatures(
+                validator_weights,
                 finality_threshold_fraction,
                 &block_signatures,
-            )
-        } else {
-            let switch_block_hash = match self
-                .switch_block_era_id_index
-                .get(&(block_header.era_id() - 1))
-            {
-                None => return Ok(None),
-                Some(switch_block_hash) => switch_block_hash,
-            };
-            let switch_block_header = match self.get_single_block_header(tx, switch_block_hash)? {
-                None => return Ok(None),
-                Some(switch_block_header) => switch_block_header,
-            };
-            match switch_block_header.next_era_validator_weights() {
-                None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
-                Some(validator_weights) => linear_chain_sync::check_sufficient_finality_signatures(
-                    validator_weights,
-                    finality_threshold_fraction,
-                    &block_signatures,
-                ),
-            }
+            ),
         };
         match finality_check_result {
             Err(err @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
@@ -1581,12 +1579,6 @@ impl Storage {
             Err(err) => Err(err.into()),
             Ok(()) => Ok(Some(block_signatures)),
         }
-    }
-
-    /// Get the lmdb environment
-    #[cfg(test)]
-    pub(crate) fn env(&self) -> &Environment {
-        &self.env
     }
 
     /// Retrieves a deploy from the deploy store.
@@ -1745,6 +1737,14 @@ impl Display for Event {
 // only ever be used when writing tests.
 #[cfg(test)]
 impl Storage {
+    /// Get the switch block for a specified [`EraID`].
+    pub fn read_switch_block_by_era_id(
+        &self,
+        switch_block_era_id: EraId,
+    ) -> Result<Option<Block>, Error> {
+        self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, switch_block_era_id)
+    }
+
     /// Directly returns a deploy from internal store.
     ///
     /// # Panics
@@ -1780,14 +1780,6 @@ impl Storage {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
             .collect()
-    }
-
-    /// Get the switch block for a specified [`EraID`].
-    pub fn read_switch_block_by_era_id(
-        &self,
-        switch_block_era_id: EraId,
-    ) -> Result<Option<Block>, Error> {
-        self.get_switch_block_by_era_id(&mut self.env().begin_ro_txn()?, switch_block_era_id)
     }
 }
 

@@ -358,18 +358,6 @@ impl ChainspecLoader {
         self.initial_block_header().map(|hdr| hdr.hash())
     }
 
-    /// This returns the era at which we will be starting the operation, assuming the highest known
-    /// block is the last one. It will return the era of the highest known block, unless it is a
-    /// switch block, in which case it returns the successor to the era of the highest known block.
-    pub(crate) fn initial_era(&self) -> EraId {
-        // We want to start the Era Supervisor at the era right after the highest block we
-        // have. If the block is a switch block, that will be the era that comes next. If
-        // it's not, we continue the era the highest block belongs to.
-        self.initial_block_header()
-            .map(BlockHeader::next_block_era_id)
-            .unwrap_or_else(|| EraId::from(0))
-    }
-
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
     /// subsequent eras are deleted from storage.
     pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {

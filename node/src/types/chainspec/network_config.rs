@@ -1,14 +1,9 @@
-use std::collections::BTreeMap;
-
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
 use serde::Serialize;
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, U512,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::AccountsConfig;
 #[cfg(test)]
@@ -24,26 +19,6 @@ pub struct NetworkConfig {
     // Note: `accounts_config` must be the last field on this struct due to issues in the TOML
     // crate - see <https://github.com/alexcrichton/toml-rs/search?q=ValueAfterTable&type=issues>.
     pub(crate) accounts_config: AccountsConfig,
-}
-
-impl NetworkConfig {
-    /// Returns a vector of chainspec validators' public key and their stake.
-    pub fn chainspec_validator_stakes(&self) -> BTreeMap<PublicKey, U512> {
-        self.accounts_config
-            .accounts()
-            .iter()
-            .filter_map(|account_config| {
-                if account_config.is_genesis_validator() {
-                    Some((
-                        account_config.public_key(),
-                        account_config.bonded_amount().value(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
 }
 
 #[cfg(test)]

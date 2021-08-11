@@ -86,8 +86,8 @@ impl EraId {
     }
 
     /// Returns the current era plus `x`, or [`EraId::MAX`] if overflow would occur.
-    pub fn saturating_add(self, rhs: EraId) -> EraId {
-        EraId(self.0.saturating_add(rhs.0))
+    pub fn saturating_add(self, rhs: u64) -> EraId {
+        EraId(self.0.saturating_add(rhs))
     }
 
     /// Returns the current era times `x`, or [`EraId::MAX`] if overflow would occur.

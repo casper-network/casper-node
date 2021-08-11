@@ -20,17 +20,20 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
+
+use casper_execution_engine::core::engine_state::{GenesisSuccess, UpgradeConfig, UpgradeSuccess};
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraReport, EraSupervisor, HighwayProtocol},
         contract_runtime::{ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -61,10 +64,14 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{BlockHeader, Deploy, DeployHash, ExitCode, Item, NodeId, Tag},
+    types::{
+        ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitCode, FinalizedBlock,
+        Item, NodeId, Tag,
+    },
     utils::{Source, WithDir},
     NodeRng,
 };
+
 pub use config::Config;
 pub use error::Error;
 use linear_chain::LinearChainComponent;
@@ -389,12 +396,9 @@ impl Reactor {
             Tag::BlockAndMetadataByHeight => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
                     let chainspec = self.chainspec_loader.chainspec();
-                    let genesis_validator_weights =
-                        chainspec.network_config.chainspec_validator_stakes();
                     self.storage
                         .read_block_and_sufficient_finality_signatures_by_height(
                             block_height,
-                            &genesis_validator_weights,
                             chainspec.highway_config.finality_threshold_fraction,
                             chainspec.protocol_config.last_emergency_restart,
                         )
@@ -412,12 +416,9 @@ impl Reactor {
             Tag::BlockHeaderAndFinalitySignaturesByHeight => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
                     let chainspec = self.chainspec_loader.chainspec();
-                    let genesis_validator_weights =
-                        chainspec.network_config.chainspec_validator_stakes();
                     self.storage
                         .read_block_header_and_sufficient_finality_signatures_by_height(
                             block_height,
-                            &genesis_validator_weights,
                             chainspec.highway_config.finality_threshold_fraction,
                             chainspec.protocol_config.last_emergency_restart,
                         )
@@ -488,13 +489,13 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut NodeRng,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ParticipatingInitConfig {
             root,
             config,
             chainspec_loader,
-            storage,
+            mut storage,
             mut contract_runtime,
             maybe_latest_block_header,
             event_stream_server,
@@ -539,55 +540,176 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (block_proposer, block_proposer_effects) = BlockProposer::new(
-            registry.clone(),
-            effect_builder,
-            maybe_latest_block_header
-                .as_ref()
-                .map(|block_header| block_header.height() + 1)
-                .unwrap_or(0),
-            chainspec_loader.chainspec().as_ref(),
-        )?;
-
-        let initial_era = maybe_latest_block_header.as_ref().map_or_else(
-            || chainspec_loader.initial_era(),
-            |block_header| block_header.next_block_era_id(),
-        );
-
-        let (small_network, small_network_effects) = SmallNetwork::new(
-            event_queue,
-            config.network,
-            Some(WithDir::new(&root, &config.consensus)),
-            registry,
-            small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
-            Some(initial_era),
-        )?;
-
-        let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
 
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
+
+        let mut effects = Effects::new();
+
+        // If we have a latest block header, we joined via the joiner reactor.
+        //
+        // If not, run genesis or upgrade and construct a switch block, and use that for the latest
+        // block header.
+        let latest_block_header = if let Some(latest_block_header) = maybe_latest_block_header {
+            latest_block_header
+        } else {
+            let initial_pre_state;
+            let finalized_block;
+
+            let chainspec = chainspec_loader.chainspec();
+            match chainspec.protocol_config.activation_point {
+                ActivationPoint::Genesis(genesis_timestamp) => {
+                    // Check that no blocks exist in storage so we don't try to run genesis again on
+                    // an existing blockchain
+                    if let Some(first_block_header) = storage.read_block_header_by_height(1)? {
+                        return Err(Error::CannotRunGenesisOnPreExistingBlockchain {
+                            first_block_header: Box::new(first_block_header),
+                        });
+                    }
+                    let GenesisSuccess {
+                        post_state_hash,
+                        execution_effect,
+                    } = contract_runtime.commit_genesis(chainspec)?;
+                    info!("genesis chainspec name {}", chainspec.network_config.name);
+                    info!("genesis state root hash {}", post_state_hash);
+                    trace!(%post_state_hash, ?execution_effect);
+                    initial_pre_state = ExecutionPreState::new(
+                        post_state_hash.into(),
+                        0,
+                        Default::default(),
+                        Default::default(),
+                    );
+                    finalized_block = FinalizedBlock::new(
+                        BlockPayload::default(),
+                        Some(EraReport::default()),
+                        genesis_timestamp,
+                        EraId::from(0u64),
+                        0,
+                        PublicKey::System,
+                    );
+                }
+                ActivationPoint::EraId(upgrade_era_id) => {
+                    let upgrade_block_header = storage
+                        .read_switch_block_header_by_era_id(upgrade_era_id.saturating_sub(1))?
+                        .ok_or(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id })?;
+                    // If it's not an emergency upgrade and there is a block higher than ours, bail
+                    // because we will overwrite an existing blockchain.
+                    if chainspec.protocol_config.last_emergency_restart
+                        != Some(upgrade_block_header.era_id())
+                    {
+                        if let Some(preexisting_block_header) = storage
+                            .read_block_header_by_height(upgrade_block_header.height() + 1)?
+                        {
+                            return Err(Error::NonEmergencyUpgradeWillClobberExistingBlockChain {
+                                preexisting_block_header: Box::new(preexisting_block_header),
+                            });
+                        }
+                    }
+                    let global_state_update = chainspec.protocol_config.get_update_mapping()?;
+                    let UpgradeSuccess {
+                        post_state_hash,
+                        execution_effect,
+                    } = contract_runtime.commit_upgrade(UpgradeConfig::new(
+                        (*upgrade_block_header.state_root_hash()).into(),
+                        upgrade_block_header.protocol_version(),
+                        chainspec.protocol_version(),
+                        Some(chainspec.wasm_config),
+                        Some(chainspec.system_costs_config),
+                        Some(chainspec.protocol_config.activation_point.era_id()),
+                        Some(chainspec.core_config.validator_slots),
+                        Some(chainspec.core_config.auction_delay),
+                        Some(chainspec.core_config.locked_funds_period.millis()),
+                        Some(chainspec.core_config.round_seigniorage_rate),
+                        Some(chainspec.core_config.unbonding_delay),
+                        global_state_update,
+                    ))?;
+                    info!("upgrade chainspec name {}", chainspec.network_config.name);
+                    info!("upgrade state root hash {}", post_state_hash);
+                    trace!(%post_state_hash, ?execution_effect);
+                    initial_pre_state = ExecutionPreState::new(
+                        post_state_hash.into(),
+                        upgrade_block_header.height() + 1,
+                        upgrade_block_header.hash(),
+                        upgrade_block_header.accumulated_seed(),
+                    );
+                    finalized_block = FinalizedBlock::new(
+                        BlockPayload::default(),
+                        Some(EraReport::default()),
+                        upgrade_block_header.timestamp(),
+                        upgrade_era_id,
+                        upgrade_block_header.height() + 1,
+                        PublicKey::System,
+                    );
+                }
+            };
+            // Execute the finalized block, creating a new switch block.
+            let (new_switch_block, new_effects) = contract_runtime.execute_finalized_block(
+                effect_builder,
+                chainspec_loader.chainspec().protocol_version(),
+                initial_pre_state,
+                finalized_block,
+                vec![],
+                vec![],
+            )?;
+            // Make sure the new block really is a switch block
+            if new_switch_block.header().era_end().is_none() {
+                return Err(Error::FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
+                    new_bad_block: Box::new(new_switch_block),
+                });
+            }
+            // Write the block to storage so the era supervisor can be initialized properly.
+            storage.write_block(&new_switch_block)?;
+            // Effects inform other components to make finality signatures, etc.
+            effects.extend(reactor::wrap_effects(Into::into, new_effects));
+            new_switch_block.take_header()
+        };
+
+        let (block_proposer, block_proposer_effects) = BlockProposer::new(
+            registry.clone(),
+            effect_builder,
+            latest_block_header.height() + 1,
+            chainspec_loader.chainspec().as_ref(),
+        )?;
+        effects.extend(reactor::wrap_effects(
+            Event::BlockProposer,
+            block_proposer_effects,
+        ));
+
+        let (small_network, small_network_effects) = {
+            let maybe_initial_validators_hash_set = latest_block_header
+                .next_era_validator_weights()
+                .cloned()
+                .map(|validator_weights| validator_weights.into_keys().collect());
+            SmallNetwork::new(
+                event_queue,
+                config.network,
+                Some(WithDir::new(&root, &config.consensus)),
+                registry,
+                small_network_identity,
+                chainspec_loader.chainspec().as_ref(),
+                maybe_initial_validators_hash_set,
+            )?
+        };
+
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            initial_era,
+            latest_block_header.next_block_era_id(),
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
-            maybe_latest_block_header.as_ref(),
+            &latest_block_header,
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
+            &storage,
+            rng,
         )?;
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(maybe_latest_block_header.map_or_else(
-            || chainspec_loader.initial_execution_pre_state(),
-            |latest_block_header| ExecutionPreState::from(&latest_block_header),
-        ));
+        contract_runtime.set_initial_state(ExecutionPreState::from(&latest_block_header));
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
