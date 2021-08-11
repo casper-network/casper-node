@@ -8,6 +8,8 @@ use casper_types::{
     CLValue, Key, Transform, U512,
 };
 
+use crate::test_case::{Error, TestCase};
+
 /// Representation of supported input value.
 #[derive(Serialize, Deserialize, Debug, From)]
 #[serde(tag = "type", content = "value")]
@@ -94,25 +96,33 @@ impl ABITestCase {
     pub fn output(&self) -> &[u8] {
         &self.output
     }
+}
 
+impl TestCase for ABITestCase {
     /// Compares input to output.
     ///
     /// This gets executed for each test case.
-    pub fn run_test(&self) {
+    fn run_test(&self) -> Result<(), Error> {
         let serialized_length = self.serialized_length();
-        let serialized_data = self.to_bytes().expect("should serialize");
+        let serialized_data = self.to_bytes()?;
 
         // Serialized data should match the output
-        assert_eq!(
-            serialized_data,
-            self.output(),
-            "{} != {}",
-            base16::encode_lower(&serialized_data),
-            base16::encode_lower(&self.output())
-        );
+        if serialized_data != self.output() {
+            return Err(Error::DataMismatch {
+                actual: serialized_data,
+                expected: self.output().to_vec(),
+            });
+        }
 
         // Output from serialized_length should match the output data length
-        assert_eq!(serialized_length, self.output().len(),);
+        if serialized_length != self.output().len() {
+            return Err(Error::LengthMismatch {
+                expected: serialized_length,
+                actual: self.output().len(),
+            });
+        }
+
+        Ok(())
     }
 }
 

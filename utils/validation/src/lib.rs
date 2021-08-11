@@ -14,6 +14,7 @@ extern crate derive_more;
 
 pub mod abi;
 pub mod error;
+pub mod test_case;
 pub mod utils;
 
 use std::{
