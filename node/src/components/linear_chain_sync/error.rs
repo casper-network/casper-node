@@ -90,7 +90,6 @@ where
         current_version: ProtocolVersion,
         block_header_with_future_version: Box<BlockHeader>,
     },
-
     #[error(transparent)]
     BlockHeaderFetcherError(#[from] FetcherError<BlockHeader, I>),
 
