@@ -1,5 +1,6 @@
 mod config;
 mod event;
+mod tests;
 
 use std::{convert::Infallible, fmt::Debug};
 
