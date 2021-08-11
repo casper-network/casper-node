@@ -429,7 +429,7 @@ where
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     match maybe_last_emergency_restart_era_id {
         Some(last_emergency_restart_era)
-            if last_emergency_restart_era >= trusted_block_header.era_id() =>
+            if last_emergency_restart_era > trusted_block_header.era_id() =>
         {
             return Err(
                 LinearChainSyncError::TryingToJoinBeforeLastEmergencyRestartEra {
@@ -437,7 +437,7 @@ where
                     trusted_hash,
                     trusted_block_header,
                 },
-            )
+            );
         }
         _ => {}
     }
