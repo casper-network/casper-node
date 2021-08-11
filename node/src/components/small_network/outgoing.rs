@@ -37,22 +37,24 @@
 //! The following chart illustrates the lifecycle of an outgoing connection.
 //!
 //! ```text
-//!                            learn
-//!                          ┌──────────────  unknown/forgotten
-//!                          │ ┌───────────►  (implicit state)
-//!                          │ │
-//!                          │ │ exceed fail  │
-//!                          │ │ limit        │ block
-//!                          │ │              │
-//!                          │ │              │
-//!                          │ │              ▼
-//!     ┌─────────┐ fail,    │ │        ┌─────────┐
-//!     │         │ sweep    │ │  block │         │
-//!     │ Waiting │◄───────┐ │ │ ┌─────►│ Blocked │◄──────────┐
-//! ┌───┤         │        │ │ │ │      │         │           │
-//! │   └────┬────┘        │ │ │ │      └────┬────┘           │
-//! │ block  │             │ │ │ │           │                │
-//! │        │ timeout     │ ▼ │ │           │ redeem,        │
+//!                   forgot (after n tries)
+//!          ┌────────────────────────────────────┐
+//!          │                 learn              ▼
+//!          │               ┌──────────────  unknown/forgotten
+//!          │               │                (implicit state)
+//!          │               │
+//!          │               │                │
+//!          │               │                │ block
+//!          │               │                │
+//!          │               │                │
+//!          │               │                ▼
+//!     ┌────┴────┐          │          ┌─────────┐
+//!     │         │  fail    │    block │         │
+//!     │ Waiting │◄───────┐ │   ┌─────►│ Blocked │◄──────────┐
+//! ┌───┤         │        │ │   │      │         │           │
+//! │   └────┬────┘        │ │   │      └────┬────┘           │
+//! │ block  │             │ │   │           │                │
+//! │        │ timeout     │ ▼   │           │ redeem,        │
 //! │        │        ┌────┴─────┴───┐       │ block timeout  │
 //! │        │        │              │       │                │
 //! │        └───────►│  Connecting  │◄──────┘                │
