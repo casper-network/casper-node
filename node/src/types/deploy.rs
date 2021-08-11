@@ -689,6 +689,7 @@ impl Deploy {
     /// Returns true if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
+    ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
     pub fn is_valid(&mut self) -> Result<(), DeployValidationFailure> {
         match self.is_valid.as_ref() {
