@@ -209,7 +209,7 @@ pub enum Event {
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
 
-    /// Network announcement.
+    /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement<NodeId>),
 
