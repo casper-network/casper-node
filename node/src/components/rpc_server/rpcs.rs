@@ -8,7 +8,7 @@ pub mod docs;
 pub mod info;
 pub mod state;
 
-use std::str;
+use std::{str, time::Instant};
 
 use futures::{future::BoxFuture, TryFutureExt};
 use http::Response;
@@ -156,12 +156,13 @@ pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        startup_time: Instant,
     ) -> BoxedFilter<(Response<Body>,)> {
         let with_no_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and_then(move |response_builder: Builder| {
-                Self::handle_request(effect_builder, response_builder, api_version)
+                Self::handle_request(effect_builder, response_builder, api_version, startup_time)
                     .map_err(reject::custom)
             });
         let with_params = warp::path(RPC_API_PATH)
@@ -183,6 +184,7 @@ pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         api_version: ProtocolVersion,
+        startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
 

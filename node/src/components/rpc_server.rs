@@ -19,7 +19,7 @@ mod event;
 mod http_server;
 pub mod rpcs;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
@@ -92,6 +92,7 @@ impl RpcServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        startup_time: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -102,6 +103,7 @@ impl RpcServer {
             effect_builder,
             api_version,
             config.qps_limit,
+            startup_time,
         ));
 
         Ok(RpcServer {})

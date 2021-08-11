@@ -441,8 +441,12 @@ impl reactor::Reactor for Reactor {
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let startup_time = Instant::now();
-        let rpc_server =
-            RpcServer::new(config.rpc_server.clone(), effect_builder, *protocol_version)?;
+        let rpc_server = RpcServer::new(
+            config.rpc_server.clone(),
+            effect_builder,
+            *protocol_version,
+            startup_time,
+        )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,

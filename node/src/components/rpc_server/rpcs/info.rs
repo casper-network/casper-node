@@ -176,6 +176,7 @@ impl RpcWithoutParamsExt for GetPeers {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         api_version: ProtocolVersion,
+        _startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let peers = effect_builder
@@ -208,6 +209,7 @@ impl RpcWithoutParamsExt for GetStatus {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         api_version: ProtocolVersion,
+        startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the status.
@@ -219,7 +221,7 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let body = Self::ResponseResult::new(status_feed, api_version, Instant::now()); // TODO[RC]: Time should be injected
+            let body = Self::ResponseResult::new(status_feed, api_version, startup_time);
             Ok(response_builder.success(body)?)
         }
         .boxed()

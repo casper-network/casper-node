@@ -3,6 +3,8 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use std::time::Instant;
+
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
@@ -440,6 +442,7 @@ impl RpcWithoutParamsExt for ListRpcs {
         _effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         _api_version: ProtocolVersion,
+        _startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
