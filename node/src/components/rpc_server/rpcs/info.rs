@@ -3,7 +3,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::str;
+use std::{str, time::Instant};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -219,7 +219,7 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let body = Self::ResponseResult::new(status_feed, api_version);
+            let body = Self::ResponseResult::new(status_feed, api_version, Instant::now()); // TODO[RC]: Time should be injected
             Ok(response_builder.success(body)?)
         }
         .boxed()

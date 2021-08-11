@@ -7,6 +7,7 @@ use std::{
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -436,10 +437,12 @@ impl reactor::Reactor for Reactor {
         }
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
+        let startup_time = Instant::now();
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
+            startup_time,
         )?;
 
         let event_stream_server = EventStreamServer::new(

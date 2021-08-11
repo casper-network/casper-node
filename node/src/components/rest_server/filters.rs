@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use futures::FutureExt;
 use http::Response;
 use hyper::Body;
@@ -31,6 +33,7 @@ pub const JSON_RPC_SCHEMA_API_PATH: &str = "rpc-schema";
 pub(super) fn create_status_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     api_version: ProtocolVersion,
+    startup_time: Instant,
 ) -> BoxedFilter<(Response<Body>,)> {
     warp::get()
         .and(warp::path(STATUS_API_PATH))
@@ -41,7 +44,7 @@ pub(super) fn create_status_filter<REv: ReactorEventT>(
                     QueueKind::Api,
                 )
                 .map(move |status_feed| {
-                    let body = GetStatusResult::new(status_feed, api_version);
+                    let body = GetStatusResult::new(status_feed, api_version, startup_time);
                     Ok::<_, Rejection>(reply::json(&body).into_response())
                 })
         })

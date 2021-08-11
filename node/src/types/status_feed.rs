@@ -5,8 +5,10 @@ use std::{
     collections::BTreeMap,
     hash::Hash,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    time::Instant,
 };
 
+use chrono::Duration;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -47,7 +49,13 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
     };
-    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
+    GetStatusResult::new(
+        status_feed,
+        DOCS_EXAMPLE_PROTOCOL_VERSION,
+        Instant::now()
+            .checked_sub(Duration::seconds(1000).to_std().unwrap_or_default()) // Make the "uptime" an actual value instead of 0
+            .unwrap_or_else(|| Instant::now()),
+    )
 });
 
 /// Summary information from the chainspec.
@@ -170,10 +178,16 @@ pub struct GetStatusResult {
     pub next_upgrade: Option<NextUpgrade>,
     /// The compiled node version.
     pub build_version: String,
+    /// Time passed until node startup.
+    pub uptime: TimeDiff,
 }
 
 impl GetStatusResult {
-    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: ProtocolVersion) -> Self {
+    pub(crate) fn new(
+        status_feed: StatusFeed<NodeId>,
+        api_version: ProtocolVersion,
+        startup_time: Instant,
+    ) -> Self {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
@@ -184,6 +198,7 @@ impl GetStatusResult {
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
             build_version: crate::VERSION_STRING.clone(),
+            uptime: startup_time.elapsed().into(),
         }
     }
 }

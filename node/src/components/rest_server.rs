@@ -23,7 +23,7 @@ mod event;
 mod filters;
 mod http_server;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -92,6 +92,7 @@ impl RestServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        startup_time: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -105,6 +106,7 @@ impl RestServer {
             api_version,
             shutdown_receiver,
             config.qps_limit,
+            startup_time,
         ));
 
         Ok(RestServer {
