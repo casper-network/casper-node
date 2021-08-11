@@ -6,7 +6,7 @@ use serde::{
 use tracing::error;
 
 #[cfg(test)]
-use super::Error;
+use super::error::Error;
 
 const DEFAULT_INFECTION_TARGET: u8 = 3;
 const DEFAULT_SATURATION_LIMIT_PERCENT: u8 = 80;

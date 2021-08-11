@@ -22,17 +22,25 @@ use crate::storage::{
     },
 };
 
+/// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
-    pub environment: Arc<LmdbEnvironment>,
-    pub trie_store: Arc<LmdbTrieStore>,
-    pub empty_root_hash: Blake2bHash,
+    /// Environment for LMDB.
+    pub(crate) environment: Arc<LmdbEnvironment>,
+    /// Trie store held within LMDB.
+    pub(crate) trie_store: Arc<LmdbTrieStore>,
+    // TODO: make this a lazy-static
+    /// Empty root hash used for a new trie.
+    pub(crate) empty_root_hash: Blake2bHash,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct LmdbGlobalStateView {
-    pub environment: Arc<LmdbEnvironment>,
-    pub store: Arc<LmdbTrieStore>,
-    pub root_hash: Blake2bHash,
+    /// Environment for LMDB.
+    pub(crate) environment: Arc<LmdbEnvironment>,
+    /// Trie store held within LMDB.
+    pub(crate) store: Arc<LmdbTrieStore>,
+    /// Root hash of this "view".
+    pub(crate) root_hash: Blake2bHash,
 }
 
 impl LmdbGlobalState {

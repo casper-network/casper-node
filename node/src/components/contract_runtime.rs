@@ -11,9 +11,9 @@ use std::{
     time::Instant,
 };
 
-pub use config::Config;
-pub use error::{BlockExecutionError, ConfigError};
-pub use types::{BlockAndExecutionEffects, EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
+pub(crate) use config::Config;
+pub(crate) use error::{BlockExecutionError, ConfigError};
+pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
@@ -56,7 +56,7 @@ use std::collections::BTreeMap;
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
-pub struct ExecutionPreState {
+pub(crate) struct ExecutionPreState {
     /// The height of the next `Block` to be constructed. Note that this must match the height of
     /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
@@ -85,7 +85,7 @@ impl ExecutionPreState {
     }
 
     /// Get the next block height according that will succeed the block specified by `parent_hash`.
-    pub fn next_block_height(&self) -> u64 {
+    pub(crate) fn next_block_height(&self) -> u64 {
         self.next_block_height
     }
 }
@@ -103,7 +103,7 @@ impl From<&BlockHeader> for ExecutionPreState {
 
 /// The contract runtime components.
 #[derive(DataSize)]
-pub struct ContractRuntime {
+pub(crate) struct ContractRuntime {
     execution_pre_state: ExecutionPreState,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
@@ -121,7 +121,7 @@ impl Debug for ContractRuntime {
 
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
-pub struct ContractRuntimeMetrics {
+pub(crate) struct ContractRuntimeMetrics {
     run_execute: Histogram,
     apply_effect: Histogram,
     commit_upgrade: Histogram,
@@ -464,23 +464,6 @@ where
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::MissingTrieKeys {
-                trie_key,
-                responder,
-            } => {
-                trace!(?trie_key, "missing_trie_keys request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
-                    metrics.read_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "missing_trie_keys response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
         }
     }
 }
@@ -554,7 +537,7 @@ impl ContractRuntime {
     }
 
     /// Retrieve trie keys for the integrity check.
-    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
+    pub(crate) fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
         let correlation_id = CorrelationId::new();
         match self
             .engine_state
@@ -628,7 +611,7 @@ impl ContractRuntime {
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
-    pub fn read_trie(
+    pub(crate) fn read_trie(
         &mut self,
         trie_key: Blake2bHash,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {

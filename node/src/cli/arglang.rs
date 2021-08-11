@@ -20,8 +20,9 @@ use std::{iter::Peekable, str::FromStr};
 use thiserror::Error;
 use toml::Value;
 
+/// A Token to be parsed.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Token {
+pub(crate) enum Token {
     String(String),
     I64(i64),
     Boolean(bool),
@@ -31,7 +32,7 @@ pub enum Token {
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
-pub enum Error {
+pub(crate) enum Error {
     #[error("unterminated string in input")]
     UnterminatedString,
     #[error("unexpected token {0:?}")]
@@ -172,7 +173,7 @@ where
 }
 
 /// Parse string using arglang.
-pub fn parse(input: &str) -> Result<Value, Error> {
+pub(crate) fn parse(input: &str) -> Result<Value, Error> {
     let mut tokens = tokenize(input)?.into_iter().peekable();
     let value = parse_stream(&mut tokens)?;
 

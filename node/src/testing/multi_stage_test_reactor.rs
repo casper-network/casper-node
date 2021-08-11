@@ -1,4 +1,4 @@
-pub mod test_chain;
+pub(crate) mod test_chain;
 
 use std::{
     fmt::{self, Display, Formatter},
@@ -30,10 +30,10 @@ use crate::{
     NodeRng,
 };
 
-pub static CONFIG_DIR: Lazy<PathBuf> = Lazy::new(|| RESOURCES_PATH.join("local"));
+pub(crate) static CONFIG_DIR: Lazy<PathBuf> = Lazy::new(|| RESOURCES_PATH.join("local"));
 
 #[derive(Debug, Error)]
-pub enum MultiStageTestReactorError {
+pub(crate) enum MultiStageTestReactorError {
     #[error("Could not make initializer reactor: {0}")]
     CouldNotMakeInitializerReactor(<InitializerReactor as Reactor>::Error),
 
@@ -43,7 +43,7 @@ pub enum MultiStageTestReactorError {
 
 #[derive(Debug, From, Serialize)]
 #[allow(clippy::large_enum_variant)]
-pub enum MultiStageTestEvent {
+pub(crate) enum MultiStageTestEvent {
     // Events wrapping internal reactor events.
     #[from]
     InitializerEvent(<InitializerReactor as Reactor>::Event),
@@ -120,7 +120,7 @@ pub(crate) enum MultiStageTestReactor {
 }
 
 impl MultiStageTestReactor {
-    pub fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
+    pub(crate) fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer { .. }
@@ -133,7 +133,7 @@ impl MultiStageTestReactor {
         }
     }
 
-    pub fn storage(&self) -> Option<&Storage> {
+    pub(crate) fn storage(&self) -> Option<&Storage> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer {

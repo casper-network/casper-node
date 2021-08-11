@@ -71,6 +71,7 @@ pub struct LmdbEnvironment {
 }
 
 impl LmdbEnvironment {
+    /// Constructor for `LmdbEnvironment`.
     pub fn new<P: AsRef<Path>>(
         path: P,
         map_size: usize,
@@ -100,6 +101,7 @@ impl LmdbEnvironment {
         })
     }
 
+    /// Returns a reference to the wrapped `Environment`.
     pub fn env(&self) -> &Environment {
         &self.env
     }

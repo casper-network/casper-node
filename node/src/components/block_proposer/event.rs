@@ -22,7 +22,7 @@ pub struct DeployInfo {
 
 /// An event for when using the block proposer as a component.
 #[derive(DataSize, Debug, From)]
-pub enum Event {
+pub(crate) enum Event {
     /// Incoming `BlockProposerRequest`.
     #[from]
     Request(BlockProposerRequest),

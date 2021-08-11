@@ -11,12 +11,13 @@ use std::{
 };
 
 use anyhow::{self, Context};
+use prometheus::Registry;
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
 use tracing::{error, info, warn};
 
-use casper_node::{
+use crate::{
     logging,
     reactor::{initializer, joiner, participating, ReactorExit, Runner},
     setup_signal_hooks,
@@ -26,7 +27,6 @@ use casper_node::{
         WithDir,
     },
 };
-use prometheus::Registry;
 
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
 // env var.
@@ -35,7 +35,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
-#[structopt(version = casper_node::VERSION_STRING_COLOR.as_str())]
+#[structopt(version = crate::VERSION_STRING_COLOR.as_str())]
 /// Casper blockchain node.
 pub enum Cli {
     /// Run the validator node.
@@ -147,7 +147,7 @@ impl Cli {
                 setup_signal_hooks();
 
                 let validator_config = Self::init(&config, config_ext)?;
-                info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
+                info!(version = %crate::VERSION_STRING.as_str(), "node starting up");
 
                 let pidfile_outcome = {
                     // Determine storage directory to store pidfile in.
@@ -187,7 +187,7 @@ impl Cli {
                 // eliminate any chance of runtime failures, regardless of how small (these
                 // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
                 // performance reasons.
-                let mut rng = casper_node::new_rng();
+                let mut rng = crate::new_rng();
 
                 // The metrics are shared across all reactors.
                 let registry = Registry::new();
@@ -198,14 +198,6 @@ impl Cli {
                     &registry,
                 )
                 .await?;
-
-                // let mut initializer2_runner = Runner::<initializer2::Initializer>::with_metrics(
-                //     WithDir::new(root.clone(), validator_config),
-                //     &mut rng,
-                //     &registry,
-                // )
-                // .await?;
-                // initializer2_runner.run(&mut rng).await;
 
                 match initializer_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
@@ -259,7 +251,10 @@ impl Cli {
                 let old_config = toml::from_str(&encoded_old_config)?;
 
                 info!(version = %env!("CARGO_PKG_VERSION"), "migrating config");
-                casper_node::migrate_config(WithDir::new(old_root, old_config), new_config)?;
+                crate::config_migration::migrate_config(
+                    WithDir::new(old_root, old_config),
+                    new_config,
+                )?;
                 Ok(ExitCode::Success as i32)
             }
             Cli::MigrateData {
@@ -278,7 +273,10 @@ impl Cli {
                 let old_config = toml::from_str(&encoded_old_config)?;
 
                 info!(version = %env!("CARGO_PKG_VERSION"), "migrating data");
-                casper_node::migrate_data(WithDir::new(old_root, old_config), new_config)?;
+                crate::data_migration::migrate_data(
+                    WithDir::new(old_root, old_config),
+                    new_config,
+                )?;
                 Ok(ExitCode::Success as i32)
             }
         }

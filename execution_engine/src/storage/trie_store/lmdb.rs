@@ -125,6 +125,7 @@ pub struct LmdbTrieStore {
 }
 
 impl LmdbTrieStore {
+    /// Constructor for new `LmdbTrieStore`.
     pub fn new(
         env: &LmdbEnvironment,
         maybe_name: Option<&str>,
@@ -135,6 +136,7 @@ impl LmdbTrieStore {
         Ok(LmdbTrieStore { db })
     }
 
+    /// Constructor for `LmdbTrieStore` which opens an existing lmdb store file.
     pub fn open(env: &LmdbEnvironment, maybe_name: Option<&str>) -> Result<Self, error::Error> {
         let name = Self::name(maybe_name);
         let db = env.env().open_db(Some(&name))?;

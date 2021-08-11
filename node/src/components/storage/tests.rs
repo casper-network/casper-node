@@ -220,6 +220,7 @@ fn get_highest_block(
 }
 
 /// Loads state from the storage component.
+#[cfg(test)]
 fn load_state<T>(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
@@ -650,16 +651,6 @@ fn can_retrieve_store_and_load_deploys() {
     // Retrieve the stored deploy.
     let response = get_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
     assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
-
-    // Also ensure we can retrieve just the header.
-    let response = harness.send_request(&mut storage, |responder| {
-        StorageRequest::GetDeployHeaders {
-            deploy_hashes: vec![*deploy.id()],
-            responder,
-        }
-        .into()
-    });
-    assert_eq!(response, vec![Some(deploy.header().clone())]);
 
     // Finally try to get the metadata as well. Since we did not store any, we expect empty default
     // metadata to present.

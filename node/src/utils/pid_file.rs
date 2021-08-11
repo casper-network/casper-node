@@ -21,7 +21,7 @@ use tracing::warn;
 ///
 /// The pidfile is held open with an exclusive but advisory lock.
 #[derive(Debug)]
-pub struct PidFile {
+pub(crate) struct PidFile {
     /// The pidfile.
     ///
     /// The file will be locked for the lifetime of `PidFile`.
@@ -34,7 +34,7 @@ pub struct PidFile {
 
 /// An error acquiring a pidfile.
 #[derive(Debug, Error)]
-pub enum PidFileError {
+pub(crate) enum PidFileError {
     /// The pidfile could not be opened at all.
     #[error("could not open pidfile: {0}")]
     CouldNotOpen(#[source] io::Error),
@@ -57,7 +57,7 @@ pub enum PidFileError {
 /// High-level description of the outcome of opening and locking the PIDfile.
 #[must_use]
 #[derive(Debug)]
-pub enum PidFileOutcome {
+pub(crate) enum PidFileOutcome {
     /// Another instance of the node is likely running, or an attempt was made to reuse a pidfile.
     ///
     /// **Recommendation**: Exit to avoid resource conflicts.
@@ -83,7 +83,7 @@ impl PidFile {
     ///
     /// **Important**: This function should be called **before** opening whatever resources it is
     /// protecting.
-    pub fn acquire<P: AsRef<Path>>(path: P) -> PidFileOutcome {
+    pub(crate) fn acquire<P: AsRef<Path>>(path: P) -> PidFileOutcome {
         match PidFile::new(path) {
             Ok(pidfile) => {
                 if pidfile.unclean_shutdown() {

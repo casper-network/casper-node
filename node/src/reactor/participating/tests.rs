@@ -112,11 +112,16 @@ impl TestChain {
             ..Default::default()
         };
 
-        // ...and the secret key for our validator.
-        cfg.consensus.secret_key_path = External::from_value(self.keys[idx].clone());
-
         // Additionally set up storage in a temporary directory.
         let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+        // ...and the secret key for our validator.
+        {
+            let secret_key_path = temp_dir.path().join("secret_key");
+            self.keys[idx]
+                .to_file(secret_key_path.clone())
+                .expect("could not write secret key");
+            cfg.consensus.secret_key_path = External::Path(secret_key_path);
+        }
         cfg.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
