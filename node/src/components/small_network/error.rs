@@ -21,15 +21,12 @@ pub enum Error {
     #[error("could not resolve at least one known host (or none provided)")]
     EmptyKnownHosts,
     /// Consensus signing during handshake was provided, but keys could not be loaded.
-    #[error("consensus keys provided, but could not be loaded")]
+    #[error("consensus keys provided, but could not be loaded: {0}")]
     LoadConsensusKeys(
         #[serde(skip_serializing)]
         #[source]
         LoadError<<Arc<SecretKey> as Loadable>::Error>,
     ),
-    /// Our own certificate is not valid.
-    #[error("own certificate invalid")]
-    OwnCertificateInvalid(#[source] ValidationError),
     /// Failed to create a TCP listener.
     #[error("failed to create listener on {1}")]
     ListenerCreation(
@@ -69,7 +66,7 @@ pub enum Error {
 
     /// Instantiating metrics failed.
     #[error(transparent)]
-    MetricsError(
+    Metrics(
         #[serde(skip_serializing)]
         #[from]
         prometheus::Error,

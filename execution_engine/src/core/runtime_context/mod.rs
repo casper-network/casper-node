@@ -7,6 +7,8 @@ use std::{
     rc::Rc,
 };
 
+use tracing::error;
+
 use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -15,22 +17,22 @@ use casper_types::{
     bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::auction::EraInfo,
-    AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    KEY_HASH_LENGTH,
+    AccessRights, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH,
 };
 
 use crate::{
     core::{
-        engine_state::execution_effect::ExecutionEffect,
+        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
         execution::{AddressGenerator, Error},
         runtime_context::dictionary::DictionaryValue,
-        tracking_copy::{AddResult, TrackingCopy},
+        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
     shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
-    storage::{global_state::StateReader, protocol_data::ProtocolData},
+    storage::global_state::StateReader,
 };
 
 pub(crate) mod dictionary;
@@ -115,7 +117,7 @@ pub struct RuntimeContext<'a, R> {
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
     phase: Phase,
-    protocol_data: ProtocolData,
+    engine_config: EngineConfig,
     entry_point_type: EntryPointType,
     transfers: Vec<TransferAddr>,
 }
@@ -146,7 +148,7 @@ where
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         phase: Phase,
-        protocol_data: ProtocolData,
+        engine_config: EngineConfig,
         transfers: Vec<TransferAddr>,
     ) -> Self {
         RuntimeContext {
@@ -168,7 +170,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            engine_config,
             transfers,
         }
     }
@@ -282,6 +284,10 @@ where
             Key::Dictionary(_) => {
                 self.named_keys.remove(name);
                 Ok(())
+            }
+            Key::SystemContractRegistry => {
+                error!("should not remove the system contract registry key");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
         }
     }
@@ -734,6 +740,7 @@ where
                 // bits are verified from within API call.
                 false
             }
+            Key::SystemContractRegistry => false,
         }
     }
 
@@ -753,6 +760,7 @@ where
                 // bits are verified from within API call.
                 false
             }
+            Key::SystemContractRegistry => false,
         }
     }
 
@@ -772,6 +780,7 @@ where
                 // bits are verified from within API call.
                 false
             }
+            Key::SystemContractRegistry => false,
         }
     }
 
@@ -801,24 +810,25 @@ where
     }
 
     /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(&self) -> bool {
+    pub(crate) fn is_system_contract(&self) -> Result<bool, Error> {
         if let Some(hash) = self.base_key().into_hash() {
-            let system_contracts = self.protocol_data().system_contracts();
-            if system_contracts.contains(&hash.into()) {
-                return true;
-            }
+            let contract_hash = ContractHash::new(hash);
+            return Ok(self
+                .system_contract_registry()?
+                .values()
+                .any(|&system_hash| system_hash == contract_hash));
         }
-        false
+        Ok(false)
     }
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if self.is_system_contract() {
+        if self.is_system_contract()? {
             // Don't charge storage used while executing a system contract.
             return Ok(());
         }
 
-        let storage_costs = self.protocol_data().wasm_config().storage_costs();
+        let storage_costs = self.engine_config().wasm_config().storage_costs();
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 
@@ -1072,8 +1082,9 @@ where
         Ok(())
     }
 
-    pub(crate) fn protocol_data(&self) -> &ProtocolData {
-        &self.protocol_data
+    /// Returns borrowed instance of engine config.
+    pub fn engine_config(&self) -> &EngineConfig {
+        &self.engine_config
     }
 
     /// Creates validated instance of `StoredValue` from `account`.
@@ -1177,5 +1188,26 @@ where
         let dictionary_key = Key::dictionary(seed_uref, dictionary_item_key_bytes);
         self.metered_write_gs_unsafe(dictionary_key, wrapped_cl_value)?;
         Ok(())
+    }
+
+    /// Gets system contract by name.
+    pub(crate) fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
+        let registry = self.system_contract_registry()?;
+        let hash = registry.get(name).ok_or_else(|| {
+            error!("Missing system contract hash: {}", name);
+            Error::MissingSystemContractHash(name.to_string())
+        })?;
+        Ok(*hash)
+    }
+
+    /// Returns system contract registry by querying the global state.
+    pub fn system_contract_registry(&self) -> Result<SystemContractRegistry, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_system_contracts(self.correlation_id)
+            .map_err(|_| {
+                error!("Missing system contract registry");
+                Error::MissingSystemContractRegistry
+            })
     }
 }

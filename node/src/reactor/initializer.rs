@@ -40,7 +40,7 @@ use crate::{
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
-pub enum Event {
+pub(crate) enum Event {
     /// Chainspec handler event.
     #[from]
     Chainspec(chainspec_loader::Event),
@@ -142,11 +142,7 @@ impl Display for Event {
 
 /// Error type returned by the initializer reactor.
 #[derive(Debug, Error)]
-pub enum Error {
-    /// `Config` error.
-    #[error("config error: {0}")]
-    ConfigError(String),
-
+pub(crate) enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
@@ -165,12 +161,12 @@ pub enum Error {
 
     /// An error that occurred when creating a `SmallNetworkIdentity`.
     #[error(transparent)]
-    SmallNetworkIdentityError(#[from] SmallNetworkIdentityError),
+    SmallNetworkIdentity(#[from] SmallNetworkIdentityError),
 }
 
 /// Initializer node reactor.
 #[derive(DataSize, Debug)]
-pub struct Reactor {
+pub(crate) struct Reactor {
     pub(super) config: WithDir<participating::Config>,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
@@ -202,6 +198,8 @@ impl Reactor {
             chainspec_loader.chainspec().protocol_config.version,
             storage.root_path(),
             &config.value().contract_runtime,
+            chainspec_loader.chainspec().wasm_config,
+            chainspec_loader.chainspec().system_costs_config,
             registry,
         )?;
 
@@ -247,7 +245,7 @@ impl Reactor {
 #[cfg(test)]
 impl Reactor {
     /// Inspect storage.
-    pub fn storage(&self) -> &Storage {
+    pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
 }
@@ -305,7 +303,7 @@ impl reactor::Reactor for Reactor {
 }
 
 #[cfg(test)]
-pub mod test {
+pub(crate) mod test {
     use super::*;
     use crate::{
         components::network::ENABLE_LIBP2P_NET_ENV_VAR, testing::network::NetworkedReactor,

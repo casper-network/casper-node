@@ -26,19 +26,13 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{AsymmetricType, Key, PublicKey, URef, U512};
+use casper_types::{AsymmetricType, Key, PublicKey, URef};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
     validation, DictionaryItemStrParams,
 };
-
-/// Target for a given transfer.
-pub(crate) enum TransferTarget {
-    /// Transfer to another account.
-    Account(PublicKey),
-}
 
 /// Struct representing a single JSON-RPC call to the casper node.
 #[derive(Debug)]
@@ -170,8 +164,11 @@ impl RpcCall {
                 context: "state_root_hash",
                 error,
             })?;
-        let uref = URef::from_formatted_str(purse_uref)
-            .map_err(|error| Error::FailedToParseURef("purse_uref", error))?;
+        let uref =
+            URef::from_formatted_str(purse_uref).map_err(|error| Error::FailedToParseURef {
+                context: "purse_uref",
+                error,
+            })?;
         let key = Key::from(uref);
 
         let params = GetBalanceParams {
@@ -215,17 +212,17 @@ impl RpcCall {
 
     pub(crate) async fn transfer(
         self,
-        amount: U512,
+        amount: &str,
         source_purse: Option<URef>,
-        target: TransferTarget,
-        transfer_id: u64,
+        target_account: &str,
+        transfer_id: &str,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
         let deploy = Deploy::new_transfer(
             amount,
             source_purse,
-            target,
+            target_account,
             transfer_id,
             deploy_params,
             payment,
@@ -305,9 +302,13 @@ impl RpcCall {
                 })?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
-            let height = maybe_block_identifier
-                .parse()
-                .map_err(|error| Error::FailedToParseInt("block_identifier", error))?;
+            let height =
+                maybe_block_identifier
+                    .parse()
+                    .map_err(|error| Error::FailedToParseInt {
+                        context: "block_identifier",
+                        error,
+                    })?;
             Ok(Some(BlockIdentifier::Height(height)))
         }
     }

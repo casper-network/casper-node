@@ -6,7 +6,6 @@ use std::{
 
 use parity_wasm::elements::Module;
 
-use crate::storage::protocol_data::ProtocolData;
 use casper_types::ContractHash;
 
 /// A cache of deserialized contracts.
@@ -34,25 +33,6 @@ impl SystemContractCache {
     pub fn get(&self, contract_hash: ContractHash) -> Option<Module> {
         let guarded_map = self.0.read().unwrap();
         guarded_map.get(&contract_hash).cloned()
-    }
-
-    /// Initializes cache from protocol data.
-    pub fn initialize_with_protocol_data(&self, protocol_data: &ProtocolData, module: &Module) {
-        // TODO: the SystemContractCache is vestigial and should be removed. In the meantime,
-        // a minimal viable wasm module is used as a placeholder to fulfil expectations of
-        // the runtime.
-        let mint_hash = protocol_data.mint();
-        if !self.has(mint_hash) {
-            self.insert(mint_hash, module.clone());
-        }
-        let auction_hash = protocol_data.auction();
-        if !self.has(auction_hash) {
-            self.insert(auction_hash, module.clone());
-        }
-        let handle_payment_hash = protocol_data.handle_payment();
-        if !self.has(handle_payment_hash) {
-            self.insert(handle_payment_hash, module.clone());
-        }
     }
 }
 

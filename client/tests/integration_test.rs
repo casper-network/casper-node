@@ -152,7 +152,7 @@ impl MockServerHandle {
     async fn transfer(
         &self,
         amount: &str,
-        maybe_target_account: &str,
+        target_account: &str,
         deploy_params: DeployStrParams<'_>,
         payment_params: PaymentStrParams<'_>,
     ) -> Result<(), Error> {
@@ -161,7 +161,7 @@ impl MockServerHandle {
             &self.url(),
             0,
             amount,
-            maybe_target_account,
+            target_account,
             "2",
             deploy_params,
             payment_params,
@@ -311,10 +311,10 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert!(matches!(
             server_handle.get_balance(VALID_STATE_ROOT_HASH, "").await,
-            Err(Error::FailedToParseURef(
-                "purse_uref",
-                URefFromStrError::InvalidPrefix
-            ))
+            Err(Error::FailedToParseURef {
+                context: "purse_uref",
+                error: URefFromStrError::InvalidPrefix
+            })
         ));
     }
 
@@ -427,7 +427,10 @@ mod get_block {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert!(matches!(
             server_handle.get_block("<not a valid hash>").await,
-            Err(Error::FailedToParseInt("block_identifier", _))
+            Err(Error::FailedToParseInt {
+                context: "block_identifier",
+                error: _
+            })
         ))
     }
 }
@@ -988,7 +991,7 @@ mod keygen_generate_files {
         let path = "";
         let result =
             casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true);
-        assert!(matches!(result, Err(Error::InvalidArgument(_, _))))
+        assert!(matches!(result, Err(Error::InvalidArgument { .. })))
     }
 }
 
@@ -1026,22 +1029,20 @@ mod rate_limit {
         // Our default is 1 req/s, so this will hit the threshold
         for _ in 0..3u32 {
             let amount = "100";
-            let maybe_target_account =
+            let target_account =
                 "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
 
             let server_handle = server_handle.clone();
 
-            assert!(matches!(
-                server_handle
-                    .transfer(
-                        amount,
-                        maybe_target_account,
-                        deploy_params::test_data_valid(),
-                        payment_params::test_data_with_name(),
-                    )
-                    .await,
-                Ok(())
-            ));
+            assert!(server_handle
+                .transfer(
+                    amount,
+                    target_account,
+                    deploy_params::test_data_valid(),
+                    payment_params::test_data_with_name(),
+                )
+                .await
+                .is_ok());
         }
 
         let diff = now.elapsed();
@@ -1066,18 +1067,15 @@ mod transfer {
         // // Transfer uses PutDeployParams + PutDeploy
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         let amount = "100";
-        let maybe_target_account =
-            "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
-        assert!(matches!(
-            server_handle
-                .transfer(
-                    amount,
-                    maybe_target_account,
-                    deploy_params::test_data_valid(),
-                    payment_params::test_data_with_name()
-                )
-                .await,
-            Ok(())
-        ));
+        let target_account = "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
+        assert!(server_handle
+            .transfer(
+                amount,
+                target_account,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            )
+            .await
+            .is_ok());
     }
 }

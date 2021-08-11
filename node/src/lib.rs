@@ -21,19 +21,23 @@
     unused_qualifications
 )]
 
-pub mod components;
+pub(crate) mod components;
 mod config_migration;
-pub mod crypto;
 mod data_migration;
-pub mod effect;
-pub mod logging;
-pub mod protocol;
-pub mod reactor;
+pub(crate) mod effect;
+pub(crate) mod logging;
+pub(crate) mod protocol;
+pub(crate) mod reactor;
 #[cfg(test)]
-pub mod testing;
-pub mod tls;
+pub(crate) mod testing;
+pub(crate) mod tls;
+pub(crate) mod utils;
+
+// Public API
+pub mod cli;
+pub mod crypto;
 pub mod types;
-pub mod utils;
+pub use components::rpc_server::rpcs;
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
@@ -49,24 +53,16 @@ use signal_hook::{
     flag,
 };
 
-pub use components::{
-    block_proposer::Config as BlockProposerConfig,
-    consensus::Config as ConsensusConfig,
+pub(crate) use components::{
+    block_proposer::Config as BlockProposerConfig, consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
-    event_stream_server::Config as EventStreamServerConfig,
-    fetcher::Config as FetcherConfig,
-    gossiper::{Config as GossipConfig, Error as GossipError},
-    linear_chain_sync::Config as LinearChainSyncConfig,
-    rest_server::Config as RestServerConfig,
-    rpc_server::{rpcs, Config as RpcServerConfig},
-    small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
-    storage::{Config as StorageConfig, Error as StorageError},
+    event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
+    gossiper::Config as GossipConfig, linear_chain_sync::Config as LinearChainSyncConfig,
+    rest_server::Config as RestServerConfig, rpc_server::Config as RpcServerConfig,
+    small_network::Config as SmallNetworkConfig, storage::Config as StorageConfig,
 };
-pub use config_migration::{migrate_config, Error as ConfigMigrationError};
-pub use data_migration::{migrate_data, Error as DataMigrationError};
-pub use types::NodeRng;
-pub use utils::OS_PAGE_SIZE;
+pub(crate) use types::NodeRng;
 
 /// The maximum thread count which should be spawned by the tokio runtime.
 pub const MAX_THREAD_COUNT: usize = 512;
@@ -90,21 +86,21 @@ fn version_string(color: bool) -> String {
 
 /// Color version string for the compiled node. Filled in at build time, output allocated at
 /// runtime.
-pub static VERSION_STRING_COLOR: Lazy<String> = Lazy::new(|| version_string(true));
+pub(crate) static VERSION_STRING_COLOR: Lazy<String> = Lazy::new(|| version_string(true));
 
 /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
-pub static VERSION_STRING: Lazy<String> = Lazy::new(|| version_string(false));
+pub(crate) static VERSION_STRING: Lazy<String> = Lazy::new(|| version_string(false));
 
 /// Global value that indicates the currently running reactor should exit if it is non-zero.
-pub static TERMINATION_REQUESTED: Lazy<Arc<AtomicUsize>> =
+pub(crate) static TERMINATION_REQUESTED: Lazy<Arc<AtomicUsize>> =
     Lazy::new(|| Arc::new(AtomicUsize::new(0)));
 
 /// Global flag that indicates the currently running reactor should dump its event queue.
-pub static QUEUE_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
+pub(crate) static QUEUE_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
     Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
 /// Setup UNIX signal hooks for current application.
-pub fn setup_signal_hooks() {
+pub(crate) fn setup_signal_hooks() {
     for signal in TERM_SIGNALS {
         flag::register_usize(
             *signal,
@@ -118,12 +114,12 @@ pub fn setup_signal_hooks() {
 
 /// Constructs a new `NodeRng`.
 #[cfg(not(test))]
-pub fn new_rng() -> NodeRng {
+pub(crate) fn new_rng() -> NodeRng {
     NodeRng::from_entropy()
 }
 
 /// Constructs a new `NodeRng`.
 #[cfg(test)]
-pub fn new_rng() -> NodeRng {
+pub(crate) fn new_rng() -> NodeRng {
     NodeRng::new()
 }

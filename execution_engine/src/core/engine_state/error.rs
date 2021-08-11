@@ -71,6 +71,12 @@ pub enum Error {
     /// Commit error.
     #[error(transparent)]
     CommitError(#[from] CommitError),
+    /// Missing system contract registry.
+    #[error("Missing SystemContractRegistry")]
+    MissingSystemContractRegistry,
+    /// Missing system contract hash.
+    #[error("Missing system contract hash: {0}")]
+    MissingSystemContractHash(String),
 }
 
 impl From<execution::Error> for Error {

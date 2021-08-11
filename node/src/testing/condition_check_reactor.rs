@@ -18,7 +18,7 @@ use crate::{
 /// been met.
 ///
 /// Once the condition is met, the hook is reset to `None`.
-pub struct ConditionCheckReactor<R: Reactor> {
+pub(crate) struct ConditionCheckReactor<R: Reactor> {
     reactor: R,
     condition_checker: Option<Box<dyn Fn(&R::Event) -> bool + Send>>,
     condition_result: bool,
@@ -26,7 +26,7 @@ pub struct ConditionCheckReactor<R: Reactor> {
 
 impl<R: Reactor> ConditionCheckReactor<R> {
     /// Sets the condition checker hook.
-    pub fn set_condition_checker(
+    pub(crate) fn set_condition_checker(
         &mut self,
         condition_checker: Box<dyn Fn(&R::Event) -> bool + Send>,
     ) {
@@ -34,17 +34,17 @@ impl<R: Reactor> ConditionCheckReactor<R> {
     }
 
     /// Returns the result of the last execution of the condition checker hook.
-    pub fn condition_result(&self) -> bool {
+    pub(crate) fn condition_result(&self) -> bool {
         self.condition_result
     }
 
     /// Returns a reference to the wrapped reactor.
-    pub fn inner(&self) -> &R {
+    pub(crate) fn inner(&self) -> &R {
         &self.reactor
     }
 
     /// Returns a mutable reference to the wrapped reactor.
-    pub fn inner_mut(&mut self) -> &mut R {
+    pub(crate) fn inner_mut(&mut self) -> &mut R {
         &mut self.reactor
     }
 }

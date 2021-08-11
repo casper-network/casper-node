@@ -1,4 +1,4 @@
-use std::{env, fs, io, path::PathBuf};
+use std::{env, fs, io, path::PathBuf, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -15,9 +15,6 @@ use crate::{
     utils::{LoadError, Loadable, WithDir},
 };
 
-// This will be changed in favour of an actual old config type when the migration is not a no-op.
-type OldConfig = toml::Value;
-
 /// The name of the file for recording the new global state hash after a data migration.
 const POST_MIGRATION_STATE_HASH_FILENAME: &str = "post-migration-state-hash";
 /// The folder under which the post-migration-state-hash file is written.
@@ -25,9 +22,11 @@ const CONFIG_ROOT_DIR: &str = "/etc/casper";
 /// Environment variable to override the config root dir.
 const CONFIG_ROOT_DIR_OVERRIDE: &str = "CASPER_CONFIG_DIR";
 
+// TODO - remove once used.
+#[allow(unused)]
 /// Error returned as a result of migrating data.
 #[derive(Debug, Error)]
-pub enum Error {
+pub(crate) enum Error {
     /// Error serializing state hash info.
     #[error("error serializing state hash info: {0}")]
     SerializeStateHashInfo(bincode::Error),
@@ -196,8 +195,8 @@ fn info_path() -> PathBuf {
 }
 
 /// Migrates data from that specified in the old config file to that specified in the new one.
-pub fn migrate_data(
-    _old_config: WithDir<OldConfig>,
+pub(crate) fn migrate_data(
+    _old_config: WithDir<toml::Value>,
     new_config: WithDir<Config>,
 ) -> Result<(), Error> {
     let (new_root, new_config) = new_config.into_parts();
@@ -205,7 +204,7 @@ pub fn migrate_data(
         .map_err(Error::LoadChainspec)?
         .protocol_config
         .version;
-    let secret_key = new_config
+    let secret_key: Arc<SecretKey> = new_config
         .consensus
         .secret_key_path
         .load(&new_root)

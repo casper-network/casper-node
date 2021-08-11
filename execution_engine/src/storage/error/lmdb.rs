@@ -7,17 +7,22 @@ use casper_types::bytesrepr;
 
 use crate::storage::{error::in_memory, global_state::CommitError};
 
+/// Error enum representing possible error states in LMDB interactions.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum Error {
+    /// LMDB error returned from underlying `lmdb` crate.
     #[error(transparent)]
     Lmdb(#[from] lmdb_external::Error),
 
+    /// (De)serialization error.
     #[error(transparent)]
     BytesRepr(#[from] bytesrepr::Error),
 
+    /// Concurrency error.
     #[error("Another thread panicked while holding a lock")]
     Poison,
 
+    /// Error committing to execution engine.
     #[error(transparent)]
     CommitError(#[from] CommitError),
 }

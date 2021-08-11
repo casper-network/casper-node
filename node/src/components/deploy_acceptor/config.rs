@@ -8,8 +8,9 @@ pub struct Config {
 }
 
 impl Config {
+    #[cfg(test)]
     /// Constructor for deploy_acceptor config.
-    pub fn new(verify_accounts: bool) -> Self {
+    pub(crate) fn new(verify_accounts: bool) -> Self {
         Config { verify_accounts }
     }
 

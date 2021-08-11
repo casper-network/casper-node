@@ -8,7 +8,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     contracts::NamedKeys,
-    system::{auction, handle_payment, mint, CallStackElement},
+    system::{auction, handle_payment, mint, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT},
     BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
     Phase, ProtocolVersion, RuntimeArgs,
 };
@@ -22,10 +22,10 @@ use crate::{
         execution::{address_generator::AddressGenerator, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
         runtime_context::{self, RuntimeContext},
-        tracking_copy::TrackingCopy,
+        tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
-    storage::{global_state::StateReader, protocol_data::ProtocolData},
+    storage::global_state::StateReader,
 };
 
 macro_rules! on_fail_charge {
@@ -109,7 +109,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
         contract_package: &ContractPackage,
         call_stack: Vec<CallStackElement>,
@@ -125,7 +124,7 @@ impl Executor {
         let (instance, memory) = on_fail_charge!(instance_and_memory(
             module.clone(),
             protocol_version,
-            protocol_data.wasm_config()
+            self.config.wasm_config()
         ));
 
         let access_rights = {
@@ -171,7 +170,7 @@ impl Executor {
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            self.config,
             transfers,
         );
 
@@ -303,7 +302,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> ExecutionResult
@@ -344,7 +342,6 @@ impl Executor {
             correlation_id,
             Rc::clone(&tracking_copy),
             phase,
-            protocol_data,
             system_contract_cache,
             call_stack,
         ) {
@@ -399,7 +396,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> (Option<T>, ExecutionResult)
@@ -408,11 +404,23 @@ impl Executor {
         R::Error: Into<Error>,
         T: FromBytes + CLTyped,
     {
+        // TODO See if these panics can be removed.
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)
+            .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
+
         match direct_system_contract_call {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
-                if Some(protocol_data.auction().value()) != base_key.into_hash() {
+                // TODO See if these panics can be removed.
+                let auction_hash = system_contract_registry
+                    .get(AUCTION)
+                    .expect("should have auction hash")
+                    .to_owned();
+
+                if Some(auction_hash.value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
@@ -421,7 +429,11 @@ impl Executor {
             }
             DirectSystemContractCall::FinalizePayment
             | DirectSystemContractCall::GetPaymentPurse => {
-                if Some(protocol_data.handle_payment().value()) != base_key.into_hash() {
+                // TODO See if these panics can be removed.
+                let handle_payment = system_contract_registry
+                    .get(HANDLE_PAYMENT)
+                    .expect("should have handle payment");
+                if Some(handle_payment.value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the handle payment contract",
                         direct_system_contract_call.entry_point_name()
@@ -429,7 +441,11 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
-                if Some(protocol_data.mint().value()) != base_key.into_hash() {
+                // TODO See if these panics can be removed.
+                let mint_hash = system_contract_registry
+                    .get(MINT)
+                    .expect("should have mint hash");
+                if Some(mint_hash.value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the mint contract",
                         direct_system_contract_call.entry_point_name()
@@ -437,7 +453,12 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::GetEraValidators => {
-                if Some(protocol_data.auction().value()) != base_key.into_hash() {
+                // TODO See if these panics can be removed.
+                let auction_hash = system_contract_registry
+                    .get(AUCTION)
+                    .expect("should have auction hash")
+                    .to_owned();
+                if Some(auction_hash.value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
@@ -485,7 +506,6 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            protocol_data,
             system_contract_cache,
             call_stack,
         ) {
@@ -533,7 +553,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> Result<T, Error>
@@ -564,7 +583,6 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            protocol_data,
             system_contract_cache,
             call_stack,
         )?;
@@ -628,7 +646,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
@@ -664,15 +681,12 @@ impl Executor {
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            self.config,
             transfers,
         );
 
-        let (instance, memory) = instance_and_memory(
-            module.clone(),
-            protocol_version,
-            protocol_data.wasm_config(),
-        )?;
+        let (instance, memory) =
+            instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
 
         let runtime = Runtime::new(
             self.config,

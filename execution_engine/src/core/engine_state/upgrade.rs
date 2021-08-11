@@ -18,10 +18,8 @@ use crate::{
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
     },
-    storage::{global_state::StateProvider, protocol_data::ProtocolData},
+    storage::global_state::StateProvider,
 };
 
 /// Represents a successfuly executed upgrade.
@@ -49,8 +47,6 @@ pub struct UpgradeConfig {
     pre_state_hash: Blake2bHash,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
-    wasm_config: Option<WasmConfig>,
-    system_config: Option<SystemConfig>,
     activation_point: Option<EraId>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
@@ -67,8 +63,6 @@ impl UpgradeConfig {
         pre_state_hash: Blake2bHash,
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
-        wasm_config: Option<WasmConfig>,
-        system_config: Option<SystemConfig>,
         activation_point: Option<EraId>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
@@ -81,8 +75,6 @@ impl UpgradeConfig {
             pre_state_hash,
             current_protocol_version,
             new_protocol_version,
-            wasm_config,
-            system_config,
             activation_point,
             new_validator_slots,
             new_auction_delay,
@@ -108,17 +100,7 @@ impl UpgradeConfig {
         self.new_protocol_version
     }
 
-    /// Returns new wrapped wasm config to be applied if exists.
-    pub fn wasm_config(&self) -> Option<&WasmConfig> {
-        self.wasm_config.as_ref()
-    }
-
-    /// Returns new wrapped system config to be applied if exists.
-    pub fn system_config(&self) -> Option<&SystemConfig> {
-        self.system_config.as_ref()
-    }
-
-    /// Returns activation point of this upgrade.
+    /// Returns activation point in eras.
     pub fn activation_point(&self) -> Option<EraId> {
         self.activation_point
     }
@@ -177,6 +159,9 @@ pub enum ProtocolUpgradeError {
     /// (De)serialization error.
     #[error(transparent)]
     Bytesrepr(#[from] bytesrepr::Error),
+    /// Failed to create system contract registry.
+    #[error("Failed to insert system contract registry")]
+    FailedToCreateSystemRegistry,
 }
 
 /// System upgrader deals with conducting actual protocol upgrade.
@@ -185,7 +170,6 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
-    protocol_data: ProtocolData,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -196,12 +180,10 @@ where
     /// Creates new system upgrader instance.
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
-        protocol_data: ProtocolData,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
-            protocol_data,
             tracking_copy,
         }
     }
@@ -210,28 +192,27 @@ where
     pub(crate) fn upgrade_system_contracts_major_version(
         &self,
         correlation_id: CorrelationId,
+        mint_hash: &ContractHash,
+        auction_hash: &ContractHash,
+        handle_payment_hash: &ContractHash,
+        standard_payment_hash: &ContractHash,
     ) -> Result<(), ProtocolUpgradeError> {
+        self.store_contract(correlation_id, *mint_hash, MINT, mint::mint_entry_points())?;
         self.store_contract(
             correlation_id,
-            self.protocol_data.mint(),
-            MINT,
-            mint::mint_entry_points(),
-        )?;
-        self.store_contract(
-            correlation_id,
-            self.protocol_data.auction(),
+            *auction_hash,
             AUCTION,
             auction::auction_entry_points(),
         )?;
         self.store_contract(
             correlation_id,
-            self.protocol_data.handle_payment(),
+            *handle_payment_hash,
             HANDLE_PAYMENT,
             handle_payment::handle_payment_entry_points(),
         )?;
         self.store_contract(
             correlation_id,
-            self.protocol_data.standard_payment(),
+            *standard_payment_hash,
             STANDARD_PAYMENT,
             standard_payment::standard_payment_entry_points(),
         )?;

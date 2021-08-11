@@ -32,10 +32,6 @@ pub enum Error {
     #[error("failed to serialize: {0}")]
     Serialization(bincode::ErrorKind),
 
-    /// Failed to deserialize a message.
-    #[error("failed to deserialize: {0}")]
-    Deserialization(bincode::ErrorKind),
-
     /// Message too large.
     #[error("message of {actual_size} bytes exceeds limit of {max_size} bytes")]
     MessageTooLarge { max_size: u32, actual_size: u64 },

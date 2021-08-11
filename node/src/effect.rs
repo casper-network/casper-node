@@ -58,8 +58,8 @@
 //! A request **must** have a `Responder` field, which a handler of a request **must** call at
 //! some point. Failing to do so will result in a resource leak.
 
-pub mod announcements;
-pub mod requests;
+pub(crate) mod announcements;
+pub(crate) mod requests;
 
 use std::{
     any::type_name,
@@ -74,7 +74,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::error;
@@ -92,7 +92,7 @@ use casper_execution_engine::{
         MAX_PAYMENT,
     },
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::{protocol_data::ProtocolData, trie::Trie},
+    storage::trie::Trie,
 };
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
@@ -138,10 +138,10 @@ use crate::components::contract_runtime::{
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
-pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
+pub(crate) type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
 /// Multiple effects in a container.
-pub type Effects<Ev> = Multiple<Effect<Ev>>;
+pub(crate) type Effects<Ev> = Multiple<Effect<Ev>>;
 
 /// A small collection of rarely more than two items.
 ///
@@ -149,12 +149,12 @@ pub type Effects<Ev> = Multiple<Effect<Ev>>;
 /// size of two items is chosen because one item is the most common use case, and large items are
 /// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
 /// the same size as an empty vec, which is two pointers.
-pub type Multiple<T> = SmallVec<[T; 2]>;
+pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
 #[must_use]
 #[derive(DataSize)]
-pub struct Responder<T>(Option<oneshot::Sender<T>>);
+pub(crate) struct Responder<T>(Option<oneshot::Sender<T>>);
 
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
@@ -176,7 +176,7 @@ impl<T: 'static + Send> Responder<T> {
 
 impl<T> Responder<T> {
     /// Send `data` to the origin of the request.
-    pub async fn respond(mut self, data: T) {
+    pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.0.take() {
             if sender.send(data).is_err() {
                 error!("could not send response to request down oneshot channel");
@@ -222,7 +222,7 @@ impl<T> Serialize for Responder<T> {
 }
 
 /// Effect extension for futures, used to convert futures into actual effects.
-pub trait EffectExt: Future + Send {
+pub(crate) trait EffectExt: Future + Send {
     /// Finalizes a future into an effect that returns a single event.
     ///
     /// The function `f` is used to translate the returned value from an effect into an event.
@@ -249,7 +249,7 @@ pub trait EffectExt: Future + Send {
 
 /// Effect extension for futures, used to convert futures returning a `Result` into two different
 /// effects.
-pub trait EffectResultExt {
+pub(crate) trait EffectResultExt {
     /// The type the future will return if `Ok`.
     type Value;
     /// The type the future will return if `Err`.
@@ -268,7 +268,7 @@ pub trait EffectResultExt {
 
 /// Effect extension for futures, used to convert futures returning an `Option` into two different
 /// effects.
-pub trait EffectOptionExt {
+pub(crate) trait EffectOptionExt {
     /// The type the future will return if `Some`.
     type Value;
 
@@ -380,7 +380,7 @@ where
 /// Provides methods allowing the creation of effects which need to be scheduled
 /// on the reactor's event queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
+pub(crate) struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
@@ -393,13 +393,13 @@ impl<REv> Copy for EffectBuilder<REv> {}
 
 impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
-    pub fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
+    pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
         EffectBuilder(event_queue_handle)
     }
 
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
-    pub fn into_inner(self) -> EventQueueHandle<REv> {
+    pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
         self.0
     }
 
@@ -451,7 +451,7 @@ impl<REv> EffectBuilder<REv> {
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
     #[allow(clippy::manual_async_fn)]
-    pub fn immediately(self) -> impl Future<Output = ()> + Send {
+    pub(crate) fn immediately(self) -> impl Future<Output = ()> + Send {
         // Note: This function is implemented manually without `async` sugar because the `Send`
         // inference seems to not work in all cases otherwise.
         async {}
@@ -463,7 +463,7 @@ impl<REv> EffectBuilder<REv> {
     //
     // Note: This function is implemented manually without `async` sugar because the `Send`
     // inference seems to not work in all cases otherwise.
-    pub async fn fatal(self, file: &'static str, line: u32, msg: String)
+    pub(crate) async fn fatal(self, file: &'static str, line: u32, msg: String)
     where
         REv: From<ControlAnnouncement>,
     {
@@ -518,7 +518,7 @@ impl<REv> EffectBuilder<REv> {
     /// Broadcasts a network message.
     ///
     /// Broadcasts a network message to all peers connected at the time the message is sent.
-    pub async fn broadcast_message<I, P>(self, payload: P)
+    pub(crate) async fn broadcast_message<I, P>(self, payload: P)
     where
         REv: From<NetworkRequest<I, P>>,
     {
@@ -538,7 +538,7 @@ impl<REv> EffectBuilder<REv> {
     /// excluding the indicated ones, and sends each a copy of the message.
     ///
     /// Returns the IDs of the chosen nodes.
-    pub async fn gossip_message<I, P>(
+    pub(crate) async fn gossip_message<I, P>(
         self,
         payload: P,
         count: usize,
@@ -562,7 +562,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets connected network peers.
-    pub async fn network_peers<I>(self) -> BTreeMap<I, String>
+    pub(crate) async fn network_peers<I>(self) -> BTreeMap<I, String>
     where
         REv: From<NetworkInfoRequest<I>>,
         I: Send + 'static,
@@ -917,20 +917,6 @@ impl<REv> EffectBuilder<REv> {
         let era_before = era_id.checked_sub(1)?;
         self.get_switch_block_header_at_era_id_from_storage(era_before)
             .await
-    }
-
-    /// Requests the highest switch block.
-    // TODO - remove once used.
-    #[allow(unused)]
-    pub(crate) async fn get_highest_switch_block_from_storage(self) -> Option<Block>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetHighestSwitchBlock { responder },
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Read a trie by its hash key
@@ -1383,38 +1369,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Loads potentially previously stored state from storage.
-    ///
-    /// Key must be a unique key across the the application, as all keys share a common namespace.
-    ///
-    /// If an error occurs during state loading or no data is found, returns `None`.
-    #[allow(unused)]
-    pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
-    where
-        REv: From<StateStoreRequest>,
-        T: DeserializeOwned,
-    {
-        // There is an ugly truth hidden in here: Due to object safety issues, we cannot ship the
-        // actual values around, but only the serialized bytes. For this reason this function
-        // retrieves raw bytes from storage and perform deserialization here.
-        //
-        // Errors are prominently logged but not treated further in any way.
-        self.make_request(
-            move |responder| StateStoreRequest::Load { key, responder },
-            QueueKind::Regular,
-        )
-        .await
-        .map(|data| bincode::deserialize(&data))
-        .transpose()
-        .unwrap_or_else(|err| {
-            let type_name = type_name::<T>();
-            panic!(
-                "could not deserialize state from storage type name {:?} err {:?}",
-                type_name, err
-            );
-        })
-    }
-
     /// Retrieves finalized deploys from blocks that were created more recently than the TTL.
     pub(crate) async fn get_finalized_deploys(
         self,
@@ -1517,26 +1471,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::GetBalance {
                 balance_request,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Returns `ProtocolData` by `ProtocolVersion`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_protocol_data(
-        self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<Box<ProtocolData>>, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetProtocolData {
-                protocol_version,
                 responder,
             },
             QueueKind::Regular,

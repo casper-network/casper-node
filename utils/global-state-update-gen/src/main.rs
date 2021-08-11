@@ -1,11 +1,16 @@
 mod auction_utils;
 mod balances;
+mod system_contract_registry;
 mod utils;
 mod validators;
 
 use clap::{crate_version, App, Arg, SubCommand};
 
-use crate::{balances::generate_balances_update, validators::generate_validators_update};
+use crate::{
+    balances::generate_balances_update,
+    system_contract_registry::generate_system_contract_registry,
+    validators::generate_validators_update,
+};
 
 fn main() {
     let matches = App::new("Global State Update Generator")
@@ -102,11 +107,27 @@ fn main() {
                         .required(true),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("system-contract-registry")
+                .about("Generates an update creating the system contract registry")
+                .arg(
+                    Arg::with_name("data_dir")
+                        .short("d")
+                        .long("data-dir")
+                        .value_name("PATH")
+                        .help("Data storage directory containing the global state database file")
+                        .takes_value(true)
+                        .required(true),
+                ),
+        )
         .get_matches();
 
     match matches.subcommand() {
         ("validators", Some(sub_matches)) => generate_validators_update(sub_matches),
         ("balances", Some(sub_matches)) => generate_balances_update(sub_matches),
+        ("system-contract-registry", Some(sub_matches)) => {
+            generate_system_contract_registry(sub_matches)
+        }
         _ => {
             println!("Unknown subcommand.");
         }

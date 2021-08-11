@@ -61,7 +61,7 @@ const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
-pub enum Event {
+pub(crate) enum Event {
     /// The result of getting the highest block from storage.
     Initialize {
         maybe_highest_block: Option<Box<Block>>,
@@ -76,8 +76,6 @@ pub enum Event {
     CheckForNextUpgrade,
     /// If the result of checking for an upgrade is successful, it is passed here.
     GotNextUpgrade(NextUpgrade),
-    /// The result of the `ChainspecHandler` putting a `Chainspec` to the storage component.
-    PutToStorage { version: ProtocolVersion },
 }
 
 impl Display for Event {
@@ -102,9 +100,6 @@ impl Display for Event {
             }
             Event::GotNextUpgrade(next_upgrade) => {
                 write!(formatter, "got {}", next_upgrade)
-            }
-            Event::PutToStorage { version } => {
-                write!(formatter, "put chainspec {} to storage", version)
             }
         }
     }
@@ -157,15 +152,15 @@ impl Display for NextUpgrade {
 
 /// Basic information about the current run of the node software.
 #[derive(Clone, Debug)]
-pub struct CurrentRunInfo {
-    pub activation_point: ActivationPoint,
-    pub protocol_version: ProtocolVersion,
-    pub initial_state_root_hash: Digest,
-    pub last_emergency_restart: Option<EraId>,
+pub(crate) struct CurrentRunInfo {
+    pub(crate) activation_point: ActivationPoint,
+    pub(crate) protocol_version: ProtocolVersion,
+    pub(crate) initial_state_root_hash: Digest,
+    pub(crate) last_emergency_restart: Option<EraId>,
 }
 
 #[derive(Clone, DataSize, Debug)]
-pub struct ChainspecLoader {
+pub(crate) struct ChainspecLoader {
     chainspec: Arc<Chainspec>,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
@@ -313,7 +308,7 @@ impl ChainspecLoader {
     /// The state root hash with which this session is starting.  It will be the result of running
     /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
     /// hash specified in the highest block.
-    pub fn initial_state_root_hash(&self) -> Digest {
+    pub(crate) fn initial_state_root_hash(&self) -> Digest {
         self.initial_state_root_hash
     }
 
@@ -540,8 +535,6 @@ impl ChainspecLoader {
             (*block.state_root_hash()).into(),
             previous_version,
             new_version,
-            Some(self.chainspec.wasm_config),
-            Some(self.chainspec.system_costs_config),
             Some(self.chainspec.protocol_config.activation_point.era_id()),
             Some(self.chainspec.core_config.validator_slots),
             Some(self.chainspec.core_config.auction_delay),
@@ -696,12 +689,6 @@ where
             }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
-            Event::PutToStorage { version } => {
-                debug!("stored chainspec {}", version);
-                effect_builder
-                    .commit_genesis(Arc::clone(&self.chainspec))
-                    .event(Event::CommitGenesisResult)
-            }
         }
     }
 }
@@ -829,9 +816,7 @@ mod tests {
     use super::*;
     use crate::{
         logging,
-        reactor::{
-            participating::Event as ParticipatingEvent, EventQueueHandle, QueueKind, Scheduler,
-        },
+        reactor::{participating::ParticipatingEvent, EventQueueHandle, QueueKind, Scheduler},
         testing::TestRng,
         types::chainspec::CHAINSPEC_NAME,
     };
@@ -1019,12 +1004,14 @@ mod tests {
         assert!(maybe_next_point(&current).is_none());
     }
 
+    #[cfg(test)]
     struct TestFixture {
         chainspec_loader: ChainspecLoader,
         effect_builder: EffectBuilder<ParticipatingEvent>,
     }
 
     impl TestFixture {
+        #[cfg(test)]
         fn new() -> Self {
             let _ = logging::init();
 
@@ -1054,6 +1041,7 @@ mod tests {
         }
 
         /// Returns the current chainspec's activation point.
+        #[cfg(test)]
         fn current_activation_point(&self) -> EraId {
             self.chainspec_loader
                 .chainspec
@@ -1063,11 +1051,13 @@ mod tests {
         }
 
         /// Returns the current chainspec's protocol version.
+        #[cfg(test)]
         fn current_protocol_version(&self) -> ProtocolVersion {
             self.chainspec_loader.chainspec.protocol_config.version
         }
 
         /// Returns a protocol version earlier than the current chainspec's version.
+        #[cfg(test)]
         fn earlier_protocol_version(&self) -> ProtocolVersion {
             ProtocolVersion::from_parts(
                 self.current_protocol_version().value().major,
@@ -1077,6 +1067,7 @@ mod tests {
         }
 
         /// Returns a protocol version later than the current chainspec's version.
+        #[cfg(test)]
         fn later_protocol_version(&self) -> ProtocolVersion {
             ProtocolVersion::from_parts(
                 self.current_protocol_version().value().major,
@@ -1086,6 +1077,7 @@ mod tests {
         }
 
         /// Sets a valid value for the next upgrade in the chainspec loader.
+        #[cfg(test)]
         fn set_next_upgrade(&mut self, era_diff: u64) {
             self.chainspec_loader.next_upgrade = Some(NextUpgrade {
                 activation_point: ActivationPoint::EraId(
@@ -1097,6 +1089,7 @@ mod tests {
 
         /// Calls `handle_initialize()` on the chainspec loader, asserting the provided block has
         /// been recorded and that the expected number of effects were returned.
+        #[cfg(test)]
         fn assert_handle_initialize(
             &mut self,
             maybe_highest_block: Option<Block>,
@@ -1113,12 +1106,14 @@ mod tests {
 
         /// Asserts that the chainspec loader indicates initialization is ongoing, i.e. that
         /// `chainspec_loader.reactor_exit` is `None`.
+        #[cfg(test)]
         fn assert_initialization_incomplete(&self) {
             assert!(self.chainspec_loader.reactor_exit.is_none())
         }
 
         /// Asserts that the chainspec loader indicates initialization is complete and the node
         /// process should not stop.
+        #[cfg(test)]
         fn assert_process_should_continue(&self) {
             assert_eq!(
                 self.chainspec_loader.reactor_exit,
@@ -1127,6 +1122,7 @@ mod tests {
         }
 
         /// Asserts that the chainspec loader indicates the process should stop to downgrade.
+        #[cfg(test)]
         fn assert_process_should_downgrade(&self) {
             assert_eq!(
                 self.chainspec_loader.reactor_exit,
@@ -1135,6 +1131,7 @@ mod tests {
         }
 
         /// Asserts that the chainspec loader indicates the process should stop to upgrade.
+        #[cfg(test)]
         fn assert_process_should_upgrade(&self) {
             assert_eq!(
                 self.chainspec_loader.reactor_exit,
@@ -1143,6 +1140,7 @@ mod tests {
         }
 
         /// Asserts that the chainspec loader indicates the process should stop with an error.
+        #[cfg(test)]
         fn assert_process_should_abort(&self) {
             assert_eq!(
                 self.chainspec_loader.reactor_exit,

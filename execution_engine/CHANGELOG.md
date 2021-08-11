@@ -17,10 +17,15 @@ All notable changes to this project will be documented in this file.  The format
 * Added genesis validation step to ensure there are more genesis validators than validator slots.
 
 ### Changed
+* Documented `storage` module and children.
+* Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
 * Support building and testing using stable Rust.
-* Changed price of `create_purse` to 2.5CSPR to discourage people from creating purses in the payment code.
+* Increase price of `create_purse` to 2.5CSPR.
 * Improve doc comments to clarify behavior of the bidding functionality.
 * Documented `core` module and children.
+
+### Fixed
+* Fix a case where user could potentially supply a refund purse as a payment purse.
 
 
 
@@ -28,9 +33,6 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Update pinned version of Rust to `nightly-2021-06-17`.
-
-### Fixed
-* Fix a case where user could potentially supply a refund purse as a payment purse.
 
 
 
