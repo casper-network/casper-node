@@ -699,10 +699,18 @@ where
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
 
-                let failures_so_far: Option<_> = if let Some(outgoing) = self.outgoing.get(&addr) {
+                if let Some(outgoing) = self.outgoing.get(&addr) {
                     match outgoing.state {
                         OutgoingState::Connecting { failures_so_far,.. } => {
-                            Some(failures_so_far + 1)
+                            self.change_outgoing_state(
+                                addr,
+                                OutgoingState::Waiting {
+                                    failures_so_far: failures_so_far + 1,
+                                    error: Some(error),
+                                    last_failure: when,
+                                },
+                            );
+                            None
                         }
                         OutgoingState::Blocked { .. } => {
                             debug!("failed dial outcome after block ignored");
@@ -718,7 +726,6 @@ where
                                 "processing dial outcome on a connection that was not marked as connecting or blocked"
                             );
 
-                            // Ensure we do not override the existing state, return early.
                             None
                         }
                     }
@@ -727,21 +734,7 @@ where
 
                     // If the connection does not exist, do not introduce it!
                     None
-                };
-
-                // If we had actual failure we are going to honor, set the waiting state.
-                if let Some(failures_so_far) = failures_so_far {
-                    self.change_outgoing_state(
-                        addr,
-                        OutgoingState::Waiting {
-                            failures_so_far,
-                            error: Some(error),
-                            last_failure: when,
-                        },
-                    );
                 }
-
-                None
             }
             DialOutcome::Loopback { addr } => {
                 info!("found loopback address");
