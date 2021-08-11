@@ -56,7 +56,7 @@ use crate::{
         fetcher::{FetchedData, FetcherError},
     },
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement},
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
@@ -563,7 +563,8 @@ where
         + From<FetcherRequest<I, BlockHeader>>
         + From<FetcherRequest<I, Trie<Key, StoredValue>>>
         + From<FetcherRequest<I, BlockHeaderWithMetadata>>
-        + From<NetworkInfoRequest<I>>,
+        + From<NetworkInfoRequest<I>>
+        + From<BlocklistAnnouncement<I>>,
 {
     type Event = Event<I>;
     type ConstructionError = Infallible;
