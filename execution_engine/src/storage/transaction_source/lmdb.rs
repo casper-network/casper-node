@@ -106,10 +106,12 @@ impl LmdbEnvironment {
         &self.env
     }
 
+    /// Returns if this environment was constructed with manual synchronization enabled.
     pub fn is_manual_sync_enabled(&self) -> bool {
         self.manual_sync_enabled
     }
 
+    /// Manually synchronize LMDB to disk.
     pub fn sync(&self) -> Result<(), lmdb::Error> {
         self.env.sync(true)
     }
