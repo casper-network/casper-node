@@ -278,7 +278,7 @@ mod session_params {
 }
 
 /// Sample data creation methods for DictionaryItemStrParams.
-mod dictionary_str_params {
+mod dictionary_item_str_params {
     use super::*;
 
     const DICTIONARY_NAME: &str = "test-dictionary";
@@ -587,7 +587,8 @@ mod get_dictionary_item {
     async fn should_succeed_with_valid_dictionary_params() {
         let server_handle =
             MockServerHandle::spawn::<GetDictionaryItemParams>(GetDictionaryItem::METHOD);
-        let dictionary_str_account_params = dictionary_str_params::generate_valid_account_params();
+        let dictionary_str_account_params =
+            dictionary_item_str_params::generate_valid_account_params();
         assert!(matches!(
             server_handle
                 .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_str_account_params)
@@ -595,7 +596,8 @@ mod get_dictionary_item {
             Ok(())
         ));
 
-        let dictionary_contract_params = dictionary_str_params::generate_valid_contract_params();
+        let dictionary_contract_params =
+            dictionary_item_str_params::generate_valid_contract_params();
         assert!(matches!(
             server_handle
                 .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_contract_params)
@@ -603,7 +605,7 @@ mod get_dictionary_item {
             Ok(())
         ));
 
-        let dictionary_uref_params = dictionary_str_params::generate_valid_uref_params();
+        let dictionary_uref_params = dictionary_item_str_params::generate_valid_uref_params();
         assert!(matches!(
             server_handle
                 .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_uref_params)
@@ -611,7 +613,8 @@ mod get_dictionary_item {
             Ok(())
         ));
 
-        let dictionary_address_params = dictionary_str_params::generate_valid_dictionary_address();
+        let dictionary_address_params =
+            dictionary_item_str_params::generate_valid_dictionary_address();
         assert!(matches!(
             server_handle
                 .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_address_params)
@@ -625,7 +628,7 @@ mod get_dictionary_item {
         let server_handle =
             MockServerHandle::spawn::<GetDictionaryItemParams>(GetDictionaryItem::METHOD);
         let invalid_dictionary_account_params =
-            dictionary_str_params::generate_invalid_account_params();
+            dictionary_item_str_params::generate_invalid_account_params();
 
         assert!(matches!(
             server_handle
@@ -635,7 +638,7 @@ mod get_dictionary_item {
         ));
 
         let invalid_dictionary_contract_params =
-            dictionary_str_params::generate_invalid_contract_params();
+            dictionary_item_str_params::generate_invalid_contract_params();
         assert!(matches!(
             server_handle
                 .get_dictionary_item(VALID_STATE_ROOT_HASH, invalid_dictionary_contract_params)
@@ -643,7 +646,8 @@ mod get_dictionary_item {
             Err(Error::FailedToParseDictionaryIdentifier)
         ));
 
-        let invalid_dictionary_uref_params = dictionary_str_params::generate_invalid_uref_params();
+        let invalid_dictionary_uref_params =
+            dictionary_item_str_params::generate_invalid_uref_params();
         assert!(matches!(
             server_handle
                 .get_dictionary_item(VALID_STATE_ROOT_HASH, invalid_dictionary_uref_params)
@@ -652,7 +656,7 @@ mod get_dictionary_item {
         ));
 
         let invalid_dictionary_address =
-            dictionary_str_params::generate_invalid_dictionary_address();
+            dictionary_item_str_params::generate_invalid_dictionary_address();
         assert!(matches!(
             server_handle
                 .get_dictionary_item(VALID_STATE_ROOT_HASH, invalid_dictionary_address)
@@ -665,7 +669,7 @@ mod get_dictionary_item {
     async fn should_fail_with_invalid_state_root_hash() {
         let server_handle =
             MockServerHandle::spawn::<GetDictionaryItemParams>(GetDictionaryItem::METHOD);
-        let dictionary_params = dictionary_str_params::generate_valid_account_params();
+        let dictionary_params = dictionary_item_str_params::generate_valid_account_params();
         assert!(matches!(
             server_handle
                 .get_dictionary_item("<invalid state root hash>", dictionary_params)

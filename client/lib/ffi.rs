@@ -582,7 +582,7 @@ pub extern "C" fn casper_get_item(
 
 /// Retrieves a stored value from a dictionary.
 ///
-/// See [get_dictionary_item](super::get_dictionary_item)
+/// See [get_dictionary_item](super::get_dictionary_item) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_dictionary_item(
     maybe_rpc_id: *const c_char,
