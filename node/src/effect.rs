@@ -188,7 +188,11 @@ impl<T> Responder<T> {
                     );
                 }
             } else {
-                error!("tried to send a value down a responder channel, but it was already used");
+                error!(
+                    responder = ?self,
+                    ?caller_backtrace,
+                    "tried to send a value down a responder channel, but it was already used"
+                );
             }
         }
     }
