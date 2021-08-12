@@ -5,6 +5,7 @@ use std::{
     mem,
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use derive_more::From;
@@ -185,6 +186,7 @@ impl Reactor for MultiStageTestReactor {
         initializer_reactor_config_with_chainspec: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
+        _node_startup_time: Instant,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let initializer_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
@@ -378,6 +380,7 @@ impl Reactor for MultiStageTestReactor {
                         WithDir::new(&*CONFIG_DIR, *initializer_reactor),
                         &registry,
                         joiner_event_queue_handle,
+                        Instant::now(),
                         rng,
                     )
                     .expect("joiner initialization failed");
@@ -455,6 +458,7 @@ impl Reactor for MultiStageTestReactor {
                         *participating_config,
                         &registry,
                         participating_event_queue_handle,
+                        Instant::now(),
                         rng,
                     )
                     .expect("participating initialization failed");

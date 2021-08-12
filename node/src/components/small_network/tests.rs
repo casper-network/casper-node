@@ -155,6 +155,7 @@ impl Reactor for TestReactor {
         cfg: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
+        _node_startup_time: Instant,
         _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let small_network_identity = SmallNetworkIdentity::new()?;

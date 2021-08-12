@@ -1,4 +1,7 @@
-use std::fmt::{self, Debug, Formatter};
+use std::{
+    fmt::{self, Debug, Formatter},
+    time::Instant,
+};
 
 use futures::future::BoxFuture;
 use prometheus::Registry;
@@ -58,9 +61,10 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
+        node_startup_time: Instant,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
+        let (reactor, effects) = R::new(config, registry, event_queue, node_startup_time, rng)?;
         Ok((
             Self {
                 reactor,
