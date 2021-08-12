@@ -204,7 +204,7 @@ impl Account {
         self.action_thresholds.set_threshold(action_type, weight)
     }
 
-    /// Verifies if user can set action threshold
+    /// Verifies if user can set action threshold.
     pub fn can_set_threshold(&self, new_threshold: Weight) -> Result<(), SetThresholdFailure> {
         let total_weight = self.associated_keys.total_keys_weight();
         if new_threshold > total_weight {
