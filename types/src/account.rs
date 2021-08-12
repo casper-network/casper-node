@@ -213,7 +213,7 @@ impl Account {
         Ok(())
     }
 
-    /// Checks whether all authorization keys are associated with this account
+    /// Checks whether all authorization keys are associated with this account.
     pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
         !authorization_keys.is_empty()
             && authorization_keys
