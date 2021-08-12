@@ -495,17 +495,12 @@ async fn test_insert_block() {
     // We expect this deploy to be rejected, therefore it should not be present in storage.
     let no_such_deploy = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
-            if runner
+            runner
                 .reactor()
                 .inner()
                 .storage
                 .get_deploy_by_hash(deploy_hash)
                 .is_none()
-            {
-                true
-            } else {
-                false
-            }
         })
     };
 
