@@ -176,17 +176,20 @@ impl<T: 'static + Send> Responder<T> {
 
 impl<T> Responder<T> {
     /// Send `data` to the origin of the request.
-    pub(crate) async fn respond(mut self, data: T) {
-        if let Some(sender) = self.0.take() {
-            if sender.send(data).is_err() {
-                let backtrace = backtrace::Backtrace::new();
-                error!(
-                    ?backtrace,
-                    "could not send response to request down oneshot channel"
-                );
+    pub(crate) fn respond(mut self, data: T) -> impl Future {
+        let caller_backtrace = backtrace::Backtrace::new();
+        async move {
+            if let Some(sender) = self.0.take() {
+                if sender.send(data).is_err() {
+                    error!(
+                        responder = ?self,
+                        ?caller_backtrace,
+                        "could not send response to request down oneshot channel"
+                    );
+                }
+            } else {
+                error!("tried to send a value down a responder channel, but it was already used");
             }
-        } else {
-            error!("tried to send a value down a responder channel, but it was already used");
         }
     }
 }
