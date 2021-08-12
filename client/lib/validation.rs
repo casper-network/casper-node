@@ -64,7 +64,7 @@ pub enum ValidateResponseError {
     UnexpectedBlockHeight,
 
     /// An invalid combination of state identifier and block header response
-    #[error("Invalid combination of State identifier and block header in response")]
+    #[error("Invalid combination of state identifier and block header in response")]
     InvalidGlobalStateResponse,
 }
 

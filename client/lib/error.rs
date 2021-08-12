@@ -166,7 +166,7 @@ pub enum Error {
     FailedToParseDictionaryIdentifier,
 
     /// Failed to identify the hash as either block hash or state root hash.
-    #[error("Failed to determine state identifier")]
+    #[error("Failed to parse state identifier")]
     FailedToParseStateIdentifier,
 
     /// Must call FFI's setup function prior to making FFI calls.

@@ -1144,7 +1144,7 @@ impl<'a> TryInto<DictionaryIdentifier> for DictionaryItemStrParams<'a> {
     }
 }
 
-/// The two ways of constructing a query to global state.
+/// The two ways to construct a query to global state.
 #[derive(Default, Debug)]
 pub struct GlobalStateStrParams<'a> {
     /// Identifier to mark the hash as either a Block hash or `state_root_hash`
