@@ -98,7 +98,7 @@ impl Account {
         self.main_purse
     }
 
-    /// Returns an [`AccessRights::ADD`]-only version of the [`URef`].
+    /// Returns an [`AccessRights::ADD`]-only version of the main purse's [`URef`].
     pub fn main_purse_add_only(&self) -> URef {
         URef::new(self.main_purse.addr(), AccessRights::ADD)
     }
