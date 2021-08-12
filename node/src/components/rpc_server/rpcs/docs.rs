@@ -3,8 +3,6 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::time::Instant;
-
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
@@ -26,7 +24,7 @@ use super::{
     info::{GetDeploy, GetPeers, GetStatus},
     state::{GetAuctionInfo, GetBalance, GetItem},
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
-    RpcWithoutParamsExt,
+    RpcWithoutParamsAndStartupTimeExt,
 };
 use crate::{
     effect::EffectBuilder,
@@ -437,12 +435,11 @@ impl RpcWithoutParams for ListRpcs {
     type ResponseResult = ListRpcsResult;
 }
 
-impl RpcWithoutParamsExt for ListRpcs {
+impl RpcWithoutParamsAndStartupTimeExt for ListRpcs {
     fn handle_request<REv: ReactorEventT>(
         _effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         _api_version: ProtocolVersion,
-        _startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }

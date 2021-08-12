@@ -18,7 +18,10 @@ use warp::{Filter, Rejection};
 use casper_types::ProtocolVersion;
 
 use super::{
-    rpcs::{self, RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsExt, RPC_API_PATH},
+    rpcs::{
+        self, RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsAndStartupTimeExt,
+        RpcWithoutParamsExt, RPC_API_PATH,
+    },
     ReactorEventT,
 };
 use crate::effect::EffectBuilder;
@@ -53,7 +56,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     api_version: ProtocolVersion,
     qps_limit: u64,
-    startup_time: Instant,
+    node_startup_time: Instant,
 ) {
     // RPC filters.
     let rpc_put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder, api_version);
@@ -67,16 +70,15 @@ pub(super) async fn run<REv: ReactorEventT>(
     let rpc_get_account_info =
         rpcs::state::GetAccountInfo::create_filter(effect_builder, api_version);
     let rpc_get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder, api_version);
-    let rpc_get_peers =
-        rpcs::info::GetPeers::create_filter(effect_builder, api_version, startup_time); // TODO[RC]: 'startup_time' ignored here
+    let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder, api_version);
     let rpc_get_status =
-        rpcs::info::GetStatus::create_filter(effect_builder, api_version, startup_time);
+        rpcs::info::GetStatus::create_filter(effect_builder, api_version, node_startup_time);
     let rpc_get_era_info =
         rpcs::chain::GetEraInfoBySwitchBlock::create_filter(effect_builder, api_version);
     let rpc_get_auction_info =
         rpcs::state::GetAuctionInfo::create_filter(effect_builder, api_version);
     let rpc_get_rpcs =
-        rpcs::docs::ListRpcs::create_filter(effect_builder, api_version, startup_time); // TODO[RC]: 'startup_time' ignored here
+        rpcs::docs::ListRpcs::create_filter(effect_builder, api_version);
     let rpc_get_dictionary_item =
         rpcs::state::GetDictionaryItem::create_filter(effect_builder, api_version);
 

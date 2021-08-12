@@ -19,7 +19,7 @@ use casper_types::{ExecutionResult, ProtocolVersion};
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
-    RpcWithoutParamsExt,
+    RpcWithoutParamsAndStartupTimeExt, RpcWithoutParamsExt,
 };
 use crate::{
     effect::EffectBuilder,
@@ -171,12 +171,11 @@ impl RpcWithoutParams for GetPeers {
     type ResponseResult = GetPeersResult;
 }
 
-impl RpcWithoutParamsExt for GetPeers {
+impl RpcWithoutParamsAndStartupTimeExt for GetPeers {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         api_version: ProtocolVersion,
-        _startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let peers = effect_builder
@@ -209,7 +208,7 @@ impl RpcWithoutParamsExt for GetStatus {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         api_version: ProtocolVersion,
-        startup_time: Instant,
+        node_startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the status.
@@ -221,7 +220,7 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let body = Self::ResponseResult::new(status_feed, api_version, startup_time);
+            let body = Self::ResponseResult::new(status_feed, api_version, node_startup_time);
             Ok(response_builder.success(body)?)
         }
         .boxed()

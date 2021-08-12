@@ -92,7 +92,7 @@ impl RestServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
-        startup_time: Instant,
+        node_startup_time: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -106,7 +106,7 @@ impl RestServer {
             api_version,
             shutdown_receiver,
             config.qps_limit,
-            startup_time,
+            node_startup_time,
         ));
 
         Ok(RestServer {

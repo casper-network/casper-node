@@ -92,7 +92,7 @@ impl RpcServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
-        startup_time: Instant,
+        node_startup_time: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -103,7 +103,7 @@ impl RpcServer {
             effect_builder,
             api_version,
             config.qps_limit,
-            startup_time,
+            node_startup_time,
         ));
 
         Ok(RpcServer {})

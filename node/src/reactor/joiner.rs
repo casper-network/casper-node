@@ -357,6 +357,7 @@ impl reactor::Reactor for Reactor {
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
+        node_startup_time: Instant,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (root, initializer) = initializer.into_parts();
@@ -437,12 +438,11 @@ impl reactor::Reactor for Reactor {
         }
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
-        let startup_time = Instant::now();
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
-            startup_time,
+            node_startup_time,
         )?;
 
         let event_stream_server = EventStreamServer::new(

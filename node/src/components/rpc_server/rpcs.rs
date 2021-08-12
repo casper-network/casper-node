@@ -150,20 +150,59 @@ pub trait RpcWithoutParams {
         + 'static;
 }
 
+pub(super) trait RpcWithoutParamsAndStartupTimeExt: RpcWithoutParams {
+    /// Creates the warp filter for this particular RPC.
+    fn create_filter<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        api_version: ProtocolVersion,
+    ) -> BoxedFilter<(Response<Body>,)> {
+        let with_no_params = warp::path(RPC_API_PATH)
+            .and(filters::json_rpc())
+            .and(filters::method(Self::METHOD))
+            .and_then(move |response_builder: Builder| {
+                Self::handle_request(effect_builder, response_builder, api_version)
+                    .map_err(reject::custom)
+            });
+        let with_params = warp::path(RPC_API_PATH)
+            .and(filters::json_rpc())
+            .and(filters::method(Self::METHOD))
+            .and(filters::params::<Value>())
+            .and_then(
+                move |response_builder: Builder, _params: Value| async move {
+                    response_builder
+                        .error(warp_json_rpc::Error::INVALID_PARAMS)
+                        .map_err(|_| reject::reject())
+                },
+            );
+        with_no_params.or(with_params).unify().boxed()
+    }
+    /// Handles the incoming RPC request.
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
+}
+
 /// A trait for creating a JSON-RPC filter where the request is not required to have "params".
 pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
     /// Creates the warp filter for this particular RPC.
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
-        startup_time: Instant,
+        node_startup_time: Instant,
     ) -> BoxedFilter<(Response<Body>,)> {
         let with_no_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and_then(move |response_builder: Builder| {
-                Self::handle_request(effect_builder, response_builder, api_version, startup_time)
-                    .map_err(reject::custom)
+                Self::handle_request(
+                    effect_builder,
+                    response_builder,
+                    api_version,
+                    node_startup_time,
+                )
+                .map_err(reject::custom)
             });
         let with_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
@@ -184,7 +223,7 @@ pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         api_version: ProtocolVersion,
-        startup_time: Instant,
+        node_startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
 

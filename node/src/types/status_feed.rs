@@ -186,7 +186,7 @@ impl GetStatusResult {
     pub(crate) fn new(
         status_feed: StatusFeed<NodeId>,
         api_version: ProtocolVersion,
-        startup_time: Instant,
+        node_startup_time: Instant,
     ) -> Self {
         GetStatusResult {
             api_version,
@@ -198,7 +198,7 @@ impl GetStatusResult {
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
             build_version: crate::VERSION_STRING.clone(),
-            uptime: startup_time.elapsed().into(),
+            uptime: node_startup_time.elapsed().into(),
         }
     }
 }
