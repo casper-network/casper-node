@@ -19,7 +19,7 @@ use serde_json::Value;
 use warp::{
     filters::BoxedFilter,
     reject::{self, Reject},
-    Filter,
+    Filter, Rejection,
 };
 use warp_json_rpc::{filters, Builder};
 
@@ -63,10 +63,24 @@ impl From<anyhow::Error> for Error {
 
 fn create_with_no_params(
     method: &'static str,
-) -> impl Filter<Extract = (Builder,), Error = warp::Rejection> + Copy {
+) -> impl Filter<Extract = (Builder,), Error = Rejection> + Copy {
     warp::path(RPC_API_PATH)
         .and(filters::json_rpc())
         .and(filters::method(method))
+}
+
+fn create_with_params(
+    method: &'static str,
+) -> impl Filter<Extract = (Response<Body>,), Error = Rejection> + Copy {
+    create_with_no_params(method)
+        .and(filters::params::<Value>())
+        .and_then(
+            move |response_builder: Builder, _params: Value| async move {
+                response_builder
+                    .error(warp_json_rpc::Error::INVALID_PARAMS)
+                    .map_err(|_| reject::reject())
+            },
+        )
 }
 
 /// A JSON-RPC requiring the "params" field to be present.
@@ -106,15 +120,7 @@ pub(super) trait RpcWithParamsExt: RpcWithParams {
                         .map_err(reject::custom)
                 },
             );
-        let with_invalid_params = create_with_no_params(Self::METHOD)
-            .and(filters::params::<Value>())
-            .and_then(
-                move |response_builder: Builder, _params: Value| async move {
-                    response_builder
-                        .error(warp_json_rpc::Error::INVALID_PARAMS)
-                        .map_err(|_| reject::reject())
-                },
-            );
+        let with_invalid_params = create_with_params(Self::METHOD);
         let with_missing_params = create_with_no_params(Self::METHOD).and_then(
             move |response_builder: Builder| async move {
                 response_builder
@@ -166,15 +172,7 @@ pub(super) trait RpcWithoutParamsAndStartupTimeExt: RpcWithoutParams {
                 Self::handle_request(effect_builder, response_builder, api_version)
                     .map_err(reject::custom)
             });
-        let with_params = create_with_no_params(Self::METHOD)
-            .and(filters::params::<Value>())
-            .and_then(
-                move |response_builder: Builder, _params: Value| async move {
-                    response_builder
-                        .error(warp_json_rpc::Error::INVALID_PARAMS)
-                        .map_err(|_| reject::reject())
-                },
-            );
+        let with_params = create_with_params(Self::METHOD);
         with_no_params.or(with_params).unify().boxed()
     }
     /// Handles the incoming RPC request.
@@ -203,15 +201,7 @@ pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
                 )
                 .map_err(reject::custom)
             });
-        let with_params = create_with_no_params(Self::METHOD)
-            .and(filters::params::<Value>())
-            .and_then(
-                move |response_builder: Builder, _params: Value| async move {
-                    response_builder
-                        .error(warp_json_rpc::Error::INVALID_PARAMS)
-                        .map_err(|_| reject::reject())
-                },
-            );
+        let with_params = create_with_params(Self::METHOD);
         with_no_params.or(with_params).unify().boxed()
     }
 
@@ -267,15 +257,7 @@ pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
                     .map_err(reject::custom)
                 },
             );
-        let with_invalid_params = create_with_no_params(Self::METHOD)
-            .and(filters::params::<Value>())
-            .and_then(
-                move |response_builder: Builder, _params: Value| async move {
-                    response_builder
-                        .error(warp_json_rpc::Error::INVALID_PARAMS)
-                        .map_err(|_| reject::reject())
-                },
-            );
+        let with_invalid_params = create_with_params(Self::METHOD);
         let without_params =
             create_with_no_params(Self::METHOD).and_then(move |response_builder: Builder| {
                 Self::handle_request(effect_builder, response_builder, None, api_version)
