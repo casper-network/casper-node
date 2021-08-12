@@ -420,7 +420,7 @@ where
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 let concurrency_limit = Arc::clone(&self.concurrency_limit);
-                async move {
+                tokio::task::unconstrained(async move {
                     let result = operations::execute_finalized_block(
                         concurrency_limit,
                         engine_state.as_ref(),
@@ -433,7 +433,7 @@ where
                     .await;
                     trace!(?result, "execute block response");
                     responder.respond(result).await
-                }
+                })
                 .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
@@ -601,7 +601,7 @@ impl ContractRuntime {
             block,
             execution_results,
             maybe_step_execution_effect,
-        } = match operations::execute_finalized_block(
+        } = match tokio::task::unconstrained(operations::execute_finalized_block(
             concurrency_limit,
             engine_state.as_ref(),
             metrics.as_ref(),
@@ -609,7 +609,7 @@ impl ContractRuntime {
             current_execution_pre_state,
             finalized_block,
             deploys,
-        )
+        ))
         .await
         {
             Ok(block_and_execution_effects) => block_and_execution_effects,
