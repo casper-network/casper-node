@@ -3,9 +3,11 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
+    time::Duration,
 };
 
 use derive_more::From;
+use futures::channel::oneshot;
 use prometheus::Registry;
 
 use reactor::ReactorEvent;
@@ -20,6 +22,7 @@ use casper_types::ProtocolVersion;
 
 use super::*;
 
+use crate::types::Block;
 use crate::{
     components::{
         contract_runtime::{self, ContractRuntime},
@@ -45,7 +48,6 @@ use crate::{
     utils::{Loadable, WithDir},
     NodeRng,
 };
-use std::time::Duration;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -191,7 +193,7 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let deploy_acceptor = DeployAcceptor::new(
-            super::Config::new(false),
+            super::Config::new(true),
             &Chainspec::from_resources("local"),
         );
 
@@ -215,10 +217,14 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Storage(event) => reactor::wrap_effects(
-                Event::Storage,
-                self.storage.handle_event(effect_builder, rng, event),
-            ),
+            Event::Storage(event) => {
+                info!("Storage request made");
+
+                reactor::wrap_effects(
+                    Event::Storage,
+                    self.storage.handle_event(effect_builder, rng, event),
+                )
+            }
             Event::DeployAcceptor(event) => reactor::wrap_effects(
                 Event::DeployAcceptor,
                 self.deploy_acceptor
@@ -313,6 +319,7 @@ impl reactor::Reactor for Reactor {
                     source: Source::<NodeId>::Client,
                     responder,
                 };
+                info!("rpc server announcement made");
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
 
@@ -320,11 +327,14 @@ impl reactor::Reactor for Reactor {
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
             ),
-            Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
-            ),
+            Event::ContractRuntime(event) => {
+                info!("contract runtime request made");
+                reactor::wrap_effects(
+                    Event::ContractRuntime,
+                    self.contract_runtime
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
         }
     }
 
@@ -352,8 +362,17 @@ fn announce_deploy_received(
     }
 }
 
+fn announce_linear_chain(block: Block) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    |effect_builder: EffectBuilder<Event>| {
+        let empty_execution = HashMap::new();
+        effect_builder
+            .announce_linear_chain_block(block, empty_execution)
+            .ignore()
+    }
+}
+
 #[tokio::test]
-async fn should_run() {
+async fn should_accept_deploys_from_peer() {
     const TIMEOUT: Duration = Duration::from_secs(20);
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
@@ -388,6 +407,119 @@ async fn should_run() {
 
     // Ensure all responders are called before dropping the network.
     network.settle(&mut rng, QUIET_FOR, TIMEOUT).await;
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn should_fail_due_to_invalid_account() {
+    const TIMEOUT: Duration = Duration::from_secs(20);
+    const QUIET_FOR: Duration = Duration::from_millis(50);
+
+    let mut rng = crate::new_rng();
+    let (sender, receiver) = oneshot::channel();
+    let responder = Responder::create(sender);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = Network::<Reactor>::new();
+
+    let node_ids = network.add_nodes(&mut rng, 1).await;
+
+    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy_hash = *deploy.id();
+
+    network
+        .process_injected_effect_on(
+            &node_ids[0],
+            announce_deploy_received(deploy, Some(responder)),
+        )
+        .await;
+
+    // We expect this deploy to be rejected, therefore it should not be present in storage.
+    let no_such_deploy = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+        nodes.values().all(|runner| {
+            runner
+                .reactor()
+                .inner()
+                .storage
+                .get_deploy_by_hash(deploy_hash)
+                .is_none()
+        })
+    };
+
+    network.settle_on(&mut rng, no_such_deploy, TIMEOUT).await;
+
+    // Ensure all responders are called before dropping the network.
+    network.settle(&mut rng, QUIET_FOR, TIMEOUT).await;
+
+    match receiver.await {
+        Ok(result) => {
+            assert!(matches!(result, Err(super::Error::InvalidAccount)))
+        }
+        Err(_) => panic!("receiver error implies a bug"),
+    }
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn test_insert_block() {
+    const TIMEOUT: Duration = Duration::from_secs(20);
+    const QUIET_FOR: Duration = Duration::from_millis(50);
+
+    let mut rng = crate::new_rng();
+    let (sender, receiver) = oneshot::channel();
+    let responder = Responder::create(sender);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = Network::<Reactor>::new();
+
+    let node_ids = network.add_nodes(&mut rng, 1).await;
+
+    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy_hash = *deploy.id();
+
+    let block = Block::random(&mut rng);
+
+    network
+        .process_injected_effect_on(&node_ids[0], announce_linear_chain(block))
+        .await;
+
+    network
+        .process_injected_effect_on(
+            &node_ids[0],
+            announce_deploy_received(deploy, Some(responder)),
+        )
+        .await;
+
+    // We expect this deploy to be rejected, therefore it should not be present in storage.
+    let no_such_deploy = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+        nodes.values().all(|runner| {
+            if runner
+                .reactor()
+                .inner()
+                .storage
+                .get_deploy_by_hash(deploy_hash)
+                .is_none()
+            {
+                true
+            } else {
+                false
+            }
+        })
+    };
+
+    network.settle_on(&mut rng, no_such_deploy, TIMEOUT).await;
+
+    // Ensure all responders are called before dropping the network.
+    network.settle(&mut rng, QUIET_FOR, TIMEOUT).await;
+
+    match receiver.await {
+        Ok(result) => {
+            assert!(matches!(result, Err(super::Error::InvalidAccount)))
+        }
+        Err(_) => panic!("receiver error implies a bug"),
+    }
 
     NetworkController::<NodeMessage>::remove_active();
 }

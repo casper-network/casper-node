@@ -1361,6 +1361,25 @@ impl Storage {
             .expect("could not retrieve value from storage")
     }
 
+    /// Inject a block into the internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn inject_block_into_db(&self, block: Block) -> Result<bool, LmdbExtError> {
+        let mut txn = self
+            .env
+            .begin_rw_txn()
+            .expect("could not created RW transaction");
+        txn.put_value(
+            self.block_body_db,
+            block.header().body_hash(),
+            block.body(),
+            true,
+        )?;
+        txn.put_value(self.block_header_db, block.hash(), block.header(), true)
+    }
+
     /// Reads all known deploy hashes from the internal store.
     ///
     /// # Panics
