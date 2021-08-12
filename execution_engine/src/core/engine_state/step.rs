@@ -144,9 +144,6 @@ pub enum StepError {
     /// Invalid state root hash.
     #[error("Root not found: {0:?}")]
     RootNotFound(Blake2bHash),
-    /// Error getting protocol data.
-    #[error("Get protocol data error: {0}")]
-    GetProtocolDataError(Error),
     /// Error creating a tracking copy intsance.
     #[error("Tracking copy error: {0}")]
     TrackingCopyError(Error),

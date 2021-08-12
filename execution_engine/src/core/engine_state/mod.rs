@@ -146,7 +146,8 @@ where
     ///
     /// Takes genesis configuration passed through [`ExecConfig`] and creates system contracts, sets
     /// up genesis accounts, and sets up auction state based on that. At the end of the process
-    /// [`ProtocolData`] is persisted under the passed protocol version.
+    /// [`SystemContractRegistry`] is persisted under the special global state space
+    /// [`Key::SystemContractRegistry`].
     ///
     /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
     pub fn commit_genesis(
