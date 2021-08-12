@@ -222,7 +222,7 @@ mod test {
     #[test]
     fn should_print_digest_hex() {
         let hash = Digest([10u8; 32]);
-        let hex = format!("{}", check_summed_hex::encode(&hash));
+        let hex = check_summed_hex::encode(&hash);
         assert_eq!(
             hex,
             "0a0A0a0A0A0A0A0a0A0a0A0a0A0A0a0A0A0a0a0a0a0A0A0a0a0a0A0A0A0A0A0A"

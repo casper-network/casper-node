@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    check_summed_hex, CheckSummedHex, CheckSummedHexForm,
+    check_summed_hex, CheckSummedHex,
 };
 
 /// Represents a 32-byte BLAKE2b hash digest
@@ -100,14 +100,14 @@ impl FromBytes for Blake2bHash {
 impl CheckSummedHex<Blake2bHash> for Blake2bHash {
     type Error = &'static str; // TODO: replace with proper error type.
 
-    fn create_bytes(value: &Blake2bHash) -> std::borrow::Cow<[u8]> {
+    fn create_bytes(value: &Blake2bHash) -> Cow<[u8]> {
         Cow::from(value.to_bytes().unwrap())
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Blake2bHash, Self::Error> {
         FromBytes::from_bytes(bytes)
-            .map(|(b, rem)| b)
-            .map_err(|_| "replace me with real error.")
+            .map(|(b, _rem)| b)
+            .map_err(|_error| "replace me with real error.")
     }
 }
 

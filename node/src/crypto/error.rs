@@ -21,10 +21,12 @@ pub enum Error {
     #[error("parsing from hex: {0}")]
     FromHex(#[from] base16::DecodeError),
 
-    /// Attempted to coerce an array which is not 32 bytes into a [`Digest`].
+    /// Attempted to coerce an array which is not 32 bytes into a
+    /// [`Digest`](crate::crypto::hash::Digest).
     #[error("Digest must be 32 bytes, was {actual_byte_length}")]
     DigestMustBe32Bytes {
-        /// The actual number of bytes we were trying to convert into a [`Digest`].
+        /// The actual number of bytes we were trying to convert into a
+        /// [`Digest`](crate::crypto::hash::Digest).
         actual_byte_length: usize,
     },
 

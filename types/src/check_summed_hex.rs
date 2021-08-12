@@ -196,7 +196,7 @@ pub trait CheckSummedHex<T> {
 }
 
 /// A dummy container for use inside `#[serde(with)]` attribute if the underlying type
-/// implements [`Hex`].
+/// implements [`CheckSummedHex`].
 #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
 #[derive(Debug)]
 pub struct CheckSummedHexForm<T>(PhantomData<T>);

@@ -40,7 +40,7 @@ struct TraceId([u8; 8]);
 
 impl Display for TraceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!("{}", check_summed_hex::encode(&self.0)))
+        f.write_str(check_summed_hex::encode(&self.0).as_ref())
     }
 }
 

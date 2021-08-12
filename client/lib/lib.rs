@@ -1406,8 +1406,7 @@ mod param_tests {
                 Err(Error::CryptoError {
                     context: "dependencies",
                     error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: 11 })
-                }
-                .into())
+                })
             ));
         }
     }

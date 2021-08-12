@@ -890,7 +890,7 @@ mod tests {
     fn should_display_key() {
         assert_eq!(
             format!("{}", ACCOUNT_KEY),
-            format!("Key::Account({})", HEX_STRING)
+            format!("Key::Account({})", HEX_STRING.to_lowercase())
         );
         assert_eq!(
             format!("{}", HASH_KEY),
@@ -916,10 +916,13 @@ mod tests {
             format!("{}", BALANCE_KEY),
             format!("Key::Balance({})", HEX_STRING)
         );
-        assert_eq!(format!("{}", BID_KEY), format!("Key::Bid({})", HEX_STRING));
+        assert_eq!(
+            format!("{}", BID_KEY),
+            format!("Key::Bid({})", HEX_STRING.to_lowercase())
+        );
         assert_eq!(
             format!("{}", WITHDRAW_KEY),
-            format!("Key::Withdraw({})", HEX_STRING)
+            format!("Key::Withdraw({})", HEX_STRING.to_lowercase())
         );
         assert_eq!(
             format!("{}", DICTIONARY_KEY),
