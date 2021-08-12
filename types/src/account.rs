@@ -61,6 +61,8 @@ impl Account {
     /// An Account constructor with presets for associated_keys and action_thresholds.
     ///
     /// An account created with this method is valid and can be used as the target of a transaction.
+    /// It will be created with an [`AssociatedKeys`] with a [`Weight`] of 1, and a default
+    /// [`ActionThresholds`].
     pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
         let associated_keys = AssociatedKeys::new(account, Weight::new(1));
         let action_thresholds: ActionThresholds = Default::default();
@@ -170,8 +172,7 @@ impl Account {
 
     /// Updates an associated key.
     ///
-    /// This method validates that the key that's being updated does not have a lower weight than
-    /// the key management threshold.
+    /// Returns an error if the update would result in a violation of the key management thresholds.
     pub fn update_associated_key(
         &mut self,
         account_hash: AccountHash,
@@ -190,8 +191,8 @@ impl Account {
 
     /// Sets new action threshold for a given action type for the account.
     ///
-    /// Verifies that the new weight is less than or equal to the sum of the associated keys for the
-    /// account.
+    /// Returns an error if the new action threshold weight is greater than the total weight of the
+    /// account's associated keys.
     pub fn set_action_threshold(
         &mut self,
         action_type: ActionType,
