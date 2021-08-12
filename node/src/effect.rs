@@ -176,7 +176,7 @@ impl<T: 'static + Send> Responder<T> {
 
 impl<T> Responder<T> {
     /// Send `data` to the origin of the request.
-    pub(crate) fn respond(mut self, data: T) -> impl Future {
+    pub(crate) fn respond(mut self, data: T) -> impl Future<Output = ()> {
         let caller_backtrace = backtrace::Backtrace::new();
         async move {
             if let Some(sender) = self.0.take() {
