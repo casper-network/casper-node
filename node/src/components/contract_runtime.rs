@@ -52,7 +52,6 @@ use crate::{
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
-use tokio::sync::Semaphore;
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
@@ -114,8 +113,6 @@ pub(crate) struct ContractRuntime {
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
-
-    concurrency_limit: Arc<Semaphore>,
 }
 
 impl Debug for ContractRuntime {
@@ -419,10 +416,8 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                let concurrency_limit = Arc::clone(&self.concurrency_limit);
                 tokio::task::unconstrained(async move {
                     let result = operations::execute_finalized_block(
-                        concurrency_limit,
                         engine_state.as_ref(),
                         metrics.as_ref(),
                         protocol_version,
@@ -446,13 +441,11 @@ where
                 let metrics = Arc::clone(&self.metrics);
                 let exec_queue = Arc::clone(&self.exec_queue);
                 let execution_pre_state = Arc::clone(&self.execution_pre_state);
-                let concurrency_limit = Arc::clone(&self.concurrency_limit);
                 if self.execution_pre_state.lock().unwrap().next_block_height
                     == finalized_block.height()
                 {
                     effects.extend(
                         Self::execute_finalized_block_or_requeue(
-                            concurrency_limit,
                             engine_state,
                             metrics,
                             exec_queue,
@@ -534,15 +527,12 @@ impl ContractRuntime {
 
         let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
 
-        let concurrency_limit = Arc::new(Semaphore::new(1));
-
         Ok(ContractRuntime {
             execution_pre_state,
             protocol_version,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             engine_state,
             metrics,
-            concurrency_limit,
         })
     }
 
@@ -581,7 +571,6 @@ impl ContractRuntime {
     }
 
     async fn execute_finalized_block_or_requeue<REv>(
-        concurrency_limit: Arc<Semaphore>,
         engine_state: Arc<EngineState<LmdbGlobalState>>,
         metrics: Arc<ContractRuntimeMetrics>,
         exec_queue: ExecQueue,
@@ -602,7 +591,6 @@ impl ContractRuntime {
             execution_results,
             maybe_step_execution_effect,
         } = match tokio::task::unconstrained(operations::execute_finalized_block(
-            concurrency_limit,
             engine_state.as_ref(),
             metrics.as_ref(),
             protocol_version,

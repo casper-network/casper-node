@@ -1,12 +1,10 @@
 use std::{
     collections::{HashMap, VecDeque},
-    sync::Arc,
     time::Instant,
 };
 
 use engine_state::ExecuteRequest;
 use itertools::Itertools;
-use tokio::sync::Semaphore;
 use tracing::{debug, info, trace};
 
 use casper_execution_engine::{
@@ -32,7 +30,6 @@ use crate::{
 };
 
 pub(super) async fn execute_finalized_block(
-    concurrency_limit: Arc<Semaphore>,
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: &ContractRuntimeMetrics,
     protocol_version: ProtocolVersion,
@@ -45,10 +42,6 @@ pub(super) async fn execute_finalized_block(
         "execute_finalized_block called for height {}",
         finalized_block_height
     );
-    let _permit = concurrency_limit
-        .acquire()
-        .await
-        .expect("error in semaphore");
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
             finalized_block: Box::new(finalized_block),
