@@ -12,15 +12,14 @@ use casper_types::ProtocolVersion;
 
 use super::*;
 use crate::{
-    components::{
-        deploy_acceptor, in_memory_network::NetworkController, storage, tests_common::advance_time,
-    },
+    components::{deploy_acceptor, in_memory_network::NetworkController, storage},
     effect::{
         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
         Responder,
     },
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
+    testing,
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
@@ -439,7 +438,7 @@ async fn should_timeout_fetch_from_peer() {
     // Advance time.
     let time_to_advance: Duration = Config::default().get_from_peer_timeout().into();
     let time_to_advance = time_to_advance + Duration::from_secs(10);
-    advance_time(time_to_advance).await;
+    testing::advance_time(time_to_advance).await;
 
     // Settle the network, allowing timeout to avoid panic.
     let expected_result = None;
