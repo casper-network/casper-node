@@ -29,7 +29,7 @@ use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::{
@@ -75,7 +75,6 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::Account,
         additive_map::AdditiveMap,
         gas::Gas,
         motes::Motes,
