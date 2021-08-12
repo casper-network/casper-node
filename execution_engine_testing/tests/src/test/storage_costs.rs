@@ -6,7 +6,7 @@ use casper_engine_test_support::internal::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -162,6 +162,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
         *STORAGE_COSTS_ONLY,
         SystemConfig::default(),
     );

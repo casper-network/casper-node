@@ -501,6 +501,7 @@ impl ContractRuntime {
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
+            contract_runtime_config.max_associated_keys(),
             wasm_config,
             system_config,
         );

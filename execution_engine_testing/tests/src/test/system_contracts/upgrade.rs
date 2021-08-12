@@ -135,6 +135,7 @@ fn should_allow_only_wasm_costs_patch_version() {
 
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -175,6 +176,7 @@ fn should_allow_only_wasm_costs_minor_version() {
 
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -659,7 +661,6 @@ fn should_increase_max_associated_keys_after_upgrade() {
 
     let new_system_config = SystemConfig::new(
         DEFAULT_WASMLESS_TRANSFER_COST,
-        DEFAULT_MAX_ASSOCIATED_KEYS + 1,
         AuctionCosts::default(),
         MintCosts::default(),
         HandlePaymentCosts::default(),
@@ -668,6 +669,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS + 1,
         *DEFAULT_WASM_CONFIG,
         new_system_config,
     );
@@ -711,6 +713,6 @@ fn should_increase_max_associated_keys_after_upgrade() {
     assert!(account.associated_keys().len() > DEFAULT_MAX_ASSOCIATED_KEYS as usize);
     assert_eq!(
         account.associated_keys().len(),
-        new_engine_config.system_config().max_associated_keys() as usize
+        new_engine_config.max_associated_keys() as usize
     );
 }

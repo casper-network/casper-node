@@ -929,7 +929,6 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost_value,
-        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
@@ -938,6 +937,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
         WasmConfig::default(),
         new_system_config,
     );
