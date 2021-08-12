@@ -53,8 +53,8 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         status_feed,
         DOCS_EXAMPLE_PROTOCOL_VERSION,
         Instant::now()
-            .checked_sub(Duration::seconds(1000).to_std().unwrap_or_default()) // Make the "uptime" an actual value instead of 0
-            .unwrap_or_else(|| Instant::now()),
+            .checked_sub(Duration::seconds(1000).to_std().unwrap_or_default()) // Make the "uptime" an actual, exemplary value instead of 0
+            .unwrap_or_else(Instant::now),
     )
 });
 
