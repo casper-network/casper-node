@@ -498,8 +498,8 @@ async fn should_get_from_alternate_source() {
     network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
 
     // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
-    let time_to_advance = Config::default().get_remainder_timeout();
-    testing::advance_time(time_to_advance.into()).await;
+    let duration_to_advance = Config::default().get_remainder_timeout();
+    testing::advance_time(duration_to_advance.into()).await;
 
     // Check node 0 has the deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
@@ -567,8 +567,8 @@ async fn should_timeout_gossip_response() {
     }
 
     // Advance time to trigger node 0's timeout causing it to gossip to the new nodes.
-    let time_to_advance = Config::default().gossip_request_timeout();
-    testing::advance_time(time_to_advance.into()).await;
+    let duration_to_advance = Config::default().gossip_request_timeout();
+    testing::advance_time(duration_to_advance.into()).await;
 
     // Check every node has every deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
