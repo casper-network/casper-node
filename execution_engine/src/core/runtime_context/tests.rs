@@ -8,18 +8,7 @@ use std::{
 use once_cell::sync::Lazy;
 use rand::RngCore;
 
-use casper_types::{
-    account::{
-        AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, Weight,
-        ACCOUNT_HASH_LENGTH,
-    },
-    bytesrepr::ToBytes,
-    contracts::NamedKeys,
-    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, BlockTime, CLValue, Contract, ContractHash, DeployHash, EntryPointType,
-    EntryPoints, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef,
-    KEY_HASH_LENGTH, U256, U512,
-};
+use casper_types::{AccessRights, BlockTime, CLValue, Contract, ContractHash, DeployHash, EntryPointType, EntryPoints, KEY_HASH_LENGTH, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512, URef, account::{ACCOUNT_HASH_LENGTH, Account, AccountHash, ActionType, AddKeyFailure, AssociatedKeys, RemoveKeyFailure, SetThresholdFailure, Weight}, bytesrepr::ToBytes, contracts::NamedKeys, system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT}};
 
 use super::{Address, Error, RuntimeContext};
 use crate::{
@@ -30,11 +19,7 @@ use crate::{
         tracking_copy::TrackingCopy,
     },
     shared::{
-        account::{Account, AssociatedKeys},
-        additive_map::AdditiveMap,
-        gas::Gas,
-        newtypes::CorrelationId,
-        stored_value::StoredValue,
+        additive_map::AdditiveMap, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue,
         transform::Transform,
     },
     storage::global_state::{
@@ -608,7 +593,8 @@ fn manage_associated_keys() {
             _ => panic!("Invalid transform operation found"),
         };
         account
-            .get_associated_key_weight(account_hash)
+            .associated_keys()
+            .get(&account_hash)
             .expect("Account hash wasn't added to associated keys");
 
         let new_weight = Weight::new(100);
@@ -623,7 +609,8 @@ fn manage_associated_keys() {
             _ => panic!("Invalid transform operation found"),
         };
         let value = account
-            .get_associated_key_weight(account_hash)
+            .associated_keys()
+            .get(&account_hash)
             .expect("Account hash wasn't added to associated keys");
 
         assert_eq!(value, &new_weight, "value was not updated");
@@ -641,7 +628,9 @@ fn manage_associated_keys() {
             _ => panic!("Invalid transform operation found"),
         };
 
-        assert!(account.get_associated_key_weight(account_hash).is_none());
+        let actual = account.associated_keys().get(&account_hash);
+
+        assert!(actual.is_none());
 
         // Remove a key that was already removed
         runtime_context

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     runtime_args,
@@ -44,7 +44,6 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::Account,
         gas::Gas,
         motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},

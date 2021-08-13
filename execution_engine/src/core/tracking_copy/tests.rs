@@ -4,7 +4,7 @@ use assert_matches::assert_matches;
 use proptest::prelude::*;
 
 use casper_types::{
-    account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
+    account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
     AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, URef,
@@ -21,7 +21,6 @@ use crate::{
         ValidationError,
     },
     shared::{
-        account::{Account, AssociatedKeys},
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::{gens::stored_value_arb, StoredValue},
         transform::Transform,

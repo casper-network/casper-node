@@ -10,7 +10,7 @@ use tracing::error;
 
 use casper_types::{
     account::{
-        AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
+        Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
     bytesrepr,
@@ -31,7 +31,7 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
-    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
     storage::global_state::StateReader,
 };
 

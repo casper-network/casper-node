@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use casper_execution_engine::{shared, shared::stored_value::StoredValue};
+use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{account::AccountHash, contracts::NamedKeys, URef};
 
 use crate::{Error, Result};
@@ -8,12 +8,12 @@ use crate::{Error, Result};
 /// An `Account` instance.
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Account {
-    inner: shared::account::Account,
+    inner: casper_types::account::Account,
 }
 
 impl Account {
     /// creates a new Account instance.
-    pub(crate) fn new(account: shared::account::Account) -> Self {
+    pub(crate) fn new(account: casper_types::account::Account) -> Self {
         Account { inner: account }
     }
 
@@ -33,8 +33,8 @@ impl Account {
     }
 }
 
-impl From<shared::account::Account> for Account {
-    fn from(value: shared::account::Account) -> Self {
+impl From<casper_types::account::Account> for Account {
+    fn from(value: casper_types::account::Account) -> Self {
         Account::new(value)
     }
 }

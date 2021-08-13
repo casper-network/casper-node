@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.  The format
 * Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
 
 ### Changed
+* Documented `storage` module and children.
+* Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
 * Support building and testing using stable Rust.
 * Increase price of `create_purse` to 2.5CSPR.
 * Improve doc comments to clarify behavior of the bidding functionality.
