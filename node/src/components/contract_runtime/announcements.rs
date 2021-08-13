@@ -3,6 +3,8 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use serde::Serialize;
+
 use casper_execution_engine::core::engine_state::execution_effect::ExecutionEffect as ExecutionEngineExecutionEffect;
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
@@ -13,10 +15,10 @@ use crate::{
 use std::collections::BTreeMap;
 
 /// A ContractRuntime announcement.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
-    LinearChainBlock(Box<LinearChainBlock>),
+    LinearChainBlock(#[serde(skip_serializing)] Box<LinearChainBlock>),
     /// A step succeeded and has altered global state.
     StepSuccess {
         /// The era id in which the step was committed to global state.
@@ -27,8 +29,8 @@ pub(crate) enum ContractRuntimeAnnouncement {
     /// New era validators.
     UpcomingEraValidators {
         /// The era id in which the step was committed to global state.
-        current_era: EraId,
-        /// The validators for the eras after the current era.
+        era_that_is_ending: EraId,
+        /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
 }
@@ -59,11 +61,13 @@ impl Display for ContractRuntimeAnnouncement {
             ContractRuntimeAnnouncement::StepSuccess { era_id, .. } => {
                 write!(f, "step completed for {}", era_id)
             }
-            ContractRuntimeAnnouncement::UpcomingEraValidators { current_era, .. } => {
+            ContractRuntimeAnnouncement::UpcomingEraValidators {
+                era_that_is_ending, ..
+            } => {
                 write!(
                     f,
                     "upcoming era validators after current era {}.",
-                    current_era,
+                    era_that_is_ending,
                 )
             }
         }
@@ -107,14 +111,14 @@ pub(crate) async fn linear_chain_block<REv>(
 /// Announce validators for upcoming era.
 pub(super) async fn upcoming_era_validators<REv>(
     effect_builder: EffectBuilder<REv>,
-    current_era: EraId,
+    era_that_is_ending: EraId,
     upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
 ) where
     REv: From<ContractRuntimeAnnouncement>,
 {
     effect_builder
         .schedule_regular(ContractRuntimeAnnouncement::UpcomingEraValidators {
-            current_era,
+            era_that_is_ending,
             upcoming_era_validators,
         })
         .await
