@@ -184,6 +184,7 @@ impl RpcWithoutParamsExt for GetPeers {
                     QueueKind::Api,
                 )
                 .await;
+
             let result = Self::ResponseResult {
                 api_version,
                 peers: PeersMap::from(peers),
@@ -193,6 +194,7 @@ impl RpcWithoutParamsExt for GetPeers {
         .boxed()
     }
 }
+
 /// "info_get_status" RPC.
 pub struct GetStatus {}
 

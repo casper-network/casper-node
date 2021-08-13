@@ -371,7 +371,7 @@ impl reactor::Reactor for Reactor {
             network_identity,
         } = initializer;
 
-        // We're don't need to be super precise about the startup time, i.e.
+        // We don't need to be super precise about the startup time, i.e.
         // we can skip the time spent in `initializer` for the sake of code simplicity.
         let node_startup_time = Instant::now();
 

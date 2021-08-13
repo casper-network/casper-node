@@ -85,7 +85,7 @@ pub(crate) struct RestServer {
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
-    /// The instant at which the node has started
+    /// The instant at which the node has started.
     node_startup_time: Instant,
 }
 

@@ -100,7 +100,7 @@ pub struct StatusFeed<I> {
     pub round_length: Option<TimeDiff>,
     /// The compiled node version.
     pub version: &'static str,
-    /// Node uptime.
+    /// Time that passed since the node has started.
     pub node_uptime: Duration,
 }
 
@@ -176,7 +176,7 @@ pub struct GetStatusResult {
     pub next_upgrade: Option<NextUpgrade>,
     /// The compiled node version.
     pub build_version: String,
-    /// Time passed until node startup.
+    /// Time that passed since the node has started.
     pub uptime: TimeDiff,
 }
 

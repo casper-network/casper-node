@@ -86,7 +86,7 @@ impl<REv> ReactorEventT for REv where
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RpcServer {
-    /// The instant at which the node has started
+    /// The instant at which the node has started.
     node_startup_time: Instant,
 }
 
