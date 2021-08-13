@@ -318,6 +318,14 @@ impl ReactorEvent for UnitTestEvent {
     }
 }
 
+/// Helper function to simulate the passage of time.
+pub(crate) async fn advance_time(duration: time::Duration) {
+    tokio::time::pause();
+    tokio::time::advance(duration).await;
+    tokio::time::resume();
+    debug!("advanced time by {} secs", duration.as_secs());
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
