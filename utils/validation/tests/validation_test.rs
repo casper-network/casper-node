@@ -3,6 +3,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::bail;
+use clap::Clap;
+
 use casper_validation::{abi::ABIFixture, error::Error, test_case::TestCase, Fixture};
 
 fn get_fixtures_path() -> PathBuf {
@@ -38,7 +41,9 @@ fn make_abi_tests(test_name: &str, test_fixture: ABIFixture) -> Vec<(String, Box
     tests
 }
 
-fn make_test_cases() -> Result<Vec<(String, Box<dyn TestCase>)>, Error> {
+type TestPair = (String, Box<dyn TestCase>);
+
+fn make_test_cases() -> Result<Vec<TestPair>, Error> {
     let fixtures = get_fixtures_path();
     let test_fixtures = casper_validation::load_fixtures(&fixtures)?;
 
@@ -56,14 +61,56 @@ fn make_test_cases() -> Result<Vec<(String, Box<dyn TestCase>)>, Error> {
     Ok(tests)
 }
 
-fn main() -> anyhow::Result<()> {
-    let _args: Vec<_> = env::args().collect();
-    for (name, test_case) in make_test_cases()? {
-        print!("{}... ", name);
-        match test_case.run_test() {
-            Ok(()) => println!("OK"),
-            Err(error) => println!("ERROR: {}", error),
+#[derive(Clap, Debug)]
+struct Opts {
+    #[clap(long = "nocapture", parse(from_flag = ::std::ops::Not::not))]
+    capture: bool,
+    #[allow(unused_attributes)]
+    #[clap(name = "FILTERS")]
+    filters: Vec<String>,
+}
+
+impl Default for Opts {
+    fn default() -> Self {
+        Self {
+            capture: true,
+            filters: Vec::new(),
         }
     }
+}
+
+fn main() -> anyhow::Result<()> {
+    let opts: Opts = Opts::try_parse().unwrap_or_default();
+
+    let mut failures = Vec::new();
+
+    for (name, test_case) in make_test_cases()? {
+        if !opts.capture {
+            print!("{}... ", name);
+        }
+
+        let result = test_case.run_test();
+        match result {
+            Ok(()) => {
+                if !opts.capture {
+                    println!("OK")
+                }
+            }
+            Err(error) => {
+                if !opts.capture {
+                    println!("ERROR: {}", error)
+                }
+                failures.push(name);
+            }
+        };
+    }
+
+    if !failures.is_empty() {
+        for failure in &failures {
+            eprintln!("Failed test case: {}", failure);
+        }
+        bail!("Total failures: {}", failures.len());
+    }
+
     Ok(())
 }
