@@ -25,7 +25,7 @@ fn set_last_error(error: Error) {
 ///
 /// The full error can be extracted with get_last_error. See [Error](super::Error) for more details
 /// on what these mean.
-#[allow(non_snake_case, non_camel_case_types, missing_docs)]
+#[allow(non_camel_case_types, missing_docs)]
 #[repr(C)]
 pub enum casper_error_t {
     CASPER_SUCCESS = 0,
@@ -725,7 +725,6 @@ pub extern "C" fn casper_keygen(
 /// Container for `Deploy` construction options.
 ///
 /// See [DeployStrParams](super::DeployStrParams) for more info.
-#[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct casper_deploy_params_t {
@@ -772,7 +771,6 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
 /// Container for `Payment` construction options.
 ///
 /// See [PaymentStrParams](super::PaymentStrParams) for more info.
-#[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct casper_payment_params_t {
@@ -846,7 +844,6 @@ impl TryInto<super::PaymentStrParams<'static>> for casper_payment_params_t {
 /// Container for `Session` construction options.
 ///
 /// See [SessionStrParams](super::SessionStrParams) for more info.
-#[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct casper_session_params_t {
@@ -916,7 +913,7 @@ impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
 /// Container for `DictionaryItemStrParams` construction options.
 ///
 /// See [DictionaryItemStrParams](super::DictionaryItemStrParams) for more info.
-#[allow(non_snake_case, missing_docs)]
+#[allow(missing_docs)]
 #[repr(C)]
 #[derive(Clone)]
 pub enum casper_dictionary_params_t {
