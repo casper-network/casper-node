@@ -5,7 +5,7 @@ use std::{
 
 use engine_state::ExecuteRequest;
 use itertools::Itertools;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -29,7 +29,7 @@ use crate::{
     types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 
-pub(super) async fn execute_finalized_block(
+pub(super) fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: &ContractRuntimeMetrics,
     protocol_version: ProtocolVersion,
@@ -37,11 +37,6 @@ pub(super) async fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
-    let finalized_block_height = finalized_block.height();
-    info!(
-        "execute_finalized_block called for height {}",
-        finalized_block_height
-    );
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
             finalized_block: Box::new(finalized_block),
@@ -135,10 +130,6 @@ pub(super) async fn execute_finalized_block(
             maybe_step_execution_effect: None,
         }
     };
-    info!(
-        "execute_finalized_block finished for height {}",
-        finalized_block_height
-    );
     Ok(block_and_execution_effects)
 }
 

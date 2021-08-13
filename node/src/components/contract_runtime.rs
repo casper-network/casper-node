@@ -424,8 +424,7 @@ where
                         execution_pre_state,
                         finalized_block,
                         deploys,
-                    )
-                    .await;
+                    );
                     trace!(?result, "execute block response");
                     responder.respond(result).await
                 })
@@ -441,20 +440,23 @@ where
                 let metrics = Arc::clone(&self.metrics);
                 let exec_queue = Arc::clone(&self.exec_queue);
                 let execution_pre_state = Arc::clone(&self.execution_pre_state);
+                let protocol_version = self.protocol_version;
                 if self.execution_pre_state.lock().unwrap().next_block_height
                     == finalized_block.height()
                 {
                     effects.extend(
-                        Self::execute_finalized_block_or_requeue(
-                            engine_state,
-                            metrics,
-                            exec_queue,
-                            execution_pre_state,
-                            effect_builder,
-                            self.protocol_version,
-                            finalized_block,
-                            deploys,
-                        )
+                        async move {
+                            Self::execute_finalized_block_or_requeue(
+                                engine_state,
+                                metrics,
+                                exec_queue,
+                                execution_pre_state,
+                                effect_builder,
+                                protocol_version,
+                                finalized_block,
+                                deploys,
+                            )
+                        }
                         .ignore(),
                     )
                 } else {
@@ -585,19 +587,21 @@ impl ContractRuntime {
             + From<ControlAnnouncement>
             + Send,
     {
-        let current_execution_pre_state = { execution_pre_state.lock().unwrap().clone() };
+        let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
         let BlockAndExecutionEffects {
             block,
             execution_results,
             maybe_step_execution_effect,
-        } = match tokio::task::unconstrained(operations::execute_finalized_block(
-            engine_state.as_ref(),
-            metrics.as_ref(),
-            protocol_version,
-            current_execution_pre_state,
-            finalized_block,
-            deploys,
-        ))
+        } = match tokio::task::unconstrained(async move {
+            operations::execute_finalized_block(
+                engine_state.as_ref(),
+                metrics.as_ref(),
+                protocol_version,
+                current_execution_pre_state,
+                finalized_block,
+                deploys,
+            )
+        })
         .await
         {
             Ok(block_and_execution_effects) => block_and_execution_effects,
