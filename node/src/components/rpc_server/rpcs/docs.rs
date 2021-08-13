@@ -24,7 +24,7 @@ use super::{
     info::{GetDeploy, GetPeers, GetStatus},
     state::{GetAuctionInfo, GetBalance, GetItem},
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
-    RpcWithoutParamsAndStartupTimeExt,
+    RpcWithoutParamsExt,
 };
 use crate::{
     effect::EffectBuilder,
@@ -435,7 +435,7 @@ impl RpcWithoutParams for ListRpcs {
     type ResponseResult = ListRpcsResult;
 }
 
-impl RpcWithoutParamsAndStartupTimeExt for ListRpcs {
+impl RpcWithoutParamsExt for ListRpcs {
     fn handle_request<REv: ReactorEventT>(
         _effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
@@ -444,7 +444,6 @@ impl RpcWithoutParamsAndStartupTimeExt for ListRpcs {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use crate::{types::Chainspec, utils::Loadable};

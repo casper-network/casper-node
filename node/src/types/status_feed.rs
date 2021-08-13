@@ -5,10 +5,9 @@ use std::{
     collections::BTreeMap,
     hash::Hash,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    time::Instant,
+    time::Duration,
 };
 
-use chrono::Duration;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -48,14 +47,9 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         our_public_signing_key: Some(PublicKey::doc_example().clone()),
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
+        node_uptime: Duration::from_secs(13),
     };
-    GetStatusResult::new(
-        status_feed,
-        DOCS_EXAMPLE_PROTOCOL_VERSION,
-        Instant::now()
-            .checked_sub(Duration::seconds(1000).to_std().unwrap_or_default()) // Make the "uptime" an actual, exemplary value instead of 0
-            .unwrap_or_else(Instant::now),
-    )
+    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
 
 /// Summary information from the chainspec.
@@ -106,6 +100,8 @@ pub struct StatusFeed<I> {
     pub round_length: Option<TimeDiff>,
     /// The compiled node version.
     pub version: &'static str,
+    /// Node uptime.
+    pub node_uptime: Duration,
 }
 
 impl<I> StatusFeed<I> {
@@ -114,6 +110,7 @@ impl<I> StatusFeed<I> {
         peers: BTreeMap<I, String>,
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
+        node_uptime: Duration,
     ) -> Self {
         let (our_public_signing_key, round_length) = match consensus_status {
             Some((public_key, round_length)) => (Some(public_key), round_length),
@@ -126,6 +123,7 @@ impl<I> StatusFeed<I> {
             our_public_signing_key,
             round_length,
             version: crate::VERSION_STRING.as_str(),
+            node_uptime,
         }
     }
 }
@@ -183,11 +181,7 @@ pub struct GetStatusResult {
 }
 
 impl GetStatusResult {
-    pub(crate) fn new(
-        status_feed: StatusFeed<NodeId>,
-        api_version: ProtocolVersion,
-        node_startup_time: Instant,
-    ) -> Self {
+    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: ProtocolVersion) -> Self {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
@@ -198,7 +192,7 @@ impl GetStatusResult {
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
             build_version: crate::VERSION_STRING.clone(),
-            uptime: node_startup_time.elapsed().into(),
+            uptime: status_feed.node_uptime.into(),
         }
     }
 }

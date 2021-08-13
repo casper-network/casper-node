@@ -264,7 +264,6 @@ pub(crate) trait Reactor: Sized {
         cfg: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        node_startup_time: std::time::Instant,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
@@ -460,9 +459,7 @@ where
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let event_queue = EventQueueHandle::new(scheduler);
-        let node_startup_time = std::time::Instant::now();
-        let (reactor, initial_effects) =
-            R::new(cfg, registry, event_queue, node_startup_time, rng)?;
+        let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
         process_effects(None, scheduler, initial_effects)

@@ -330,6 +330,7 @@ pub(crate) struct ParticipatingInitConfig {
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
     pub(super) network_identity: NetworkIdentity,
+    pub(super) node_startup_time: Instant,
 }
 
 #[cfg(test)]
@@ -406,7 +407,6 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        node_startup_time: Instant,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
         let ParticipatingInitConfig {
@@ -419,6 +419,7 @@ impl reactor::Reactor for Reactor {
             event_stream_server,
             small_network_identity,
             network_identity,
+            node_startup_time,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;

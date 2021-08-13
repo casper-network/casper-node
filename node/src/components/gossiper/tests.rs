@@ -3,7 +3,6 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
-    time::Instant,
 };
 
 use derive_more::From;
@@ -171,7 +170,6 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _node_startup_time: Instant,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);

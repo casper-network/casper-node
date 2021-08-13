@@ -86,7 +86,6 @@ impl Reactor for TestReactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _node_startup_time: Instant,
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let chainspec = Chainspec::random(rng);

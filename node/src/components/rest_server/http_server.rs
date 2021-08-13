@@ -1,7 +1,4 @@
-use std::{
-    convert::Infallible,
-    time::{Duration, Instant},
-};
+use std::{convert::Infallible, time::Duration};
 
 use futures::{future, TryFutureExt};
 use hyper::server::{conn::AddrIncoming, Builder};
@@ -24,10 +21,9 @@ pub(super) async fn run<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     shutdown_receiver: oneshot::Receiver<()>,
     qps_limit: u64,
-    node_startup_time: Instant,
 ) {
     // REST filters.
-    let rest_status = filters::create_status_filter(effect_builder, api_version, node_startup_time);
+    let rest_status = filters::create_status_filter(effect_builder, api_version);
     let rest_metrics = filters::create_metrics_filter(effect_builder);
     let rest_open_rpc = filters::create_rpc_schema_filter(effect_builder);
 

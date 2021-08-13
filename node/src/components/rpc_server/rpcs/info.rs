@@ -3,7 +3,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::{str, time::Instant};
+use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -19,7 +19,7 @@ use casper_types::{ExecutionResult, ProtocolVersion};
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
-    RpcWithoutParamsAndStartupTimeExt, RpcWithoutParamsExt,
+    RpcWithoutParamsExt,
 };
 use crate::{
     effect::EffectBuilder,
@@ -171,7 +171,7 @@ impl RpcWithoutParams for GetPeers {
     type ResponseResult = GetPeersResult;
 }
 
-impl RpcWithoutParamsAndStartupTimeExt for GetPeers {
+impl RpcWithoutParamsExt for GetPeers {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
@@ -184,7 +184,6 @@ impl RpcWithoutParamsAndStartupTimeExt for GetPeers {
                     QueueKind::Api,
                 )
                 .await;
-
             let result = Self::ResponseResult {
                 api_version,
                 peers: PeersMap::from(peers),
@@ -194,7 +193,6 @@ impl RpcWithoutParamsAndStartupTimeExt for GetPeers {
         .boxed()
     }
 }
-
 /// "info_get_status" RPC.
 pub struct GetStatus {}
 
@@ -208,7 +206,6 @@ impl RpcWithoutParamsExt for GetStatus {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         api_version: ProtocolVersion,
-        node_startup_time: Instant,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the status.
@@ -220,7 +217,7 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let body = Self::ResponseResult::new(status_feed, api_version, node_startup_time);
+            let body = Self::ResponseResult::new(status_feed, api_version);
             Ok(response_builder.success(body)?)
         }
         .boxed()

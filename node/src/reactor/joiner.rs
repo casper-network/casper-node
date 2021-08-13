@@ -343,6 +343,7 @@ pub(crate) struct Reactor {
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
+    node_startup_time: Instant,
 }
 
 impl reactor::Reactor for Reactor {
@@ -357,7 +358,6 @@ impl reactor::Reactor for Reactor {
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        node_startup_time: Instant,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (root, initializer) = initializer.into_parts();
@@ -370,6 +370,10 @@ impl reactor::Reactor for Reactor {
             small_network_identity,
             network_identity,
         } = initializer;
+
+        // We're don't need to be super precise about the startup time, i.e.
+        // we can skip the time spent in `initializer` for the sake of code simplicity.
+        let node_startup_time = Instant::now();
 
         // TODO: Remove wrapper around Reactor::Config instead.
         let (_, config) = config.into_parts();
@@ -530,6 +534,7 @@ impl reactor::Reactor for Reactor {
                 rest_server,
                 event_stream_server,
                 memory_metrics,
+                node_startup_time,
             },
             effects,
         ))
@@ -945,6 +950,7 @@ impl Reactor {
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),
+            node_startup_time: self.node_startup_time,
         };
         self.network.finalize().await;
         self.small_network.finalize().await;

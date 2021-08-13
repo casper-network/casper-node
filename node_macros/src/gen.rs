@@ -377,7 +377,6 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 cfg: Self::Config,
                 registry: &prometheus::Registry,
                 event_queue: crate::reactor::EventQueueHandle<Self::Event>,
-                node_startup_time: std::time::Instant,
                 rng: &mut crate::NodeRng,
             ) -> Result<(Self, crate::effect::Effects<Self::Event>), Self::Error> {
                 let mut all_effects = crate::effect::Effects::new();

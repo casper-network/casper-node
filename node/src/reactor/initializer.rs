@@ -259,7 +259,6 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _node_startup_time: std::time::Instant,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);

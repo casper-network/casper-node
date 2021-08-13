@@ -85,6 +85,8 @@ pub(crate) struct RestServer {
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
+    /// The instant at which the node has started
+    node_startup_time: Instant,
 }
 
 impl RestServer {
@@ -106,12 +108,12 @@ impl RestServer {
             api_version,
             shutdown_receiver,
             config.qps_limit,
-            node_startup_time,
         ));
 
         Ok(RestServer {
             shutdown_sender,
             server_join_handle: Some(server_join_handle),
+            node_startup_time,
         })
     }
 }
@@ -130,16 +132,24 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::RestRequest(RestRequest::Status { responder }) => async move {
-                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
-                    effect_builder.get_highest_block_from_storage(),
-                    effect_builder.network_peers(),
-                    effect_builder.get_chainspec_info(),
-                    effect_builder.consensus_status()
-                );
-                let status_feed =
-                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
-                responder.respond(status_feed).await;
+            Event::RestRequest(RestRequest::Status { responder }) => {
+                let node_uptime = self.node_startup_time.elapsed();
+                async move {
+                    let (last_added_block, peers, chainspec_info, consensus_status) = join!(
+                        effect_builder.get_highest_block_from_storage(),
+                        effect_builder.network_peers(),
+                        effect_builder.get_chainspec_info(),
+                        effect_builder.consensus_status()
+                    );
+                    let status_feed = StatusFeed::new(
+                        last_added_block,
+                        peers,
+                        chainspec_info,
+                        consensus_status,
+                        node_uptime,
+                    );
+                    responder.respond(status_feed).await;
+                }
             }
             .ignore(),
             Event::RestRequest(RestRequest::Metrics { responder }) => effect_builder
