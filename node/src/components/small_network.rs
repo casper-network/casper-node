@@ -891,19 +891,20 @@ where
             Event::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::UpcomingEraValidators {
                     era_that_is_ending,
-                    upcoming_era_validators,
+                    mut upcoming_era_validators,
                 },
             ) => {
                 // Note: An assumption of an auction delay of 1 is made here.
                 let following_era = era_that_is_ending + 1;
 
-                if let Some(following_era_weights) = upcoming_era_validators.get(&following_era) {
+                if let Some(following_era_weights) = upcoming_era_validators.remove(&following_era)
+                {
                     // Regular operation: The current era is ending.
                     if era_that_is_ending == self.active_era {
                         // The new set of active validators is the era that is about to end,
                         // combined with the validators for the era that follows.
                         let mut following_era_validators: HashSet<PublicKey> =
-                            following_era_weights.keys().cloned().collect();
+                            following_era_weights.into_keys().collect();
 
                         // Make the following era the active era.
                         self.active_era = following_era;
@@ -930,8 +931,7 @@ where
                         // which is unusual. Since we do not have access to the previous era's
                         // validators, we cannot update the validator set, but we keep track of the
                         // changed set for future updates.
-                        self.active_era_validators =
-                            following_era_weights.keys().cloned().collect();
+                        self.active_era_validators = following_era_weights.into_keys().collect();
 
                         debug!(
                             "received upcoming era validators announcement for already active era"
@@ -945,8 +945,7 @@ where
                         // cannot rely on the previous era's validators anymore and are operating
                         // with a reduced set of active validators.
 
-                        self.active_era_validators =
-                            following_era_weights.keys().cloned().collect();
+                        self.active_era_validators = following_era_weights.into_keys().collect();
                         self.active_era = following_era;
 
                         self.incoming_limiter
