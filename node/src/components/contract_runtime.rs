@@ -445,18 +445,16 @@ where
                     == finalized_block.height()
                 {
                     effects.extend(
-                        async move {
-                            Self::execute_finalized_block_or_requeue(
-                                engine_state,
-                                metrics,
-                                exec_queue,
-                                execution_pre_state,
-                                effect_builder,
-                                protocol_version,
-                                finalized_block,
-                                deploys,
-                            )
-                        }
+                        Self::execute_finalized_block_or_requeue(
+                            engine_state,
+                            metrics,
+                            exec_queue,
+                            execution_pre_state,
+                            effect_builder,
+                            protocol_version,
+                            finalized_block,
+                            deploys,
+                        )
                         .ignore(),
                     )
                 } else {
@@ -572,6 +570,7 @@ impl ContractRuntime {
         *self.execution_pre_state.lock().unwrap() = sequential_block_state;
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
         engine_state: Arc<EngineState<LmdbGlobalState>>,
         metrics: Arc<ContractRuntimeMetrics>,
