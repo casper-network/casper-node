@@ -42,7 +42,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    io,
+    io, mem,
     net::{SocketAddr, TcpListener},
     result,
     sync::{Arc, Weak},
@@ -180,6 +180,9 @@ where
 
     /// The era that is considered the active era by the small network component.
     active_era: EraId,
+
+    /// The validator set associated with the `active_era`.
+    active_era_validators: HashSet<PublicKey>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -313,6 +316,7 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
+            active_era_validators: Default::default(),
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -892,20 +896,34 @@ where
             ) => {
                 if era_that_is_ending < self.active_era {
                     debug!("ignoring past era end announcement");
+                } else if era_that_is_ending != self.active_era {
+                    debug!("received future era end announcement, clearing limiters");
+                    self.active_era = era_that_is_ending + 1;
+                    self.active_era_validators = Default::default();
+
+                    self.incoming_limiter
+                        .update_validators(Default::default(), Default::default());
+                    self.outgoing_limiter
+                        .update_validators(Default::default(), Default::default());
                 } else {
+                    // At this point we can rely on the `active_era` being the one that is ending.
                     self.active_era = era_that_is_ending + 1;
 
-                    let mut active_validators: HashSet<PublicKey> = HashSet::new();
+                    // Initialize the next set of active validators with the currently active one.
+                    let mut active_validators: HashSet<PublicKey> =
+                        mem::take(&mut self.active_era_validators);
 
-                    if let Some(previous_weights) =
-                        upcoming_era_validators.remove(&era_that_is_ending)
-                    {
-                        active_validators.extend(previous_weights.into_keys());
+                    self.active_era_validators = upcoming_era_validators
+                        .remove(&self.active_era)
+                        .unwrap_or_default()
+                        .into_keys()
+                        .collect();
+
+                    if self.active_era_validators.is_empty() {
+                        warn!("received an empty set of active era validators");
                     }
 
-                    if let Some(active_weights) = upcoming_era_validators.remove(&self.active_era) {
-                        active_validators.extend(active_weights.into_keys());
-                    }
+                    active_validators.extend(self.active_era_validators.iter().cloned());
 
                     let upcoming_validators: HashSet<PublicKey> = upcoming_era_validators
                         .remove(&(self.active_era + 1))
