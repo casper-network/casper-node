@@ -1,13 +1,14 @@
 //! This module contains types and functions for working with keys associated with an account.
 
-use alloc::{collections::{BTreeMap, BTreeSet, btree_map::Entry}, vec::Vec};
+use alloc::{
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    vec::Vec,
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    account::{
-        AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight,
-    },
+    account::{AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
     bytesrepr::{Error, FromBytes, ToBytes},
 };
 
@@ -151,19 +152,12 @@ impl FromBytes for AssociatedKeys {
 pub mod gens {
     use proptest::prelude::*;
 
-    use crate::{
-        gens::{account_hash_arb, weight_arb},
-    };
+    use crate::gens::{account_hash_arb, weight_arb};
 
     use super::AssociatedKeys;
 
     pub fn associated_keys_arb() -> impl Strategy<Value = AssociatedKeys> {
-        proptest::collection::btree_map(
-            account_hash_arb(),
-            weight_arb(),
-            10,
-        )
-        .prop_map(|keys| {
+        proptest::collection::btree_map(account_hash_arb(), weight_arb(), 10).prop_map(|keys| {
             let mut associated_keys = AssociatedKeys::default();
             keys.into_iter().for_each(|(k, v)| {
                 associated_keys.add_key(k, v).unwrap();
