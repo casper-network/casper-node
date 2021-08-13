@@ -10,11 +10,10 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::info;
 
-use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
         gossiper,
         network::NetworkIdentity,
         small_network::{GossipedAddress, SmallNetworkIdentity, SmallNetworkIdentityError},

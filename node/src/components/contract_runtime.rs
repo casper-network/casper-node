@@ -5,10 +5,10 @@ mod error;
 mod operations;
 mod types;
 
-use std::collections::BTreeMap;
-use std::path::Path;
 use std::{
+    collections::BTreeMap,
     fmt::{self, Debug, Formatter},
+    path::Path,
     sync::Arc,
     time::Instant,
 };
@@ -24,8 +24,6 @@ use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::shared::system_config::SystemConfig;
-use casper_execution_engine::shared::wasm_config::WasmConfig;
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
@@ -34,6 +32,8 @@ use casper_execution_engine::{
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
+        system_config::SystemConfig,
+        wasm_config::WasmConfig,
     },
     storage::{
         global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
@@ -42,9 +42,8 @@ use casper_execution_engine::{
 };
 use casper_types::{Key, ProtocolVersion};
 
-use crate::components::contract_runtime::types::StepEffectAndUpcomingEraValidators;
 use crate::{
-    components::Component,
+    components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     crypto::hash::Digest,
     effect::{
         announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,

@@ -44,9 +44,10 @@ use super::{
     storage::{self, Storage},
     Component,
 };
-use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
-    components::contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
+    components::contract_runtime::{
+        BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState,
+    },
     effect::{
         announcements::ControlAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},

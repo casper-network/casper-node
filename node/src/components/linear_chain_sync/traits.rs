@@ -1,5 +1,5 @@
-use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
+    components::contract_runtime::ContractRuntimeAnnouncement,
     effect::{
         announcements::ControlAnnouncement,
         requests::{

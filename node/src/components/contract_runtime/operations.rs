@@ -17,20 +17,20 @@ use casper_execution_engine::{
 };
 use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
 
-use crate::components::contract_runtime::types::StepEffectAndUpcomingEraValidators;
 use crate::{
     components::{
         consensus::EraReport,
         contract_runtime::{
-            error::BlockExecutionError, BlockAndExecutionEffects, ContractRuntimeMetrics,
-            ExecutionPreState,
+            error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
+            BlockAndExecutionEffects, ContractRuntimeMetrics, ExecutionPreState,
         },
     },
     crypto::hash::Digest,
     types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
-use casper_execution_engine::core::engine_state::GetEraValidatorsRequest;
-use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_execution_engine::{
+    core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
+};
 use std::collections::BTreeMap;
 
 pub(super) fn execute_finalized_block(
@@ -84,7 +84,8 @@ pub(super) fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    // If the finalized block has an era report, run the auction contract and get the upcoming era validators
+    // If the finalized block has an era report, run the auction contract and get the upcoming era
+    // validators
     let maybe_step_effect_and_upcoming_era_validators =
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {

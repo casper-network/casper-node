@@ -19,10 +19,9 @@ use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::
 use casper_types::ProtocolVersion;
 
 use super::*;
-use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 use crate::{
     components::{
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
