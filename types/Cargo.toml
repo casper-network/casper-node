@@ -54,8 +54,9 @@ std = [
     "k256/std",
     "serde/std",
     "serde_json/std",
+    "once_cell/std",
     "schemars",
-    "thiserror"
+    "thiserror",
 ]
 no-std = ["base16/alloc", "serde/alloc", "serde_json/alloc", "displaydoc"]
 gens = ["std", "proptest/std"]
