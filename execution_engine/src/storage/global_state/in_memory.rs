@@ -26,18 +26,26 @@ use crate::storage::{
     },
 };
 
+/// Global state implemented purely in memory only. No state is saved to disk. This is mostly
+/// used for testing purposes.
 pub struct InMemoryGlobalState {
-    pub environment: Arc<InMemoryEnvironment>,
-    pub trie_store: Arc<InMemoryTrieStore>,
-
-    pub empty_root_hash: Blake2bHash,
+    /// Environment for `InMemoryGlobalState`.
+    /// Basically empty because this global state does not support transactions.
+    pub(crate) environment: Arc<InMemoryEnvironment>,
+    /// Trie store for `InMemoryGlobalState`.
+    pub(crate) trie_store: Arc<InMemoryTrieStore>,
+    /// Empty state root hash.
+    pub(crate) empty_root_hash: Blake2bHash,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct InMemoryGlobalStateView {
-    pub environment: Arc<InMemoryEnvironment>,
-    pub store: Arc<InMemoryTrieStore>,
-    pub root_hash: Blake2bHash,
+    /// Environment for `InMemoryGlobalState`.
+    pub(crate) environment: Arc<InMemoryEnvironment>,
+    /// Trie store for `InMemoryGlobalState`.
+    pub(crate) store: Arc<InMemoryTrieStore>,
+    /// State root hash for this "view".
+    pub(crate) root_hash: Blake2bHash,
 }
 
 impl InMemoryGlobalState {
@@ -99,6 +107,11 @@ impl InMemoryGlobalState {
             txn.commit()?;
         }
         Ok((state, current_root))
+    }
+
+    /// Returns the empty root hash owned by this `InMemoryGlobalState`.
+    pub fn empty_root_hash(&self) -> Blake2bHash {
+        self.empty_root_hash
     }
 }
 

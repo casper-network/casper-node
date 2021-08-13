@@ -13,7 +13,8 @@ use casper_node::crypto::Error as CryptoError;
 use hex::FromHexError;
 
 use casper_client::{
-    DeployStrParams, DictionaryItemStrParams, Error, PaymentStrParams, SessionStrParams,
+    DeployStrParams, DictionaryItemStrParams, Error, GlobalStateStrParams, PaymentStrParams,
+    SessionStrParams,
 };
 use casper_node::rpcs::{
     account::{PutDeploy, PutDeployParams},
@@ -145,8 +146,20 @@ impl MockServerHandle {
             .map(|_| ())
     }
 
+    #[allow(deprecated)]
     async fn get_item(&self, state_root_hash: &str, key: &str, path: &str) -> Result<(), Error> {
         casper_client::get_item("1", &self.url(), 0, state_root_hash, key, path)
+            .await
+            .map(|_| ())
+    }
+
+    async fn query_global_state(
+        &self,
+        global_state_params: GlobalStateStrParams<'_>,
+        key: &str,
+        path: &str,
+    ) -> Result<(), Error> {
+        casper_client::query_global_state("1", &self.url(), 0, global_state_params, key, path)
             .await
             .map(|_| ())
     }
@@ -274,6 +287,25 @@ mod session_params {
 
     pub fn test_data_with_package_hash() -> SessionStrParams<'static> {
         SessionStrParams::with_package_hash(PKG_HASH, VERSION, ENTRYPOINT, args_simple(), "")
+    }
+}
+
+/// Sample data creation methods for GlobalStateStrParams
+mod global_state_params {
+    use super::*;
+
+    pub fn test_params_as_state_root_hash() -> GlobalStateStrParams<'static> {
+        GlobalStateStrParams {
+            is_block_hash: false,
+            hash_value: VALID_STATE_ROOT_HASH,
+        }
+    }
+
+    pub fn invalid_global_state_str_params() -> GlobalStateStrParams<'static> {
+        GlobalStateStrParams {
+            is_block_hash: false,
+            hash_value: "invalid state root has",
+        }
     }
 }
 
@@ -677,6 +709,89 @@ mod get_dictionary_item {
             Err(Error::CryptoError {
                 context: "state_root_hash",
                 error: CryptoError::FromHex(FromHexError::OddLength)
+            })
+        ));
+    }
+}
+
+mod query_global_state {
+    use casper_client::ValidateResponseError;
+    use casper_node::rpcs::state::{QueryGlobalState, QueryGlobalStateParams};
+
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_succeed_with_valid_global_state_params() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+
+        // in this case, the error means that the request was sent successfully, but due to to the
+        // mock implementation fails to validate
+
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::test_params_as_state_root_hash(),
+                    VALID_PURSE_UREF,
+                    ""
+                )
+                .await,
+            Err(Error::InvalidResponse(
+                ValidateResponseError::ValidateResponseFailedToParse
+            ))
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_invalid_global_state_params() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::invalid_global_state_str_params(),
+                    VALID_PURSE_UREF,
+                    ""
+                )
+                .await,
+            Err(Error::CryptoError {
+                context: "global_state_identifier",
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+            })
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_invalid_key() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::test_params_as_state_root_hash(),
+                    "invalid key",
+                    ""
+                )
+                .await,
+            Err(Error::FailedToParseKey)
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_empty_key() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::invalid_global_state_str_params(),
+                    "",
+                    ""
+                )
+                .await,
+            Err(Error::CryptoError {
+                context: "global_state_identifier",
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             })
         ));
     }
