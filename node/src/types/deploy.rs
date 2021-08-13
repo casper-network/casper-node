@@ -238,7 +238,7 @@ impl From<TryFromSliceError> for Error {
     JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Hex-encoded deploy hash.")]
+#[schemars(with = "String", description = "Check-summed hex-encoded deploy hash.")]
 pub struct DeployHash(#[schemars(skip)] Digest);
 
 impl DeployHash {

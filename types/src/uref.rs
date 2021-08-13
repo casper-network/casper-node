@@ -206,7 +206,8 @@ impl JsonSchema for URef {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded, formatted URef.".to_string());
+        schema_object.metadata().description =
+            Some("Check-summed hex-encoded, formatted URef.".to_string());
         schema_object.into()
     }
 }

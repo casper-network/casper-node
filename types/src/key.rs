@@ -253,14 +253,14 @@ impl Key {
                 format!(
                     "{}{}",
                     DICTIONARY_PREFIX,
-                    base16::encode_lower(&dictionary_addr)
+                    check_summed_hex::encode(&dictionary_addr)
                 )
             }
             Key::SystemContractRegistry => {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                    check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
                 )
             }
         }
@@ -890,7 +890,7 @@ mod tests {
     fn should_display_key() {
         assert_eq!(
             format!("{}", ACCOUNT_KEY),
-            format!("Key::Account({})", HEX_STRING.to_lowercase())
+            format!("Key::Account({})", HEX_STRING)
         );
         assert_eq!(
             format!("{}", HASH_KEY),
@@ -916,13 +916,10 @@ mod tests {
             format!("{}", BALANCE_KEY),
             format!("Key::Balance({})", HEX_STRING)
         );
-        assert_eq!(
-            format!("{}", BID_KEY),
-            format!("Key::Bid({})", HEX_STRING.to_lowercase())
-        );
+        assert_eq!(format!("{}", BID_KEY), format!("Key::Bid({})", HEX_STRING));
         assert_eq!(
             format!("{}", WITHDRAW_KEY),
-            format!("Key::Withdraw({})", HEX_STRING.to_lowercase())
+            format!("Key::Withdraw({})", HEX_STRING)
         );
         assert_eq!(
             format!("{}", DICTIONARY_KEY),

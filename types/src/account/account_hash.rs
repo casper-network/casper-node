@@ -15,7 +15,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use super::{blake2b, FromStrError};
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+    check_summed_hex, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// The length in bytes of a [`AccountHash`].
@@ -50,7 +50,7 @@ impl AccountHash {
         format!(
             "{}{}",
             ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
-            base16::encode_lower(&self.0),
+            check_summed_hex::encode(&self.0),
         )
     }
 
@@ -102,7 +102,8 @@ impl JsonSchema for AccountHash {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
+        schema_object.metadata().description =
+            Some("Check-summed hex-encoded account hash.".to_string());
         schema_object.into()
     }
 }
@@ -157,7 +158,7 @@ impl From<&PublicKey> for AccountHash {
 
 impl Display for AccountHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", base16::encode_lower(&self.0))
+        write!(f, "{}", check_summed_hex::encode(&self.0))
     }
 }
 
