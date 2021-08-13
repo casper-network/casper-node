@@ -42,7 +42,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    io, mem,
+    io,
     net::{SocketAddr, TcpListener},
     result,
     sync::{Arc, Weak},
@@ -180,9 +180,6 @@ where
 
     /// The era that is considered the active era by the small network component.
     active_era: EraId,
-
-    /// The set of validators associated with the `active_era`.
-    active_era_validators: HashSet<PublicKey>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -316,7 +313,6 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
-            active_era_validators: HashSet::new(),
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -894,72 +890,40 @@ where
                     mut upcoming_era_validators,
                 },
             ) => {
-                // Note: An assumption of an auction delay of 1 is made here.
-                let following_era = era_that_is_ending + 1;
-
-                if let Some(following_era_weights) = upcoming_era_validators.remove(&following_era)
-                {
-                    // Regular operation: The current era is ending.
-                    if era_that_is_ending == self.active_era {
-                        // The new set of active validators is the era that is about to end,
-                        // combined with the validators for the era that follows.
-                        let mut following_era_validators: HashSet<PublicKey> =
-                            following_era_weights.into_keys().collect();
-
-                        // Make the following era the active era.
-                        self.active_era = following_era;
-
-                        // Swap and rename the validator set.
-                        mem::swap(
-                            &mut self.active_era_validators,
-                            &mut following_era_validators,
-                        );
-                        let mut active_validators = following_era_validators;
-
-                        // Add the newly activated era's validators.
-                        active_validators.extend(self.active_era_validators.iter().cloned());
-
-                        debug!(?active_validators, "updated limiter validator set");
-
-                        // Finally we can activate the new validator set.
-                        self.incoming_limiter
-                            .update_validators(active_validators.clone(), HashSet::new());
-                        self.outgoing_limiter
-                            .update_validators(active_validators, HashSet::new());
-                    } else if following_era == self.active_era {
-                        // We received an update for the same era that we already considered active,
-                        // which is unusual. Since we do not have access to the previous era's
-                        // validators, we cannot update the validator set, but we keep track of the
-                        // changed set for future updates.
-                        self.active_era_validators = following_era_weights.into_keys().collect();
-
-                        debug!(
-                            "received upcoming era validators announcement for already active era"
-                        );
-                    } else if era_that_is_ending < self.active_era {
-                        // We have received an era end for an era that we already considered to be
-                        // in the past. We completely ignore this era.
-                        debug!("received upcoming era validators announcement for past era");
-                    } else {
-                        // The era that is ending is far in the future. This maybe be a big jump, we
-                        // cannot rely on the previous era's validators anymore and are operating
-                        // with a reduced set of active validators.
-
-                        self.active_era_validators = following_era_weights.into_keys().collect();
-                        self.active_era = following_era;
-
-                        self.incoming_limiter
-                            .update_validators(self.active_era_validators.clone(), HashSet::new());
-                        self.outgoing_limiter
-                            .update_validators(self.active_era_validators.clone(), HashSet::new());
-
-                        debug!(%era_that_is_ending, ?upcoming_era_validators, "received upcoming announcement for already active era");
-                    }
+                if era_that_is_ending < self.active_era {
+                    debug!("ignoring past era end announcement");
                 } else {
-                    debug!("missing following era's validator set in upcoming era validators announcement");
-                };
+                    self.active_era = era_that_is_ending + 1;
 
-                // Upcoming validators are not available from the announcement.
+                    let mut active_validators: HashSet<PublicKey> = HashSet::new();
+
+                    if let Some(previous_weights) =
+                        upcoming_era_validators.remove(&era_that_is_ending)
+                    {
+                        active_validators.extend(previous_weights.into_keys());
+                    }
+
+                    if let Some(active_weights) = upcoming_era_validators.remove(&self.active_era) {
+                        active_validators.extend(active_weights.into_keys());
+                    }
+
+                    let upcoming_validators: HashSet<PublicKey> = upcoming_era_validators
+                        .remove(&(self.active_era + 1))
+                        .unwrap_or_default()
+                        .into_keys()
+                        .collect();
+
+                    debug!(
+                        %era_that_is_ending,
+                        active = active_validators.len(),
+                        upcoming = upcoming_validators.len(),
+                        "updating active and upcoming validators"
+                    );
+                    self.incoming_limiter
+                        .update_validators(active_validators.clone(), upcoming_validators.clone());
+                    self.outgoing_limiter
+                        .update_validators(active_validators, upcoming_validators);
+                }
 
                 Effects::new()
             }
