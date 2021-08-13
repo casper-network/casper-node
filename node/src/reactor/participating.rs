@@ -1164,11 +1164,11 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
             ),
-            ParticipatingEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::UpcomingEraValidators { .. },
-            ) => {
-                todo!()
-            }
+            ParticipatingEvent::ContractRuntimeAnnouncement(ann) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::SmallNetwork(ann.into()),
+            ),
         }
     }
 

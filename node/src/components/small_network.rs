@@ -42,13 +42,14 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    io,
+    io, mem,
     net::{SocketAddr, TcpListener},
     result,
     sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 
+use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -85,7 +86,7 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     message::{Message, MessageKind, Payload},
 };
-use super::consensus;
+use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
@@ -176,6 +177,12 @@ where
     /// This is not incoming bandwidth but an independent resource estimate.
     #[data_size(skip)]
     incoming_limiter: Box<dyn Limiter>,
+
+    /// The era that is considered the active era by the small network component.
+    active_era: EraId,
+
+    /// The set of validators associated with the `active_era`.
+    active_era_validators: HashSet<PublicKey>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -307,6 +314,9 @@ where
             net_metrics,
             outgoing_limiter,
             incoming_limiter,
+            // We start with an empty set of validators for era 0 and expect to be updated.
+            active_era: EraId::new(0),
+            active_era_validators: HashSet::new(),
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -873,6 +883,86 @@ where
                     // Peer got away with it, no longer an outgoing connection.
                     Effects::new()
                 }
+            }
+            Event::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::LinearChainBlock(_)
+                | ContractRuntimeAnnouncement::StepSuccess { .. },
+            ) => Effects::new(),
+            Event::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators {
+                    era_that_is_ending,
+                    upcoming_era_validators,
+                },
+            ) => {
+                // Note: An assumption of an auction delay of 1 is made here.
+                let following_era = era_that_is_ending + 1;
+
+                if let Some(following_era_weights) = upcoming_era_validators.get(&following_era) {
+                    // Regular operation: The current era is ending.
+                    if era_that_is_ending == self.active_era {
+                        // The new set of active validators is the era that is about to end,
+                        // combined with the validators for the era that follows.
+                        let mut following_era_validators: HashSet<PublicKey> =
+                            following_era_weights.keys().cloned().collect();
+
+                        // Make the following era the active era.
+                        self.active_era = following_era;
+
+                        // Swap and rename the validator set.
+                        mem::swap(
+                            &mut self.active_era_validators,
+                            &mut following_era_validators,
+                        );
+                        let mut active_validators = following_era_validators;
+
+                        // Add the newly activated era's validators.
+                        active_validators.extend(self.active_era_validators.iter().cloned());
+
+                        debug!(?active_validators, "updated limiter validator set");
+
+                        // Finally we can activate the new validator set.
+                        self.incoming_limiter
+                            .update_validators(active_validators.clone(), HashSet::new());
+                        self.outgoing_limiter
+                            .update_validators(active_validators, HashSet::new());
+                    } else if following_era == self.active_era {
+                        // We received an update for the same era that we already considered active,
+                        // which is unusual. Since we do not have access to the previous era's
+                        // validators, we cannot update the validator set, but we keep track of the
+                        // changed set for future updates.
+                        self.active_era_validators =
+                            following_era_weights.keys().cloned().collect();
+
+                        debug!(
+                            "received upcoming era validators announcement for already active era"
+                        );
+                    } else if era_that_is_ending < self.active_era {
+                        // We have received an era end for an era that we already considered to be
+                        // in the past. We completely ignore this era.
+                        debug!("received upcoming era validators announcement for past era");
+                    } else {
+                        // The era that is ending is far in the future. This maybe be a big jump, we
+                        // cannot rely on the previous era's validators anymore and are operating
+                        // with a reduced set of active validators.
+
+                        self.active_era_validators =
+                            following_era_weights.keys().cloned().collect();
+                        self.active_era = following_era;
+
+                        self.incoming_limiter
+                            .update_validators(self.active_era_validators.clone(), HashSet::new());
+                        self.outgoing_limiter
+                            .update_validators(self.active_era_validators.clone(), HashSet::new());
+
+                        debug!(%era_that_is_ending, ?upcoming_era_validators, "received upcoming announcement for already active era");
+                    }
+                } else {
+                    debug!("missing following era's validator set in upcoming era validators announcement");
+                };
+
+                // Upcoming validators are not available from the announcement.
+
+                Effects::new()
             }
 
             Event::GossipOurAddress => {
