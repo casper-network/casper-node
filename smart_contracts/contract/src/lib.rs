@@ -72,12 +72,6 @@ pub mod unwrap_or_revert;
 compile_error!(
     "casper-contract requires one of 'no-std' (enabled by default) or 'std' features to be enabled"
 );
-#[cfg(all(feature = "std", feature = "no-std"))]
-compile_error!(
-    "casper-contract features 'no-std' (enabled by default) and 'std' should not both be enabled"
-);
-#[cfg(all(feature = "provide-allocator", not(feature = "no-std")))]
-compile_error!("casper-contract 'provide-allocator' feature requires `no-std` to also be enabled");
 
 /// An instance of [`WeeAlloc`](https://docs.rs/wee_alloc) which allows contracts built as `no_std`
 /// to avoid having to provide a global allocator themselves.

@@ -39,8 +39,8 @@ use crate::{
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
-            MetricsRequest, NetworkInfoRequest, RpcRequest, StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
+            NetworkInfoRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -60,7 +60,6 @@ pub(crate) trait ReactorEventT:
     + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
     + From<ConsensusRequest>
-    + From<LinearChainRequest<NodeId>>
     + From<MetricsRequest>
     + From<NetworkInfoRequest<NodeId>>
     + From<StorageRequest>
@@ -75,7 +74,6 @@ impl<REv> ReactorEventT for REv where
         + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
         + From<ConsensusRequest>
-        + From<LinearChainRequest<NodeId>>
         + From<MetricsRequest>
         + From<NetworkInfoRequest<NodeId>>
         + From<StorageRequest>

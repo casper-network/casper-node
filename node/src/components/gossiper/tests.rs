@@ -31,9 +31,10 @@ use crate::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
+        requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
     },
+    fatal,
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
     testing,
@@ -71,7 +72,7 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
 }
 
 impl ReactorEvent for Event {
@@ -81,6 +82,12 @@ impl ReactorEvent for Event {
         } else {
             None
         }
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -98,12 +105,6 @@ impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
 
 impl From<ConsensusRequest> for Event {
     fn from(_request: ConsensusRequest) -> Self {
-        unimplemented!("not implemented for gossiper tests")
-    }
-}
-
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(_request: LinearChainRequest<NodeId>) -> Self {
         unimplemented!("not implemented for gossiper tests")
     }
 }
@@ -260,34 +261,38 @@ impl reactor::Reactor for Reactor {
                         tag: Tag::Deploy,
                         serialized_id,
                     } => {
-                        // Note: This is copied almost verbatim from the validator reactor and
-                        // needs to be refactored.
-
-                        let deploy_hash = match bincode::deserialize(&serialized_id) {
+                        // Note: unlike the validator reactor, we emit fatal events when something
+                        // unexpected happens
+                        let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id) {
                             Ok(hash) => hash,
                             Err(error) => {
-                                error!(
+                                return fatal!(
+                                    effect_builder,
                                     "failed to decode {:?} from {}: {}",
-                                    serialized_id, sender, error
-                                );
-                                return Effects::new();
+                                    serialized_id,
+                                    sender,
+                                    error
+                                )
+                                .ignore();
                             }
                         };
 
-                        match self
-                            .storage
-                            .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
+                        let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash)
                         {
-                            Some(serialized_item) => {
-                                let message = NodeMessage::new_get_response_raw_unchecked::<Deploy>(
-                                    serialized_item,
-                                );
+                            Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
+                            _ => FetchedOrNotFound::NotFound(deploy_hash),
+                        };
+                        match NodeMessage::new_get_response(&fetched_or_not_found_deploy) {
+                            Ok(message) => {
                                 return effect_builder.send_message(sender, message).ignore();
                             }
-
-                            None => {
-                                debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
-                                return Effects::new();
+                            Err(error) => {
+                                return fatal!(
+                                    effect_builder,
+                                    "failed to create get-response: {}",
+                                    error
+                                )
+                                .ignore();
                             }
                         }
                     }
@@ -295,11 +300,28 @@ impl reactor::Reactor for Reactor {
                         tag: Tag::Deploy,
                         serialized_item,
                     } => {
-                        let deploy = match bincode::deserialize(&serialized_item) {
-                            Ok(deploy) => Box::new(deploy),
+                        let deploy = match bincode::deserialize::<
+                            FetchedOrNotFound<Deploy, DeployHash>,
+                        >(&serialized_item)
+                        {
+                            Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                            Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                                return fatal!(
+                                    effect_builder,
+                                    "peer did not have deploy with hash {}: {}",
+                                    deploy_hash,
+                                    sender,
+                                )
+                                .ignore();
+                            }
                             Err(error) => {
-                                error!("failed to decode deploy from {}: {}", sender, error);
-                                return Effects::new();
+                                return fatal!(
+                                    effect_builder,
+                                    "failed to decode deploy from {}: {}",
+                                    sender,
+                                    error
+                                )
+                                .ignore();
                             }
                         };
                         Event::DeployAcceptor(deploy_acceptor::Event::Accept {
@@ -356,9 +378,9 @@ impl reactor::Reactor for Reactor {
                 self.network.handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
+                Into::into,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
         }
     }

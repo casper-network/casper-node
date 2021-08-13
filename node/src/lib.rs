@@ -58,9 +58,9 @@ pub(crate) use components::{
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
-    gossiper::Config as GossipConfig, linear_chain_sync::Config as LinearChainSyncConfig,
-    rest_server::Config as RestServerConfig, rpc_server::Config as RpcServerConfig,
-    small_network::Config as SmallNetworkConfig, storage::Config as StorageConfig,
+    gossiper::Config as GossipConfig, rest_server::Config as RestServerConfig,
+    rpc_server::Config as RpcServerConfig, small_network::Config as SmallNetworkConfig,
+    storage::Config as StorageConfig,
 };
 pub(crate) use types::NodeRng;
 
@@ -68,7 +68,16 @@ pub(crate) use types::NodeRng;
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = format!("{}-{}", env!("CARGO_PKG_VERSION"), env!("VERGEN_SHA_SHORT"));
+    let mut version = format!(
+        "{}-{}{}",
+        env!("CARGO_PKG_VERSION"),
+        env!("VERGEN_SHA_SHORT"),
+        if cfg!(feature = "casper-mainnet") {
+            "-casper-mainnet"
+        } else {
+            ""
+        }
+    );
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {

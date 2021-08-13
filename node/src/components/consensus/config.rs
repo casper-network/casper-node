@@ -67,6 +67,8 @@ pub(crate) struct ProtocolConfig {
     pub(crate) genesis_timestamp: Option<Timestamp>,
     /// The chainspec hash: All nodes in the network agree on it, and it's unique to this network.
     pub(crate) chainspec_hash: Digest,
+    /// The last emergency restart [`EraId`] (if there was one)
+    pub(crate) last_emergency_restart: Option<EraId>,
 }
 
 impl From<&Chainspec> for ProtocolConfig {
@@ -85,6 +87,7 @@ impl From<&Chainspec> for ProtocolConfig {
                 .activation_point
                 .genesis_timestamp(),
             chainspec_hash: chainspec.hash(),
+            last_emergency_restart: chainspec.protocol_config.last_emergency_restart,
         }
     }
 }

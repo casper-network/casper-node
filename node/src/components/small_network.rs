@@ -55,7 +55,7 @@ use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
-use rand::seq::IteratorRandom;
+use rand::seq::{IteratorRandom, SliceRandom};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
@@ -91,10 +91,7 @@ use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
         announcements::{BlocklistAnnouncement, LinearChainAnnouncement, NetworkAnnouncement},
-        requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest,
-            StorageRequest,
-        },
+        requests::{ChainspecLoaderRequest, NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
@@ -194,8 +191,6 @@ where
     REv: ReactorEvent
         + From<Event<P>>
         + From<NetworkAnnouncement<NodeId, P>>
-        + From<ContractRuntimeRequest>
-        + From<StorageRequest>
         + From<ChainspecLoaderRequest>,
 {
     /// Creates a new small network component instance.
@@ -207,7 +202,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
-        initial_era: Option<EraId>,
+        maybe_initial_validators: Option<HashSet<PublicKey>>,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -325,6 +320,15 @@ where
             incoming_limiter,
         };
 
+        if let Some(initial_validators) = maybe_initial_validators {
+            component
+                .outgoing_limiter
+                .update_validators(Default::default(), initial_validators.clone());
+            component
+                .incoming_limiter
+                .update_validators(Default::default(), initial_validators);
+        }
+
         let effect_builder = EffectBuilder::new(event_queue);
 
         // Learn all known addresses and mark them as unforgettable.
@@ -334,12 +338,7 @@ where
             .filter_map(|addr| component.outgoing_manager.learn_addr(addr, true, now))
             .collect();
 
-        // Initialize the known validator set with the active era, if given.
-        let mut effects = initial_era
-            .map(|era_id| component.handle_active_era_change(effect_builder, era_id))
-            .unwrap_or_default();
-
-        effects.extend(component.process_dial_requests(dial_requests));
+        let mut effects = component.process_dial_requests(dial_requests);
 
         // Start broadcasting our public listening address.
         effects.extend(
@@ -728,61 +727,6 @@ where
         })
     }
 
-    /// Handle the change of the active era.
-    fn handle_active_era_change(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        era_id: EraId,
-    ) -> Effects<Event<P>>
-    where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
-    {
-        // The current era is `block.era`, but it will only proceed for another block.
-        //
-        // `current`: Era that is just about to end, `block.era`.
-        // `next`: Era that will begin shortly.
-        // `upcoming`: Era after `next`.
-
-        async move {
-            let current: HashSet<PublicKey> = effect_builder
-                .get_era_validators(era_id)
-                .await
-                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
-                .unwrap_or_else(|| {
-                    warn!("could not determine current era validators");
-                    Default::default()
-                });
-            let next: HashSet<PublicKey> = effect_builder
-                .get_era_validators(era_id.successor())
-                .await
-                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
-                .unwrap_or_else(|| {
-                    warn!("could not determine next era validators");
-                    Default::default()
-                });
-            let upcoming_validators: HashSet<PublicKey> = effect_builder
-                .get_era_validators(era_id.successor().successor())
-                .await
-                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
-                .unwrap_or_else(|| {
-                    debug!("could not determine upcoming (current+2) era validators");
-                    Default::default()
-                });
-
-            let mut active_validators: HashSet<PublicKey> = HashSet::new();
-            active_validators.extend(current.into_iter());
-            active_validators.extend(next.into_iter());
-
-            (Box::new(active_validators), Box::new(upcoming_validators))
-        }
-        .event(
-            |(active_validators, upcoming_validators)| Event::ValidatorsChanged {
-                active_validators,
-                upcoming_validators,
-            },
-        )
-    }
-
     /// Emits an announcement that a connection has been completed.
     fn connection_completed(
         &self,
@@ -856,8 +800,6 @@ where
     REv: ReactorEvent
         + From<Event<P>>
         + From<NetworkAnnouncement<NodeId, P>>
-        + From<ContractRuntimeRequest>
-        + From<StorageRequest>
         + From<ChainspecLoaderRequest>,
     P: Payload,
 {
@@ -931,6 +873,11 @@ where
                 NetworkInfoRequest::GetPeers { responder } => {
                     responder.respond(self.peers()).ignore()
                 }
+                NetworkInfoRequest::GetPeersInRandomOrder { responder } => {
+                    let mut peers_vec: Vec<NodeId> = self.peers().keys().cloned().collect();
+                    peers_vec.shuffle(rng);
+                    responder.respond(peers_vec).ignore()
+                }
             },
             Event::PeerAddressReceived(gossiped_address) => {
                 let requests = self.outgoing_manager.learn_addr(
@@ -977,36 +924,19 @@ where
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                // On switch blocks, we need to update our validator sets.
-                if block.header().is_switch_block() {
-                    let era_id = block.header().era_id();
-
-                    if era_id > self.highest_era_seen {
-                        self.highest_era_seen = era_id;
-                        self.handle_active_era_change(effect_builder, era_id)
-                    } else {
-                        debug!(highest_era_seen=%self.highest_era_seen, %era_id,
-                               "ignoring era, as it is not the highest seen");
-                        Effects::new()
-                    }
-                } else {
-                    trace!("ignoring non-switch block");
-                    Effects::new()
-                }
-            }
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(_)) => {
+                if let Some(next_era_validators) =
+                    block.take_header().maybe_take_next_era_validator_weights()
+                {
+                    let upcoming_validators: HashSet<PublicKey> =
+                        next_era_validators.into_keys().collect();
+                    self.outgoing_limiter
+                        .update_validators(Default::default(), upcoming_validators.clone());
+                    self.incoming_limiter
+                        .update_validators(Default::default(), upcoming_validators);
+                };
                 Effects::new()
             }
-            Event::ValidatorsChanged {
-                active_validators,
-                upcoming_validators,
-            } => {
-                self.outgoing_limiter.update_validators(
-                    (*active_validators).clone(),
-                    (*upcoming_validators).clone(),
-                );
-                self.incoming_limiter
-                    .update_validators(*active_validators, *upcoming_validators);
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(_)) => {
                 Effects::new()
             }
         }

@@ -51,7 +51,7 @@ use crate::{
     reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, Block, BlockHash, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -299,12 +299,6 @@ impl ChainspecLoader {
         self.reactor_exit
     }
 
-    /// Returns whether the current node instance is started immediately after an upgrade –
-    /// i.e. whether the last/highest block stored is a block that triggered the upgrade.
-    pub(crate) fn after_upgrade(&self) -> bool {
-        self.after_upgrade
-    }
-
     /// The state root hash with which this session is starting.  It will be the result of running
     /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
     /// hash specified in the highest block.
@@ -350,24 +344,8 @@ impl ChainspecLoader {
         self.next_upgrade.clone()
     }
 
-    pub(crate) fn initial_block_header(&self) -> Option<&BlockHeader> {
-        self.initial_block.as_ref().map(|block| block.header())
-    }
-
     pub(crate) fn initial_block(&self) -> Option<&Block> {
         self.initial_block.as_ref()
-    }
-
-    /// This returns the era at which we will be starting the operation, assuming the highest known
-    /// block is the last one. It will return the era of the highest known block, unless it is a
-    /// switch block, in which case it returns the successor to the era of the highest known block.
-    pub(crate) fn initial_era(&self) -> EraId {
-        // We want to start the Era Supervisor at the era right after the highest block we
-        // have. If the block is a switch block, that will be the era that comes next. If
-        // it's not, we continue the era the highest block belongs to.
-        self.initial_block_header()
-            .map(BlockHeader::next_block_era_id)
-            .unwrap_or_else(|| EraId::from(0))
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and

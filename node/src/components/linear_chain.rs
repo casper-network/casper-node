@@ -10,29 +10,28 @@ use std::{convert::Infallible, fmt::Display, marker::PhantomData};
 
 use itertools::Itertools;
 use prometheus::Registry;
-use tracing::{debug, error};
+use tracing::error;
 
-use self::{
-    metrics::LinearChainMetrics,
-    state::{Outcome, Outcomes},
-};
-use super::Component;
+use casper_types::ProtocolVersion;
+
 use crate::{
+    components::{
+        linear_chain::state::{Outcome, Outcomes},
+        Component,
+    },
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
-            StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::BlockByHeight,
     NodeRng,
 };
-use casper_types::ProtocolVersion;
 
 pub(crate) use event::Event;
+use metrics::LinearChainMetrics;
 use state::LinearChain;
 
 #[derive(DataSize, Debug)]
@@ -63,7 +62,7 @@ impl<I> LinearChainComponent<I> {
 fn outcomes_to_effects<REv, I>(
     effect_builder: EffectBuilder<REv>,
     outcomes: Outcomes,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
     REv: From<StorageRequest>
         + From<NetworkRequest<I, Message>>
@@ -131,7 +130,7 @@ where
         + Send,
     I: Display + Send + 'static,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(
@@ -141,35 +140,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => async move {
-                match effect_builder.get_block_from_storage(block_hash).await {
-                    None => debug!("failed to get {} for {}", block_hash, sender),
-                    Some(block) => match Message::new_get_response(&block) {
-                        Ok(message) => effect_builder.send_message(sender, message).await,
-                        Err(error) => error!("failed to create get-response {}", error),
-                    },
-                }
-            }
-            .ignore(),
-            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => async move {
-                let block_by_height = match effect_builder
-                    .get_block_at_height_from_storage(height)
-                    .await
-                {
-                    None => {
-                        debug!("failed to get {} for {}", height, sender);
-                        BlockByHeight::Absent(height)
-                    }
-                    Some(block) => BlockByHeight::new(block),
-                };
-                match Message::new_get_response(&block_by_height) {
-                    Ok(message) => effect_builder.send_message(sender, message).await,
-                    Err(error) => {
-                        error!("failed to create get-response {}", error);
-                    }
-                }
-            }
-            .ignore(),
             Event::NewLinearChainBlock {
                 block,
                 execution_results,

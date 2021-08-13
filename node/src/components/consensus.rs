@@ -13,9 +13,9 @@ mod protocols;
 #[cfg(test)]
 mod tests;
 mod traits;
+mod utils;
 
 use std::{
-    collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
@@ -28,7 +28,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::{EraId, PublicKey, U512};
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::Component,
@@ -36,7 +36,7 @@ use crate::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
+            ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -50,9 +50,10 @@ use crate::{
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::EraSupervisor;
+pub(crate) use era_supervisor::{bonded_eras, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+pub(crate) use utils::check_sufficient_finality_signatures;
 
 #[cfg(test)]
 pub(crate) use era_supervisor::oldest_bonded_era;
@@ -125,14 +126,6 @@ pub(crate) enum Event<I> {
         switch_block_header: Box<BlockHeader>,
         /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
         booking_block_hash: Result<BlockHash, EraId>,
-    },
-    /// Event raised upon initialization, when a number of eras have to be instantiated at once.
-    InitializeEras {
-        key_blocks: HashMap<EraId, BlockHeader>,
-        booking_blocks: HashMap<EraId, BlockHash>,
-        /// This is empty except if the activation era still needs to be instantiated: Its
-        /// validator set is read from the global state, not from a key block.
-        validators: BTreeMap<PublicKey, U512>,
     },
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
@@ -231,7 +224,6 @@ impl<I: Debug> Display for Event<I> {
                 "New era should be created; booking block hash: {:?}, switch block: {:?}",
                 booking_block_hash, switch_block_header
             ),
-            Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
@@ -252,7 +244,6 @@ pub(crate) trait ReactorEventT<I>:
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
-    + From<LinearChainRequest<I>>
     + From<BlocklistAnnouncement<I>>
 {
 }
@@ -268,7 +259,6 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
-        + From<LinearChainRequest<I>>
         + From<BlocklistAnnouncement<I>>
 {
 }
@@ -329,11 +319,6 @@ where
                 };
                 handling_es.handle_create_new_era(*switch_block_header, booking_block_hash)
             }
-            Event::InitializeEras {
-                key_blocks,
-                booking_blocks,
-                validators,
-            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
             }

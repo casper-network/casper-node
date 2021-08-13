@@ -4,8 +4,7 @@ use serde::Deserialize;
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig,
     ContractRuntimeConfig, DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig,
-    GossipConfig, LinearChainSyncConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig,
-    StorageConfig,
+    GossipConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig, StorageConfig,
 };
 
 /// Root configuration.
@@ -37,8 +36,6 @@ pub(crate) struct Config {
     pub(crate) contract_runtime: ContractRuntimeConfig,
     /// Deploy acceptor configuration.
     pub(crate) deploy_acceptor: DeployAcceptorConfig,
-    /// Linear chain sync configuration.
-    pub(crate) linear_chain_sync: LinearChainSyncConfig,
     /// Block proposer configuration.
     #[serde(default)]
     pub(crate) block_proposer: BlockProposerConfig,

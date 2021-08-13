@@ -38,7 +38,7 @@ use crate::{
     },
     types::{
         json_compatibility::{Account as JsonAccount, AuctionState, StoredValue},
-        Block, BlockHash, JsonBlockHeader,
+        Block, BlockHash, BlockWithMetadata, JsonBlockHeader,
     },
 };
 
@@ -409,7 +409,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                             error_msg,
                         ))?);
                     }
-                    Some((block, _)) => block,
+                    Some(BlockWithMetadata { block, .. }) => block,
                 }
             };
 
@@ -543,7 +543,7 @@ impl RpcWithParamsExt for GetAccountInfo {
                             error_msg,
                         ))?);
                     }
-                    Some((block, _)) => block,
+                    Some(BlockWithMetadata { block, .. }) => block,
                 }
             };
 

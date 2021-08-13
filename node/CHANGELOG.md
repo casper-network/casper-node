@@ -26,11 +26,15 @@ All notable changes to this project will be documented in this file.  The format
   * `[gossip][gossip_request_timeout]`
   * `[gossip][get_remainder_timeout]`
   * `[fetcher][get_from_peer_timeout]`
+* Major rewrite of the contract runtime component.
+* More node modules are now `pub(crate)`.
+* Chain automatically creates a switch block immediately after genesis or an upgrade.
 
 
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
+* Removed dead code revealed by making modules `pub(crate)`.
 
 
 
@@ -60,14 +64,11 @@ All notable changes to this project will be documented in this file.  The format
 * Skip storage integrity checks if the node didn't previously crash.
 * Update pinned version of Rust to `nightly-2021-06-17`.
 * Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
-* Major rewrite of the contract runtime component.
 * Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.
 * At log level `DEBUG`, single events are no longer logged (use `TRACE` instead).
-* More node modules are now `pub(crate)`.
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
-* Removed dead code revealed by making modules `pub(crate)`.
 
 ### Fixed
 * Avoid redundant requests caused by the Highway synchronizer.

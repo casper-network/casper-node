@@ -14,7 +14,8 @@ use casper_node::{
         state::GlobalStateIdentifier,
     },
     types::{
-        json_compatibility, Block, BlockHeader, BlockValidationError, JsonBlock, JsonBlockHeader,
+        error::BlockValidationError, json_compatibility, Block, BlockHeader, JsonBlock,
+        JsonBlockHeader,
     },
 };
 use casper_types::{bytesrepr, Key, U512};
@@ -44,8 +45,8 @@ pub enum ValidateResponseError {
     ValidationError(#[from] ValidationError),
 
     /// Failed to validate a block.
-    #[error("Block validation error {0}")]
-    BlockValidationError(BlockValidationError),
+    #[error(transparent)]
+    BlockValidationError(#[from] BlockValidationError),
 
     /// Serialized value not contained in proof.
     #[error("serialized value not contained in proof")]
@@ -71,12 +72,6 @@ pub enum ValidateResponseError {
 impl From<bytesrepr::Error> for ValidateResponseError {
     fn from(e: bytesrepr::Error) -> Self {
         ValidateResponseError::BytesRepr(e)
-    }
-}
-
-impl From<BlockValidationError> for ValidateResponseError {
-    fn from(e: BlockValidationError) -> Self {
-        ValidateResponseError::BlockValidationError(e)
     }
 }
 

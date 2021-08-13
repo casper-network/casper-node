@@ -2,32 +2,38 @@
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap, HashSet},
+    convert::TryFrom,
     fs::{self, File},
 };
 
-use lmdb::Transaction;
+use lmdb::{Cursor, Transaction};
+use num::rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::{
+    construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db,
     move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
     Storage,
 };
 use crate::{
-    components::storage::lmdb_ext::WriteTransactionExt,
-    crypto::AsymmetricKeyExt,
+    components::{
+        consensus::EraReport,
+        storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
+    },
+    crypto::{hash::Digest, AsymmetricKeyExt},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
     },
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployMetadata,
-        FinalitySignature,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
+        DeployMetadata, FinalitySignature, FinalizedBlock, HashingAlgorithmVersion,
     },
     utils::WithDir,
 };
@@ -43,7 +49,6 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
         max_deploy_metadata_store_size: 50 * MIB,
         max_state_store_size: 50 * MIB,
         enable_mem_deduplication: false,
-        mem_pool_prune_interval: 1024,
     }
 }
 
@@ -88,6 +93,29 @@ fn storage_fixture_with_hard_reset(
     .expect("could not create storage component fixture")
 }
 
+/// Storage component test fixture.
+///
+/// Creates a storage component in a temporary directory, but with a hard reset to a specified era.
+///
+/// # Panics
+///
+/// Panics if setting up the storage fixture fails.
+fn storage_fixture_with_hard_reset_and_protocol_version(
+    harness: &ComponentHarness<UnitTestEvent>,
+    reset_era_id: EraId,
+    protocol_version: ProtocolVersion,
+) -> Storage {
+    let cfg = new_config(harness);
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        Some(reset_era_id),
+        protocol_version,
+        false,
+        "test",
+    )
+    .expect("could not create storage component fixture")
+}
+
 /// Creates a random block with a specific block height.
 fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
     let mut block = Box::new(Block::random(rng));
@@ -113,17 +141,16 @@ fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
     block_signatures
 }
 
+// TODO: This is deprecated (we will never make this request in the actual reactors!)
 /// Requests block header at a specific height from a storage component.
 fn get_block_header_at_height(
-    harness: &mut ComponentHarness<UnitTestEvent>,
+    _harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     height: u64,
 ) -> Option<BlockHeader> {
-    let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetBlockHeaderAtHeight { height, responder }.into()
-    });
-    assert!(harness.is_idle());
-    response
+    storage
+        .read_block_header_by_height(height)
+        .expect("should get block")
 }
 
 /// Requests block at a specific height from a storage component.
@@ -367,8 +394,45 @@ fn can_put_and_get_block() {
     assert_eq!(response.as_ref(), Some(block.header()));
 }
 
+/// Creates a switch block immediately before block header.
+fn switch_block_for_block_header(
+    block_header: &BlockHeader,
+    validator_weights: BTreeMap<PublicKey, U512>,
+) -> Block {
+    let finalized_block = FinalizedBlock::new(
+        BlockPayload::new(vec![], vec![], vec![], false),
+        Some(EraReport {
+            equivocators: vec![],
+            rewards: BTreeMap::default(),
+            inactive_validators: vec![],
+        }),
+        block_header
+            .timestamp()
+            .checked_sub(1.into())
+            .expect("Time must not be epoch"),
+        block_header
+            .era_id()
+            .checked_sub(1)
+            .expect("EraId must not be 0"),
+        block_header
+            .height()
+            .checked_sub(1)
+            .expect("Height must not be 0"),
+        PublicKey::System,
+    );
+    Block::new(
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        finalized_block,
+        Some(validator_weights),
+        block_header.protocol_version(),
+    )
+    .expect("Could not create block")
+}
+
 #[test]
-fn test_get_block_header_and_finality_signatures_by_height() {
+fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
@@ -376,9 +440,13 @@ fn test_get_block_header_and_finality_signatures_by_height() {
     let block = Block::random(&mut harness.rng);
     let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
 
+    // Secret and Public Keys
+    let alice_secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
+    let alice_public_key = PublicKey::from(&alice_secret_key);
+    let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
+    let bob_public_key = PublicKey::from(&bob_secret_key);
+
     {
-        let alice_secret_key =
-            SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,
@@ -387,13 +455,12 @@ fn test_get_block_header_and_finality_signatures_by_height() {
             block.header().hash(),
             block.header().era_id(),
             &alice_secret_key,
-            PublicKey::from(&alice_secret_key),
+            alice_public_key.clone(),
         );
         block_signatures.insert_proof(public_key, signature);
     }
 
     {
-        let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,
@@ -402,7 +469,7 @@ fn test_get_block_header_and_finality_signatures_by_height() {
             block.header().hash(),
             block.header().era_id(),
             &bob_secret_key,
-            PublicKey::from(&bob_secret_key),
+            bob_public_key.clone(),
         );
         block_signatures.insert_proof(public_key, signature);
     }
@@ -430,7 +497,7 @@ fn test_get_block_header_and_finality_signatures_by_height() {
 
     {
         let block_header = storage
-            .read_block_header_by_hash(block.hash())
+            .get_block_header_by_hash(block.hash())
             .expect("should not throw exception")
             .expect("should not be None");
         assert_eq!(
@@ -440,9 +507,22 @@ fn test_get_block_header_and_finality_signatures_by_height() {
         );
     }
 
+    let genesis_validator_weights: BTreeMap<PublicKey, U512> =
+        vec![(alice_public_key, 123.into()), (bob_public_key, 123.into())]
+            .into_iter()
+            .collect();
+    let finality_threshold_fraction = Ratio::new(1, 3);
+    let switch_block = switch_block_for_block_header(block.header(), genesis_validator_weights);
+    let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
+    assert!(was_new, "putting switch block should have returned `true`");
+
     {
         let block_header_with_metadata = storage
-            .read_block_header_and_finality_signatures_by_height(block.header().height())
+            .read_block_header_and_sufficient_finality_signatures_by_height(
+                block.header().height(),
+                finality_threshold_fraction,
+                None, // last emergency restart
+            )
             .expect("should not throw exception")
             .expect("should not be None");
         assert_eq!(
@@ -452,6 +532,24 @@ fn test_get_block_header_and_finality_signatures_by_height() {
         );
         assert_eq!(
             block_header_with_metadata.block_signatures, block_signatures,
+            "Should have retrieved expected block signatures"
+        );
+
+        let block_with_metadata = storage
+            .read_block_and_sufficient_finality_signatures_by_height(
+                block.header().height(),
+                finality_threshold_fraction,
+                None, // last emergency restart
+            )
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_with_metadata.block.header(),
+            block.header(),
+            "Should have retrieved expected block header"
+        );
+        assert_eq!(
+            block_with_metadata.finality_signatures, block_signatures,
             "Should have retrieved expected block signatures"
         );
     }
@@ -978,12 +1076,13 @@ fn test_legacy_interface() {
     assert!(was_new);
 
     // Ensure we get the deploy we expect.
-    let result = storage.handle_legacy_direct_deploy_request(*deploy.id());
+    let result = storage.get_deploy(*deploy.id()).expect("should get deploy");
     assert_eq!(result, Some(*deploy));
 
     // A non-existent deploy should simply return `None`.
     assert!(storage
-        .handle_legacy_direct_deploy_request(DeployHash::random(&mut harness.rng))
+        .get_deploy(DeployHash::random(&mut harness.rng))
+        .expect("should get deploy")
         .is_none())
 }
 
@@ -1259,4 +1358,217 @@ fn should_actually_move_specified_files() {
     assert!(dest_path1.exists());
     assert!(dest_path2.exists());
     assert!(dest_path3.exists());
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct DatabaseEntriesSnapshot {
+    block_body_keys: HashSet<Digest>,
+    deploy_hashes_keys: HashSet<Digest>,
+    transfer_hashes_keys: HashSet<Digest>,
+    proposer_keys: HashSet<Digest>,
+}
+
+impl DatabaseEntriesSnapshot {
+    fn from_storage(storage: &Storage) -> DatabaseEntriesSnapshot {
+        let txn = storage.env.begin_ro_txn().unwrap();
+
+        let mut cursor = txn.open_ro_cursor(storage.block_body_v2_db).unwrap();
+        let block_body_keys = cursor
+            .iter()
+            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
+            .collect();
+        drop(cursor); // borrow checker complains without this
+
+        let mut cursor = txn.open_ro_cursor(storage.deploy_hashes_db).unwrap();
+        let deploy_hashes_keys = cursor
+            .iter()
+            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
+            .collect();
+        drop(cursor); // borrow checker complains without this
+
+        let mut cursor = txn.open_ro_cursor(storage.transfer_hashes_db).unwrap();
+        let transfer_hashes_keys = cursor
+            .iter()
+            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
+            .collect();
+        drop(cursor); // borrow checker complains without this
+
+        let mut cursor = txn.open_ro_cursor(storage.proposer_db).unwrap();
+        let proposer_keys = cursor
+            .iter()
+            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
+            .collect();
+        drop(cursor); // borrow checker complains without this
+
+        txn.commit().unwrap();
+
+        DatabaseEntriesSnapshot {
+            block_body_keys,
+            deploy_hashes_keys,
+            transfer_hashes_keys,
+            proposer_keys,
+        }
+    }
+}
+
+#[test]
+fn should_garbage_collect() {
+    let blocks_count = 9_usize;
+    let blocks_per_era = 3;
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Create and store 9 blocks, 0-2 in era 0, 3-5 in era 1, and 6-8 in era 2.
+    let blocks: Vec<Block> = (0..blocks_count)
+        .map(|height| {
+            let is_switch = height % blocks_per_era == blocks_per_era - 1;
+            Block::random_with_specifics(
+                &mut harness.rng,
+                EraId::from((height / blocks_per_era) as u64),
+                height as u64,
+                ProtocolVersion::from_parts(1, 4, 0), // so that they are stored in v2 scheme
+                is_switch,
+            )
+        })
+        .collect();
+
+    let mut snapshots = vec![];
+
+    for block in &blocks {
+        assert!(put_block(
+            &mut harness,
+            &mut storage,
+            Box::new(block.clone())
+        ));
+        // store the storage state after a switch block for later comparison
+        if block.header().is_switch_block() {
+            snapshots.push(DatabaseEntriesSnapshot::from_storage(&storage));
+        }
+    }
+
+    let check = |reset_era: usize| {
+        // Initialize a new storage with a hard reset to the given era, deleting blocks from that
+        // era onwards.
+        let storage = storage_fixture_with_hard_reset_and_protocol_version(
+            &harness,
+            EraId::from(reset_era as u64),
+            ProtocolVersion::from_parts(1, 5, 0), /* this is needed because blocks with later
+                                                   * versions aren't removed on hard resets */
+        );
+
+        // Hard reset should remove headers, but not block bodies
+        let snapshot = DatabaseEntriesSnapshot::from_storage(&storage);
+        assert_eq!(snapshot, snapshots[reset_era]);
+
+        // Run garbage collection
+        let txn = storage.env.begin_ro_txn().unwrap();
+
+        let block_header_map =
+            construct_block_body_to_block_header_reverse_lookup(&txn, &storage.block_header_db)
+                .unwrap();
+        txn.commit().unwrap();
+
+        let mut txn = storage.env.begin_rw_txn().unwrap();
+        garbage_collect_block_body_v2_db(
+            &mut txn,
+            &storage.block_body_v2_db,
+            &storage.deploy_hashes_db,
+            &storage.transfer_hashes_db,
+            &storage.proposer_db,
+            &block_header_map,
+        )
+        .unwrap();
+        txn.commit().unwrap();
+
+        // Garbage collection after removal of blocks from reset_era should revert the state of
+        // block bodies to what it was after reset_era - 1.
+        let snapshot = DatabaseEntriesSnapshot::from_storage(&storage);
+        assert_eq!(snapshot, snapshots[reset_era - 1]);
+    };
+
+    check(2);
+    check(1);
+}
+
+#[test]
+fn can_put_and_get_blocks_v2() {
+    let num_blocks = 10;
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let era_id = harness.rng.gen_range(0..10).into();
+    let height = harness.rng.gen_range(0..100);
+
+    let mut blocks = vec![];
+
+    for i in 0..num_blocks {
+        let block = Block::random_with_specifics(
+            &mut harness.rng,
+            era_id,
+            height + i,
+            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            i == num_blocks - 1,
+        );
+
+        blocks.push(block.clone());
+
+        assert!(put_block(
+            &mut harness,
+            &mut storage,
+            Box::new(block.clone())
+        ));
+
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let block_body_merkle = block.body().merklize();
+
+        for (node_hash, value_hash, proof_of_rest) in
+            block_body_merkle.clone().take_hashes_and_proofs()
+        {
+            assert_eq!(
+                txn.get_value::<_, [Digest; 2]>(storage.block_body_v2_db, &node_hash)
+                    .unwrap()
+                    .unwrap(),
+                [value_hash, proof_of_rest]
+            );
+        }
+
+        assert_eq!(
+            txn.get_value::<_, Vec<DeployHash>>(
+                storage.deploy_hashes_db,
+                block_body_merkle.deploy_hashes.value_hash()
+            )
+            .unwrap()
+            .unwrap(),
+            block.body().deploy_hashes().clone()
+        );
+
+        assert_eq!(
+            txn.get_value::<_, Vec<DeployHash>>(
+                storage.transfer_hashes_db,
+                block_body_merkle.transfer_hashes.value_hash()
+            )
+            .unwrap()
+            .unwrap(),
+            block.body().transfer_hashes().clone()
+        );
+
+        assert_eq!(
+            txn.get_value::<_, PublicKey>(
+                storage.proposer_db,
+                block_body_merkle.proposer.value_hash()
+            )
+            .unwrap()
+            .unwrap(),
+            *block.body().proposer()
+        );
+
+        txn.commit().unwrap();
+    }
+
+    for (i, expected_block) in blocks.into_iter().enumerate() {
+        assert_eq!(
+            get_block_at_height(&mut harness, &mut storage, height + i as u64),
+            Some(expected_block)
+        );
+    }
 }

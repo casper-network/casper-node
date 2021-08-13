@@ -17,6 +17,7 @@ use crate::{
         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
         Responder,
     },
+    fatal,
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
     testing,
@@ -89,8 +90,6 @@ reactor!(Reactor {
     }
 
     requests: {
-        // This test contains no linear chain requests, so we panic if we receive any.
-        LinearChainRequest<NodeId> -> !;
         NetworkRequest<NodeId, Message> -> network;
         StorageRequest -> storage;
         StateStoreRequest -> storage;
@@ -123,7 +122,7 @@ impl Reactor {
         match network_announcement {
             NetworkAnnouncement::MessageReceived { sender, payload } => match payload {
                 Message::GetRequest { serialized_id, .. } => {
-                    let deploy_hash = match bincode::deserialize(&serialized_id) {
+                    let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id) {
                         Ok(hash) => hash,
                         Err(error) => {
                             error!(
@@ -134,18 +133,15 @@ impl Reactor {
                         }
                     };
 
-                    match self
-                        .storage
-                        .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
-                    {
-                        Some(serialized_item) => {
-                            let message =
-                                Message::new_get_response_raw_unchecked::<Deploy>(serialized_item);
-                            effect_builder.send_message(sender, message).ignore()
-                        }
+                    let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash) {
+                        Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
+                        _ => FetchedOrNotFound::NotFound(deploy_hash),
+                    };
 
-                        None => {
-                            debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
+                    match Message::new_get_response(&fetched_or_not_found_deploy) {
+                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                        Err(error) => {
+                            error!("failed to create get-response: {}", error);
                             Effects::new()
                         }
                     }
@@ -154,11 +150,27 @@ impl Reactor {
                 Message::GetResponse {
                     serialized_item, ..
                 } => {
-                    let deploy = match bincode::deserialize(&serialized_item) {
-                        Ok(deploy) => Box::new(deploy),
+                    let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                        &serialized_item,
+                    ) {
+                        Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                        Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                            return fatal!(
+                                effect_builder,
+                                "peer did not have deploy with hash {}: {}",
+                                deploy_hash,
+                                sender,
+                            )
+                            .ignore();
+                        }
                         Err(error) => {
-                            error!("failed to decode deploy from {}: {}", sender, error);
-                            return Effects::new();
+                            return fatal!(
+                                effect_builder,
+                                "failed to decode deploy from {}: {}",
+                                sender,
+                                error
+                            )
+                            .ignore();
                         }
                     };
 
@@ -207,11 +219,11 @@ fn fetch_deploy(
 ) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
     move |effect_builder: EffectBuilder<ReactorEvent>| {
         effect_builder
-            .fetch_deploy(deploy_hash, node_id)
-            .then(move |maybe_deploy| async move {
+            .fetch::<Deploy, NodeId>(deploy_hash, node_id)
+            .then(move |deploy| async move {
                 let mut result = fetched.lock().unwrap();
                 result.0 = true;
-                result.1 = maybe_deploy;
+                result.1 = Some(deploy);
             })
             .ignore()
     }
@@ -247,10 +259,22 @@ async fn store_deploy(
         .await;
 }
 
+#[derive(Debug)]
+enum ExpectedFetchedDeployResult {
+    TimedOut,
+    FromStorage {
+        expected_deploy: Box<Deploy>,
+    },
+    FromPeer {
+        expected_deploy: Box<Deploy>,
+        expected_peer: NodeId,
+    },
+}
+
 async fn assert_settled(
     node_id: &NodeId,
     deploy_hash: DeployHash,
-    expected_result: Option<FetchResult<Deploy, NodeId>>,
+    expected_result: ExpectedFetchedDeployResult,
     fetched: FetchedDeployResult,
     network: &mut Network<Reactor>,
     rng: &mut TestRng,
@@ -271,8 +295,36 @@ async fn assert_settled(
         .storage
         .get_deploy_by_hash(deploy_hash);
 
-    assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
-    assert_eq!(fetched.lock().unwrap().1, expected_result)
+    // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
+    let actual_fetcher_result = fetched.lock().unwrap().1.clone();
+    match (expected_result, actual_fetcher_result, maybe_stored_deploy) {
+        // Timed-out case: should not have a stored deploy
+        (ExpectedFetchedDeployResult::TimedOut, Some(Err(FetcherError::TimedOut { .. })), None) => {
+        }
+        // FromStorage case: expect deploy to correspond to item fetched, as well as stored item
+        (
+            ExpectedFetchedDeployResult::FromStorage { expected_deploy },
+            Some(Ok(FetchedData::FromStorage { item })),
+            Some(stored_deploy),
+        ) if expected_deploy == item && stored_deploy == *item => {}
+        // FromPeer case: deploys should correspond, storage should be present and correspond, and
+        // peers should correspond.
+        (
+            ExpectedFetchedDeployResult::FromPeer {
+                expected_deploy,
+                expected_peer,
+            },
+            Some(Ok(FetchedData::FromPeer { item, peer })),
+            Some(stored_deploy),
+        ) if expected_deploy == item && stored_deploy == *item && expected_peer == peer => {}
+        // Sad path case
+        (expected_result, actual_fetcher_result, maybe_stored_deploy) => {
+            panic!(
+                "Expected result type {:?} but found {:?} (stored deploy is {:?})",
+                expected_result, actual_fetcher_result, maybe_stored_deploy
+            )
+        }
+    }
 }
 
 #[tokio::test]
@@ -305,7 +357,10 @@ async fn should_fetch_from_local() {
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromStorage(Box::new(deploy)));
+    let expected_result = ExpectedFetchedDeployResult::FromStorage {
+        expected_deploy: Box::new(deploy),
+    };
+
     assert_settled(
         &node_id,
         deploy_hash,
@@ -351,7 +406,11 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), node_with_deploy));
+    let expected_result = ExpectedFetchedDeployResult::FromPeer {
+        expected_deploy: Box::new(deploy),
+        expected_peer: node_with_deploy,
+    };
+
     assert_settled(
         &node_without_deploy,
         deploy_hash,
@@ -441,7 +500,7 @@ async fn should_timeout_fetch_from_peer() {
     testing::advance_time(duration_to_advance).await;
 
     // Settle the network, allowing timeout to avoid panic.
-    let expected_result = None;
+    let expected_result = ExpectedFetchedDeployResult::TimedOut;
     assert_settled(
         &requesting_node,
         deploy_hash,

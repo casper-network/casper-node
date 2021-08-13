@@ -9,7 +9,6 @@ mod tests;
 
 use datasize::DataSize;
 use prometheus::Registry;
-use smallvec::smallvec;
 use std::{
     collections::HashSet,
     convert::Infallible,
@@ -19,7 +18,7 @@ use std::{
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::Component,
+    components::{fetcher::FetchedOrNotFound, Component},
     effect::{
         announcements::GossiperAnnouncement,
         requests::{NetworkRequest, StorageRequest},
@@ -74,7 +73,7 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
     sender: NodeId,
 ) -> Effects<Event<Deploy>> {
     effect_builder
-        .get_deploys_from_storage(smallvec![deploy_hash])
+        .get_deploys_from_storage(vec![deploy_hash])
         .event(move |mut results| {
             let result = if results.len() == 1 {
                 results
@@ -467,8 +466,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         effect_builder: EffectBuilder<REv>,
         item: T,
         requester: NodeId,
-    ) -> Effects<Event<T>> {
-        match NodeMessage::new_get_response(&item) {
+    ) -> Effects<Event<T>>
+    where
+        T: Item,
+    {
+        match NodeMessage::new_get_response(&FetchedOrNotFound::Fetched(item)) {
             Ok(message) => effect_builder.send_message(requester, message).ignore(),
             Err(error) => {
                 error!("failed to create get-response: {}", error);

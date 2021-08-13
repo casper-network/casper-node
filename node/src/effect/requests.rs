@@ -48,9 +48,9 @@ use crate::{
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, ChainspecInfo,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed,
-        TimeDiff,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
+        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -182,8 +182,15 @@ pub(crate) enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
-        // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
+        /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<I, String>>,
+    },
+
+    /// Get the peers in random order.
+    GetPeersInRandomOrder {
+        /// Responder to be called with all connected peers.
+        /// Responds with a vector in a random order.
+        responder: Responder<Vec<I>>,
     },
 }
 
@@ -193,7 +200,12 @@ where
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+            NetworkInfoRequest::GetPeers { responder: _ } => {
+                write!(formatter, "get peers-to-socket-address map")
+            }
+            NetworkInfoRequest::GetPeersInRandomOrder { responder: _ } => {
+                write!(formatter, "get peers in random order")
+            }
         }
     }
 }
@@ -218,13 +230,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
-    },
-    /// Retrieve block header with given height.
-    GetBlockHeaderAtHeight {
-        /// Height of the block.
-        height: BlockHeight,
-        /// Responder.
-        responder: Responder<Option<BlockHeader>>,
     },
     /// Retrieve block with given height.
     GetBlockAtHeight {
@@ -259,6 +264,14 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
+    },
+    /// Retrieve block header with metadata by height.
+    GetBlockHeaderAndMetadataByHeight {
+        /// Height of block to get header of.
+        block_height: u64,
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
+        /// local storage.
+        responder: Responder<Option<BlockHeaderWithMetadata>>,
     },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
@@ -318,19 +331,19 @@ pub(crate) enum StorageRequest {
         /// The hash of the block.
         block_hash: BlockHash,
         /// The responder to call with the results.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
         /// The height of the block.
         block_height: BlockHeight,
         /// The responder to call with the results.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Get the highest block and its metadata.
     GetHighestBlockWithMetadata {
         /// The responder to call the results with.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
@@ -347,6 +360,14 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Store a block header.
+    PutBlockHeader {
+        /// Block header that is to be stored.
+        block_header: Box<BlockHeader>,
+        /// Responder to call with the result, if true then the block header was successfully
+        /// stored.
+        responder: Responder<bool>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -354,9 +375,6 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
-            StorageRequest::GetBlockHeaderAtHeight { height, .. } => {
-                write!(formatter, "get block header at height {}", height)
-            }
             StorageRequest::GetBlockAtHeight { height, .. } => {
                 write!(formatter, "get block at height {}", height)
             }
@@ -412,6 +430,16 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetFinalizedDeploys { ttl, .. } => {
                 write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
+            }
+            StorageRequest::GetBlockHeaderAndMetadataByHeight { block_height, .. } => {
+                write!(
+                    formatter,
+                    "get block and metadata for block by height: {}",
+                    block_height
+                )
+            }
+            StorageRequest::PutBlockHeader { block_header, .. } => {
+                write!(formatter, "put block header: {}", block_header)
             }
         }
     }
@@ -521,7 +549,7 @@ pub(crate) enum RpcRequest<I> {
         /// The identifier (can either be a hash or the height) of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -681,6 +709,8 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
+        /// The transfers for that `FinalizedBlock`
+        transfers: Vec<Deploy>,
     },
 
     /// Commit genesis chainspec.
@@ -766,9 +796,12 @@ pub(crate) enum ContractRuntimeRequest {
         /// The finalized block to execute; must have the same height as the child height specified
         /// by the `execution_pre_state`.
         finalized_block: FinalizedBlock,
-        /// The deploys for the block to execute; must correspond to the deploy and execution
-        /// hashes of the `finalized_block` in that order.
+        /// The deploys for the block to execute; must correspond to the deploy hashes of the
+        /// `finalized_block` in that order.
         deploys: Vec<Deploy>,
+        /// The transfers for the block to execute; must correspond to the transfer hashes of the
+        /// `finalized_block` in that order.
+        transfers: Vec<Deploy>,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
@@ -780,6 +813,7 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys: _,
+                transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }
@@ -836,23 +870,22 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) enum FetcherRequest<I, T: Item> {
-    /// Return the specified item if it exists, else `None`.
-    Fetch {
-        /// The ID of the item to be retrieved.
-        id: T::Id,
-        /// The peer id of the peer to be asked if the item is not held locally
-        peer: I,
-        /// Responder to call with the result.
-        responder: Responder<Option<FetchResult<T, I>>>,
-    },
+pub(crate) struct FetcherRequest<I, T>
+where
+    T: Item,
+    I: Debug + Eq,
+{
+    /// The ID of the item to be retrieved.
+    pub(crate) id: T::Id,
+    /// The peer id of the peer to be asked if the item is not held locally
+    pub(crate) peer: I,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<FetchResult<T, I>>,
 }
 
-impl<I, T: Item> Display for FetcherRequest<I, T> {
+impl<I: Display + Debug + Eq, T: Item> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
-        }
+        write!(formatter, "request item by id {}", self.id)
     }
 }
 
@@ -878,28 +911,6 @@ impl<I: Display> Display for BlockValidationRequest<I> {
 }
 
 type BlockHeight = u64;
-
-#[derive(Debug, Serialize)]
-/// Requests issued to the Linear Chain component.
-pub(crate) enum LinearChainRequest<I> {
-    /// Request whole block from the linear chain, by hash.
-    BlockRequest(BlockHash, I),
-    /// Request for a linear chain block at height.
-    BlockAtHeight(BlockHeight, I),
-}
-
-impl<I: Display> Display for LinearChainRequest<I> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LinearChainRequest::BlockRequest(bh, peer) => {
-                write!(f, "block request for hash {} from {}", bh, peer)
-            }
-            LinearChainRequest::BlockAtHeight(height, sender) => {
-                write!(f, "block request for {} from {}", height, sender)
-            }
-        }
-    }
-}
 
 #[derive(DataSize, Debug)]
 #[must_use]
