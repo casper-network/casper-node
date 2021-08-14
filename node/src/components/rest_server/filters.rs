@@ -37,7 +37,7 @@ pub(super) fn create_status_filter<REv: ReactorEventT>(
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| RestRequest::GetStatus { responder },
+                    |responder| RestRequest::Status { responder },
                     QueueKind::Api,
                 )
                 .map(move |status_feed| {
@@ -56,7 +56,7 @@ pub(super) fn create_metrics_filter<REv: ReactorEventT>(
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| RestRequest::GetMetrics { responder },
+                    |responder| RestRequest::Metrics { responder },
                     QueueKind::Api,
                 )
                 .map(|maybe_metrics| match maybe_metrics {
@@ -84,7 +84,7 @@ pub(super) fn create_rpc_schema_filter<REv: ReactorEventT>(
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| RestRequest::GetRpcSchema { responder },
+                    |responder| RestRequest::RpcSchema { responder },
                     QueueKind::Api,
                 )
                 .map(move |open_rpc_schema| {

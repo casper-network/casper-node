@@ -384,12 +384,12 @@ mod tests {
     use num::{Bounded, Num};
 
     use casper_types::{
-        account::AccountHash, bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256,
-        U512,
+        account::{Account, AccountHash, ActionThresholds, AssociatedKeys},
+        bytesrepr::Bytes,
+        AccessRights, ContractWasm, Key, URef, U128, U256, U512,
     };
 
     use super::*;
-    use crate::shared::account::{Account, ActionThresholds, AssociatedKeys};
     use std::collections::BTreeMap;
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];

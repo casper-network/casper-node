@@ -24,7 +24,7 @@ const_assert!(_NETWORK_EVENT_SIZE < 178);
 
 #[derive(Debug, From, Serialize)]
 #[repr(u8)]
-pub enum Event<P> {
+pub(crate) enum Event<P> {
     // ========== Events triggered by the libp2p network behavior ==========
     /// A connection to the given peer has been opened.
     ConnectionEstablished {

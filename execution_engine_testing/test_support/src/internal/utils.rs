@@ -14,11 +14,10 @@ use casper_execution_engine::{
         Error,
     },
     shared::{
-        account::Account, additive_map::AdditiveMap, gas::Gas, stored_value::StoredValue,
-        transform::Transform,
+        additive_map::AdditiveMap, gas::Gas, stored_value::StoredValue, transform::Transform,
     },
 };
-use casper_types::Key;
+use casper_types::{account::Account, Key};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{

@@ -1,3 +1,5 @@
+//! Extension traits for store.
+
 use casper_types::bytesrepr::{FromBytes, ToBytes};
 
 use crate::storage::{
@@ -5,7 +7,9 @@ use crate::storage::{
     transaction_source::{Readable, Writable},
 };
 
+/// Extension trait for Store.
 pub trait StoreExt<K, V>: Store<K, V> {
+    /// Returns multiple optional values (each may exist or not) from the store in one transaction.
     fn get_many<'a, T>(
         &self,
         txn: &T,
@@ -25,6 +29,8 @@ pub trait StoreExt<K, V>: Store<K, V> {
         Ok(ret)
     }
 
+    /// Puts multiple key/value pairs into the store in one transaction, potentially returning an
+    /// error of type `Self::Error` if that fails.
     fn put_many<'a, T>(
         &self,
         txn: &mut T,

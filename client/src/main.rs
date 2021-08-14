@@ -12,7 +12,7 @@ mod get_era_info_by_switch_block;
 mod get_state_hash;
 mod keygen;
 mod query_dictionary;
-mod query_state;
+mod query_global_state;
 
 use std::process;
 
@@ -24,7 +24,7 @@ use casper_node::rpcs::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
-    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem as QueryState},
+    state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, QueryGlobalState},
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
@@ -48,7 +48,8 @@ enum DisplayOrder {
     GetBlockTransfers,
     ListDeploys,
     GetStateRootHash,
-    QueryState,
+    QueryGlobalState,
+    GetDictionaryItem,
     GetBalance,
     GetAccountInfo,
     GetEraInfo,
@@ -57,7 +58,6 @@ enum DisplayOrder {
     GenerateCompletion,
     GetRpcs,
     AccountAddress,
-    GetDictionaryItem,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -81,7 +81,6 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(GetStateRootHash::build(
             DisplayOrder::GetStateRootHash as usize,
         ))
-        .subcommand(QueryState::build(DisplayOrder::QueryState as usize))
         .subcommand(GetEraInfoBySwitchBlock::build(
             DisplayOrder::GetEraInfo as usize,
         ))
@@ -94,6 +93,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
         .subcommand(GetDictionaryItem::build(
             DisplayOrder::GetDictionaryItem as usize,
+        ))
+        .subcommand(QueryGlobalState::build(
+            DisplayOrder::QueryGlobalState as usize,
         ))
 }
 
@@ -116,7 +118,6 @@ async fn main() {
         (GetBalance::NAME, Some(matches)) => (GetBalance::run(matches).await, matches),
         (GetAccountInfo::NAME, Some(matches)) => (GetAccountInfo::run(matches).await, matches),
         (GetStateRootHash::NAME, Some(matches)) => (GetStateRootHash::run(matches).await, matches),
-        (QueryState::NAME, Some(matches)) => (QueryState::run(matches).await, matches),
         (GetEraInfoBySwitchBlock::NAME, Some(matches)) => {
             (GetEraInfoBySwitchBlock::run(matches).await, matches)
         }
@@ -130,6 +131,7 @@ async fn main() {
         (GetDictionaryItem::NAME, Some(matches)) => {
             (GetDictionaryItem::run(matches).await, matches)
         }
+        (QueryGlobalState::NAME, Some(matches)) => (QueryGlobalState::run(matches).await, matches),
 
         _ => {
             let _ = cli().print_long_help();

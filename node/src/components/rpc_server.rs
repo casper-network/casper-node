@@ -53,7 +53,7 @@ pub use config::Config;
 pub(crate) use event::Event;
 
 /// A helper trait capturing all of this components Request type dependencies.
-pub trait ReactorEventT:
+pub(crate) trait ReactorEventT:
     From<Event>
     + From<RpcRequest<NodeId>>
     + From<RpcServerAnnouncement>
@@ -274,12 +274,6 @@ where
                 responder.respond(status_feed).await;
             }
             .ignore(),
-            Event::RpcRequest(RpcRequest::GetMetrics { responder }) => effect_builder
-                .get_metrics()
-                .event(move |text| Event::GetMetricsResult {
-                    text,
-                    main_responder: responder,
-                }),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
@@ -315,10 +309,6 @@ where
                 peers,
                 main_responder,
             } => main_responder.respond(peers).ignore(),
-            Event::GetMetricsResult {
-                text,
-                main_responder,
-            } => main_responder.respond(text).ignore(),
         }
     }
 }

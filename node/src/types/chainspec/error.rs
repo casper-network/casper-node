@@ -3,8 +3,6 @@ use std::{io, path::PathBuf};
 use thiserror::Error;
 use uint::FromDecStrErr;
 
-use casper_types::account::ACCOUNT_HASH_LENGTH;
-
 use crate::utils::ReadFileError;
 
 /// Error returned by the ChainspecLoader.
@@ -69,10 +67,6 @@ pub enum ChainspecAccountsLoadError {
     /// Error while decoding Motes from a decimal format.
     #[error("decoding motes from base-10 error: {0}")]
     DecodingMotes(#[from] FromDecStrErr),
-
-    /// Decoding a chainspec account's key hash yielded an invalid length byte array.
-    #[error("expected hash length of {}, got {0}", ACCOUNT_HASH_LENGTH)]
-    InvalidHashLength(usize),
 
     /// Error while decoding a chainspec account's key hash from base-64 format.
     #[error("crypto module error: {0}")]

@@ -61,7 +61,7 @@ const_assert!(_STATE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
-pub enum MetricsRequest {
+pub(crate) enum MetricsRequest {
     /// Render current node metrics as prometheus-formatted string.
     RenderNodeMetricsText {
         /// Responder returning the rendered metrics or `None`, if an internal error occurred.
@@ -83,7 +83,7 @@ const_assert!(_NETWORK_EVENT_SIZE < 89);
 /// A networking request.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum NetworkRequest<I, P> {
+pub(crate) enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
         /// Message destination.
@@ -177,7 +177,7 @@ where
 /// A networking info request.
 #[derive(Debug)]
 #[must_use]
-pub enum NetworkInfoRequest<I> {
+pub(crate) enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
@@ -201,7 +201,7 @@ where
 /// A storage request.
 #[must_use]
 #[repr(u8)]
-pub enum StorageRequest {
+pub(crate) enum StorageRequest {
     /// Store given block.
     PutBlock {
         /// Block to be stored.
@@ -244,24 +244,12 @@ pub enum StorageRequest {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve switch block with given era ID.
-    GetSwitchBlockAtEraId {
-        /// Era ID of the switch block.
-        era_id: EraId,
-        /// Responder.
-        responder: Responder<Option<Block>>,
-    },
     /// Retrieve the header of the block containing the deploy.
     GetBlockHeaderForDeploy {
         /// Hash of the deploy.
         deploy_hash: DeployHash,
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
-    },
-    /// Retrieve highest switch block.
-    GetHighestSwitchBlock {
-        /// Responder.
-        responder: Responder<Option<Block>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
@@ -293,13 +281,6 @@ pub enum StorageRequest {
         deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
-    },
-    /// Retrieve deploy headers with given hashes.
-    GetDeployHeaders {
-        /// Hashes of deploy headers to be retrieved.
-        deploy_hashes: Vec<DeployHash>,
-        /// Responder to call with the results.
-        responder: Responder<Vec<Option<DeployHeader>>>,
     },
     /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
     GetFinalizedDeploys {
@@ -382,14 +363,8 @@ impl Display for StorageRequest {
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block header at era id {}", era_id)
             }
-            StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
-                write!(formatter, "get switch block at era id {}", era_id)
-            }
             StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
                 write!(formatter, "get block header for deploy {}", deploy_hash)
-            }
-            StorageRequest::GetHighestSwitchBlock { .. } => {
-                write!(formatter, "get highest switch block")
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
@@ -401,11 +376,6 @@ impl Display for StorageRequest {
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
                 write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
             }
-            StorageRequest::GetDeployHeaders { deploy_hashes, .. } => write!(
-                formatter,
-                "get headers {}",
-                DisplayIter::new(deploy_hashes.iter())
-            ),
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
@@ -449,7 +419,7 @@ impl Display for StorageRequest {
 /// State store request.
 #[derive(DataSize, Debug, Serialize)]
 #[repr(u8)]
-pub enum StateStoreRequest {
+pub(crate) enum StateStoreRequest {
     /// Stores a piece of state to storage.
     Save {
         /// Key to store under.
@@ -460,6 +430,7 @@ pub enum StateStoreRequest {
         /// Notification when storing is complete.
         responder: Responder<()>,
     },
+    #[cfg(test)]
     /// Loads a piece of state from storage.
     Load {
         /// Key to load from.
@@ -480,6 +451,7 @@ impl Display for StateStoreRequest {
                     data.len()
                 )
             }
+            #[cfg(test)]
             StateStoreRequest::Load { key, .. } => {
                 write!(f, "load data from key {}", check_summed_hex::encode(key))
             }
@@ -489,7 +461,7 @@ impl Display for StateStoreRequest {
 
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
-pub struct BlockPayloadRequest {
+pub(crate) struct BlockPayloadRequest {
     /// The context in which the new block will be proposed.
     pub(crate) context: BlockContext<ClContext>,
     /// The height of the next block to be finalized at the point the request was made.
@@ -508,7 +480,7 @@ pub struct BlockPayloadRequest {
 /// A `BlockProposer` request.
 #[derive(DataSize, Debug)]
 #[must_use]
-pub enum BlockProposerRequest {
+pub(crate) enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
     RequestBlockPayload(BlockPayloadRequest),
 }
@@ -539,7 +511,7 @@ impl Display for BlockProposerRequest {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub enum RpcRequest<I> {
+pub(crate) enum RpcRequest<I> {
     /// Submit a deploy to be announced.
     SubmitDeploy {
         /// The deploy to be announced.
@@ -616,11 +588,6 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<StatusFeed<I>>,
     },
-    /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
-    GetMetrics {
-        /// Responder to call with the result.
-        responder: Responder<Option<String>>,
-    },
 }
 
 impl<I> Display for RpcRequest<I> {
@@ -670,7 +637,6 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RpcRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }
@@ -681,19 +647,19 @@ impl<I> Display for RpcRequest<I> {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub enum RestRequest<I> {
+pub(crate) enum RestRequest<I> {
     /// Return string formatted status or `None` if an error occurred.
-    GetStatus {
+    Status {
         /// Responder to call with the result.
         responder: Responder<StatusFeed<I>>,
     },
     /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
-    GetMetrics {
+    Metrics {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
     /// Returns schema of client-facing JSON-RPCs in OpenRPC format.
-    GetRpcSchema {
+    RpcSchema {
         /// Responder to call with the result
         responder: Responder<OpenRpcSchema>,
     },
@@ -702,9 +668,9 @@ pub enum RestRequest<I> {
 impl<I> Display for RestRequest<I> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RestRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RestRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
-            RestRequest::GetRpcSchema { .. } => write!(formatter, "get openrpc"),
+            RestRequest::Status { .. } => write!(formatter, "get status"),
+            RestRequest::Metrics { .. } => write!(formatter, "get metrics"),
+            RestRequest::RpcSchema { .. } => write!(formatter, "get openrpc"),
         }
     }
 }
@@ -712,7 +678,7 @@ impl<I> Display for RestRequest<I> {
 /// A contract runtime request.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum ContractRuntimeRequest {
+pub(crate) enum ContractRuntimeRequest {
     /// A request to enqueue a `FinalizedBlock` for execution.
     EnqueueBlockForExecution {
         /// A `FinalizedBlock` to enqueue.
@@ -795,13 +761,6 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
     },
-    /// Get the missing keys under a given trie key in global storage
-    MissingTrieKeys {
-        /// The ancestral hash to use when finding hashes that are missing from the `TrieStore`
-        trie_key: Blake2bHash,
-        /// Responder to call with the result.
-        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
-    },
     /// Execute a provided protoblock
     ExecuteBlock {
         /// The protocol version of the block to execute.
@@ -869,13 +828,6 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::PutTrie { trie, .. } => {
                 write!(formatter, "trie: {:?}", trie)
             }
-            ContractRuntimeRequest::MissingTrieKeys { trie_key, .. } => {
-                write!(
-                    formatter,
-                    "find missing descendants of trie_key: {}",
-                    trie_key
-                )
-            }
             ContractRuntimeRequest::ExecuteBlock {
                 finalized_block, ..
             } => {
@@ -888,7 +840,7 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum FetcherRequest<I, T: Item> {
+pub(crate) enum FetcherRequest<I, T: Item> {
     /// Return the specified item if it exists, else `None`.
     Fetch {
         /// The ID of the item to be retrieved.
@@ -911,7 +863,7 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidationRequest<I> {
+pub(crate) struct BlockValidationRequest<I> {
     /// The block to be validated.
     pub(crate) block: ValidatingBlock,
     /// The sender of the block, which will be asked to provide all missing deploys.
@@ -933,7 +885,7 @@ type BlockHeight = u64;
 
 #[derive(Debug, Serialize)]
 /// Requests issued to the Linear Chain component.
-pub enum LinearChainRequest<I> {
+pub(crate) enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
     /// Request for a linear chain block at height.
@@ -956,14 +908,14 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[derive(DataSize, Debug)]
 #[must_use]
 /// Consensus component requests.
-pub enum ConsensusRequest {
+pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
 }
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
-pub enum ChainspecLoaderRequest {
+pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
     /// Request for information about the current run.

@@ -16,6 +16,17 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
+* The following parameters in the `[gossip]` section of the config has been renamed:
+  * `[finished_entry_duration_secs]` => `[finished_entry_duration]`
+  * `[gossip_request_timeout_secs]` => `[gossip_request_timeout]`
+  * `[get_remainder_timeout_secs]` => `[get_remainder_timeout]`
+* The following parameters in config now follow the humantime convention ('30sec', '120min', etc.):
+  * `[network][gossip_interval]`
+  * `[gossip][finished_entry_duration]`
+  * `[gossip][gossip_request_timeout]`
+  * `[gossip][get_remainder_timeout]`
+  * `[fetcher][get_from_peer_timeout]`
+
 
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
@@ -52,9 +63,11 @@ All notable changes to this project will be documented in this file.  The format
 * Major rewrite of the contract runtime component.
 * Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.
 * At log level `DEBUG`, single events are no longer logged (use `TRACE` instead).
+* More node modules are now `pub(crate)`.
 
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
+* Removed dead code revealed by making modules `pub(crate)`.
 
 ### Fixed
 * Avoid redundant requests caused by the Highway synchronizer.

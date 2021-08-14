@@ -19,7 +19,7 @@ use tracing::error;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
 use casper_types::{
-    account::{AccountHash, ActionType, Weight},
+    account::{Account, AccountHash, ActionType, Weight},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
@@ -49,7 +49,6 @@ use crate::{
         Address,
     },
     shared::{
-        account::Account,
         gas::Gas,
         host_function_costs::{Cost, HostFunction},
         stored_value::StoredValue,

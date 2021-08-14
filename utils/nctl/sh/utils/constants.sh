@@ -47,7 +47,7 @@ export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
 export NCTL_DEFAULT_ERA_ACTIVATION_OFFSET=2
 
 # Default motes to pay for consumed gas.
-export NCTL_DEFAULT_GAS_PAYMENT=10000000000   # (1e10)
+export NCTL_DEFAULT_GAS_PAYMENT=100000000000   # (1e11)
 
 # Default gas price multiplier.
 export NCTL_DEFAULT_GAS_PRICE=10

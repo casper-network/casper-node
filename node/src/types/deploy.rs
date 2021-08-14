@@ -138,6 +138,10 @@ pub enum DeployValidationFailure {
     #[error("the provided hash does not match the actual hash of the deploy")]
     InvalidDeployHash,
 
+    /// The deploy has no approvals.
+    #[error("the deploy has no approvals")]
+    EmptyApprovals,
+
     /// Invalid approval.
     #[error("the approval at index {index} is invalid: {error_msg}")]
     InvalidApproval {
@@ -684,6 +688,7 @@ impl Deploy {
     /// Returns true if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
+    ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
     pub fn is_valid(&mut self) -> Result<(), DeployValidationFailure> {
         match self.is_valid.as_ref() {
@@ -856,6 +861,10 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 // Computationally expensive validity check for a given deploy instance, including
 // asymmetric_key signing verification.
 fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
+    if deploy.approvals.is_empty() {
+        warn!(?deploy, "deploy has no approvals");
+        return Err(DeployValidationFailure::EmptyApprovals);
+    }
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
     let body_hash = hash::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
@@ -870,9 +879,6 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
         return Err(DeployValidationFailure::InvalidDeployHash);
     }
 
-    // We don't need to check for an empty set here. EE checks that the correct number and weight of
-    // signatures are provided when executing the deploy, so all we need to do here is check that
-    // any provided signatures are valid.
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(&deploy.hash, &approval.signature, &approval.signer) {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
@@ -1120,6 +1126,15 @@ mod tests {
 
         deploy.header.gas_price = 2;
         check_is_not_valid(deploy, DeployValidationFailure::InvalidDeployHash);
+    }
+
+    #[test]
+    fn not_valid_due_to_empty_approvals() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+        deploy.approvals = vec![];
+        assert!(deploy.approvals.is_empty());
+        check_is_not_valid(deploy, DeployValidationFailure::EmptyApprovals)
     }
 
     #[test]

@@ -311,7 +311,7 @@ type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>
 
 /// An in-memory network events.
 #[derive(Debug, Serialize)]
-pub struct Event<P>(NetworkRequest<NodeId, P>);
+pub(crate) struct Event<P>(NetworkRequest<NodeId, P>);
 
 impl<P> From<NetworkRequest<NodeId, P>> for Event<P> {
     fn from(req: NetworkRequest<NodeId, P>) -> Self {
@@ -335,7 +335,7 @@ thread_local! {
 
 /// The network controller is used to control the network topology (e.g. adding and removing nodes).
 #[derive(Debug, Default)]
-pub struct NetworkController<P> {
+pub(crate) struct NetworkController<P> {
     /// Channels for network communication.
     nodes: Network<P>,
 }
@@ -357,7 +357,7 @@ where
     /// # Panics
     ///
     /// Panics if the internal lock has been poisoned.
-    pub fn create_active() {
+    pub(crate) fn create_active() {
         let _ = logging::init();
         ACTIVE_NETWORK
             .with(|active_network| active_network.borrow_mut().replace(Box::new(Self::new())));
@@ -369,7 +369,7 @@ where
     ///
     /// Panics if the internal lock has been poisoned, a network with the wrong type of message was
     /// removed or if there was no network at at all.
-    pub fn remove_active() {
+    pub(crate) fn remove_active() {
         assert!(
             ACTIVE_NETWORK.with(|active_network| {
                 active_network
@@ -388,7 +388,7 @@ where
     ///
     /// Panics if the internal lock has been poisoned, there is no active network or the active
     /// network is not of the correct message type.
-    pub fn create_node<REv>(
+    pub(crate) fn create_node<REv>(
         event_queue: EventQueueHandle<REv>,
         rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
@@ -412,7 +412,7 @@ where
     ///
     /// Panics if the internal lock has been poisoned, the active network is not of the correct
     /// message type, or the node to remove doesn't exist.
-    pub fn remove_node(node_id: &NodeId) {
+    pub(crate) fn remove_node(node_id: &NodeId) {
         ACTIVE_NETWORK.with(|active_network| {
             if let Some(active_network) = active_network.borrow_mut().as_mut() {
                 active_network
@@ -444,7 +444,7 @@ where
 
 /// Networking component connected to an in-memory network.
 #[derive(Debug)]
-pub struct InMemoryNetwork<P> {
+pub(crate) struct InMemoryNetwork<P> {
     /// Our node id.
     node_id: NodeId,
 
@@ -459,7 +459,7 @@ where
     /// Creates a new in-memory network node.
     ///
     /// This function is an alias of `NetworkController::create_node_local`.
-    pub fn new<REv>(event_queue: EventQueueHandle<REv>, rng: &mut NodeRng) -> Self
+    pub(crate) fn new<REv>(event_queue: EventQueueHandle<REv>, rng: &mut NodeRng) -> Self
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
@@ -491,7 +491,7 @@ where
 
     /// Returns this node's ID.
     #[inline]
-    pub fn node_id(&self) -> NodeId {
+    pub(crate) fn node_id(&self) -> NodeId {
         self.node_id
     }
 }

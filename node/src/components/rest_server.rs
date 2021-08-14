@@ -52,7 +52,7 @@ pub use config::Config;
 pub(crate) use event::Event;
 
 /// A helper trait capturing all of this components Request type dependencies.
-pub trait ReactorEventT:
+pub(crate) trait ReactorEventT:
     From<Event>
     + From<RestRequest<NodeId>>
     + From<NetworkInfoRequest<NodeId>>
@@ -128,7 +128,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::RestRequest(RestRequest::GetStatus { responder }) => async move {
+            Event::RestRequest(RestRequest::Status { responder }) => async move {
                 let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                     effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
@@ -140,13 +140,13 @@ where
                 responder.respond(status_feed).await;
             }
             .ignore(),
-            Event::RestRequest(RestRequest::GetMetrics { responder }) => effect_builder
+            Event::RestRequest(RestRequest::Metrics { responder }) => effect_builder
                 .get_metrics()
                 .event(move |text| Event::GetMetricsResult {
                     text,
                     main_responder: responder,
                 }),
-            Event::RestRequest(RestRequest::GetRpcSchema { responder }) => {
+            Event::RestRequest(RestRequest::RpcSchema { responder }) => {
                 let schema = OPEN_RPC_SCHEMA.clone();
                 responder.respond(schema).ignore()
             }

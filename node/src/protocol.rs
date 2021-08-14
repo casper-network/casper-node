@@ -17,7 +17,7 @@ use casper_types::check_summed_hex;
 
 /// Reactor message.
 #[derive(Clone, From, Serialize, Deserialize)]
-pub enum Message {
+pub(crate) enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),

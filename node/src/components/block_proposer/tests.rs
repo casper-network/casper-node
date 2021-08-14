@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use casper_execution_engine::{
     core::engine_state::executable_deploy_item::ExecutableDeployItem, shared::gas::Gas,
 };
@@ -102,12 +104,6 @@ impl From<StorageRequest> for Event {
         // we never send a storage request in our unit tests, but if this does become
         // meaningful....
         unreachable!("no storage requests in block proposer unit tests")
-    }
-}
-
-impl From<StateStoreRequest> for Event {
-    fn from(_: StateStoreRequest) -> Self {
-        unreachable!("no state store requests in block proposer unit tests")
     }
 }
 

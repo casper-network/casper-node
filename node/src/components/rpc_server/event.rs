@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[derive(Debug, From)]
-pub enum Event {
+pub(crate) enum Event {
     #[from]
     RpcRequest(RpcRequest<NodeId>),
     GetBlockResult {
@@ -50,10 +50,6 @@ pub enum Event {
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,
         main_responder: Responder<BTreeMap<NodeId, String>>,
-    },
-    GetMetricsResult {
-        text: Option<String>,
-        main_responder: Responder<Option<String>>,
     },
     GetBalanceResult {
         result: Result<BalanceResult, engine_state::Error>,
@@ -103,10 +99,6 @@ impl Display for Event {
                 write!(formatter, "get deploy result for {}: {:?}", hash, result)
             }
             Event::GetPeersResult { peers, .. } => write!(formatter, "get peers: {}", peers.len()),
-            Event::GetMetricsResult { text, .. } => match text {
-                Some(txt) => write!(formatter, "get metrics ({} bytes)", txt.len()),
-                None => write!(formatter, "get metrics (failed)"),
-            },
         }
     }
 }

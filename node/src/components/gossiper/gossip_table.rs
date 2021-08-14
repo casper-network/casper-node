@@ -211,7 +211,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             timeouts: Timeouts::new(),
             infection_target: usize::from(config.infection_target()),
             holders_limit,
-            finished_entry_duration: Duration::from_secs(config.finished_entry_duration_secs()),
+            finished_entry_duration: config.finished_entry_duration().into(),
         }
     }
 
@@ -471,12 +471,12 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, iter};
+    use std::{collections::BTreeSet, iter, str::FromStr};
 
     use rand::Rng;
 
-    use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION_SECS, *};
-    use crate::{logging, testing::TestRng, utils::DisplayIter};
+    use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION, *};
+    use crate::{logging, testing::TestRng, types::TimeDiff, utils::DisplayIter};
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
     const EXPECTED_DEFAULT_HOLDERS_LIMIT: usize = 15;
@@ -547,7 +547,10 @@ mod tests {
 
         // Time the finished data out, then check same partial data causes `GetRemainder` to be
         // returned as per a completely new entry.
-        Instant::advance_time(DEFAULT_FINISHED_ENTRY_DURATION_SECS * 1_000 + 1);
+        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
+            .unwrap()
+            .millis();
+        Instant::advance_time(millis + 1);
         let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
         let expected = GossipAction::GetRemainder {
             holder: node_ids[0],
@@ -626,7 +629,10 @@ mod tests {
 
         // Time the finished data out, then check same complete data causes `ShouldGossip` to be
         // returned as per a completely new entry.
-        Instant::advance_time(DEFAULT_FINISHED_ENTRY_DURATION_SECS * 1_000 + 1);
+        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
+            .unwrap()
+            .millis();
+        Instant::advance_time(millis + 1);
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
@@ -953,7 +959,10 @@ mod tests {
         assert!(gossip_table.finished.contains(&data_id));
 
         // Time the finished data out and check it has been purged.
-        Instant::advance_time(DEFAULT_FINISHED_ENTRY_DURATION_SECS * 1_000 + 1);
+        let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
+            .unwrap()
+            .millis();
+        Instant::advance_time(millis + 1);
         gossip_table.purge_finished();
         assert!(!gossip_table.finished.contains(&data_id));
 
@@ -963,7 +972,7 @@ mod tests {
         assert!(gossip_table.finished.contains(&data_id));
 
         // Time the finished data out and check it has been purged.
-        Instant::advance_time(DEFAULT_FINISHED_ENTRY_DURATION_SECS * 1_000 + 1);
+        Instant::advance_time(millis + 1);
         gossip_table.purge_finished();
         assert!(!gossip_table.finished.contains(&data_id));
     }
@@ -1052,28 +1061,4 @@ mod tests {
         assert_eq!(purged, expected);
         assert_eq!(0, timeouts.values.len());
     }
-
-    // TODO - re-enable using criterion
-    // #[bench]
-    // fn benchmark_purging(bencher: &mut Bencher) {
-    //     const ENTRY_COUNT: usize = 10_000;
-    //     let mut rng = crate::new_rng();
-    //     let node_ids = random_node_ids(&mut rng);
-    //     let deploy_ids = iter::repeat_with(|| DeployHash::new(Digest::random(&mut rng)))
-    //         .take(ENTRY_COUNT)
-    //         .collect::<Vec<_>>();
-    //
-    //     let mut gossip_table = GossipTable::new(Config::default());
-    //
-    //     // Add new complete data and finish via infection limit.
-    //     for deploy_id in &deploy_ids {
-    //         let _ = gossip_table.new_complete_data(deploy_id, None);
-    //         for node_id in &node_ids[0..EXPECTED_DEFAULT_INFECTION_TARGET] {
-    //             let _ = gossip_table.we_infected(deploy_id, *node_id);
-    //         }
-    //         assert!(gossip_table.finished.contains(deploy_id));
-    //     }
-    //
-    //     bencher.iter(|| gossip_table.purge_finished());
-    // }
 }
