@@ -43,9 +43,7 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
-        requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, StateStoreRequest, StorageRequest,
-        },
+        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::ReactorExit,
@@ -181,7 +179,7 @@ impl ChainspecLoader {
     ) -> Result<(Self, Effects<Event>), Error>
     where
         P: AsRef<Path>,
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         Ok(Self::new_with_chainspec_and_path(
             Arc::new(Chainspec::from_path(&chainspec_dir.as_ref())?),
@@ -196,7 +194,7 @@ impl ChainspecLoader {
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"), effect_builder)
     }
@@ -208,7 +206,7 @@ impl ChainspecLoader {
     ) -> (Self, Effects<Event>)
     where
         P: AsRef<Path>,
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         let root_dir = chainspec_dir
             .as_ref()
@@ -363,7 +361,7 @@ impl ChainspecLoader {
         maybe_highest_block: Option<Box<Block>>,
     ) -> Effects<Event>
     where
-        REv: From<Event> + From<StateStoreRequest> + From<ContractRuntimeRequest> + Send,
+        REv: From<Event> + From<ContractRuntimeRequest> + Send,
     {
         let highest_block = match maybe_highest_block {
             Some(block) => {
@@ -630,12 +628,7 @@ impl ChainspecLoader {
 
 impl<REv> Component<REv> for ChainspecLoader
 where
-    REv: From<Event>
-        + From<StorageRequest>
-        + From<StateStoreRequest>
-        + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderAnnouncement>
-        + Send,
+    REv: From<Event> + From<ContractRuntimeRequest> + From<ChainspecLoaderAnnouncement> + Send,
 {
     type Event = Event;
     type ConstructionError = Error;

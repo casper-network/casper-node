@@ -87,12 +87,11 @@ reactor!(Reactor {
     events: {
         network = Event<Message>;
         deploy_fetcher = Event<Deploy>;
+        storage = StorageRequest;
     }
 
     requests: {
         NetworkRequest<NodeId, Message> -> network;
-        StorageRequest -> storage;
-        StateStoreRequest -> storage;
         FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
 
         // The only contract runtime request will be the commit of genesis, which we discard.

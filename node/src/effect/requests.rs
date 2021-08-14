@@ -4,7 +4,6 @@
 //! top-level module documentation for details.
 
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     mem,
@@ -12,7 +11,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use serde::Serialize;
 use static_assertions::const_assert;
 
@@ -56,9 +54,7 @@ use crate::{
 };
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const _STATE_REQUEST_SIZE: usize = mem::size_of::<StateStoreRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 89);
-const_assert!(_STATE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -231,13 +227,6 @@ pub(crate) enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
-    /// Retrieve block with given height.
-    GetBlockAtHeight {
-        /// Height of the block.
-        height: BlockHeight,
-        /// Responder.
-        responder: Responder<Option<Block>>,
-    },
     /// Retrieve highest block.
     GetHighestBlock {
         /// Responder.
@@ -375,9 +364,6 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
-            StorageRequest::GetBlockAtHeight { height, .. } => {
-                write!(formatter, "get block at height {}", height)
-            }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block header at era id {}", era_id)
@@ -440,44 +426,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutBlockHeader { block_header, .. } => {
                 write!(formatter, "put block header: {}", block_header)
-            }
-        }
-    }
-}
-
-/// State store request.
-#[derive(DataSize, Debug, Serialize)]
-#[repr(u8)]
-pub(crate) enum StateStoreRequest {
-    /// Stores a piece of state to storage.
-    Save {
-        /// Key to store under.
-        key: Cow<'static, [u8]>,
-        /// Value to store, already serialized.
-        #[serde(skip_serializing)]
-        data: Vec<u8>,
-        /// Notification when storing is complete.
-        responder: Responder<()>,
-    },
-    #[cfg(test)]
-    /// Loads a piece of state from storage.
-    Load {
-        /// Key to load from.
-        key: Cow<'static, [u8]>,
-        /// Responder for value, if found, returning the previously passed in serialization form.
-        responder: Responder<Option<Vec<u8>>>,
-    },
-}
-
-impl Display for StateStoreRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            StateStoreRequest::Save { key, data, .. } => {
-                write!(f, "save data under {} ({} bytes)", HexFmt(key), data.len())
-            }
-            #[cfg(test)]
-            StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", HexFmt(key))
             }
         }
     }

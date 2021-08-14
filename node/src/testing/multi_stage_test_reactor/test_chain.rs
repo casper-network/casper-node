@@ -407,13 +407,13 @@ async fn test_joiner() {
         .await
         .hash();
 
-    let era_num = 3;
-    info!("Waiting for Era {} to end", era_num);
+    let era_to_join = 3;
+    info!("Waiting for Era {} to end", era_to_join);
     chain
         .network
         .settle_on(
             &mut rng,
-            has_passed_by_era(era_num),
+            has_passed_by_era(era_to_join),
             Duration::from_secs(600),
         )
         .await;
@@ -436,13 +436,13 @@ async fn test_joiner() {
         "There should be two validators in the network (one bonded and one read only)"
     );
 
-    let era_num = 6;
-    info!("Waiting for Era {} to end", era_num);
+    let synchronized_era = era_to_join + 1;
+    info!("Waiting for Era {} to end", synchronized_era);
     chain
         .network
         .settle_on(
             &mut rng,
-            has_passed_by_era(era_num),
+            has_passed_by_era(synchronized_era),
             Duration::from_secs(600),
         )
         .await;

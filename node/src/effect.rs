@@ -63,7 +63,6 @@ pub(crate) mod requests;
 
 use std::{
     any::type_name,
-    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
@@ -77,7 +76,7 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-use tracing::{error, warn};
+use tracing::error;
 
 use announcements::{
     ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
@@ -104,7 +103,7 @@ use casper_types::{
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StateStoreRequest, StorageRequest,
+    NetworkRequest, StorageRequest,
 };
 
 use crate::{
@@ -879,18 +878,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the block at the given height.
-    pub(crate) async fn get_block_at_height_from_storage(self, height: u64) -> Option<Block>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockAtHeight { height, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests the highest block.
     pub(crate) async fn get_highest_block_from_storage(self) -> Option<Block>
     where
@@ -1372,38 +1359,6 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
-    }
-
-    /// Save state to storage.
-    ///
-    /// Key must be a unique key across the the application, as all keys share a common namespace.
-    ///
-    /// Returns whether or not storing the state was successful. A component that requires state to
-    /// be successfully stored should check the return value and act accordingly.
-    pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
-    where
-        REv: From<StateStoreRequest>,
-        T: Serialize,
-    {
-        match bincode::serialize(&value) {
-            Ok(data) => {
-                self.make_request(
-                    move |responder| StateStoreRequest::Save {
-                        key,
-                        data,
-                        responder,
-                    },
-                    QueueKind::Regular,
-                )
-                .await;
-                true
-            }
-            Err(err) => {
-                let type_name = type_name::<T>();
-                warn!(%type_name, %err, "Error serializing state");
-                false
-            }
-        }
     }
 
     /// Requests a query be executed on the Contract Runtime component.

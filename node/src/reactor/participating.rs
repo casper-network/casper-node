@@ -45,7 +45,7 @@ use crate::{
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
-        storage::{self, Storage},
+        storage::Storage,
         Component,
     },
     effect::{
@@ -58,7 +58,7 @@ use crate::{
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
+            NetworkRequest, RestRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -90,9 +90,6 @@ pub(crate) enum ParticipatingEvent {
     /// Block proposer event.
     #[from]
     BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
-    #[from]
-    /// Storage event.
-    Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     /// RPC server event.
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
@@ -154,9 +151,6 @@ pub(crate) enum ParticipatingEvent {
     /// Storage request.
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
-    /// Request for state storage.
-    #[from]
-    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Control announcement.
@@ -252,7 +246,6 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::Network(event) => write!(f, "network: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
-            ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             ParticipatingEvent::RestServer(event) => write!(f, "rest server: {}", event),
             ParticipatingEvent::EventStreamServer(event) => {
@@ -277,7 +270,6 @@ impl Display for ParticipatingEvent {
                 write!(f, "chainspec loader request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
-            ParticipatingEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             ParticipatingEvent::DeployFetcherRequest(req) => {
                 write!(f, "deploy fetcher request: {}", req)
             }
@@ -806,10 +798,6 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::BlockProposer,
                 self.block_proposer.handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
-                ParticipatingEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, event),
-            ),
             ParticipatingEvent::RpcServer(event) => reactor::wrap_effects(
                 ParticipatingEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
@@ -907,12 +895,10 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::ChainspecLoader(req.into()),
             ),
-            ParticipatingEvent::StorageRequest(req) => {
-                self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
-            }
-            ParticipatingEvent::StateStoreRequest(req) => {
-                self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
-            }
+            ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::StorageRequest,
+                self.storage.handle_event(effect_builder, rng, req),
+            ),
 
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {

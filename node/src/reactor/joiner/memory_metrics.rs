@@ -27,8 +27,8 @@ pub(super) struct MemoryMetrics {
     mem_storage: IntGauge,
     /// Estimated heap memory usage of the contract runtime component.
     mem_contract_runtime: IntGauge,
-    /// Estimated heap memory usage of the linear chain fetcher component.
-    mem_linear_chain_fetcher: IntGauge,
+    /// Estimated heap memory usage of the block fetcher component.
+    mem_block_fetcher: IntGauge,
     /// Estimated heap memory usage of linear chain sync.
     mem_linear_chain_sync: IntGauge,
     /// Estimated heap memory usage of block validator component.
@@ -69,9 +69,9 @@ impl MemoryMetrics {
             "joiner_mem_contract_runtime",
             "contract_runtime memory usage in bytes",
         )?;
-        let mem_linear_chain_fetcher = IntGauge::new(
-            "joiner_mem_linear_chain_fetcher",
-            "linear_chain_fetcher memory usage in bytes",
+        let mem_block_fetcher = IntGauge::new(
+            "joiner_mem_block_fetcher",
+            "block_fetcher memory usage in bytes",
         )?;
         let mem_linear_chain_sync = IntGauge::new(
             "joiner_mem_linear_chain_sync",
@@ -107,7 +107,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_storage.clone()))?;
         registry.register(Box::new(mem_contract_runtime.clone()))?;
-        registry.register(Box::new(mem_linear_chain_fetcher.clone()))?;
+        registry.register(Box::new(mem_block_fetcher.clone()))?;
         registry.register(Box::new(mem_linear_chain_sync.clone()))?;
         registry.register(Box::new(mem_block_validator.clone()))?;
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;
@@ -124,7 +124,7 @@ impl MemoryMetrics {
             mem_chainspec_loader,
             mem_storage,
             mem_contract_runtime,
-            mem_linear_chain_fetcher,
+            mem_block_fetcher,
             mem_linear_chain_sync,
             mem_block_validator,
             mem_deploy_fetcher,
@@ -146,11 +146,9 @@ impl MemoryMetrics {
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
-        let linear_chain_fetcher = reactor.linear_chain_fetcher.estimate_heap_size() as i64;
+        let block_fetcher = reactor.block_fetcher.estimate_heap_size() as i64;
         let linear_chain_sync = reactor.linear_chain_sync.estimate_heap_size() as i64;
-        let block_validator = reactor.block_validator.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
-        let linear_chain = reactor.linear_chain.estimate_heap_size() as i64;
 
         let total = metrics
             + network
@@ -160,11 +158,9 @@ impl MemoryMetrics {
             + chainspec_loader
             + storage
             + contract_runtime
-            + linear_chain_fetcher
+            + block_fetcher
             + linear_chain_sync
-            + block_validator
-            + deploy_fetcher
-            + linear_chain;
+            + deploy_fetcher;
 
         self.mem_total.set(total);
         self.mem_metrics.set(metrics);
@@ -175,11 +171,9 @@ impl MemoryMetrics {
         self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_storage.set(storage);
         self.mem_contract_runtime.set(contract_runtime);
-        self.mem_linear_chain_fetcher.set(linear_chain_fetcher);
+        self.mem_block_fetcher.set(block_fetcher);
         self.mem_linear_chain_sync.set(linear_chain_sync);
-        self.mem_block_validator.set(block_validator);
         self.mem_deploy_fetcher.set(deploy_fetcher);
-        self.mem_linear_chain.set(linear_chain);
 
         // Stop the timer explicitly, don't count logging.
         let duration_s = timer.stop_and_record();
@@ -195,11 +189,9 @@ impl MemoryMetrics {
         %chainspec_loader,
         %storage ,
         %contract_runtime,
-        %linear_chain_fetcher,
+        %block_fetcher,
         %linear_chain_sync,
-        %block_validator,
         %deploy_fetcher,
-        %linear_chain,
         "Collected new set of memory metrics for the joiner");
     }
 }
@@ -215,7 +207,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_chainspec_loader);
         unregister_metric!(self.registry, self.mem_storage);
         unregister_metric!(self.registry, self.mem_contract_runtime);
-        unregister_metric!(self.registry, self.mem_linear_chain_fetcher);
+        unregister_metric!(self.registry, self.mem_block_fetcher);
         unregister_metric!(self.registry, self.mem_linear_chain_sync);
         unregister_metric!(self.registry, self.mem_block_validator);
         unregister_metric!(self.registry, self.mem_deploy_fetcher);

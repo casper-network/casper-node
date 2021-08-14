@@ -8,6 +8,7 @@ mod consensus_protocol;
 mod era_supervisor;
 #[macro_use]
 mod highway_core;
+pub(crate) mod error;
 mod metrics;
 mod protocols;
 #[cfg(test)]

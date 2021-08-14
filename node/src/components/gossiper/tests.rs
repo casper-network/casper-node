@@ -54,7 +54,7 @@ enum Event {
     #[from]
     Network(in_memory_network::Event<NodeMessage>),
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event),
+    Storage(#[serde(skip_serializing)] StorageRequest),
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
@@ -88,12 +88,6 @@ impl ReactorEvent for Event {
 impl From<ContractRuntimeRequest> for Event {
     fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
         Event::ContractRuntime(Box::new(contract_runtime_request))
-    }
-}
-
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(storage::Event::from(request))
     }
 }
 

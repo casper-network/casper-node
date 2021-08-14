@@ -83,11 +83,6 @@ impl ExecutionPreState {
             parent_seed,
         }
     }
-
-    /// Get the next block height according that will succeed the block specified by `parent_hash`.
-    pub(crate) fn next_block_height(&self) -> u64 {
-        self.next_block_height
-    }
 }
 
 impl From<&BlockHeader> for ExecutionPreState {
