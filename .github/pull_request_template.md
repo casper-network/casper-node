@@ -1,6 +1,7 @@
-Please consider the following when creating a PR:
+- [ ] Closes <ISSUE>
+- [ ] Updated CHANGELOG.md
 
-* Provide a useful description of this PR, suitably verbose, aimed at helping reviewers and contributors
-* Update all relevant changelogs
-* Provide a link to the GitHub issue relating to this PR
-* Identify if any downstream impact as in to, SDKs, SmartContracts etc
+# Please consider the following when creating a PR:
+# 
+# * Provide a description of this PR in simple language. This will help reviewers and contributers.
+# * Identify if any downstream impact as in to, SDKs, SmartContracts etc
