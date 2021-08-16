@@ -130,7 +130,7 @@ mod test {
 
     #[test]
     fn bincode_known_specimen() {
-        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW);
         let serialized = bincode::serialize(&node_id).unwrap();
 
         // The bincode representation is a 4 byte tag of all zeros, followed by the hash bytes.
@@ -147,16 +147,16 @@ mod test {
 
     #[test]
     fn json_known_specimen() {
-        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW);
         let json_string = serde_json::to_string_pretty(&node_id).unwrap();
 
         let expected = "{\n  \"Tls\": \"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f\"\n}";
-        assert_eq!(&expected[..], json_string.as_str());
+        assert_eq!(expected, json_string.as_str());
     }
 
     #[test]
     fn msgpack_default_settings_known_specimen() {
-        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW);
 
         let serialized = rmp_serde::to_vec(&node_id).unwrap();
 

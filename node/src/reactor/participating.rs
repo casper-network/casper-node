@@ -72,6 +72,8 @@ use memory_metrics::MemoryMetrics;
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
+// Note: The large enum size must be reigned in eventually. This is a stopgap for now.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum ParticipatingEvent {
     /// Small network event.
     #[from]

@@ -1,3 +1,5 @@
+// Unrestricted event size is okay in tests.
+#![allow(clippy::large_enum_variant)]
 #![cfg(test)]
 use std::{
     collections::{BTreeSet, HashMap},
