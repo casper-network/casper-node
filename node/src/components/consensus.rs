@@ -49,6 +49,8 @@ use crate::{
 
 pub(crate) use cl_context::ClContext;
 pub use config::Config;
+#[cfg(test)]
+pub(crate) use config::ProtocolConfig;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
