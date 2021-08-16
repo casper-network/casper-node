@@ -155,9 +155,11 @@ impl Debug for NodeId {
 impl Display for NodeId {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NodeId::Tls(key_fingerprint) => {
-                write!(formatter, "tls:{:10}", check_summed_hex::encode(key_fingerprint.as_ref()))
-            }
+            NodeId::Tls(key_fingerprint) => write!(
+                formatter,
+                "NodeId::Tls({:10})",
+                check_summed_hex::encode(key_fingerprint.as_ref())
+            ),
             NodeId::P2p(peer_id) => {
                 let base58_peer_id = peer_id.to_base58();
                 write!(

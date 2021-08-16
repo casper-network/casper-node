@@ -28,9 +28,8 @@ use casper_execution_engine::{
     storage::trie::Trie,
 };
 use casper_types::{
-    check_summed_hex,
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    Transfer, URef,
+    check_summed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, Transfer, URef,
 };
 
 use crate::{

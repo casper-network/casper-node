@@ -19,7 +19,8 @@ use casper_execution_engine::{
     shared::stored_value::StoredValue as DomainStoredValue,
 };
 use casper_types::{
-    bytesrepr::ToBytes, check_summed_hex, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    bytesrepr::ToBytes, check_summed_hex, CLValue, Key, ProtocolVersion, PublicKey, SecretKey,
+    URef, U512,
 };
 
 use super::{
@@ -583,7 +584,7 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: check_summed_hex::encode(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -834,7 +835,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 api_version,
                 dictionary_key: dictionary_query_key.to_formatted_string(),
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: check_summed_hex::encode(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -972,7 +973,7 @@ impl RpcWithParamsExt for QueryGlobalState {
                 api_version,
                 block_header: maybe_block_header,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: check_summed_hex::encode(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)

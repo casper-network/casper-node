@@ -253,14 +253,14 @@ impl Key {
                 format!(
                     "{}{}",
                     DICTIONARY_PREFIX,
-                    base16::encode_lower(&dictionary_addr)
+                    check_summed_hex::encode(&dictionary_addr)
                 )
             }
             Key::SystemContractRegistry => {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                    check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
                 )
             }
         }
@@ -283,8 +283,8 @@ impl Key {
         }
 
         if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
-            let hash =
-                base16::decode(hex).map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
+            let hash = check_summed_hex::decode(hex)
+                .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
             let hash_array = <[u8; DEPLOY_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
             return Ok(Key::DeployInfo(DeployHash::new(hash_array)));
@@ -309,30 +309,31 @@ impl Key {
         }
 
         if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
-            let addr =
-                base16::decode(hex).map_err(|error| FromStrError::Balance(error.to_string()))?;
+            let addr = check_summed_hex::decode(hex)
+                .map_err(|error| FromStrError::Balance(error.to_string()))?;
             let uref_addr = URefAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::Balance(error.to_string()))?;
             return Ok(Key::Balance(uref_addr));
         }
 
         if let Some(hex) = input.strip_prefix(BID_PREFIX) {
-            let hash = base16::decode(hex).map_err(|error| FromStrError::Bid(error.to_string()))?;
+            let hash = check_summed_hex::decode(hex)
+                .map_err(|error| FromStrError::Bid(error.to_string()))?;
             let account_hash = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::Bid(error.to_string()))?;
             return Ok(Key::Bid(AccountHash::new(account_hash)));
         }
 
         if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
-            let hash =
-                base16::decode(hex).map_err(|error| FromStrError::Withdraw(error.to_string()))?;
+            let hash = check_summed_hex::decode(hex)
+                .map_err(|error| FromStrError::Withdraw(error.to_string()))?;
             let account_hash = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::Withdraw(error.to_string()))?;
             return Ok(Key::Withdraw(AccountHash::new(account_hash)));
         }
 
         if let Some(dictionary_addr) = input.strip_prefix(DICTIONARY_PREFIX) {
-            let dictionary_addr_bytes = base16::decode(dictionary_addr)
+            let dictionary_addr_bytes = check_summed_hex::decode(dictionary_addr)
                 .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
             let addr = DictionaryAddr::try_from(dictionary_addr_bytes.as_ref())
                 .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
@@ -340,7 +341,7 @@ impl Key {
         }
 
         if let Some(registry_padding) = input.strip_prefix(SYSTEM_CONTRACT_REGISTRY_PREFIX) {
-            let padded_bytes = base16::decode(registry_padding)
+            let padded_bytes = check_summed_hex::decode(registry_padding)
                 .map_err(|error| FromStrError::SystemContractRegistry(error.to_string()))?;
             let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
                 FromStrError::SystemContractRegistry(
@@ -422,7 +423,7 @@ impl Display for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
-            Key::Hash(addr) => write!(f, "Key::Hash({})", check_summed_hex::encode(addr)),
+            Key::Hash(addr) => write!(f, "Key::Hash({})", check_summed_hex::encode(&addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
             Key::DeployInfo(addr) => write!(
@@ -436,11 +437,13 @@ impl Display for Key {
             }
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
-            Key::Dictionary(addr) => write!(f, "Key::Dictionary({})", HexFmt(addr)),
+            Key::Dictionary(addr) => {
+                write!(f, "Key::Dictionary({})", check_summed_hex::encode(addr))
+            }
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         }
     }
@@ -927,7 +930,7 @@ mod tests {
             format!("{}", REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
             )
         )
     }
@@ -1086,7 +1089,7 @@ mod tests {
             format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                check_summed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         ];
 

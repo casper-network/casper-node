@@ -303,7 +303,7 @@ mod global_state_params {
     pub fn invalid_global_state_str_params() -> GlobalStateStrParams<'static> {
         GlobalStateStrParams {
             is_block_hash: false,
-            hash_value: "invalid state root has",
+            hash_value: "invalid state root hash",
         }
     }
 }
@@ -406,7 +406,7 @@ mod get_balance {
                     actual_byte_length: 0
                 }
             })
-        ));
+        ))
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -761,7 +761,7 @@ mod query_global_state {
                 .await,
             Err(Error::CryptoError {
                 context: "global_state_identifier",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: _ })
             })
         ));
     }
@@ -796,7 +796,7 @@ mod query_global_state {
                 .await,
             Err(Error::CryptoError {
                 context: "global_state_identifier",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: _ }),
             })
         ));
     }

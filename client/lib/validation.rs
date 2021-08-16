@@ -205,7 +205,7 @@ pub(crate) fn validate_query_global_state(
         let proof_str = proof
             .as_str()
             .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
-        let proof_bytes = hex::decode(proof_str)
+        let proof_bytes = check_summed_hex::decode(proof_str)
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
         bytesrepr::deserialize(proof_bytes)?
     };

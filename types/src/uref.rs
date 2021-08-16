@@ -189,7 +189,7 @@ impl URef {
         if parts.len() != 2 {
             return Err(FromStrError::MissingSuffix);
         }
-        let addr = URefAddr::try_from(base16::decode(parts[0])?.as_ref())?;
+        let addr = URefAddr::try_from(check_summed_hex::decode(parts[0])?.as_ref())?;
         let access_rights_value = u8::from_str_radix(parts[1], 8)?;
         let access_rights = AccessRights::from_bits(access_rights_value)
             .ok_or(FromStrError::InvalidAccessRights)?;
@@ -206,7 +206,8 @@ impl JsonSchema for URef {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded, formatted URef.".to_string());
+        schema_object.metadata().description =
+            Some("Check-summed hex-encoded, formatted URef.".to_string());
         schema_object.into()
     }
 }

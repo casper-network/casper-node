@@ -5,6 +5,7 @@
 //! [1]: https://eips.ethereum.org/EIPS/eip-55
 //! [2]: https://docs.rs/hex-buffer-serde/0.3.0/hex_buffer_serde/trait.Hex.html
 use alloc::{borrow::Cow, string::String, vec::Vec};
+use base16;
 use core::{convert::TryFrom, fmt, marker::PhantomData};
 
 use blake2::{Blake2b, Digest};
@@ -54,7 +55,7 @@ const HEX_CHARS: [char; 16] = [
 pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
     let input_bytes = input.as_ref();
     let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
-    let mut hex_output_string = String::with_capacity(input_bytes.len()*2);
+    let mut hex_output_string = String::with_capacity(input_bytes.len() * 2);
     for nibble in bytes_to_nibbles(input_bytes) {
         let c = HEX_CHARS[nibble as usize];
         if c.is_alphabetic() && hash_bits.next().unwrap_or(true) {
@@ -200,7 +201,7 @@ pub trait CheckSummedHex<T> {
 }
 
 /// A dummy container for use inside `#[serde(with)]` attribute if the underlying type
-/// implements [`Hex`].
+/// implements [`CheckSummedHex`].
 #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
 #[derive(Debug)]
 pub struct CheckSummedHexForm<T>(PhantomData<T>);
@@ -397,6 +398,7 @@ mod tests {
 
     #[test]
     fn deserializing_flattened_field() {
+        use serde_cbor;
         // The fields in the flattened structure are somehow read with
         // a human-readable `Deserializer`, even if the original `Deserializer`
         // is not human-readable.

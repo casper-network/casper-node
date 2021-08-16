@@ -21,9 +21,13 @@ use core::{convert::TryFrom, fmt::Debug};
 #[cfg(feature = "std")]
 use thiserror::Error;
 
-use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    check_summed_hex, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+pub use self::{
+    account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
+    action_thresholds::ActionThresholds,
+    action_type::ActionType,
+    associated_keys::AssociatedKeys,
+    error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
+    weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
 /// Represents an Account in the global state.
@@ -282,159 +286,6 @@ impl FromBytes for Account {
 /// account.
 pub const MAX_ASSOCIATED_KEYS: usize = 10;
 
-/// The number of bytes in a serialized [`Weight`].
-pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
-
-/// The weight attributed to a given [`AccountHash`] in an account's associated keys.
-#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct Weight(u8);
-
-impl Weight {
-    /// Constructs a new `Weight`.
-    pub fn new(weight: u8) -> Weight {
-        Weight(weight)
-    }
-
-    /// Returns the value of `self` as a `u8`.
-    pub fn value(self) -> u8 {
-        self.0
-    }
-}
-
-impl ToBytes for Weight {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        WEIGHT_SERIALIZED_LENGTH
-    }
-}
-
-impl FromBytes for Weight {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (byte, rem) = u8::from_bytes(bytes)?;
-        Ok((Weight::new(byte), rem))
-    }
-}
-
-impl CLTyped for Weight {
-    fn cl_type() -> CLType {
-        CLType::U8
-    }
-}
-
-/// The length in bytes of a [`AccountHash`].
-pub const ACCOUNT_HASH_LENGTH: usize = 32;
-
-/// A type alias for the raw bytes of an Account Hash.
-pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
-
-/// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
-/// the AccountHash, a hash of Public Key and Algorithm
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct AccountHash(AccountHashBytes);
-
-impl AccountHash {
-    /// Constructs a new `AccountHash` instance from the raw bytes of an Public Key Account Hash.
-    pub const fn new(value: AccountHashBytes) -> AccountHash {
-        AccountHash(value)
-    }
-
-    /// Returns the raw bytes of the account hash as an array.
-    pub fn value(&self) -> AccountHashBytes {
-        self.0
-    }
-
-    /// Returns the raw bytes of the account hash as a `slice`.
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Formats the `AccountHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
-        format!(
-            "{}{}",
-            ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
-            check_summed_hex::encode(&self.0),
-        )
-    }
-
-    /// Parses a string formatted as per `Self::to_formatted_string()` into an `AccountHash`.
-    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        let remainder = input
-            .strip_prefix(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
-            .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = AccountHashBytes::try_from(check_summed_hex::decode(remainder)?.as_ref())?;
-        Ok(AccountHash(bytes))
-    }
-
-    #[doc(hidden)]
-    pub fn from_public_key(
-        public_key: &PublicKey,
-        blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
-    ) -> Self {
-        const SYSTEM_LOWERCASE: &str = "system";
-        const ED25519_LOWERCASE: &str = "ed25519";
-        const SECP256K1_LOWERCASE: &str = "secp256k1";
-
-        let algorithm_name = match public_key {
-            PublicKey::System => SYSTEM_LOWERCASE,
-            PublicKey::Ed25519(_) => ED25519_LOWERCASE,
-            PublicKey::Secp256k1(_) => SECP256K1_LOWERCASE,
-        };
-        let public_key_bytes: Vec<u8> = public_key.into();
-
-        // Prepare preimage based on the public key parameters.
-        let preimage = {
-            let mut data = Vec::with_capacity(algorithm_name.len() + public_key_bytes.len() + 1);
-            data.extend(algorithm_name.as_bytes());
-            data.push(0);
-            data.extend(public_key_bytes);
-            data
-        };
-        // Hash the preimage data using blake2b256 and return it.
-        let digest = blake2b_hash_fn(preimage);
-        Self::new(digest)
-    }
-}
-
-#[cfg(feature = "std")]
-impl JsonSchema for AccountHash {
-    fn schema_name() -> String {
-        String::from("AccountHash")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
-        schema_object.into()
-    }
-}
-
-impl Serialize for AccountHash {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            self.to_formatted_string().serialize(serializer)
-        } else {
-            self.0.serialize(serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for AccountHash {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if deserializer.is_human_readable() {
-            let formatted_string = String::deserialize(deserializer)?;
-            AccountHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
-        } else {
-            let bytes = AccountHashBytes::deserialize(deserializer)?;
-            Ok(AccountHash(bytes))
-        }
-    }
-}
-
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let mut result = [0; BLAKE2B_DIGEST_LENGTH];
@@ -446,81 +297,6 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         result.copy_from_slice(slice);
     });
     result
-}
-
-impl TryFrom<&[u8]> for AccountHash {
-    type Error = TryFromSliceForAccountHashError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForAccountHashError> {
-        AccountHashBytes::try_from(bytes)
-            .map(AccountHash::new)
-            .map_err(|_| TryFromSliceForAccountHashError(()))
-    }
-}
-
-impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
-    type Error = TryFromSliceForAccountHashError;
-
-    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        AccountHashBytes::try_from(bytes as &[u8])
-            .map(AccountHash::new)
-            .map_err(|_| TryFromSliceForAccountHashError(()))
-    }
-}
-
-impl From<&PublicKey> for AccountHash {
-    fn from(public_key: &PublicKey) -> Self {
-        AccountHash::from_public_key(public_key, blake2b)
-    }
-}
-
-impl Display for AccountHash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", check_summed_hex::encode(&self.0))
-    }
-}
-
-impl Debug for AccountHash {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "AccountHash({})", check_summed_hex::encode(&self.0))
-    }
-}
-
-impl CLTyped for AccountHash {
-    fn cl_type() -> CLType {
-        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
-    }
-}
-
-impl ToBytes for AccountHash {
-    #[inline(always)]
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.0.to_bytes()
-    }
-
-    #[inline(always)]
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for AccountHash {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((AccountHash::new(bytes), rem))
-    }
-}
-
-impl AsRef<[u8]> for AccountHash {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl Distribution<AccountHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountHash {
-        AccountHash::new(rng.gen())
-    }
 }
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.

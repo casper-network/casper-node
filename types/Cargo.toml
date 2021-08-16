@@ -1,6 +1,6 @@
 [package]
 name = "casper-types"
-version = "1.0.0" # when updating, also update 'html_root_url' in lib.rs
+version = "1.0.0"                                                                                       # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Types used to allow creation of Wasm contracts and tests for use on the Casper network."
@@ -17,8 +17,14 @@ bitflags = "1"
 blake2 = { version = "0.9.0", default-features = false }
 datasize = { version = "0.2.4", default-features = false }
 displaydoc = { version = "0.1", default-features = false, optional = true }
-ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
-k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "zeroize"] }
+ed25519-dalek = { version = "1.0.0", default-features = false, features = [
+    "rand",
+    "u64_backend",
+] }
+k256 = { version = "0.7.2", default-features = false, features = [
+    "ecdsa",
+    "zeroize",
+] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-rational = { version = "0.4.0", default-features = false }
@@ -39,14 +45,26 @@ getrandom = { version = "0.2.0", features = ["rdrand"] }
 proptest = "1.0.0"
 serde_json = "1.0.55"
 serde_test = "1.0.117"
+serde_cbor = "0.11.1"
 strum = { version = "0.21", features = ["derive"] }
 tracing = "0.1.18"
 version-sync = "0.9"
 
 [features]
 default = ["no-std"]
-std = ["base64/std", "ed25519-dalek/std", "ed25519-dalek/serde", "k256/std", "once_cell/std", "serde/std", "serde_json/std", "schemars", "thiserror"]
-no-std = ["serde/alloc", "serde_json/alloc", "displaydoc"]
+std = [
+    "base64/std",
+    "ed25519-dalek/std",
+    "ed25519-dalek/serde",
+    "k256/std",
+    "once_cell/std",
+    "serde/std",
+    "serde_json/std",
+    "schemars",
+    "thiserror",
+    "base16/std",
+]
+no-std = ["serde/alloc", "serde_json/alloc", "displaydoc", "base16/alloc"]
 gens = ["std", "proptest/std"]
 
 [[bench]]

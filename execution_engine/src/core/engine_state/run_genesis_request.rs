@@ -4,17 +4,17 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_types::ProtocolVersion;
+use casper_types::{
+    check_summed_hex::{CheckSummedHex, CheckSummedHexForm},
+    ProtocolVersion,
+};
 
 use super::genesis::ExecConfig;
 use crate::shared::newtypes::Blake2bHash;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {
-    #[serde(
-        serialize_with = "hex::serialize",
-        deserialize_with = "hex::deserialize"
-    )]
+    #[serde(with = "CheckSummedHexForm::<Blake2bHash>")]
     genesis_config_hash: Blake2bHash,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,

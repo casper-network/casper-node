@@ -96,7 +96,8 @@ impl<'de> Deserialize<'de> for DeployHash {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let bytes = if deserializer.is_human_readable() {
             let hex_string = String::deserialize(deserializer)?;
-            let vec_bytes = base16::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
+            let vec_bytes =
+                check_summed_hex::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
             <[u8; DEPLOY_HASH_LENGTH]>::try_from(vec_bytes.as_ref()).map_err(SerdeError::custom)?
         } else {
             <[u8; DEPLOY_HASH_LENGTH]>::deserialize(deserializer)?
@@ -282,7 +283,8 @@ impl TransferAddr {
         let remainder = input
             .strip_prefix(TRANSFER_ADDR_FORMATTED_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = <[u8; TRANSFER_ADDR_LENGTH]>::try_from(base16::decode(remainder)?.as_ref())?;
+        let bytes =
+            <[u8; TRANSFER_ADDR_LENGTH]>::try_from(check_summed_hex::decode(remainder)?.as_ref())?;
         Ok(TransferAddr(bytes))
     }
 }
@@ -296,7 +298,8 @@ impl JsonSchema for TransferAddr {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded transfer address.".to_string());
+        schema_object.metadata().description =
+            Some("Check-summed hex-encoded transfer address.".to_string());
         schema_object.into()
     }
 }
