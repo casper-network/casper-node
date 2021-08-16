@@ -203,17 +203,67 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     }
 }
 
-/// Returns the bids at the given block.
-fn get_bids(nodes: &Nodes, header: &BlockHeader) -> Bids {
-    let correlation_id = Default::default();
-    let request = GetBidsRequest::new((*header.state_root_hash()).into());
+/// A set of consecutive switch blocks.
+struct SwitchBlocks {
+    headers: Vec<BlockHeader>,
+}
 
-    let runner = nodes.values().next().expect("missing nodes");
-    let engine_state = runner.participating().contract_runtime().engine_state();
-    let bids_result = engine_state
-        .get_bids(correlation_id, request)
-        .expect("get_bids failed");
-    bids_result.bids().expect("no bids returned").clone()
+impl SwitchBlocks {
+    /// Collects all switch blocks of the first `era_count` eras, and asserts that they are equal
+    /// in all nodes.
+    fn collect(nodes: &Nodes, era_count: u64) -> SwitchBlocks {
+        let mut headers = Vec::new();
+        for era_number in 0..era_count {
+            let mut header_iter = nodes.values().map(|runner| {
+                let storage = runner.participating().storage();
+                let maybe_block = storage.transactional_get_switch_block_by_era_id(era_number);
+                maybe_block.expect("missing switch block").take_header()
+            });
+            let header = header_iter.next().unwrap();
+            assert_eq!(era_number, header.era_id().value());
+            for other_header in header_iter {
+                assert_eq!(header, other_header);
+            }
+            headers.push(header);
+        }
+        SwitchBlocks { headers }
+    }
+
+    /// Returns the list of equivocators in the given era.
+    fn equivocators(&self, era_number: u64) -> &[PublicKey] {
+        &self.headers[era_number as usize]
+            .era_end()
+            .expect("era end")
+            .equivocators
+    }
+
+    /// Returns the list of inactive validators in the given era.
+    fn inactive_validators(&self, era_number: u64) -> &[PublicKey] {
+        &self.headers[era_number as usize]
+            .era_end()
+            .expect("era end")
+            .inactive_validators
+    }
+
+    /// Returns the list of validators in the successor era.
+    fn next_era_validators(&self, era_number: u64) -> &BTreeMap<PublicKey, U512> {
+        self.headers[era_number as usize]
+            .next_era_validator_weights()
+            .expect("validators")
+    }
+
+    /// Returns the set of bids in the auction contract at the end of the given era.
+    fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
+        let correlation_id = Default::default();
+        let state_root_hash = *self.headers[era_number as usize].state_root_hash();
+        let request = GetBidsRequest::new(state_root_hash.into());
+        let runner = nodes.values().next().expect("missing node");
+        let engine_state = runner.participating().contract_runtime().engine_state();
+        let bids_result = engine_state
+            .get_bids(correlation_id, request)
+            .expect("get_bids failed");
+        bids_result.bids().expect("no bids returned").clone()
+    }
 }
 
 #[tokio::test]
@@ -284,60 +334,36 @@ async fn run_equivocator_network() {
             _ => Either::Right(event),
         });
 
-    let timeout = Duration::from_secs(90);
+    let era_count = 3;
 
-    let mut switch_blocks = Vec::new();
-    let mut era_ends = Vec::new();
-    let mut bids = Vec::new();
-    let mut next_era_validators = Vec::new();
-    for era_number in 0..3 {
-        let era_id = EraId::from(era_number + 1);
-        info!("Waiting for Era {} to end", era_number);
-        net.settle_on(&mut rng, is_in_era(era_id), timeout).await;
-
-        // Collect new switch block headers.
-        for runner in net.nodes().values() {
-            let storage = runner.participating().storage();
-            let header = storage
-                .transactional_get_switch_block_by_era_id(era_number)
-                .expect("missing switch block")
-                .take_header();
-            assert_eq!(era_number, header.era_id().value());
-            if let Some(other_header) = switch_blocks.get(era_number as usize) {
-                assert_eq!(other_header, &header);
-            } else {
-                era_ends.push(header.era_end().expect("era end").clone());
-                bids.push(get_bids(net.nodes(), &header));
-                next_era_validators.push(
-                    header
-                        .next_era_validator_weights()
-                        .expect("validators")
-                        .clone(),
-                );
-                switch_blocks.push(header);
-            }
-        }
-    }
+    let timeout = Duration::from_secs(90 * era_count);
+    info!("Waiting for {} eras to end.", era_count);
+    net.settle_on(&mut rng, is_in_era(EraId::new(era_count)), timeout)
+        .await;
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
+    let bids: Vec<Bids> = (0..era_count)
+        .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
+        .collect();
 
     // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
-    assert_eq!(era_ends[0].equivocators, [alice_pk.clone()]);
-    assert_eq!(era_ends[0].inactive_validators, []);
+    assert_eq!(switch_blocks.equivocators(0), [alice_pk.clone()]);
+    assert_eq!(switch_blocks.inactive_validators(0), []);
     assert!(bids[0][&alice_pk].inactive());
-    assert!(next_era_validators[0].contains_key(&alice_pk));
+    assert!(switch_blocks.next_era_validators(0).contains_key(&alice_pk));
 
     // In era 1 Alice is banned. Banned validators count neither as faulty nor inactive, even
     // though they cannot participate. In the next era, she will be evicted.
-    assert_eq!(era_ends[1].equivocators, []);
-    assert_eq!(era_ends[1].inactive_validators, []);
+    assert_eq!(switch_blocks.equivocators(1), []);
+    assert_eq!(switch_blocks.inactive_validators(1), []);
     assert!(bids[1][&alice_pk].inactive());
-    assert!(!next_era_validators[1].contains_key(&alice_pk));
+    assert!(!switch_blocks.next_era_validators(1).contains_key(&alice_pk));
 
     // In era 2 she is not a validator anymore and her bid remains deactivated.
-    assert_eq!(era_ends[2].equivocators, []);
-    assert_eq!(era_ends[2].inactive_validators, []);
+    assert_eq!(switch_blocks.equivocators(2), []);
+    assert_eq!(switch_blocks.inactive_validators(2), []);
     assert!(bids[2][&alice_pk].inactive());
-    assert!(!next_era_validators[2].contains_key(&alice_pk));
+    assert!(!switch_blocks.next_era_validators(2).contains_key(&alice_pk));
 
     // We don't slash, so the stakes are never reduced.
     for (pk, stake) in &stakes {
