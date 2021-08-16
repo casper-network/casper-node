@@ -2,11 +2,9 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use hex_fmt::HexFmt;
-#[cfg(test)]
-use multihash::Multihash;
 use once_cell::sync::Lazy;
 #[cfg(test)]
-use rand::{Rng, RngCore};
+use rand::Rng;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 #[cfg(test)]
