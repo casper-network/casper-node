@@ -897,7 +897,7 @@ where
                 if era_that_is_ending < self.active_era {
                     debug!("ignoring past era end announcement");
                 } else if era_that_is_ending != self.active_era {
-                    debug!("received future era end announcement, clearing limiters");
+                    debug!("received upcoming era validators announcement, clearing limiters");
                     self.active_era = era_that_is_ending + 1;
                     self.active_era_validators = Default::default();
 
