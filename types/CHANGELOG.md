@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Support building and testing using stable Rust.
 * Allow longer hex string to be presented in `json` files. Current maximum is increased from 100 to 150 characters.
+* Improved documentation and `Debug` impls for `ApiError`.
 
 
 
