@@ -28,7 +28,6 @@ use casper_execution_engine::{
         execution,
     },
     shared::{
-        account::Account,
         additive_map::AdditiveMap,
         gas::Gas,
         logging::{self, Settings, Style},
@@ -47,7 +46,7 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self},
     runtime_args,
     system::{

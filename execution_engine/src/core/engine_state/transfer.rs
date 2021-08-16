@@ -1,8 +1,9 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_types::{
-    account::AccountHash, system::mint, AccessRights, ApiError, CLType, CLValueError, Key,
-    RuntimeArgs, URef, U512,
+    account::{Account, AccountHash},
+    system::mint,
+    AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs, URef, U512,
 };
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
         execution::Error as ExecError,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{self, account::Account, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{self, newtypes::CorrelationId, stored_value::StoredValue},
     storage::global_state::StateReader,
 };
 

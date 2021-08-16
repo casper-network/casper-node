@@ -10,7 +10,8 @@ use rand::RngCore;
 
 use casper_types::{
     account::{
-        AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, Weight,
+        Account, AccountHash, ActionType, AddKeyFailure, AssociatedKeys, RemoveKeyFailure,
+        SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -28,11 +29,7 @@ use crate::{
         tracking_copy::TrackingCopy,
     },
     shared::{
-        account::{Account, AssociatedKeys},
-        additive_map::AdditiveMap,
-        gas::Gas,
-        newtypes::CorrelationId,
-        stored_value::StoredValue,
+        additive_map::AdditiveMap, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue,
         transform::Transform,
     },
     storage::global_state::{
@@ -603,7 +600,8 @@ fn manage_associated_keys() {
             _ => panic!("Invalid transform operation found"),
         };
         account
-            .get_associated_key_weight(account_hash)
+            .associated_keys()
+            .find(|(&h, _)| h == account_hash)
             .expect("Account hash wasn't added to associated keys");
 
         let new_weight = Weight::new(100);
@@ -618,8 +616,10 @@ fn manage_associated_keys() {
             _ => panic!("Invalid transform operation found"),
         };
         let value = account
-            .get_associated_key_weight(account_hash)
-            .expect("Account hash wasn't added to associated keys");
+            .associated_keys()
+            .find(|(&h, _)| h == account_hash)
+            .expect("Account hash wasn't added to associated keys")
+            .1;
 
         assert_eq!(value, &new_weight, "value was not updated");
 
@@ -636,7 +636,9 @@ fn manage_associated_keys() {
             _ => panic!("Invalid transform operation found"),
         };
 
-        assert!(account.get_associated_key_weight(account_hash).is_none());
+        let actual = account.associated_keys().find(|(&h, _)| h == account_hash);
+
+        assert!(actual.is_none());
 
         // Remove a key that was already removed
         runtime_context
