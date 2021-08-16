@@ -322,16 +322,6 @@ where
                     finality_signatures,
                 } = &*item;
 
-                if let Err(error) = block.verify() {
-                    warn!(
-                        ?error,
-                        ?peer,
-                        "Error validating block from peer; banning peer.",
-                    );
-                    effect_builder.announce_disconnect_from_peer(peer).await;
-                    continue;
-                }
-
                 if let Err(error) = validate_finality_signatures(
                     block.header(),
                     trusted_validator_weights,
