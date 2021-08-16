@@ -78,8 +78,9 @@ use crate::{
     fatal,
     reactor::ReactorEvent,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, Item, SharedObject, TimeDiff,
+        error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        Item, SharedObject, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -195,6 +196,9 @@ pub(crate) enum Error {
         /// The files that were not be found in the storage directory.
         missing_files: Vec<PathBuf>,
     },
+    /// Error when validating a block.
+    #[error(transparent)]
+    BlockValidation(#[from] BlockValidationError),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -378,7 +382,7 @@ impl Storage {
             if should_check_integrity {
                 assert_eq!(
                     *block.body_hash(),
-                    block_body.hash(),
+                    block_body.hash(block.hashing_algorithm_version()),
                     "found corrupt block body in database"
                 );
             }
@@ -821,7 +825,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, Error> {
         self.block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
@@ -833,7 +837,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-    ) -> Result<Option<Block>, LmdbExtError> {
+    ) -> Result<Option<Block>, Error> {
         self.block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
@@ -846,7 +850,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         era_id: EraId,
-    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, Error> {
         self.switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
@@ -859,7 +863,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         deploy_hash: DeployHash,
-    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, Error> {
         self.deploy_hash_index
             .get(&deploy_hash)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
@@ -868,10 +872,7 @@ impl Storage {
 
     /// Retrieves the highest block from the storage, if one exists.
     /// May return an LMDB error.
-    fn get_highest_block<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-    ) -> Result<Option<Block>, LmdbExtError> {
+    fn get_highest_block<Tx: Transaction>(&self, txn: &mut Tx) -> Result<Option<Block>, Error> {
         self.block_height_index
             .keys()
             .last()
@@ -885,7 +886,7 @@ impl Storage {
         &self,
         txn: &mut Tx,
         predicate: F,
-    ) -> Result<Vec<Block>, LmdbExtError>
+    ) -> Result<Vec<Block>, Error>
     where
         F: Fn(&Block) -> bool,
     {
@@ -911,7 +912,7 @@ impl Storage {
     fn get_finalized_deploys(
         &self,
         ttl: TimeDiff,
-    ) -> Result<Vec<(DeployHash, DeployHeader)>, LmdbExtError> {
+    ) -> Result<Vec<(DeployHash, DeployHeader)>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
         // We're interested in deploys whose TTL hasn't expired yet.
         let ttl_expired = |block: &Block| block.timestamp().elapsed() < ttl;
@@ -966,7 +967,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, Error> {
         let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -976,7 +977,8 @@ impl Storage {
             return Err(LmdbExtError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash: *block_hash,
                 found_block_header_hash,
-            });
+            }
+            .into());
         };
         Ok(Some(block_header))
     }
@@ -985,7 +987,7 @@ impl Storage {
     pub(crate) fn read_block_header_by_hash(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
         let maybe_block_header = self.get_single_block_header(&mut txn, block_hash)?;
         drop(txn);
@@ -997,7 +999,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Block>, LmdbExtError> {
+    ) -> Result<Option<Block>, Error> {
         let block_header: BlockHeader = match self.get_single_block_header(tx, block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -1007,14 +1009,15 @@ impl Storage {
                 Some(block_header) => block_header,
                 None => return Ok(None),
             };
-        let found_block_body_hash = block_body.hash();
+        let found_block_body_hash = block_body.hash(block_header.hashing_algorithm_version());
         if found_block_body_hash != *block_header.body_hash() {
             return Err(LmdbExtError::BlockBodyNotStoredUnderItsHash {
                 queried_block_body_hash: *block_header.body_hash(),
                 found_block_body_hash,
-            });
+            }
+            .into());
         }
-        let block = Block::new_from_header_and_body(block_header, block_body);
+        let block = Block::new_from_header_and_body(block_header, block_body)?;
         Ok(Some(block))
     }
 
@@ -1389,7 +1392,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         era_id: EraId,
-    ) -> Result<Option<Block>, LmdbExtError> {
+    ) -> Result<Option<Block>, Error> {
         self.switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
@@ -1444,7 +1447,9 @@ fn initialize_block_body_db(
             let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
             assert_eq!(
                 raw_key,
-                body.hash().as_ref(),
+                // TODO: use the proper version
+                body.hash(crate::types::HashingAlgorithmVersion::V2)
+                    .as_ref(),
                 "found corrupt block body in database"
             );
         }
