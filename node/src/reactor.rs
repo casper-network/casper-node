@@ -51,7 +51,6 @@ use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
-use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
@@ -61,7 +60,7 @@ use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
-    types::{ExitCode, Timestamp},
+    types::{ExitStatus, Timestamp},
     unregister_metric,
     utils::{self, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
@@ -159,7 +158,7 @@ pub(crate) enum ReactorExit {
     ProcessShouldContinue,
     /// The process should exit with the given exit code to allow the launcher to react
     /// accordingly.
-    ProcessShouldExit(ExitCode),
+    ProcessShouldExit(ExitStatus),
 }
 
 /// Event scheduler
@@ -694,7 +693,7 @@ where
                                 match ctrl_ann {
                                     ControlAnnouncement::FatalError { file, line, msg } => {
                                         warn!(%file, line=*line, %msg, "exiting due to fatal error scheduled before reactor completion");
-                                        return ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                                        return ReactorExit::ProcessShouldExit(ExitStatus::Abort);
                                     }
                                 }
                             } else {
@@ -705,13 +704,13 @@ where
                         break reactor_exit;
                     }
                     if !self.crank(rng).await {
-                        break ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                        break ReactorExit::ProcessShouldExit(ExitStatus::Abort);
                     }
                 }
-                SIGINT => break ReactorExit::ProcessShouldExit(ExitCode::SigInt),
-                SIGQUIT => break ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
-                SIGTERM => break ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
-                _ => error!("should be unreachable - bug in signal handler"),
+                signal_code => {
+                    error!("Received signal code {}, shutting done", signal_code);
+                    break ReactorExit::ProcessShouldExit(ExitStatus::Abort);
+                }
             }
         }
     }

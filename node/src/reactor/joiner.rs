@@ -383,7 +383,7 @@ impl reactor::Reactor for Reactor {
             config: with_dir_config,
             chainspec_loader,
             storage,
-            mut contract_runtime,
+            contract_runtime,
             small_network_identity,
             network_identity,
         } = initializer;
@@ -499,8 +499,6 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
-
-        contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
 
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,

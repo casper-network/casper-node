@@ -85,11 +85,7 @@ use announcements::{
 };
 use casper_execution_engine::{
     core::engine_state::{
-        self,
-        era_validators::GetEraValidatorsError,
-        execution_effect::ExecutionEffect,
-        genesis::GenesisSuccess,
-        upgrade::{UpgradeConfig, UpgradeSuccess},
+        self, era_validators::GetEraValidatorsError, execution_effect::ExecutionEffect,
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
@@ -122,8 +118,8 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalitySignature, FinalizedBlock, Item, TimeDiff, Timestamp,
+        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        FinalitySignature, FinalizedBlock, Item, TimeDiff, Timestamp,
     },
     utils::Source,
 };
@@ -1287,42 +1283,6 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Regular,
             )
             .await
-    }
-
-    /// Runs the genesis process on the contract runtime.
-    pub(crate) async fn commit_genesis(
-        self,
-        chainspec: Arc<Chainspec>,
-    ) -> Result<GenesisSuccess, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::CommitGenesis {
-                chainspec,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Runs the upgrade process on the contract runtime.
-    pub(crate) async fn upgrade_contract_runtime(
-        self,
-        upgrade_config: Box<UpgradeConfig>,
-    ) -> Result<UpgradeSuccess, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::Upgrade {
-                upgrade_config,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Gets the requested chainspec info from the chainspec loader.

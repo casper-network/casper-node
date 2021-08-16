@@ -29,7 +29,6 @@ static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
     );
     ChainspecInfo {
         name: String::from("casper-example"),
-        starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),
         next_upgrade: Some(next_upgrade),
     }
 });
@@ -55,10 +54,6 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
 pub struct ChainspecInfo {
     /// Name of the network.
     name: String,
-    /// The state root hash with which this session is starting.  It will be the result of running
-    /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
-    /// hash specified in the highest block on startup.
-    starting_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -69,14 +64,9 @@ impl DocExample for ChainspecInfo {
 }
 
 impl ChainspecInfo {
-    pub(crate) fn new(
-        chainspec_network_name: String,
-        starting_state_root_hash: Digest,
-        next_upgrade: Option<NextUpgrade>,
-    ) -> Self {
+    pub(crate) fn new(chainspec_network_name: String, next_upgrade: Option<NextUpgrade>) -> Self {
         ChainspecInfo {
             name: chainspec_network_name,
-            starting_state_root_hash,
             next_upgrade,
         }
     }
@@ -157,7 +147,8 @@ pub struct GetStatusResult {
     /// The chainspec name.
     pub chainspec_name: String,
     /// The state root hash used at the start of the current session.
-    pub starting_state_root_hash: Digest,
+    #[deprecated(since = "1.4.0")]
+    pub starting_state_root_hash: Option<Digest>,
     /// The node ID and network address of each connected peer.
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
@@ -173,11 +164,12 @@ pub struct GetStatusResult {
 }
 
 impl GetStatusResult {
+    #[allow(deprecated)]
     pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: ProtocolVersion) -> Self {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
-            starting_state_root_hash: status_feed.chainspec_info.starting_state_root_hash,
+            starting_state_root_hash: Some(Default::default()),
             peers: PeersMap::from(status_feed.peers),
             last_added_block_info: status_feed.last_added_block.map(Into::into),
             our_public_signing_key: status_feed.our_public_signing_key,

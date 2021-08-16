@@ -5,7 +5,7 @@ mod block;
 pub mod chainspec;
 mod deploy;
 pub mod error;
-mod exit_code;
+mod exit_status;
 mod item;
 pub mod json_compatibility;
 mod node_config;
@@ -31,7 +31,7 @@ pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployOrTransferHash,
     DeployValidationFailure, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
-pub use exit_code::ExitCode;
+pub use exit_status::ExitStatus;
 pub(crate) use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;

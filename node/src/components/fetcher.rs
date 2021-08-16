@@ -506,14 +506,13 @@ where
                     }
                 }
             }
-            // We do nothing in the case of having an incoming deploy rejected.
             Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
-                info!(%id, %peer, "item absent on the remote node: {tag:?}", tag=T::TAG);
+                info!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
                 self.signal(id, Err(FetcherError::Absent { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {
-                info!(%id, %peer, "request timed out");
+                info!(TAG=%T::TAG, %id, %peer, "request timed out");
                 self.metrics.timeouts.inc();
                 self.signal(id, Err(FetcherError::TimedOut { id, peer }), peer)
             }

@@ -19,9 +19,7 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        genesis::GenesisSuccess,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
-        upgrade::{UpgradeConfig, UpgradeSuccess},
     },
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
@@ -47,8 +45,8 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -660,22 +658,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// The transfers for that `FinalizedBlock`
         transfers: Vec<Deploy>,
     },
-
-    /// Commit genesis chainspec.
-    CommitGenesis {
-        /// The chainspec.
-        chainspec: Arc<Chainspec>,
-        /// Responder to call with the result.
-        responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
-    },
-    /// A request to run upgrade.
-    Upgrade {
-        /// Upgrade config.
-        #[serde(skip_serializing)]
-        upgrade_config: Box<UpgradeConfig>,
-        /// Responder to call with the upgrade result.
-        responder: Responder<Result<UpgradeSuccess, engine_state::Error>>,
-    },
     /// A query request.
     Query {
         /// Query request.
@@ -764,17 +746,6 @@ impl Display for ContractRuntimeRequest {
                 transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
-            }
-            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
-                write!(
-                    formatter,
-                    "commit genesis {}",
-                    chainspec.protocol_config.version
-                )
-            }
-
-            ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
-                write!(formatter, "upgrade request: {:?}", upgrade_config)
             }
 
             ContractRuntimeRequest::Query { query_request, .. } => {
