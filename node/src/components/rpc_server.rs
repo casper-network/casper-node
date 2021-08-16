@@ -87,7 +87,7 @@ impl<REv> ReactorEventT for REv where
 #[derive(DataSize, Debug)]
 pub(crate) struct RpcServer {
     /// The instant at which the node has started.
-    node_startup_time: Instant,
+    node_startup_instant: Instant,
 }
 
 impl RpcServer {
@@ -95,7 +95,7 @@ impl RpcServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
-        node_startup_time: Instant,
+        node_startup_instant: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -108,7 +108,9 @@ impl RpcServer {
             config.qps_limit,
         ));
 
-        Ok(RpcServer { node_startup_time })
+        Ok(RpcServer {
+            node_startup_instant,
+        })
     }
 }
 
@@ -267,7 +269,7 @@ where
                     main_responder: responder,
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
-                let node_uptime = self.node_startup_time.elapsed();
+                let node_uptime = self.node_startup_instant.elapsed();
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),

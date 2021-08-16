@@ -330,7 +330,7 @@ pub(crate) struct ParticipatingInitConfig {
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
     pub(super) network_identity: NetworkIdentity,
-    pub(super) node_startup_time: Instant,
+    pub(super) node_startup_instant: Instant,
 }
 
 #[cfg(test)]
@@ -419,7 +419,7 @@ impl reactor::Reactor for Reactor {
             event_stream_server,
             small_network_identity,
             network_identity,
-            node_startup_time,
+            node_startup_instant,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
@@ -446,13 +446,13 @@ impl reactor::Reactor for Reactor {
             config.rpc_server.clone(),
             effect_builder,
             *protocol_version,
-            node_startup_time,
+            node_startup_instant,
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
-            node_startup_time,
+            node_startup_instant,
         )?;
 
         let deploy_acceptor =

@@ -86,7 +86,7 @@ pub(crate) struct RestServer {
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
     /// The instant at which the node has started.
-    node_startup_time: Instant,
+    node_startup_instant: Instant,
 }
 
 impl RestServer {
@@ -94,7 +94,7 @@ impl RestServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
-        node_startup_time: Instant,
+        node_startup_instant: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -113,7 +113,7 @@ impl RestServer {
         Ok(RestServer {
             shutdown_sender,
             server_join_handle: Some(server_join_handle),
-            node_startup_time,
+            node_startup_instant,
         })
     }
 }
@@ -133,7 +133,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::RestRequest(RestRequest::Status { responder }) => {
-                let node_uptime = self.node_startup_time.elapsed();
+                let node_uptime = self.node_startup_instant.elapsed();
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
