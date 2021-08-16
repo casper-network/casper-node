@@ -12,32 +12,22 @@ use crate::testing::TestRng;
 use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
 
 /// The network identifier for a node.
+///
+/// A node's ID is derived from the fingerprint of its TLS certificate.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
-pub enum NodeId {
-    Tls(KeyFingerprint),
-}
+pub struct NodeId(KeyFingerprint);
 
 impl NodeId {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::random_tls(rng)
+        Self(rng.gen())
     }
 
-    /// Generates a random Tls instance using a `TestRng`.
-    #[cfg(test)]
-    pub(crate) fn random_tls(rng: &mut TestRng) -> Self {
-        NodeId::Tls(rng.gen())
-    }
-
-    /// Returns the raw bytes of the underlying hash of the ID, if there is any.
+    /// Returns the raw bytes of the underlying hash of the ID.
     #[inline]
-    pub fn hash_bytes(&self) -> Option<&[u8]> {
-        if let NodeId::Tls(sha256) = self {
-            Some(sha256.as_ref())
-        } else {
-            unreachable!()
-        }
+    pub fn hash_bytes(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 
@@ -47,6 +37,7 @@ enum NodeIdAsBytes {
     Tls(KeyFingerprint),
 }
 
+// TODO: Simplify this code.
 /// Used to serialize and deserialize `NodeID` where the (de)serializer is a human-readable type.
 #[derive(Serialize, Deserialize)]
 enum NodeIdAsString {
@@ -55,48 +46,50 @@ enum NodeIdAsString {
 
 impl Serialize for NodeId {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            let helper = match self {
-                NodeId::Tls(key_fingerprint) => {
-                    NodeIdAsString::Tls(hex::encode(key_fingerprint.as_ref()))
-                }
-            };
-            return helper.serialize(serializer);
-        }
+        todo!()
+        // if serializer.is_human_readable() {
+        //     let helper = match self {
+        //         NodeId::Tls(key_fingerprint) => {
+        //             NodeIdAsString::Tls(hex::encode(key_fingerprint.as_ref()))
+        //         }
+        //     };
+        //     return helper.serialize(serializer);
+        // }
 
-        let helper = match self {
-            NodeId::Tls(key_fingerprint) => NodeIdAsBytes::Tls(*key_fingerprint),
-        };
-        helper.serialize(serializer)
+        // let helper = match self {
+        //     NodeId::Tls(key_fingerprint) => NodeIdAsBytes::Tls(*key_fingerprint),
+        // };
+        // helper.serialize(serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for NodeId {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if deserializer.is_human_readable() {
-            let helper = NodeIdAsString::deserialize(deserializer)?;
-            match helper {
-                NodeIdAsString::Tls(hex_value) => {
-                    let bytes = hex::decode(hex_value).map_err(D::Error::custom)?;
-                    if bytes.len() != KeyFingerprint::LENGTH {
-                        return Err(SerdeError::custom("wrong length"));
-                    }
-                    let mut array = [0_u8; KeyFingerprint::LENGTH];
-                    array.copy_from_slice(bytes.as_slice());
-                    return Ok(NodeId::Tls(KeyFingerprint::from(array)));
-                }
-            }
-        }
+        todo!()
+        // if deserializer.is_human_readable() {
+        //     let helper = NodeIdAsString::deserialize(deserializer)?;
+        //     match helper {
+        //         NodeIdAsString::Tls(hex_value) => {
+        //             let bytes = hex::decode(hex_value).map_err(D::Error::custom)?;
+        //             if bytes.len() != KeyFingerprint::LENGTH {
+        //                 return Err(SerdeError::custom("wrong length"));
+        //             }
+        //             let mut array = [0_u8; KeyFingerprint::LENGTH];
+        //             array.copy_from_slice(bytes.as_slice());
+        //             return Ok(NodeId::Tls(KeyFingerprint::from(array)));
+        //         }
+        //     }
+        // }
 
-        let helper = NodeIdAsBytes::deserialize(deserializer)?;
-        match helper {
-            NodeIdAsBytes::Tls(key_fingerprint) => Ok(NodeId::Tls(key_fingerprint)),
-        }
+        // let helper = NodeIdAsBytes::deserialize(deserializer)?;
+        // match helper {
+        //     NodeIdAsBytes::Tls(key_fingerprint) => Ok(NodeId::Tls(key_fingerprint)),
+        // }
     }
 }
 
 static NODE_ID: Lazy<NodeId> =
-    Lazy::new(|| NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH])));
+    Lazy::new(|| NodeId(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH])));
 
 impl DocExample for NodeId {
     fn doc_example() -> &'static Self {
@@ -106,36 +99,26 @@ impl DocExample for NodeId {
 
 impl Debug for NodeId {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NodeId::Tls(key_fingerprint) => write!(
-                formatter,
-                "NodeId::Tls({})",
-                HexFmt(key_fingerprint.as_ref())
-            ),
-        }
+        write!(formatter, "NodeId({})", HexFmt(&self.0))
     }
 }
 
 impl Display for NodeId {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NodeId::Tls(key_fingerprint) => {
-                write!(formatter, "tls:{:10}", HexFmt(key_fingerprint.as_ref()))
-            }
-        }
+        write!(formatter, "tls:{:10}", HexFmt(&self.0))
     }
 }
 
 impl From<KeyFingerprint> for NodeId {
     fn from(id: KeyFingerprint) -> Self {
-        NodeId::Tls(id)
+        NodeId(id)
     }
 }
 
 #[cfg(test)]
 impl From<[u8; KeyFingerprint::LENGTH]> for NodeId {
     fn from(raw_bytes: [u8; KeyFingerprint::LENGTH]) -> Self {
-        NodeId::Tls(KeyFingerprint::from(raw_bytes))
+        NodeId(KeyFingerprint::from(raw_bytes))
     }
 }
 
@@ -162,7 +145,7 @@ mod test {
 
     #[test]
     fn bincode_known_specimen() {
-        let node_id = NodeId::Tls(EXAMPLE_HASH_RAW.clone().into());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone().into());
         let serialized = bincode::serialize(&node_id).unwrap();
 
         // The bincode representation is a 4 byte tag of all zeros, followed by the hash bytes.
@@ -179,7 +162,7 @@ mod test {
 
     #[test]
     fn json_known_specimen() {
-        let node_id = NodeId::Tls(EXAMPLE_HASH_RAW.clone().into());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone().into());
         let json_string = serde_json::to_string_pretty(&node_id).unwrap();
 
         let expected = "{\n  \"Tls\": \"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f\"\n}";
@@ -188,7 +171,7 @@ mod test {
 
     #[test]
     fn msgpack_default_settings_known_specimen() {
-        let node_id = NodeId::Tls(EXAMPLE_HASH_RAW.clone().into());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone().into());
 
         let serialized = rmp_serde::to_vec(&node_id).unwrap();
 
