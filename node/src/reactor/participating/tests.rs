@@ -1,11 +1,13 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use anyhow::bail;
+use either::Either;
 use log::info;
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
+use tokio::time;
 
 use casper_execution_engine::{core::engine_state::query::GetBidsRequest, shared::motes::Motes};
 use casper_types::{
@@ -16,8 +18,15 @@ use casper_types::{
 use crate::{
     components::{consensus, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    reactor::{initializer, joiner, participating, ReactorExit, Runner},
-    testing::{self, network::Network, TestRng},
+    effect::EffectExt,
+    reactor::{
+        initializer, joiner,
+        participating::{self, ParticipatingEvent},
+        ReactorExit, Runner,
+    },
+    testing::{
+        self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor, TestRng,
+    },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
         ActivationPoint, BlockHeader, Chainspec, Timestamp,
@@ -33,7 +42,13 @@ struct TestChain {
     chainspec: Arc<Chainspec>,
 }
 
-type Nodes = crate::testing::network::Nodes<participating::Reactor>;
+type Nodes = crate::testing::network::Nodes<FilterReactor<participating::Reactor>>;
+
+impl Runner<ConditionCheckReactor<FilterReactor<participating::Reactor>>> {
+    fn participating(&self) -> &participating::Reactor {
+        self.reactor().inner().inner()
+    }
+}
 
 impl TestChain {
     /// Instantiates a new test chain configuration.
@@ -99,6 +114,10 @@ impl TestChain {
         }
     }
 
+    fn chainspec_mut(&mut self) -> &mut Chainspec {
+        Arc::get_mut(&mut self.chainspec).unwrap()
+    }
+
     /// Creates an initializer/validator configuration for the `idx`th validator.
     fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> participating::Config {
         // Set the network configuration.
@@ -132,10 +151,10 @@ impl TestChain {
     async fn create_initialized_network(
         &mut self,
         rng: &mut NodeRng,
-    ) -> anyhow::Result<Network<participating::Reactor>> {
+    ) -> anyhow::Result<Network<FilterReactor<participating::Reactor>>> {
         let root = RESOURCES_PATH.join("local");
 
-        let mut network: Network<participating::Reactor> = Network::new();
+        let mut network: Network<FilterReactor<participating::Reactor>> = Network::new();
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
@@ -180,7 +199,7 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
         nodes
             .values()
-            .all(|runner| runner.reactor().inner().consensus().current_era() == era_id)
+            .all(|runner| runner.participating().consensus().current_era() == era_id)
     }
 }
 
@@ -190,7 +209,7 @@ fn get_bids(nodes: &Nodes, header: &BlockHeader) -> Bids {
     let request = GetBidsRequest::new((*header.state_root_hash()).into());
 
     let runner = nodes.values().next().expect("missing nodes");
-    let engine_state = runner.reactor().inner().contract_runtime().engine_state();
+    let engine_state = runner.participating().contract_runtime().engine_state();
     let bids_result = engine_state
         .get_bids(correlation_id, request)
         .expect("get_bids failed");
@@ -240,13 +259,30 @@ async fn run_equivocator_network() {
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
+    // We configure the era to take five rounds, and delay all messages to and from one of Alice's
+    // nodes until two rounds after genesis. That should guarantee that the two nodes equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
-    let protocol_config = (&*chain.chainspec).into();
+    chain.chainspec_mut().core_config.minimum_era_height = 5;
+    let protocol_config = consensus::ProtocolConfig::from(&*chain.chainspec);
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
+    let genesis_time = protocol_config.genesis_timestamp.unwrap();
+    let min_round_len = chain.chainspec.highway_config.min_round_length();
+    net.reactors_mut()
+        .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
+        .unwrap()
+        .set_filter(move |event| match event {
+            ParticipatingEvent::NetworkRequest(_)
+            | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. })
+                if Timestamp::now() < genesis_time + min_round_len * 2 =>
+            {
+                Either::Left(time::sleep(min_round_len.into()).event(move |_| event))
+            }
+            _ => Either::Right(event),
+        });
 
     let timeout = Duration::from_secs(90);
 
@@ -258,7 +294,7 @@ async fn run_equivocator_network() {
 
         // Collect new switch block headers.
         for runner in net.nodes().values() {
-            let storage = runner.reactor().inner().storage();
+            let storage = runner.participating().storage();
             let header = storage
                 .transactional_get_switch_block_by_era_id(era_number - 1)
                 .expect("missing switch block")
@@ -338,7 +374,7 @@ async fn run_equivocator_network() {
             // We are in era N + 1 or later. There should be no direct evidence; that would mean
             // Alice equivocated twice.
             for runner in net.nodes().values() {
-                let consensus = runner.reactor().inner().consensus();
+                let consensus = runner.participating().consensus();
                 assert_eq!(
                     consensus.validators_with_evidence(header.era_id()),
                     Vec::<&PublicKey>::new()

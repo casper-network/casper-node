@@ -590,6 +590,11 @@ where
             .consensus
             .validators_with_evidence()
     }
+
+    /// Returns this node's validator key.
+    pub(crate) fn public_key(&self) -> &PublicKey {
+        &self.public_signing_key
+    }
 }
 
 /// Returns an era ID in which the booking block for `era_id` lives, if we can use it.
