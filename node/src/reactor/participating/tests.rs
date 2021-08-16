@@ -287,99 +287,72 @@ async fn run_equivocator_network() {
     let timeout = Duration::from_secs(90);
 
     let mut switch_blocks = Vec::new();
-    for era_number in 1..20 {
-        let era_id = EraId::from(era_number);
-        info!("Waiting for Era {} to begin", era_number);
+    let mut era_ends = Vec::new();
+    let mut bids = Vec::new();
+    let mut next_era_validators = Vec::new();
+    for era_number in 0..3 {
+        let era_id = EraId::from(era_number + 1);
+        info!("Waiting for Era {} to end", era_number);
         net.settle_on(&mut rng, is_in_era(era_id), timeout).await;
 
         // Collect new switch block headers.
         for runner in net.nodes().values() {
             let storage = runner.participating().storage();
             let header = storage
-                .transactional_get_switch_block_by_era_id(era_number - 1)
+                .transactional_get_switch_block_by_era_id(era_number)
                 .expect("missing switch block")
                 .take_header();
-            assert_eq!(era_number - 1, header.era_id().value());
-            if let Some(other_header) = switch_blocks.get(era_number as usize - 1) {
+            assert_eq!(era_number, header.era_id().value());
+            if let Some(other_header) = switch_blocks.get(era_number as usize) {
                 assert_eq!(other_header, &header);
             } else {
+                era_ends.push(header.era_end().expect("era end").clone());
+                bids.push(get_bids(net.nodes(), &header));
+                next_era_validators.push(
+                    header
+                        .next_era_validator_weights()
+                        .expect("validators")
+                        .clone(),
+                );
                 switch_blocks.push(header);
             }
         }
-
-        let expected = [alice_pk.clone()];
-        // Returns true if Alice is listed as an equivocator in that block.
-        let alice_is_equivocator = |header: &BlockHeader| {
-            header.era_end().expect("missing era end").equivocators == expected
-        };
-
-        // Verify that nobody gets slashed, and Alice's bid becomes inactive, but only after she
-        // equivocated.
-        let bids = get_bids(net.nodes(), switch_blocks.last().unwrap());
-        for (pk, stake) in &stakes {
-            assert!(bids[pk].staked_amount() >= stake);
-            assert!(*pk == alice_pk || !bids[pk].inactive());
-        }
-        assert_eq!(
-            bids[&alice_pk].inactive(),
-            switch_blocks.iter().any(alice_is_equivocator)
-        );
-
-        // Make sure we waited long enough for this test to include unbonding and dropping eras.
-        let oldest_bonded_era_id = consensus::oldest_bonded_era(&protocol_config, era_id);
-        let oldest_evidence_era_id =
-            consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
-        if oldest_evidence_era_id.is_genesis() || era_number < 3 {
-            continue;
-        }
-
-        // Wait at least two more eras after the equivocation has been detected.
-        if switch_blocks[..(era_number as usize - 2)]
-            .iter()
-            .any(alice_is_equivocator)
-        {
-            break;
-        }
     }
 
-    assert!(
-        !switch_blocks
-            .last()
-            .expect("missing switch block")
-            .next_era_validator_weights()
-            .expect("missing validator weights")
-            .contains_key(&alice_pk),
-        "Alice should have been evicted."
-    );
+    // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
+    // (`auction_delay`) era, she is still included in the next era's validator set.
+    assert_eq!(era_ends[0].equivocators, [alice_pk.clone()]);
+    assert_eq!(era_ends[0].inactive_validators, []);
+    assert!(bids[0][&alice_pk].inactive());
+    assert!(next_era_validators[0].contains_key(&alice_pk));
 
-    // The auction delay is 1, so if Alice's equivocation was detected before the switch block in
-    // era N, the switch block of era N should list her as faulty. Starting with the switch block
-    // in era N + 1, she should be removed from the validator set, because she gets evicted in era
-    // N + 2.
-    // No era after N should have direct evidence against her: she got marked as faulty when era
-    // N + 1 was initialized, so no other validator will cite her or process her units.
-    loop {
-        let header = switch_blocks.pop().expect("missing switch block");
-        let validators = header
-            .next_era_validator_weights()
-            .expect("missing validator weights");
-        if validators.contains_key(&alice_pk) {
-            // We've found era N: This is the last switch block that still lists Alice as a
-            // validator.
-            let era_end = header.era_end().expect("missing era end");
-            assert_eq!(*era_end.inactive_validators, []);
-            assert_eq!(*era_end.equivocators, [alice_pk.clone()]);
-            return;
-        } else {
-            // We are in era N + 1 or later. There should be no direct evidence; that would mean
-            // Alice equivocated twice.
-            for runner in net.nodes().values() {
-                let consensus = runner.participating().consensus();
-                assert_eq!(
-                    consensus.validators_with_evidence(header.era_id()),
-                    Vec::<&PublicKey>::new()
-                );
-            }
-        }
+    // In era 1 Alice is banned. Banned validators count neither as faulty nor inactive, even
+    // though they cannot participate. In the next era, she will be evicted.
+    assert_eq!(era_ends[1].equivocators, []);
+    assert_eq!(era_ends[1].inactive_validators, []);
+    assert!(bids[1][&alice_pk].inactive());
+    assert!(!next_era_validators[1].contains_key(&alice_pk));
+
+    // In era 2 she is not a validator anymore and her bid remains deactivated.
+    assert_eq!(era_ends[2].equivocators, []);
+    assert_eq!(era_ends[2].inactive_validators, []);
+    assert!(bids[2][&alice_pk].inactive());
+    assert!(!next_era_validators[2].contains_key(&alice_pk));
+
+    // We don't slash, so the stakes are never reduced.
+    for (pk, stake) in &stakes {
+        assert!(bids[0][pk].staked_amount() >= stake);
+        assert!(bids[1][pk].staked_amount() >= stake);
+        assert!(bids[2][pk].staked_amount() >= stake);
+    }
+
+    // The only era with direct evidence is era 0. After that Alice was banned or evicted.
+    let none: Vec<&PublicKey> = vec![];
+    let alice = vec![&alice_pk];
+    for runner in net.nodes().values() {
+        let consensus = runner.participating().consensus();
+        assert_eq!(consensus.validators_with_evidence(EraId::new(0)), alice);
+        assert_eq!(consensus.validators_with_evidence(EraId::new(1)), none);
+        assert_eq!(consensus.validators_with_evidence(EraId::new(2)), none);
     }
 }
