@@ -15,7 +15,6 @@ use crate::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
         gossiper,
-        network::NetworkIdentity,
         small_network::{GossipedAddress, SmallNetworkIdentity, SmallNetworkIdentityError},
         storage::{self, Storage},
         Component,
@@ -172,8 +171,6 @@ pub(crate) struct Reactor {
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) small_network_identity: SmallNetworkIdentity,
-    #[data_size(skip)]
-    pub(super) network_identity: NetworkIdentity,
 }
 
 impl Reactor {
@@ -228,15 +225,12 @@ impl Reactor {
 
         let small_network_identity = SmallNetworkIdentity::new()?;
 
-        let network_identity = NetworkIdentity::new();
-
         let reactor = Reactor {
             config,
             chainspec_loader,
             storage,
             contract_runtime,
             small_network_identity,
-            network_identity,
         };
         Ok((reactor, effects))
     }
