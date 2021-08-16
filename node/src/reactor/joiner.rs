@@ -30,7 +30,7 @@ use crate::{
         event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
-        linear_chain_sync::{self, LinearChainSync},
+        linear_chain_sync::{self, LinearChainSyncState},
         metrics::Metrics,
         network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
@@ -48,8 +48,9 @@ use crate::{
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
+    fatal,
     protocol::Message,
     reactor::{
         self,
@@ -71,6 +72,9 @@ use crate::{
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub(crate) enum JoinerEvent {
+    /// Finished joining event.
+    FinishedJoining { block_header: Box<BlockHeader> },
+
     /// Network event.
     #[from]
     Network(network::Event<Message>),
@@ -134,10 +138,6 @@ pub(crate) enum JoinerEvent {
     /// Deploy acceptor event.
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
-
-    /// Linear chain event.
-    #[from]
-    LinearChainSync(#[serde(skip_serializing)] linear_chain_sync::Event),
 
     /// Contract Runtime event.
     #[from]
@@ -272,7 +272,6 @@ impl Display for JoinerEvent {
             JoinerEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)
             }
-            JoinerEvent::LinearChainSync(event) => write!(f, "linear chain: {}", event),
             JoinerEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
             JoinerEvent::BlockByHeightFetcherRequest(request) => {
                 write!(f, "block by height fetcher request: {}", request)
@@ -323,6 +322,9 @@ impl Display for JoinerEvent {
             JoinerEvent::BlockHeaderByHeightFetcherRequest(req) => {
                 write!(f, "block header by height fetcher request: {}", req)
             }
+            JoinerEvent::FinishedJoining { block_header } => {
+                write!(f, "finished joining with block header: {}", block_header)
+            }
         }
     }
 }
@@ -339,7 +341,7 @@ pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
-    linear_chain_sync: LinearChainSync,
+    linear_chain_sync: LinearChainSyncState,
     deploy_fetcher: Fetcher<Deploy>,
     block_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
@@ -386,10 +388,6 @@ impl reactor::Reactor for Reactor {
             network_identity,
         } = initializer;
 
-        let lmdb_path = {
-            let storage_config = with_dir_config.map_ref(|cfg| cfg.storage.clone());
-            storage_config.with_dir(storage_config.value().path.clone())
-        };
         // TODO: Remove wrapper around Reactor::Config instead.
         let (_, config) = with_dir_config.into_parts();
 
@@ -428,17 +426,15 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let trusted_hash = config.node.trusted_hash;
-
-        match trusted_hash {
+        let chainspec = chainspec_loader.chainspec().clone();
+        let linear_chain_sync = match config.node.trusted_hash {
             None => {
-                let chainspec = chainspec_loader.chainspec();
-                let era_duration = chainspec.core_config.era_duration;
                 if let Some(start_time) = chainspec
                     .protocol_config
                     .activation_point
                     .genesis_timestamp()
                 {
+                    let era_duration = chainspec.core_config.era_duration;
                     if Timestamp::now() > start_time + era_duration {
                         error!(
                             "Node started with no trusted hash after the expected end of \
@@ -450,9 +446,33 @@ impl reactor::Reactor for Reactor {
                         panic!("should have trusted hash after genesis era")
                     }
                 }
+                LinearChainSyncState::NotGoingToSync
             }
-            Some(hash) => info!(trusted_hash=%hash, "synchronizing linear chain"),
-        }
+            Some(hash) => {
+                info!(trusted_hash=%hash, "synchronizing linear chain");
+                effects.extend(
+                    (async move {
+                        match linear_chain_sync::run_fast_sync_task(
+                            effect_builder,
+                            hash,
+                            (*chainspec).clone(),
+                        )
+                        .await
+                        {
+                            Ok(block_header) => Some(JoinerEvent::FinishedJoining {
+                                block_header: Box::new(block_header),
+                            }),
+                            Err(error) => {
+                                fatal!(effect_builder, "{:?}", error).await;
+                                None
+                            }
+                        }
+                    })
+                    .map_some(std::convert::identity),
+                );
+                LinearChainSyncState::Syncing
+            }
+        };
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
@@ -481,14 +501,6 @@ impl reactor::Reactor for Reactor {
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
         contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
-
-        let linear_chain_sync = LinearChainSync::new(
-            chainspec_loader.chainspec(),
-            trusted_hash,
-            lmdb_path,
-            config.contract_runtime,
-            registry.clone(),
-        );
 
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,
@@ -542,14 +554,7 @@ impl reactor::Reactor for Reactor {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
             JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_id)) => {
-                reactor::wrap_effects(
-                    JoinerEvent::LinearChainSync,
-                    self.linear_chain_sync.handle_event(
-                        effect_builder,
-                        rng,
-                        linear_chain_sync::Event::Start,
-                    ),
-                )
+                Effects::new()
             }
             JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
                 gossiped_address,
@@ -724,11 +729,6 @@ impl reactor::Reactor for Reactor {
                 self.deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::LinearChainSync(event) => reactor::wrap_effects(
-                JoinerEvent::LinearChainSync,
-                self.linear_chain_sync
-                    .handle_event(effect_builder, rng, event),
-            ),
             JoinerEvent::BlockFetcher(event) => reactor::wrap_effects(
                 JoinerEvent::BlockFetcher,
                 self.block_fetcher
@@ -875,6 +875,10 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::BlockHeaderByHeightFetcher(request.into()),
             ),
+            JoinerEvent::FinishedJoining { block_header } => {
+                self.linear_chain_sync = LinearChainSyncState::Done(block_header);
+                Effects::new()
+            }
         }
     }
 
