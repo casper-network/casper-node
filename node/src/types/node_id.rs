@@ -37,7 +37,6 @@ enum NodeIdAsBytes {
     Tls(KeyFingerprint),
 }
 
-// TODO: Simplify this code.
 /// Used to serialize and deserialize `NodeID` where the (de)serializer is a human-readable type.
 #[derive(Serialize, Deserialize)]
 enum NodeIdAsString {
@@ -46,45 +45,31 @@ enum NodeIdAsString {
 
 impl Serialize for NodeId {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        todo!()
-        // if serializer.is_human_readable() {
-        //     let helper = match self {
-        //         NodeId::Tls(key_fingerprint) => {
-        //             NodeIdAsString::Tls(hex::encode(key_fingerprint.as_ref()))
-        //         }
-        //     };
-        //     return helper.serialize(serializer);
-        // }
-
-        // let helper = match self {
-        //     NodeId::Tls(key_fingerprint) => NodeIdAsBytes::Tls(*key_fingerprint),
-        // };
-        // helper.serialize(serializer)
+        if serializer.is_human_readable() {
+            NodeIdAsString::Tls(hex::encode(&self.0)).serialize(serializer)
+        } else {
+            NodeIdAsBytes::Tls(self.0).serialize(serializer)
+        }
     }
 }
 
 impl<'de> Deserialize<'de> for NodeId {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        todo!()
-        // if deserializer.is_human_readable() {
-        //     let helper = NodeIdAsString::deserialize(deserializer)?;
-        //     match helper {
-        //         NodeIdAsString::Tls(hex_value) => {
-        //             let bytes = hex::decode(hex_value).map_err(D::Error::custom)?;
-        //             if bytes.len() != KeyFingerprint::LENGTH {
-        //                 return Err(SerdeError::custom("wrong length"));
-        //             }
-        //             let mut array = [0_u8; KeyFingerprint::LENGTH];
-        //             array.copy_from_slice(bytes.as_slice());
-        //             return Ok(NodeId::Tls(KeyFingerprint::from(array)));
-        //         }
-        //     }
-        // }
+        if deserializer.is_human_readable() {
+            let NodeIdAsString::Tls(hex_value) = NodeIdAsString::deserialize(deserializer)?;
 
-        // let helper = NodeIdAsBytes::deserialize(deserializer)?;
-        // match helper {
-        //     NodeIdAsBytes::Tls(key_fingerprint) => Ok(NodeId::Tls(key_fingerprint)),
-        // }
+            let bytes = hex::decode(hex_value).map_err(D::Error::custom)?;
+            if bytes.len() != KeyFingerprint::LENGTH {
+                return Err(SerdeError::custom("wrong length"));
+            }
+            let mut array = [0_u8; KeyFingerprint::LENGTH];
+            array.copy_from_slice(bytes.as_slice());
+
+            Ok(NodeId(KeyFingerprint::from(array)))
+        } else {
+            let NodeIdAsBytes::Tls(key_fingerprint) = NodeIdAsBytes::deserialize(deserializer)?;
+            Ok(NodeId(key_fingerprint))
+        }
     }
 }
 
@@ -137,7 +122,7 @@ mod test {
     #[test]
     fn serde_roundtrip_tls() {
         let mut rng = crate::new_rng();
-        let node_id = NodeId::random_tls(&mut rng);
+        let node_id = NodeId::random(&mut rng);
         let serialized = bincode::serialize(&node_id).unwrap();
         let decoded = bincode::deserialize(&serialized).unwrap();
         assert_eq!(node_id, decoded);
@@ -145,7 +130,7 @@ mod test {
 
     #[test]
     fn bincode_known_specimen() {
-        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone().into());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone());
         let serialized = bincode::serialize(&node_id).unwrap();
 
         // The bincode representation is a 4 byte tag of all zeros, followed by the hash bytes.
@@ -162,7 +147,7 @@ mod test {
 
     #[test]
     fn json_known_specimen() {
-        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone().into());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone());
         let json_string = serde_json::to_string_pretty(&node_id).unwrap();
 
         let expected = "{\n  \"Tls\": \"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f\"\n}";
@@ -171,7 +156,7 @@ mod test {
 
     #[test]
     fn msgpack_default_settings_known_specimen() {
-        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone().into());
+        let node_id = NodeId::from(EXAMPLE_HASH_RAW.clone());
 
         let serialized = rmp_serde::to_vec(&node_id).unwrap();
 
@@ -191,7 +176,7 @@ mod test {
     #[test]
     fn json_roundtrip_tls() {
         let mut rng = crate::new_rng();
-        let node_id = NodeId::random_tls(&mut rng);
+        let node_id = NodeId::random(&mut rng);
         let json_string = serde_json::to_string_pretty(&node_id).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(node_id, decoded);
