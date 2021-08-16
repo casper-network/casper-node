@@ -310,7 +310,7 @@ struct AllocatedMem {
 
 /// A runner for a reactor.
 ///
-/// The runner manages a reactors event queue and reactor itself and can run it either continuously
+/// The runner manages a reactor's event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
 pub(crate) struct Runner<R>
