@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.  The format
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 * Experimental support for libp2p has been removed.
+* The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
 
 
 
