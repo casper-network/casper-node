@@ -5721,6 +5721,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer-purse-to-public-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "transfer-purse-to-purse"
 version = "0.1.0"
 dependencies = [
@@ -5746,6 +5754,14 @@ dependencies = [
 
 [[package]]
 name = "transfer-to-existing-account"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "transfer-to-public-key"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
