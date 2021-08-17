@@ -74,7 +74,7 @@ impl Display for ContractRuntimeAnnouncement {
     }
 }
 
-/// Announce a committed Step success.
+/// Announces a committed Step success.
 pub(super) async fn step_success<REv>(
     effect_builder: EffectBuilder<REv>,
     era_id: EraId,
