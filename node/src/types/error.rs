@@ -13,8 +13,8 @@ use crate::{
 /// An error that can arise when creating a block from a finalized block and other components
 #[derive(Error, Debug)]
 pub enum BlockCreationError {
-    /// [`EraEnd`]s need both an [`EraReport`] present and a map of the next era validator weights.
-    /// If one of them is not present while trying to construct an [`EraEnd`] we must emit an
+    /// `EraEnd`s need both an `EraReport` present and a map of the next era validator weights.
+    /// If one of them is not present while trying to construct an `EraEnd` we must emit an
     /// error.
     #[error(
         "Cannot create EraEnd unless we have both an EraReport and next era validators. \
@@ -22,14 +22,14 @@ pub enum BlockCreationError {
          Next era validator weights: {maybe_next_era_validator_weights:?}"
     )]
     CouldNotCreateEraEnd {
-        /// An optional [`EraReport`] we tried to use to construct an [`EraEnd`]
+        /// An optional `EraReport` we tried to use to construct an `EraEnd`
         maybe_era_report: Option<EraReport>,
-        /// An optional map of the next era validator weights used to construct an [`EraEnd`]
+        /// An optional map of the next era validator weights used to construct an `EraEnd`
         maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     },
 
     /// Wrapper of [`blake2::digest::InvalidOutputSize`]; occurs when trying to construct
-    /// an [`EraEnd`].
+    /// an `EraEnd`.
     #[error(transparent)]
     Blake2bDigestInvalidOutputSize(#[from] blake2::digest::InvalidOutputSize),
 }
@@ -48,9 +48,9 @@ pub enum BlockValidationError {
          Block: {block:?}"
     )]
     UnexpectedBodyHash {
-        /// The [`Block`] with the [`BlockHeader`] with the incorrect block body hash
+        /// The `Block` with the `BlockHeader` with the incorrect block body hash
         block: Box<Block>,
-        /// The actual hash of the block's [`BlockBody`]
+        /// The actual hash of the block's `BlockBody`
         actual_block_body_hash: Digest,
     },
 
@@ -61,9 +61,9 @@ pub enum BlockValidationError {
          Block: {block:?}"
     )]
     UnexpectedBlockHash {
-        /// The [`Block`] with the incorrect [`BlockHeaderHash`]
+        /// The `Block` with the incorrect `BlockHeaderHash`
         block: Box<Block>,
-        /// The actual hash of the block's [`BlockHeader`]
+        /// The actual hash of the block's `BlockHeader`
         actual_block_header_hash: BlockHash,
     },
 }

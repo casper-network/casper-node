@@ -191,7 +191,7 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
 
 /// Hashes a [`Vec`] of [`Digest`]s into a single [`Digest`] by constructing a [Merkle tree][1].
 /// Reduces pairs of elements in the [`Vec`] by repeatedly calling [hash_pair].
-/// This hash procedure is suited to hashing [BTree]s.
+/// This hash procedure is suited to hashing binary trees.
 ///
 /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
 ///
