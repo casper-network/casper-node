@@ -30,7 +30,7 @@ use crate::{
     effect::EffectBuilder,
     rpcs::{
         chain::GetEraInfoBySwitchBlock,
-        state::{GetAccountInfo, GetDictionaryItem},
+        state::{GetAccountInfo, GetDictionaryItem, QueryGlobalState},
     },
 };
 
@@ -77,6 +77,9 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_params::<GetDeploy>("returns a Deploy from the network");
     schema.push_with_params::<GetAccountInfo>("returns an Account from the network");
     schema.push_with_params::<GetDictionaryItem>("returns an item from a Dictionary");
+    schema.push_with_params::<QueryGlobalState>(
+        "a query to global state using either a Block hash or state root hash",
+    );
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
@@ -86,7 +89,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetStateRootHash>(
         "returns a state root hash at a given Block",
     );
-    schema.push_with_params::<GetItem>("returns a stored value from the network");
+    schema.push_with_params::<GetItem>("returns a stored value from the network. This RPC is deprecated, use `query_global_state` instead.");
     schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
     schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
         "returns an EraInfo from the network",

@@ -49,13 +49,12 @@ use crate::{
 
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::Config;
+#[cfg(test)]
+pub(crate) use config::ProtocolConfig;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
-
-#[cfg(test)]
-pub(crate) use era_supervisor::oldest_bonded_era;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) enum ConsensusMessage {

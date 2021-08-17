@@ -15,11 +15,16 @@ const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
 pub enum TrieMerkleProofStep {
     /// Corresponds to [`Trie::Node`]
     Node {
+        /// Hole index.
         hole_index: u8,
+        /// Indexed pointers with hole.
         indexed_pointers_with_hole: Vec<(u8, Pointer)>,
     },
     /// Corresponds to [`Trie::Extension`]
-    Extension { affix: Bytes },
+    Extension {
+        /// Affix bytes.
+        affix: Bytes,
+    },
 }
 
 impl TrieMerkleProofStep {

@@ -958,7 +958,7 @@ where
                 let mut effects = self.gossip_our_address(effect_builder);
                 effects.extend(
                     effect_builder
-                        .set_timeout(self.cfg.gossip_interval)
+                        .set_timeout(self.cfg.gossip_interval.into())
                         .event(|_| Event::GossipOurAddress),
                 );
                 effects
