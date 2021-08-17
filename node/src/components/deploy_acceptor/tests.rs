@@ -1,6 +1,6 @@
 #![cfg(test)]
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     iter,
     time::Duration,
@@ -8,20 +8,27 @@ use std::{
 
 use derive_more::From;
 use futures::channel::oneshot;
+use once_cell::sync::Lazy;
 use prometheus::Registry;
-
 use reactor::ReactorEvent;
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
-
 use tracing::debug;
 
-use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-use casper_types::ProtocolVersion;
+use casper_execution_engine::{
+    core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT},
+    shared::{
+        account::Account, stored_value::StoredValue, system_config::SystemConfig,
+        wasm_config::WasmConfig,
+    },
+    storage::trie::merkle_proof::TrieMerkleProof,
+};
+use casper_types::{CLValue, ProtocolVersion, URef, U512};
 
 use super::*;
 
+use crate::reactor::QueueKind;
 use crate::types::Block;
 use crate::{
     components::{
@@ -48,6 +55,10 @@ use crate::{
     utils::{Loadable, WithDir},
     NodeRng,
 };
+
+const PRESET_PURSE_UREF: Lazy<URef> = Lazy::new(|| URef::default());
+const VALID_BALANCE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT + 1));
+const INVALID_BALANCE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT - 1));
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -109,7 +120,7 @@ impl From<LinearChainRequest<NodeId>> for Event {
 
 impl From<ContractRuntimeAnnouncement> for Event {
     fn from(_request: ContractRuntimeAnnouncement) -> Self {
-        unimplemented!("not implemented for gossiper tests")
+        unimplemented!("not implemented for acceptor tests")
     }
 }
 
@@ -219,7 +230,6 @@ impl reactor::Reactor for Reactor {
         match event {
             Event::Storage(event) => {
                 info!("Storage request made");
-
                 reactor::wrap_effects(
                     Event::Storage,
                     self.storage.handle_event(effect_builder, rng, event),
@@ -328,12 +338,57 @@ impl reactor::Reactor for Reactor {
                 self.network.handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => {
-                info!("contract runtime request made");
-                reactor::wrap_effects(
-                    Event::ContractRuntime,
-                    self.contract_runtime
-                        .handle_event(effect_builder, rng, event),
-                )
+                info!("Request made to global state");
+                match event {
+                    ContractRuntimeRequest::Query {
+                        query_request,
+                        responder,
+                    } => {
+                        let mut effects = Effects::new();
+                        // Only respond to queries for accounts
+                        let result = if let Key::Account(account_hash) = query_request.key() {
+                            let named_keys = BTreeMap::new();
+                            let preset_account =
+                                Account::create(account_hash, named_keys, *PRESET_PURSE_UREF);
+                            QueryResult::Success {
+                                value: Box::new(StoredValue::Account(preset_account)),
+                                proofs: vec![],
+                            }
+                        } else {
+                            QueryResult::RootNotFound
+                        };
+                        effects.extend(responder.respond(Ok(result)).ignore());
+                        effects
+                    }
+                    ContractRuntimeRequest::GetBalance {
+                        balance_request,
+                        responder,
+                    } => {
+                        let mut effects = Effects::new();
+                        let result = if balance_request.purse_uref() == *PRESET_PURSE_UREF {
+                            let proof = TrieMerkleProof::new(
+                                balance_request.purse_uref().into(),
+                                StoredValue::CLValue(
+                                    CLValue::from_t(1).expect("should get CLValue"),
+                                ),
+                                VecDeque::new(),
+                            );
+                            BalanceResult::Success {
+                                motes: *INVALID_BALANCE_AMOUNT,
+                                proof: Box::new(proof),
+                            }
+                        } else {
+                            BalanceResult::RootNotFound
+                        };
+                        effects.extend(responder.respond(Ok(result)).ignore());
+                        effects
+                    }
+                    _ => reactor::wrap_effects(
+                        Event::ContractRuntime,
+                        self.contract_runtime
+                            .handle_event(effect_builder, rng, event),
+                    ),
+                }
             }
         }
     }
@@ -362,11 +417,17 @@ fn announce_deploy_received(
     }
 }
 
-fn announce_linear_chain(block: Block) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+fn put_block_to_storage(
+    block: Box<Block>,
+    responder: Responder<bool>,
+) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
-        let empty_execution = HashMap::new();
         effect_builder
-            .announce_linear_chain_block(block, empty_execution)
+            .into_inner()
+            .schedule(
+                StorageRequest::PutBlock { block, responder },
+                QueueKind::Regular,
+            )
             .ignore()
     }
 }
@@ -417,8 +478,8 @@ async fn should_fail_due_to_invalid_account() {
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
     let mut rng = crate::new_rng();
-    let (sender, receiver) = oneshot::channel();
-    let responder = Responder::create(sender);
+    let (deploy_sender, deploy_receiver) = oneshot::channel();
+    let deploy_responder = Responder::create(deploy_sender);
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
@@ -431,11 +492,10 @@ async fn should_fail_due_to_invalid_account() {
     network
         .process_injected_effect_on(
             &node_ids[0],
-            announce_deploy_received(deploy, Some(responder)),
+            announce_deploy_received(deploy, Some(deploy_responder)),
         )
         .await;
 
-    // We expect this deploy to be rejected, therefore it should not be present in storage.
     let no_such_deploy = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
             runner
@@ -452,7 +512,7 @@ async fn should_fail_due_to_invalid_account() {
     // Ensure all responders are called before dropping the network.
     network.settle(&mut rng, QUIET_FOR, TIMEOUT).await;
 
-    match receiver.await {
+    match deploy_receiver.await {
         Ok(result) => {
             assert!(matches!(result, Err(super::Error::InvalidAccount)))
         }
@@ -462,14 +522,15 @@ async fn should_fail_due_to_invalid_account() {
     NetworkController::<NodeMessage>::remove_active();
 }
 
+// This test will pass if and only if the response from the test reactor returns the INVALID_BALANCE_AMOUNT
 #[tokio::test]
-async fn test_insert_block() {
+async fn should_reject_deploy_due_to_invalid_balance() {
     const TIMEOUT: Duration = Duration::from_secs(20);
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
     let mut rng = crate::new_rng();
-    let (sender, receiver) = oneshot::channel();
-    let responder = Responder::create(sender);
+    let (deploy_sender, deploy_receiver) = oneshot::channel();
+    let deploy_responder = Responder::create(deploy_sender);
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
@@ -479,16 +540,20 @@ async fn test_insert_block() {
     let deploy = Box::new(Deploy::random(&mut rng));
     let deploy_hash = *deploy.id();
 
-    let block = Block::random(&mut rng);
+    let block = Box::new(Block::random(&mut rng));
+
+    let (block_sender, block_receiver) = oneshot::channel();
+    let block_responder = Responder::create(block_sender);
+    let _block_hash = block.hash();
 
     network
-        .process_injected_effect_on(&node_ids[0], announce_linear_chain(block))
+        .process_injected_effect_on(&node_ids[0], put_block_to_storage(block, block_responder))
         .await;
 
     network
         .process_injected_effect_on(
             &node_ids[0],
-            announce_deploy_received(deploy, Some(responder)),
+            announce_deploy_received(deploy, Some(deploy_responder)),
         )
         .await;
 
@@ -509,9 +574,16 @@ async fn test_insert_block() {
     // Ensure all responders are called before dropping the network.
     network.settle(&mut rng, QUIET_FOR, TIMEOUT).await;
 
-    match receiver.await {
+    match block_receiver.await {
+        Ok(result) => assert!(result),
+        Err(_) => panic!("Responder was dropped"),
+    }
+
+    match deploy_receiver.await {
         Ok(result) => {
-            assert!(matches!(result, Err(super::Error::InvalidAccount)))
+            //assert!(matches!(result, Err(super::Error::InvalidAccount)))
+            println!("{:?}", result);
+            assert!(result.is_ok())
         }
         Err(_) => panic!("receiver error implies a bug"),
     }

@@ -1366,7 +1366,7 @@ impl Storage {
     /// # Panics
     ///
     /// Panics if an IO error occurs.
-    pub(crate) fn inject_block_into_db(&self, block: Block) -> Result<bool, LmdbExtError> {
+    pub(crate) fn _inject_block_into_db(&self, block: Block) -> Result<bool, LmdbExtError> {
         let mut txn = self
             .env
             .begin_rw_txn()
