@@ -36,7 +36,7 @@ pub(crate) enum ContractRuntimeAnnouncement {
 }
 
 impl ContractRuntimeAnnouncement {
-    /// Create a ContractRuntimeAnnouncement::LinearChainBlock from it's parts.
+    /// Creates a `ContractRuntimeAnnouncement::LinearChainBlock` from its parts.
     pub(crate) fn linear_chain_block(
         block: Block,
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,

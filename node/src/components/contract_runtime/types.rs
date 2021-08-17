@@ -86,7 +86,7 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 pub struct StepEffectAndUpcomingEraValidators {
     /// An [`ExecutionEffect`] created by an era ending.
     pub step_execution_effect: ExecutionEffect,
-    /// Upcoming era validators.
+    /// Validator sets for all upcoming eras that have already been determined.
     pub upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
 }
 
@@ -98,6 +98,6 @@ pub struct BlockAndExecutionEffects {
     pub block: Block,
     /// The results from executing the deploys in the block.
     pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    /// An [`ExecutionEffect`] created if an era ended.
+    /// The [`ExecutionEffect`] and the upcoming validator sets determined by the `step`
     pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
 }

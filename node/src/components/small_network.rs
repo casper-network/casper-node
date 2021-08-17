@@ -328,7 +328,6 @@ where
             .filter_map(|addr| component.outgoing_manager.learn_addr(addr, true, now))
             .collect();
 
-        // Initialize the known validator set with the active era, if given.
         let mut effects = component.process_dial_requests(dial_requests);
 
         // Start broadcasting our public listening address.
@@ -920,7 +919,7 @@ where
                         .collect();
 
                     if self.active_era_validators.is_empty() {
-                        warn!("received an empty set of active era validators");
+                        error!("received an empty set of active era validators");
                     }
 
                     active_validators.extend(self.active_era_validators.iter().cloned());

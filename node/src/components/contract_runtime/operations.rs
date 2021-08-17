@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     time::Instant,
 };
 
@@ -31,7 +31,6 @@ use crate::{
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
 };
-use std::collections::BTreeMap;
 
 pub(super) fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
