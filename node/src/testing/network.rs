@@ -288,6 +288,13 @@ where
         &self.nodes
     }
 
+    /// Returns an iterator over all reactors, mutable.
+    pub(crate) fn reactors_mut(&mut self) -> impl Iterator<Item = &mut R> {
+        self.nodes
+            .values_mut()
+            .map(|runner| runner.reactor_mut().inner_mut())
+    }
+
     /// Create effects and dispatch them on the given node.
     ///
     /// The effects are created via a call to `create_effects` which is itself passed an instance of

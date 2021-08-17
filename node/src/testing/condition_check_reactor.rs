@@ -42,6 +42,11 @@ impl<R: Reactor> ConditionCheckReactor<R> {
     pub(crate) fn inner(&self) -> &R {
         &self.reactor
     }
+
+    /// Returns a mutable reference to the wrapped reactor.
+    pub(crate) fn inner_mut(&mut self) -> &mut R {
+        &mut self.reactor
+    }
 }
 
 impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
