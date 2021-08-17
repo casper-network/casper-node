@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.  The format
 * Experimental, nix-based kubernetes testing support has been removed.
 * Experimental support for libp2p has been removed.
 * The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
+* The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
 
 
 
