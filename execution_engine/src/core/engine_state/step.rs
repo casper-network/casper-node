@@ -6,7 +6,7 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, Error, GetEraValidatorsError},
+        engine_state::{execution_effect::ExecutionEffect, Error},
         execution,
     },
     shared::{newtypes::Blake2bHash, TypeMismatch},
@@ -128,14 +128,10 @@ pub enum StepError {
     KeyNotFound(Key),
     #[error("Type mismatch: {0}")]
     TypeMismatch(TypeMismatch),
-    #[error("Era validators missing: {0}")]
-    EraValidatorsMissing(EraId),
     #[error(transparent)]
     BytesRepr(#[from] bytesrepr::Error),
     #[error(transparent)]
     CLValueError(#[from] CLValueError),
-    #[error(transparent)]
-    GetEraValidatorsError(#[from] GetEraValidatorsError),
     #[error("Other engine state error: {0}")]
     OtherEngineStateError(#[from] Error),
     #[error(transparent)]
