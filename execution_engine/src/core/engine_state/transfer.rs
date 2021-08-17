@@ -3,7 +3,7 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 use casper_types::{
     account::{Account, AccountHash},
     system::mint,
-    AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, CLType, CLValueError, Key, PublicKey, RuntimeArgs, URef, U512,
 };
 
 use crate::{
@@ -255,6 +255,28 @@ impl TransferRuntimeArgsBuilder {
                     None => Err(Error::Exec(ExecError::Revert(ApiError::Transfer))),
                 }
             }
+            Some(cl_value) if *cl_value.cl_type() == CLType::PublicKey => {
+                let public_key: PublicKey = match cl_value.clone().into_t() {
+                    Ok(public_key) => public_key,
+                    Err(error) => {
+                        return Err(Error::Exec(ExecError::Revert(error.into())));
+                    }
+                };
+
+                let account_hash = AccountHash::from(&public_key);
+
+                self.to = Some(account_hash.to_owned());
+                match tracking_copy
+                    .borrow_mut()
+                    .read_account(correlation_id, account_hash)
+                {
+                    Ok(account) => Ok(TransferTargetMode::PurseExists(
+                        account.main_purse().with_access_rights(AccessRights::ADD),
+                    )),
+                    Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
+                }
+            }
+
             Some(_) => Err(Error::Exec(ExecError::Revert(ApiError::InvalidArgument))),
             None => Err(Error::Exec(ExecError::Revert(ApiError::MissingArgument))),
         }
