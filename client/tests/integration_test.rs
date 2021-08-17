@@ -713,7 +713,7 @@ mod get_dictionary_item {
                 .await,
             Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: CryptoError::FromHex(FromHexError::OddLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: _ })
             })
         ));
     }
