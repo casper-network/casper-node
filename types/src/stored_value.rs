@@ -1,3 +1,5 @@
+//! The stored_value module is used for working with stored values.
+
 mod type_mismatch;
 
 use crate::{
@@ -35,32 +37,32 @@ enum Tag {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Eq, PartialEq, Clone, Debug)]
-/// TODO: doc comment.
+/// StoredValue represents all possible variants of values stored in Global State.
 pub enum StoredValue {
-    /// TODO: doc comment.
+    /// Variant that stores [`CLValue`].
     CLValue(CLValue),
-    /// TODO: doc comment.
+    /// Variant that stores [`Account`].
     Account(Account),
-    /// TODO: doc comment.
+    /// Variant that stores [`ContractWasm`].
     ContractWasm(ContractWasm),
-    /// TODO: doc comment.
+    /// Variant that stores [`Contract`].
     Contract(Contract),
-    /// TODO: doc comment.
+    /// Variant that stores [`ContractPackage`].
     ContractPackage(ContractPackage),
-    /// TODO: doc comment.
+    /// Variant that stores [`Transfer`].
     Transfer(Transfer),
-    /// TODO: doc comment.
+    /// Variant that stores [`DeployInfo`].
     DeployInfo(DeployInfo),
-    /// TODO: doc comment.
+    /// Variant that stores [`EraInfo`].
     EraInfo(EraInfo),
-    /// TODO: doc comment.
+    /// Variant that stores [`Bid`].
     Bid(Box<Bid>),
-    /// TODO: doc comment.
+    /// Variant that stores unbonding information.
     Withdraw(Vec<UnbondingPurse>),
 }
 
 impl StoredValue {
-    /// TODO: doc comment.
+    /// Returns a wrapped [`CLValue`] if this is a `CLValue` variant.
     pub fn as_cl_value(&self) -> Option<&CLValue> {
         match self {
             StoredValue::CLValue(cl_value) => Some(cl_value),
@@ -68,7 +70,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped [`Account`] if this is an `Account` variant.
     pub fn as_account(&self) -> Option<&Account> {
         match self {
             StoredValue::Account(account) => Some(account),
@@ -76,7 +78,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped [`Contract`] if this is a `Contract` variant.
     pub fn as_contract(&self) -> Option<&Contract> {
         match self {
             StoredValue::Contract(contract) => Some(contract),
@@ -84,7 +86,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped [`ContractWasm`] if this is a `ContractWasm` variant.
     pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
         match self {
             StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
@@ -92,7 +94,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped [`ContractPackage`] if this is a `ContractPackage` variant.
     pub fn as_contract_package(&self) -> Option<&ContractPackage> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
@@ -100,7 +102,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped [`DeployInfo`] if this is a `DeployInfo` variant.
     pub fn as_deploy_info(&self) -> Option<&DeployInfo> {
         match self {
             StoredValue::DeployInfo(deploy_info) => Some(deploy_info),
@@ -108,7 +110,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped [`EraInfo`] if this is a `EraInfo` variant.
     pub fn as_era_info(&self) -> Option<&EraInfo> {
         match self {
             StoredValue::EraInfo(era_info) => Some(era_info),
@@ -116,7 +118,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped [`Bid`] if this is a `Bid` variant.
     pub fn as_bid(&self) -> Option<&Bid> {
         match self {
             StoredValue::Bid(bid) => Some(bid),
@@ -124,7 +126,7 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a wrapped list of [`UnbondingPurse`]s if this is a `Withdraw` variant.
     pub fn as_withdraw(&self) -> Option<&Vec<UnbondingPurse>> {
         match self {
             StoredValue::Withdraw(unbonding_purses) => Some(unbonding_purses),
@@ -132,7 +134,9 @@ impl StoredValue {
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns the type name of the [`StoredValue`] enum variant.
+    ///
+    /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),

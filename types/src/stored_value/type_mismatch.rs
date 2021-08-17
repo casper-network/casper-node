@@ -10,16 +10,16 @@ use thiserror::Error;
     feature = "std",
     error("Type mismatch. Expected {expected} but found {found}.")
 )]
-/// TODO: doc comment.
+/// An error struct representing a type mismatch in [`StoredValue`] operations.
 pub struct TypeMismatch {
-    /// TODO: doc comment.
+    /// The name of the expected type.
     pub expected: String,
-    /// TODO: doc comment.
+    /// The actual type found.
     pub found: String,
 }
 
 impl TypeMismatch {
-    /// TODO: doc comment.
+    /// Creates a new `TypeMismatch`.
     pub fn new(expected: String, found: String) -> TypeMismatch {
         TypeMismatch { expected, found }
     }
