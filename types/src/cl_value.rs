@@ -422,13 +422,13 @@ mod tests {
                 PublicKey::from(
                     &SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap(),
                 ),
-                r#"{"cl_type":"PublicKey","parsed":"01EA4a6c63e29C520abeF5507B132ec5f9954776aEBEBE7b92421EeA691446D22C"}"#,
+                r#"{"cl_type":"PublicKey","parsed":"01ea4A6c63e29C520ABEf5507B132eC5F9954776aeBEBE7B92421EEA691446D22C"}"#,
             );
             check_to_json(
                 PublicKey::from(
                     &SecretKey::secp256k1_from_bytes([8; SecretKey::SECP256K1_LENGTH]).unwrap(),
                 ),
-                r#"{"cl_type":"PublicKey","parsed":"0203f991F944d1e1954a7Fc8b9bf62e0d78f015F4C07762D505e20E6c45260a3661B"}"#,
+                r#"{"cl_type":"PublicKey","parsed":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}"#,
             );
         }
     }
@@ -653,13 +653,13 @@ mod tests {
                 Some(PublicKey::from(
                     &SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap(),
                 )),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"01EA4a6c63e29C520abeF5507B132ec5f9954776aEBEBE7b92421EeA691446D22C"}"#,
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"01ea4A6c63e29C520ABEf5507B132eC5F9954776aeBEBE7B92421EEA691446D22C"}"#,
             );
             check_to_json(
                 Some(PublicKey::from(
                     &SecretKey::secp256k1_from_bytes([8; SecretKey::SECP256K1_LENGTH]).unwrap(),
                 )),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"0203f991F944d1e1954a7Fc8b9bf62e0d78f015F4C07762D505e20E6c45260a3661B"}"#,
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}"#,
             );
             check_to_json(
                 Option::<PublicKey>::None,
@@ -1149,19 +1149,19 @@ mod tests {
             let public_key = PublicKey::from(&secret_key);
             check_to_json(
                 Result::<PublicKey, i32>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed":{"Ok":"0203f991F944d1e1954a7Fc8b9bf62e0d78f015F4C07762D505e20E6c45260a3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, u32>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed":{"Ok":"0203f991F944d1e1954a7Fc8b9bf62e0d78f015F4C07762D505e20E6c45260a3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, ()>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed":{"Ok":"0203f991F944d1e1954a7Fc8b9bf62e0d78f015F4C07762D505e20E6c45260a3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, String>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed":{"Ok":"0203f991F944d1e1954a7Fc8b9bf62e0d78f015F4C07762D505e20E6c45260a3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, i32>::Err(-1),

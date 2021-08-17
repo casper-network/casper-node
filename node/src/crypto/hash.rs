@@ -168,15 +168,15 @@ mod test {
         let inputs_and_digests = [
             (
                 "",
-                "0e5751c026e543B2e8AB2EB06099Daa1d1e5df47778F7787faAB45cdf12Fe3A8",
+                "0E5751C026E543B2E8aB2eb06099dAA1d1e5dF47778F7787fAAB45Cdf12fE3A8",
             ),
             (
                 "abc",
-                "BddD813C634239723171eF3fEE98579B94964E3bB1cB3E427262C8c068d52319",
+                "BddD813c634239723171ef3feE98579b94964e3Bb1cB3E427262C8C068d52319",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "01718cEc35Cd3D796dd00020e0BfEcb473AD23457d063b75EFf29c0ffA2e58a9",
+                "01718CeC35Cd3D796Dd00020e0bFECB473Ad23457d063b75eFF29c0FFa2E58a9",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {
@@ -224,7 +224,7 @@ mod test {
         let hash = Digest([10u8; 32]);
         assert_eq!(
             check_summed_hex::encode(&hash),
-            "0a0A0a0A0A0A0A0a0A0a0A0a0A0A0a0A0A0a0a0a0a0A0A0a0a0a0A0A0A0A0A0A"
+            "0a0a0A0A0a0A0a0a0A0a0a0a0a0a0a0A0A0A0a0A0A0a0a0A0a0A0A0a0a0a0a0a"
         )
     }
 

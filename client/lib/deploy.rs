@@ -412,22 +412,22 @@ mod tests {
     // This intentionally has awkward indentation. It was formatted with serde::to_string_pretty.
     // It is used in serialization tests.
     const CHECK_SUMMED_SAMPLE_DEPLOY: &str = r#"{
-  "hash": "4858bBd79ab7B825244C4E6959CbCd588a05608168ef36518Bc6590937191D55",
+  "hash": "4858bBD79Ab7B825244c4e6959Cbcd588A05608168eF36518BC6590937191d55",
   "header": {
-    "account": "01f60BCE2bb1059C41910eac1e7EE6C3ef4C8fCC63a901eb9603c1524CAdFb0C18",
+    "account": "01f60bcE2bb1059C41910eac1E7EE6c3eF4C8Fcc63a901Eb9603C1524cadfB0c18",
     "timestamp": "2021-01-19T01:18:19.120Z",
     "ttl": "10s",
     "gas_price": 1,
-    "body_hash": "95f2f2358C4864f01F8b073aE6f5aE67baeAF7747fc0799D0078743C513Bc1De",
+    "body_hash": "95f2F2358c4864F01F8B073ae6F5AE67bAeaF7747Fc0799D0078743C513BC1dE",
     "dependencies": [
-      "Be5fDEEA0240E999E376F8ecbCe1Bd4Fd9336F58daE4a5842558a4dA6aD35aA8",
-      "168d7Ea9c88E76B3eEF72759F2A7af24663CC871A469C7bA1387CA479e82fB41"
+      "bE5FDEea0240e999E376F8eCBCE1BD4Fd9336f58DAE4a5842558a4dA6aD35Aa8",
+      "168D7EA9C88E76B3Eef72759F2a7AF24663CC871a469C7ba1387cA479E82FB41"
     ],
     "chain_name": "casper-test-chain-name-1"
   },
   "payment": {
     "StoredVersionedContractByHash": {
-      "hash": "09DCeE4b212cfd53642AB323FbEf07daFAFC6F945A80a00147f62910A915c4E6",
+      "hash": "09DCEE4B212cFD53642Ab323fbEF07dafaFc6F945A80A00147F62910a915c4e6",
       "version": null,
       "entry_point": "entrypoint",
       "args": [
@@ -452,7 +452,7 @@ mod tests {
   },
   "session": {
     "StoredVersionedContractByHash": {
-      "hash": "09DCeE4b212cfd53642AB323FbEf07daFAFC6F945A80a00147f62910A915c4E6",
+      "hash": "09DCEE4B212cFD53642Ab323fbEF07dafaFc6F945A80A00147F62910a915c4e6",
       "version": null,
       "entry_point": "entrypoint",
       "args": [
@@ -477,12 +477,12 @@ mod tests {
   },
   "approvals": [
     {
-      "signer": "01f60BCE2bb1059C41910eac1e7EE6C3ef4C8fCC63a901eb9603c1524CAdFb0C18",
-      "signature": "010f538ef188770CdBF608BC2d7aa9460108B419b2b629f5E0714204A7f29149809A1d52776B0c514e3320494fDf6f9e9747f06f2c14dDF6f924CE218148E2840A"
+      "signer": "01f60bcE2bb1059C41910eac1E7EE6c3eF4C8Fcc63a901Eb9603C1524cadfB0c18",
+      "signature": "010F538EF188770cdbf608Bc2d7AA9460108B419B2b629F5e0714204A7F29149809a1D52776B0C514e3320494fdf6F9e9747F06F2C14Ddf6F924cE218148E2840A"
     },
     {
-      "signer": "01e67D6E56AE07ECA98b07ecEC8cfBe826B4D5bC51F3a86590C0882cdAfbD72FCC",
-      "signature": "01c4F58D7f6145C1e4397efCe766149CdE5450cBe74991269161e5E1f30a397e6Bc4c484F3C72a645cEfD42c55CfdE0294Bfd91dE55Ca977798c3C8D2A7e43a40c"
+      "signer": "01e67d6e56Ae07EcA98b07ecec8cFBe826B4d5bc51f3A86590C0882cDAfbD72FcC",
+      "signature": "01c4f58d7F6145c1e4397Efce766149cDe5450cBE74991269161E5E1F30A397E6Bc4c484f3C72A645ceFD42C55CFDE0294bFd91dE55cA977798C3C8d2A7E43A40C"
     }
   ]
 }"#;
@@ -593,6 +593,7 @@ mod tests {
         let reader = BufReader::new(bytes);
         let deploy: Deploy = serde_json::from_reader(reader).unwrap();
         let casper_case_json_string = serde_json::to_string_pretty(&deploy).unwrap();
+
         assert_eq!(CHECK_SUMMED_SAMPLE_DEPLOY, casper_case_json_string);
     }
 

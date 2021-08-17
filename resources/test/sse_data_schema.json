@@ -415,7 +415,7 @@
       "additionalProperties": false
     },
     "DeployHash": {
-      "description": "Check-summed hex-encoded deploy hash.",
+      "description": "Hex-encoded deploy hash.",
       "allOf": [
         {
           "$ref": "#/definitions/Digest"
