@@ -5,9 +5,10 @@ mod operations;
 mod types;
 
 use std::{
+    collections::BTreeMap,
     fmt::{self, Debug, Formatter},
     path::Path,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -51,7 +52,6 @@ use crate::{
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
-use std::collections::BTreeMap;
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
@@ -101,16 +101,18 @@ impl From<&BlockHeader> for ExecutionPreState {
     }
 }
 
+type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>)>>>;
+
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
-    execution_pre_state: ExecutionPreState,
+    execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
     protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
-    exec_queue: BTreeMap<u64, (FinalizedBlock, Vec<Deploy>)>,
+    exec_queue: ExecQueue,
 }
 
 impl Debug for ContractRuntime {
@@ -414,7 +416,7 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                async move {
+                tokio::task::unconstrained(async move {
                     let result = operations::execute_finalized_block(
                         engine_state.as_ref(),
                         metrics.as_ref(),
@@ -425,7 +427,7 @@ where
                     );
                     trace!(?result, "execute block response");
                     responder.respond(result).await
-                }
+                })
                 .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
@@ -433,19 +435,35 @@ where
                 deploys,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
-                if self.execution_pre_state.next_block_height == finalized_block.height() {
-                    self.execute_finalized_block(
-                        effect_builder,
-                        self.protocol_version,
-                        self.execution_pre_state.clone(),
-                        finalized_block,
-                        deploys,
+                let mut effects = Effects::new();
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                let exec_queue = Arc::clone(&self.exec_queue);
+                let execution_pre_state = Arc::clone(&self.execution_pre_state);
+                let protocol_version = self.protocol_version;
+                if self.execution_pre_state.lock().unwrap().next_block_height
+                    == finalized_block.height()
+                {
+                    effects.extend(
+                        Self::execute_finalized_block_or_requeue(
+                            engine_state,
+                            metrics,
+                            exec_queue,
+                            execution_pre_state,
+                            effect_builder,
+                            protocol_version,
+                            finalized_block,
+                            deploys,
+                        )
+                        .ignore(),
                     )
                 } else {
-                    self.exec_queue
+                    exec_queue
+                        .lock()
+                        .unwrap()
                         .insert(finalized_block.height(), (finalized_block, deploys));
-                    Effects::new()
                 }
+                effects
             }
             ContractRuntimeRequest::GetBids {
                 get_bids_request,
@@ -479,12 +497,12 @@ impl ContractRuntime {
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
-        let execution_pre_state = ExecutionPreState {
+        let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
             pre_state_root_hash: Default::default(),
             next_block_height: 0,
             parent_hash: Default::default(),
             parent_seed: Default::default(),
-        };
+        }));
 
         let environment = Arc::new(LmdbEnvironment::new(
             storage_dir,
@@ -508,10 +526,11 @@ impl ContractRuntime {
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
         let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
+
         Ok(ContractRuntime {
             execution_pre_state,
             protocol_version,
-            exec_queue: BTreeMap::new(),
+            exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             engine_state,
             metrics,
         })
@@ -548,65 +567,70 @@ impl ContractRuntime {
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
-        self.execution_pre_state = sequential_block_state;
+        *self.execution_pre_state.lock().unwrap() = sequential_block_state;
     }
 
-    fn execute_finalized_block<REv>(
-        &mut self,
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_finalized_block_or_requeue<REv>(
+        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        metrics: Arc<ContractRuntimeMetrics>,
+        exec_queue: ExecQueue,
+        execution_pre_state: Arc<Mutex<ExecutionPreState>>,
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
-        execution_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
-    ) -> Effects<ContractRuntimeRequest>
-    where
+    ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
             + Send,
     {
+        let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
         let BlockAndExecutionEffects {
             block,
             execution_results,
             maybe_step_execution_effect,
-        } = match operations::execute_finalized_block(
-            self.engine_state.as_ref(),
-            self.metrics.as_ref(),
-            protocol_version,
-            execution_pre_state,
-            finalized_block,
-            deploys,
-        ) {
+        } = match tokio::task::unconstrained(async move {
+            operations::execute_finalized_block(
+                engine_state.as_ref(),
+                metrics.as_ref(),
+                protocol_version,
+                current_execution_pre_state,
+                finalized_block,
+                deploys,
+            )
+        })
+        .await
+        {
             Ok(block_and_execution_effects) => block_and_execution_effects,
-            Err(error) => return fatal!(effect_builder, "{}", error).ignore(),
+            Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
-        self.execution_pre_state = ExecutionPreState::from(block.header());
+        let new_execution_pre_state = ExecutionPreState::from(block.header());
+        *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
         let era_id = block.header().era_id();
-        let mut effects = effect_builder
+        effect_builder
             .announce_linear_chain_block(block, execution_results)
-            .ignore();
+            .await;
         if let Some(step_execution_effect) = maybe_step_execution_effect {
-            effects.extend(
-                effect_builder
-                    .announce_step_success(era_id, step_execution_effect)
-                    .ignore(),
-            );
+            effect_builder
+                .announce_step_success(era_id, step_execution_effect)
+                .await;
         }
 
         // If the child is already finalized, start execution.
-        if let Some((finalized_block, deploys)) = self
-            .exec_queue
-            .remove(&self.execution_pre_state.next_block_height)
-        {
-            effects.extend(
-                effect_builder
-                    .enqueue_block_for_execution(finalized_block, deploys)
-                    .ignore(),
-            );
+        let next_block = {
+            // needed to help this async block impl Send (the MutexGuard lives too long)
+            let queue = &mut *exec_queue.lock().expect("mutex poisoned");
+            queue.remove(&new_execution_pre_state.next_block_height)
+        };
+        if let Some((finalized_block, deploys)) = next_block {
+            effect_builder
+                .enqueue_block_for_execution(finalized_block, deploys)
+                .await
         }
-        effects
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
