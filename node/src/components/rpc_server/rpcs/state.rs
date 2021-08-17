@@ -727,7 +727,7 @@ impl DocExample for GetDictionaryItemResult {
     }
 }
 
-/// "state_get_dictionary" RPC.
+/// "state_get_dictionary_item" RPC.
 pub struct GetDictionaryItem {}
 
 impl RpcWithParams for GetDictionaryItem {

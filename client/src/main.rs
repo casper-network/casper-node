@@ -8,10 +8,10 @@ mod generate_completion;
 mod get_account_info;
 mod get_auction_info;
 mod get_balance;
+mod get_dictionary_item;
 mod get_era_info_by_switch_block;
 mod get_state_hash;
 mod keygen;
-mod query_dictionary;
 mod query_global_state;
 
 use std::process;

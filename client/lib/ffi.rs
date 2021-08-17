@@ -25,7 +25,7 @@ fn set_last_error(error: Error) {
 ///
 /// The full error can be extracted with get_last_error. See [Error](super::Error) for more details
 /// on what these mean.
-#[allow(non_snake_case, non_camel_case_types, missing_docs)]
+#[allow(non_camel_case_types, missing_docs)]
 #[repr(C)]
 pub enum casper_error_t {
     CASPER_SUCCESS = 0,
@@ -586,6 +586,40 @@ pub extern "C" fn casper_get_item(
     })
 }
 
+/// Retrieves a stored value from a dictionary.
+///
+/// See [get_dictionary_item](super::get_dictionary_item) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_dictionary_item(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbosity_level: u64,
+    state_root_hash: *const c_char,
+    dictionary_str_params: *const casper_dictionary_params_t,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> casper_error_t {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
+    let node_address = try_unsafe_arg!(node_address);
+    let state_root_hash = try_unsafe_arg!(state_root_hash);
+    let dictionary_str_params = try_arg_into!(dictionary_str_params);
+    runtime.block_on(async move {
+        let result = super::get_dictionary_item(
+            maybe_rpc_id,
+            node_address,
+            verbosity_level,
+            state_root_hash,
+            dictionary_str_params,
+        )
+        .await;
+        let response = try_unwrap_rpc!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        casper_error_t::CASPER_SUCCESS
+    })
+}
+
 /// Retrieves information from global state using either a Block hash or a state root hash.
 ///
 /// See [query_global_state](super::query_global_state) for more info.
@@ -734,7 +768,6 @@ pub extern "C" fn casper_keygen(
 /// Container for `Deploy` construction options.
 ///
 /// See [DeployStrParams](super::DeployStrParams) for more info.
-#[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct casper_deploy_params_t {
@@ -781,7 +814,6 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
 /// Container for `Payment` construction options.
 ///
 /// See [PaymentStrParams](super::PaymentStrParams) for more info.
-#[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct casper_payment_params_t {
@@ -855,7 +887,6 @@ impl TryInto<super::PaymentStrParams<'static>> for casper_payment_params_t {
 /// Container for `Session` construction options.
 ///
 /// See [SessionStrParams](super::SessionStrParams) for more info.
-#[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct casper_session_params_t {
@@ -925,7 +956,6 @@ impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
 /// The two ways to construct a query to global state.
 ///
 /// See [GlobalStateStrParams](super::GlobalStateStrParams) for more info.
-#[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct casper_global_state_params_t {
@@ -943,5 +973,100 @@ impl TryInto<super::GlobalStateStrParams<'static>> for casper_global_state_param
             hash_value,
             is_block_hash: self.is_block_hash,
         })
+    }
+}
+
+/// Container for `DictionaryItemStrParams` construction options.
+///
+/// See [DictionaryItemStrParams](super::DictionaryItemStrParams) for more info.
+#[allow(missing_docs)]
+#[repr(C)]
+#[derive(Clone)]
+pub enum casper_dictionary_params_t {
+    AccountNamedKey {
+        key: *const c_char,
+        dictionary_name: *const c_char,
+        dictionary_item_key: *const c_char,
+    },
+    ContractNamedKey {
+        key: *const c_char,
+        dictionary_name: *const c_char,
+        dictionary_item_key: *const c_char,
+    },
+    URef {
+        seed_uref: *const c_char,
+        dictionary_item_key: *const c_char,
+    },
+    Dictionary(*const c_char),
+}
+
+impl TryInto<super::DictionaryItemStrParams<'static>> for casper_dictionary_params_t {
+    type Error = Error;
+
+    fn try_into(self) -> Result<super::DictionaryItemStrParams<'static>> {
+        match self {
+            casper_dictionary_params_t::AccountNamedKey {
+                key,
+                dictionary_name,
+                dictionary_item_key,
+            } => {
+                let key = unsafe_str_arg(key, "casper_dictionary_params_t::AccountNamedKey.key")?;
+                let dictionary_name = unsafe_str_arg(
+                    dictionary_name,
+                    "casper_dictionary_params_t::AccountNamedKey.dictionary_name",
+                )?;
+                let dictionary_item_key = unsafe_str_arg(
+                    dictionary_item_key,
+                    "casper_dictionary_params_t::AccountNamedKey.dictionary_item_key",
+                )?;
+                Ok(super::DictionaryItemStrParams::AccountNamedKey {
+                    key,
+                    dictionary_name,
+                    dictionary_item_key,
+                })
+            }
+            casper_dictionary_params_t::ContractNamedKey {
+                key,
+                dictionary_name,
+                dictionary_item_key,
+            } => {
+                let key = unsafe_str_arg(key, "casper_dictionary_params_t::ContractNamedKey.key")?;
+                let dictionary_name = unsafe_str_arg(
+                    dictionary_name,
+                    "casper_dictionary_params_t::ContractNamedKey.dictionary_name",
+                )?;
+                let dictionary_item_key = unsafe_str_arg(
+                    dictionary_item_key,
+                    "casper_dictionary_params_t::ContractNamedKey.dictionary_item_key",
+                )?;
+                Ok(super::DictionaryItemStrParams::ContractNamedKey {
+                    key,
+                    dictionary_name,
+                    dictionary_item_key,
+                })
+            }
+            casper_dictionary_params_t::URef {
+                seed_uref,
+                dictionary_item_key,
+            } => {
+                let seed_uref =
+                    unsafe_str_arg(seed_uref, "casper_dictionary_params_t::URef.seed_uref")?;
+                let dictionary_item_key = unsafe_str_arg(
+                    dictionary_item_key,
+                    "casper_dictionary_params_t::URef.dictionary_item_key",
+                )?;
+                Ok(super::DictionaryItemStrParams::URef {
+                    seed_uref,
+                    dictionary_item_key,
+                })
+            }
+            casper_dictionary_params_t::Dictionary(dictionary_address) => {
+                let dictionary_address =
+                    unsafe_str_arg(dictionary_address, "casper_dictionary_params_t::Dictionary")?;
+                Ok(super::DictionaryItemStrParams::Dictionary(
+                    dictionary_address,
+                ))
+            }
+        }
     }
 }

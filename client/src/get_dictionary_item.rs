@@ -267,7 +267,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDictionaryItem {
             return Err(Error::FailedToParseDictionaryIdentifier);
         };
 
-        casper_client::get_dictionary(
+        casper_client::get_dictionary_item(
             maybe_rpc_id,
             node_address,
             verbosity_level,

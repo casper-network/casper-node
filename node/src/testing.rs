@@ -4,6 +4,7 @@
 //! `casper-node` library.
 
 mod condition_check_reactor;
+pub(crate) mod filter_reactor;
 mod multi_stage_test_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;

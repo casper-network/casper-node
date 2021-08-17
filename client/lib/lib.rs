@@ -588,7 +588,7 @@ pub async fn list_rpcs(
         .await
 }
 
-/// Retrieves a stored value from the network.
+/// Retrieves a stored value from a dictionary.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
 ///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
@@ -602,7 +602,7 @@ pub async fn list_rpcs(
 ///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
 /// * `dictionary_str_params` contains options to query a dictionary item.
-pub async fn get_dictionary(
+pub async fn get_dictionary_item(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
