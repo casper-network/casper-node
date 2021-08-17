@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add getter for public key algorithm name.
 * Add getter for raw bytes of public key.
 * Export casper_blake2b.
+* Added new APIs for transferring tokens into public keys: `transferToPublicKey` and `transferFromPurseToPurse`.
 
 ### Fixed
 * Fix instances of `return <T>unreachable()` which is invalid code under the latest AssemblyScript compiler.
