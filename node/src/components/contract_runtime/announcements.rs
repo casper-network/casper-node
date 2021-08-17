@@ -66,7 +66,7 @@ impl Display for ContractRuntimeAnnouncement {
             } => {
                 write!(
                     f,
-                    "upcoming era validators after current era {}.",
+                    "upcoming era validators after current {}.",
                     era_that_is_ending,
                 )
             }
