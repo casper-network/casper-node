@@ -1141,6 +1141,17 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves the highest block header from the storage, if one exists.
+    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, Error> {
+        let highest_block_hash = match self.block_height_index
+            .iter()
+            .last() {
+                Some((_, highest_block_hash)) => highest_block_hash,
+                None => return Ok(None),
+            };
+        self.read_block_header_by_hash(highest_block_hash)
+    }
+
     /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
     /// the ancestry chain.
     fn get_blocks_while<F, Tx: Transaction>(
@@ -1329,7 +1340,7 @@ impl Storage {
     }
 
     // Retrieves a block header by hash.
-    pub(crate) fn get_block_header_by_hash(
+    pub(crate) fn read_block_header_by_hash(
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHeader>, Error> {

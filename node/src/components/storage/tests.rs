@@ -497,7 +497,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
 
     {
         let block_header = storage
-            .get_block_header_by_hash(block.hash())
+            .read_block_header_by_hash(block.hash())
             .expect("should not throw exception")
             .expect("should not be None");
         assert_eq!(

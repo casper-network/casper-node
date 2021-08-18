@@ -53,11 +53,10 @@ pub(crate) enum Error {
     #[error("bytesrepr error: {0}")]
     BytesRepr(#[from] bytesrepr::Error),
 
-    /// Cannot run genesis on pre-existing blockchain.
-    #[error("Cannot run genesis on pre-existing blockchain. First block: {first_block_header:?}")]
+    /// Cannot run genesis on preexisting blockchain.
+    #[error("Cannot run genesis on preexisting blockchain. First block: {highest_block_header:?}")]
     CannotRunGenesisOnPreExistingBlockchain {
-        /// The first block header.  Should have height 1.
-        first_block_header: Box<BlockHeader>,
+        highest_block_header: Box<BlockHeader>,
     },
 
     /// No such switch block for upgrade era.
