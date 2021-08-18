@@ -22,6 +22,18 @@ pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 
+pub static CAROL_PRIVATE_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap());
+pub static CAROL_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*CAROL_PRIVATE_KEY));
+
+pub static DAN_PRIVATE_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap());
+pub static DAN_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*DAN_PRIVATE_KEY));
+
+pub static ERIC_PRIVATE_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap());
+pub static ERIC_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ERIC_PRIVATE_KEY));
+
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
 /// The test `Chainspec` returned has eras with exactly two blocks.
 pub fn new_test_chainspec<I, T>(stakes: I) -> Chainspec

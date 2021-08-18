@@ -1,5 +1,4 @@
 mod horizon;
-mod rewards;
 
 use std::iter;
 
@@ -168,8 +167,7 @@ impl<C: Context> FinalityDetector<C> {
         self.ftt
     }
 
-    /// Creates the information for the terminal block: which validators were inactive, and how
-    /// rewards should be distributed.
+    /// Creates the information for the terminal block, i.e. which validators were inactive.
     fn create_terminal_block_data(
         bhash: &C::Hash,
         unit: &Unit<C>,
@@ -178,11 +176,6 @@ impl<C: Context> FinalityDetector<C> {
         // Safe to unwrap: Index exists, since we have units from them.
         let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
         let state = highway.state();
-
-        // Compute the rewards, and replace each validator index with the validator ID.
-        let rewards = rewards::compute_rewards(state, bhash);
-        let rewards_iter = rewards.enumerate();
-        let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
 
         // Report inactive validators, but only if they had sufficient time to create a unit, i.e.
         // if at least one maximum-length round passed between the first and last block.
@@ -197,7 +190,6 @@ impl<C: Context> FinalityDetector<C> {
         };
 
         TerminalBlockData {
-            rewards,
             inactive_validators,
         }
     }

@@ -6,8 +6,6 @@ use super::{round_len, TimeDiff, Timestamp};
 #[derive(Debug, DataSize, Clone)]
 pub(crate) struct Params {
     seed: u64,
-    block_reward: u64,
-    reduced_block_reward: u64,
     min_round_exp: u8,
     max_round_exp: u8,
     init_round_exp: u8,
@@ -23,12 +21,6 @@ impl Params {
     /// Arguments:
     ///
     /// * `seed`: The random seed.
-    /// * `block_reward`: The total reward that is paid out for a finalized block. Validator rewards
-    ///   for finalization must add up to this number or less. This should be large enough to allow
-    ///   very precise fractions of a block reward while still leaving space for millions of full
-    ///   rewards in a `u64`.
-    /// * `reduced_block_reward`: The reduced block reward that is paid out even if the heaviest
-    ///   summit does not exceed half the total weight.
     /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
     ///   minimum round length.
     /// * `max_round_exp`: The maximum round exponent. `1 << max_round_exp` milliseconds is the
@@ -39,8 +31,6 @@ impl Params {
     #[allow(clippy::too_many_arguments)] // FIXME
     pub(crate) fn new(
         seed: u64,
-        block_reward: u64,
-        reduced_block_reward: u64,
         min_round_exp: u8,
         max_round_exp: u8,
         init_round_exp: u8,
@@ -49,14 +39,8 @@ impl Params {
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
     ) -> Params {
-        assert!(
-            reduced_block_reward <= block_reward,
-            "reduced block reward must not be greater than the reward for a finalized block"
-        );
         Params {
             seed,
-            block_reward,
-            reduced_block_reward,
             min_round_exp,
             max_round_exp,
             init_round_exp,
@@ -70,17 +54,6 @@ impl Params {
     /// Returns the random seed.
     pub(crate) fn seed(&self) -> u64 {
         self.seed
-    }
-
-    /// Returns the total reward for a finalized block.
-    pub(crate) fn block_reward(&self) -> u64 {
-        self.block_reward
-    }
-
-    /// Returns the reduced block reward that is paid out even if the heaviest summit does not
-    /// exceed half the total weight. This is at most `block_reward`.
-    pub(crate) fn reduced_block_reward(&self) -> u64 {
-        self.reduced_block_reward
     }
 
     /// Returns the minimum round exponent. `1 << self.min_round_exp()` milliseconds is the minimum

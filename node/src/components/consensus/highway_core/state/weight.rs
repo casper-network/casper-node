@@ -32,11 +32,6 @@ impl Weight {
         Some(Weight(self.0.checked_add(rhs.0)?))
     }
 
-    /// Saturating addition. Returns `Weight(u64::MAX)` if overflow would occur.
-    pub fn saturating_add(self, rhs: Weight) -> Weight {
-        Weight(self.0.saturating_add(rhs.0))
-    }
-
     /// Returns `true` if this weight is zero.
     pub fn is_zero(self) -> bool {
         self.0 == 0

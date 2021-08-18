@@ -2,7 +2,7 @@ pub(crate) mod config;
 mod participation;
 mod round_success_meter;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::{
     any::Any,
@@ -18,7 +18,7 @@ use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{system::auction::BLOCK_REWARD, U512};
+use casper_types::U512;
 
 use crate::{
     components::consensus::{
@@ -187,8 +187,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         let params = Params::new(
             seed,
-            BLOCK_REWARD,
-            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,

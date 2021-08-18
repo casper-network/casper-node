@@ -14,7 +14,7 @@ use crate::components::consensus::{
     highway_core::{
         evidence::EvidenceError,
         highway::Dependency,
-        highway_testing::{TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID},
+        highway_testing::{TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID},
     },
     traits::{ConsensusValueT, ValidatorSecret},
 };
@@ -122,8 +122,6 @@ impl<C: Context> SignedWireUnit<C> {
 pub(crate) fn test_params(seed: u64) -> Params {
     Params::new(
         seed,
-        TEST_BLOCK_REWARD,
-        TEST_BLOCK_REWARD / 5,
         TEST_MIN_ROUND_EXP,
         TEST_MAX_ROUND_EXP,
         TEST_INIT_ROUND_EXP,
@@ -240,8 +238,6 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
 fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
     let params = Params::new(
         0,
-        TEST_BLOCK_REWARD,
-        TEST_BLOCK_REWARD / 5,
         4,
         19,
         4,

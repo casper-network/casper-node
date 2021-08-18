@@ -39,8 +39,6 @@ where
 {
     let params = state::Params::new(
         seed,
-        highway_testing::TEST_BLOCK_REWARD,
-        highway_testing::TEST_BLOCK_REWARD / 5,
         14,
         19,
         4,

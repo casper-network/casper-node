@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
+* The `MismatchedEraValidators` auction error is deprecated.
 
 
 

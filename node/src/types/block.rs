@@ -274,13 +274,13 @@ pub type EraReport = consensus::EraReport<PublicKey>;
 
 impl Display for EraReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let slashings = DisplayIter::new(&self.equivocators);
-        let rewards = DisplayIter::new(
-            self.rewards
-                .iter()
-                .map(|(public_key, amount)| format!("{}: {}", public_key, amount)),
-        );
-        write!(f, "era end: slash {}, reward {}", slashings, rewards)
+        let equivocators = DisplayIter::new(&self.equivocators);
+        let inactive_validators = DisplayIter::new(&self.inactive_validators);
+        write!(
+            f,
+            "era end: equivocators {}, inactive validators {}",
+            equivocators, inactive_validators
+        )
     }
 }
 
@@ -361,8 +361,8 @@ impl FinalizedBlock {
         self.timestamp
     }
 
-    /// Returns slashing and reward information if this is a switch block, i.e. the last block of
-    /// its era.
+    /// Returns information about who equivocated or was inactive, if this is a switch block, i.e.
+    /// the last block of its era.
     pub(crate) fn era_report(&self) -> Option<&EraReport> {
         self.era_report.as_ref()
     }

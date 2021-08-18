@@ -92,18 +92,6 @@ impl<'a, C: Context> Horizon<'a, C> {
         }
     }
 
-    /// The maximal quorum for which this is a committee, i.e. the minimum seen weight of the
-    /// members.
-    ///
-    /// Panics if a member of the committee is not in `self.latest`. This can never happen if the
-    /// committee was computed from a `Horizon` that originated from the same `level0` as this one.
-    pub(super) fn committee_quorum(&self, committee: &[ValidatorIndex]) -> Option<Weight> {
-        let seen_weight = |idx: &ValidatorIndex| {
-            self.seen_weight(self.state.unit(self.latest[*idx].unwrap()), committee)
-        };
-        committee.iter().map(seen_weight).min()
-    }
-
     /// Returns the horizon containing the earliest unit of each of the `committee` members that
     /// can see a quorum of units by `committee` members in `self`.
     fn next_from_committee(&self, quorum: Weight, committee: &[ValidatorIndex]) -> Self {

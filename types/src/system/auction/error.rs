@@ -98,6 +98,7 @@ pub enum Error {
     MissingDelegations = 22,
     /// The validators returned by the consensus component should match
     /// current era validators when distributing rewards.
+    /// **Deprecated**
     #[cfg_attr(
         feature = "std",
         error("Mismatched era validator sets to distribute rewards")

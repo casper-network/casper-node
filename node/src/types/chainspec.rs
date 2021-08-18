@@ -358,10 +358,6 @@ mod tests {
         );
         assert_eq!(spec.highway_config.minimum_round_exponent, 14);
         assert_eq!(spec.highway_config.maximum_round_exponent, 19);
-        assert_eq!(
-            spec.highway_config.reduced_reward_multiplier,
-            Ratio::new(1, 5)
-        );
 
         assert_eq!(
             spec.deploy_config.max_payment_cost,

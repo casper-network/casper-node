@@ -37,8 +37,8 @@ use crate::{
         cl_context::{ClContext, Keypair},
         config::ProtocolConfig,
         consensus_protocol::{
-            ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
-            ProtocolOutcome, ProtocolOutcomes,
+            ConsensusProtocol, FinalizedBlock as CpFinalizedBlock, ProposedBlock, ProtocolOutcome,
+            ProtocolOutcomes,
         },
         metrics::ConsensusMetrics,
         traits::NodeIdT,
@@ -1083,13 +1083,14 @@ where
                 let era = self.era_supervisor.active_eras.get_mut(&era_id).unwrap();
                 era.add_accusations(&equivocators);
                 era.add_accusations(value.accusations());
+
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
-                let era_end = terminal_block_data.map(|tbd| EraReport {
-                    rewards: tbd.rewards,
-                    equivocators: era.accusations(),
-                    inactive_validators: tbd.inactive_validators,
+                let protocol_config = &self.era_supervisor.protocol_config;
+                let era_end = terminal_block_data.map(|terminal_block_data| {
+                    era.create_report(terminal_block_data, timestamp, protocol_config)
                 });
+
                 let finalized_block = FinalizedBlock::new(
                     Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
                     era_end,

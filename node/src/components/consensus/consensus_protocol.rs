@@ -111,8 +111,6 @@ pub struct EraReport<VID> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TerminalBlockData<C: Context> {
-    /// The rewards for participating in consensus.
-    pub(crate) rewards: BTreeMap<C::ValidatorId, u64>,
     /// The list of validators that haven't produced any units.
     pub(crate) inactive_validators: Vec<C::ValidatorId>,
 }
@@ -131,7 +129,7 @@ pub(crate) struct FinalizedBlock<C: Context> {
     /// The validators known to be faulty as seen by this block.
     pub(crate) equivocators: Vec<C::ValidatorId>,
     /// If this is a terminal block, i.e. the last one to be finalized, this contains additional
-    /// data like rewards and inactive validators.
+    /// data like inactive validators.
     pub(crate) terminal_block_data: Option<TerminalBlockData<C>>,
     /// Proposer of this value
     pub(crate) proposer: C::ValidatorId,

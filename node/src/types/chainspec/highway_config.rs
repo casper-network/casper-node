@@ -19,10 +19,6 @@ pub(crate) struct HighwayConfig {
     pub(crate) finality_threshold_fraction: Ratio<u64>,
     pub(crate) minimum_round_exponent: u8,
     pub(crate) maximum_round_exponent: u8,
-    /// The factor by which rewards for a round are multiplied if the greatest summit has ≤50%
-    /// quorum, i.e. no finality.
-    #[data_size(skip)]
-    pub(crate) reduced_reward_multiplier: Ratio<u64>,
 }
 
 impl HighwayConfig {
@@ -47,14 +43,6 @@ impl HighwayConfig {
             return false;
         }
 
-        if self.reduced_reward_multiplier > Ratio::new(1, 1) {
-            error!(
-                rrm = %self.reduced_reward_multiplier,
-                "reduced reward multiplier is not in the range [0, 1]",
-            );
-            return false;
-        }
-
         true
     }
 
@@ -71,13 +59,11 @@ impl HighwayConfig {
         let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
         let minimum_round_exponent = rng.gen_range(0..16);
         let maximum_round_exponent = rng.gen_range(16..22);
-        let reduced_reward_multiplier = Ratio::new(rng.gen_range(0..10), 10);
 
         HighwayConfig {
             finality_threshold_fraction,
             minimum_round_exponent,
             maximum_round_exponent,
-            reduced_reward_multiplier,
         }
     }
 }
@@ -88,7 +74,6 @@ impl ToBytes for HighwayConfig {
         buffer.extend(self.finality_threshold_fraction.to_bytes()?);
         buffer.extend(self.minimum_round_exponent.to_bytes()?);
         buffer.extend(self.maximum_round_exponent.to_bytes()?);
-        buffer.extend(self.reduced_reward_multiplier.to_bytes()?);
         Ok(buffer)
     }
 
@@ -96,7 +81,6 @@ impl ToBytes for HighwayConfig {
         self.finality_threshold_fraction.serialized_length()
             + self.minimum_round_exponent.serialized_length()
             + self.maximum_round_exponent.serialized_length()
-            + self.reduced_reward_multiplier.serialized_length()
     }
 }
 
@@ -105,12 +89,10 @@ impl FromBytes for HighwayConfig {
         let (finality_threshold_fraction, remainder) = Ratio::<u64>::from_bytes(bytes)?;
         let (minimum_round_exponent, remainder) = u8::from_bytes(remainder)?;
         let (maximum_round_exponent, remainder) = u8::from_bytes(remainder)?;
-        let (reduced_reward_multiplier, remainder) = Ratio::<u64>::from_bytes(remainder)?;
         let config = HighwayConfig {
             finality_threshold_fraction,
             minimum_round_exponent,
             maximum_round_exponent,
-            reduced_reward_multiplier,
         };
         Ok((config, remainder))
     }
@@ -171,24 +153,6 @@ mod tests {
         highway_config.finality_threshold_fraction = Ratio::new(u64::MAX, u64::MAX);
         assert!(!highway_config.is_valid());
         highway_config.finality_threshold_fraction = Ratio::new(u64::MAX, u64::MAX - 1);
-        assert!(!highway_config.is_valid());
-    }
-
-    #[test]
-    fn should_validate_for_reduced_reward_multiplier() {
-        let mut rng = crate::new_rng();
-        let mut highway_config = HighwayConfig::random(&mut rng);
-
-        // Should be valid for 0 <= RRM <= 1.
-        highway_config.reduced_reward_multiplier = Ratio::new(0, 1);
-        assert!(highway_config.is_valid());
-        highway_config.reduced_reward_multiplier = Ratio::new(1, 1);
-        assert!(highway_config.is_valid());
-        highway_config.reduced_reward_multiplier = Ratio::new(u64::MAX, u64::MAX);
-        assert!(highway_config.is_valid());
-
-        // Should be invalid for RRM > 1.
-        highway_config.reduced_reward_multiplier = Ratio::new(u64::MAX, u64::MAX - 1);
         assert!(!highway_config.is_valid());
     }
 }

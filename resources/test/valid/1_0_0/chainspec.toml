@@ -21,7 +21,6 @@ unbonding_delay = 14
 finality_threshold_fraction = [2, 25]
 minimum_round_exponent = 14
 maximum_round_exponent = 19
-reduced_reward_multiplier = [1, 5]
 
 [deploys]
 max_payment_cost = '9'

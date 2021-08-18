@@ -5,15 +5,17 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use num_traits::AsPrimitive;
 use once_cell::sync::Lazy;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
-use casper_types::{PublicKey, U512};
+use casper_types::{system::auction::BLOCK_REWARD, PublicKey, U512};
 
 use crate::{
     components::consensus::{
         cl_context::ClContext,
-        consensus_protocol::{ConsensusProtocol, ProposedBlock},
+        config::ProtocolConfig,
+        consensus_protocol::{ConsensusProtocol, EraReport, ProposedBlock, TerminalBlockData},
         protocols::highway::HighwayProtocol,
     },
     types::Timestamp,
@@ -161,6 +163,63 @@ impl<I> Era<I> {
     pub(crate) fn set_paused(&mut self, paused: bool) {
         self.consensus.set_paused(paused);
     }
+
+    /// Computes rewards and returns the era report.
+    pub(crate) fn create_report(
+        &self,
+        terminal_block_data: TerminalBlockData<ClContext>,
+        timestamp: Timestamp,
+        protocol_config: &ProtocolConfig,
+    ) -> EraReport<PublicKey> {
+        let TerminalBlockData {
+            inactive_validators,
+        } = terminal_block_data;
+
+        // The total rewards are the ideal number of blocks (i.e. one per minimum-length round) in
+        // the actual duration of the era, times the BLOCK_REWARD constant, independent of how many
+        // blocks were actually created.
+        let era_duration = timestamp.saturating_diff(self.start_time);
+        let min_round_length = protocol_config.highway_config.min_round_length();
+        let number_of_min_length_rounds = era_duration / min_round_length;
+        let total_rewards: u64 = number_of_min_length_rounds
+            .checked_mul(BLOCK_REWARD)
+            .unwrap_or_else(|| {
+                // With BLOCK_REWARD set to one trillion and a round length of 1 minute, a single
+                // era would have to last 35 years before the total rewards would overflow a u64.
+                error!(%era_duration, %min_round_length, %BLOCK_REWARD, "total rewards overflow");
+                u64::MAX
+            });
+
+        // The total rewards are distributed proportionally by weight. To make sure that the
+        // computation doesn't overflow we divide all weights by 2^64 if the numbers are too large.
+        let total_weight: U512 = self.validators.values().cloned().sum();
+        let shift = if total_weight.checked_mul(total_rewards.into()).is_none() {
+            64
+        } else {
+            0
+        };
+        let rewards = self
+            .validators
+            .iter()
+            .filter_map(|(public_key, weight)| {
+                if total_rewards == 0
+                    || self.accusations.contains(public_key)
+                    || self.faulty.contains(public_key)
+                    || inactive_validators.contains(public_key)
+                {
+                    None // Equivocators and inactive validators get no reward.
+                } else {
+                    let reward = (weight >> shift) * total_rewards / (total_weight >> shift);
+                    Some((public_key.clone(), AsPrimitive::as_(reward)))
+                }
+            })
+            .collect();
+        EraReport {
+            rewards,
+            equivocators: self.accusations(),
+            inactive_validators,
+        }
+    }
 }
 
 impl<I> DataSize for Era<I>
@@ -219,5 +278,96 @@ where
             .saturating_add(faulty.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())
             .saturating_add(validators.estimate_heap_size())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::components::consensus::{
+        protocols::highway::tests::new_test_highway_protocol, tests::utils::*,
+    };
+
+    use super::*;
+
+    #[test]
+    fn create_report() {
+        let validators: BTreeMap<PublicKey, U512> = vec![
+            (ALICE_PUBLIC_KEY.clone(), 50.into()),
+            (BOB_PUBLIC_KEY.clone(), 20.into()),
+            (CAROL_PUBLIC_KEY.clone(), 10.into()),
+            (DAN_PUBLIC_KEY.clone(), 5.into()),
+            (ERIC_PUBLIC_KEY.clone(), 15.into()),
+        ]
+        .into_iter()
+        .collect();
+        let start_time = Timestamp::from(0);
+        let chainspec = new_test_chainspec(validators.clone());
+        let protocol_config = ProtocolConfig::from(&chainspec);
+        let round_len = chainspec.highway_config.min_round_length();
+        let new_faulty = vec![DAN_PUBLIC_KEY.clone()];
+        let faulty: HashSet<PublicKey> = vec![DAN_PUBLIC_KEY.clone(), ERIC_PUBLIC_KEY.clone()]
+            .into_iter()
+            .collect();
+        let mut era = Era::new(
+            new_test_highway_protocol(validators.clone(), faulty.iter().cloned()),
+            start_time,
+            0,
+            new_faulty,
+            faulty,
+            validators,
+        );
+
+        let time = start_time + round_len * 4;
+
+        // The era lasted four rounds, so the total reward is 4 * BLOCK_REWARD.
+        // Dan and Eric recently equivocated, so they don't get a reward.
+        let tbd = TerminalBlockData {
+            inactive_validators: vec![],
+        };
+        let report = EraReport {
+            rewards: vec![
+                (ALICE_PUBLIC_KEY.clone(), 50 * 4 * BLOCK_REWARD / 100),
+                (BOB_PUBLIC_KEY.clone(), 20 * 4 * BLOCK_REWARD / 100),
+                (CAROL_PUBLIC_KEY.clone(), 10 * 4 * BLOCK_REWARD / 100),
+            ]
+            .into_iter()
+            .collect(),
+            equivocators: vec![],
+            inactive_validators: vec![],
+        };
+        assert_eq!(report, era.create_report(tbd, time, &protocol_config));
+
+        // If Carol is inactive in this era, she doesn't get a reward.
+        let tbd = TerminalBlockData {
+            inactive_validators: vec![CAROL_PUBLIC_KEY.clone()],
+        };
+        let report = EraReport {
+            rewards: vec![
+                (ALICE_PUBLIC_KEY.clone(), 50 * 4 * BLOCK_REWARD / 100),
+                (BOB_PUBLIC_KEY.clone(), 20 * 4 * BLOCK_REWARD / 100),
+            ]
+            .into_iter()
+            .collect(),
+            equivocators: vec![],
+            inactive_validators: vec![CAROL_PUBLIC_KEY.clone()],
+        };
+        assert_eq!(report, era.create_report(tbd, time, &protocol_config));
+
+        // And if she is faulty, she doesn't get one either.
+        let tbd = TerminalBlockData {
+            inactive_validators: vec![],
+        };
+        era.add_accusations(&[CAROL_PUBLIC_KEY.clone()]);
+        let report = EraReport {
+            rewards: vec![
+                (ALICE_PUBLIC_KEY.clone(), 50 * 4 * BLOCK_REWARD / 100),
+                (BOB_PUBLIC_KEY.clone(), 20 * 4 * BLOCK_REWARD / 100),
+            ]
+            .into_iter()
+            .collect(),
+            equivocators: vec![CAROL_PUBLIC_KEY.clone()],
+            inactive_validators: vec![],
+        };
+        assert_eq!(report, era.create_report(tbd, time, &protocol_config));
     }
 }
