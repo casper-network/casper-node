@@ -183,14 +183,12 @@ where
         if let Some(sender) = self.0.take() {
             if let Err(data) = sender.send(data) {
                 error!(
-                    responder = ?self,
                     ?data,
                     "could not send response to request down oneshot channel"
                 );
             }
         } else {
             error!(
-                responder = ?self,
                 ?data,
                 "tried to send a value down a responder channel, but it was already used"
             );
