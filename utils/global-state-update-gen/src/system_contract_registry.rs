@@ -3,13 +3,11 @@ use std::path::Path;
 use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
-use casper_execution_engine::{
-    core::engine_state::genesis::SystemContractRegistry, shared::stored_value::StoredValue,
-};
+use casper_execution_engine::core::engine_state::genesis::SystemContractRegistry;
 use casper_types::{
     bytesrepr::FromBytes,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    CLValue, ContractHash, Key, KEY_HASH_LENGTH,
+    CLValue, ContractHash, Key, StoredValue, KEY_HASH_LENGTH,
 };
 
 use crate::utils::print_entry;
