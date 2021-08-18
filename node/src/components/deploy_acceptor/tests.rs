@@ -24,12 +24,10 @@ use casper_execution_engine::{
     },
     storage::trie::merkle_proof::TrieMerkleProof,
 };
-use casper_types::{CLValue, ProtocolVersion, URef, U512};
+use casper_types::{AccessRights, CLValue, ProtocolVersion, PublicKey, SecretKey, URef, U512};
 
 use super::*;
 
-use crate::reactor::QueueKind;
-use crate::types::Block;
 use crate::{
     components::{
         contract_runtime::{self, ContractRuntime},
@@ -37,6 +35,7 @@ use crate::{
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
+    crypto::AsymmetricKeyExt,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
@@ -46,19 +45,30 @@ use crate::{
         Responder,
     },
     protocol::Message as NodeMessage,
-    reactor::{self, EventQueueHandle, Runner},
+    reactor::{self, EventQueueHandle, QueueKind, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::{Chainspec, Deploy, NodeId, Tag},
+    types::{Block, Chainspec, Deploy, NodeId, Tag},
     utils::{Loadable, WithDir},
     NodeRng,
 };
 
-const PRESET_PURSE_UREF: Lazy<URef> = Lazy::new(|| URef::default());
-const VALID_BALANCE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT + 1));
-const INVALID_BALANCE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT - 1));
+const VALID_PURSE_UREF: URef = URef::new([255; 32], AccessRights::READ_ADD_WRITE);
+const INVALID_PURSE_UREF: URef = URef::new([254; 32], AccessRights::READ_ADD_WRITE);
+
+static VALID_BALANCE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT + 1));
+static INVALID_BALANCE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT - 1));
+
+static VALID_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static INVALID_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -108,13 +118,13 @@ impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
 
 impl From<ConsensusRequest> for Event {
     fn from(_request: ConsensusRequest) -> Self {
-        unimplemented!("not implemented for gossiper tests")
+        unimplemented!("not implemented for acceptor tests")
     }
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {
     fn from(_request: LinearChainRequest<NodeId>) -> Self {
-        unimplemented!("not implemented for gossiper tests")
+        unimplemented!("not implemented for acceptor tests")
     }
 }
 
@@ -313,7 +323,7 @@ impl reactor::Reactor for Reactor {
                 unreachable!("should not receive announcements of type GossipOurAddress");
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
-                // We do not care about new peers in the gossiper test.
+                // We do not care about new peers in the acceptor test.
                 Effects::new()
             }
             Event::DeployAcceptorAnnouncement(_) => {
@@ -348,8 +358,17 @@ impl reactor::Reactor for Reactor {
                         // Only respond to queries for accounts
                         let result = if let Key::Account(account_hash) = query_request.key() {
                             let named_keys = BTreeMap::new();
+                            let purse_uref = if account_hash
+                                == INVALID_ACCOUNT_PUBLIC_KEY.to_account_hash()
+                            {
+                                INVALID_PURSE_UREF
+                            } else if account_hash == VALID_ACCOUNT_PUBLIC_KEY.to_account_hash() {
+                                VALID_PURSE_UREF
+                            } else {
+                                URef::default()
+                            };
                             let preset_account =
-                                Account::create(account_hash, named_keys, *PRESET_PURSE_UREF);
+                                Account::create(account_hash, named_keys, purse_uref);
                             QueryResult::Success {
                                 value: Box::new(StoredValue::Account(preset_account)),
                                 proofs: vec![],
@@ -365,14 +384,17 @@ impl reactor::Reactor for Reactor {
                         responder,
                     } => {
                         let mut effects = Effects::new();
-                        let result = if balance_request.purse_uref() == *PRESET_PURSE_UREF {
-                            let proof = TrieMerkleProof::new(
-                                balance_request.purse_uref().into(),
-                                StoredValue::CLValue(
-                                    CLValue::from_t(1).expect("should get CLValue"),
-                                ),
-                                VecDeque::new(),
-                            );
+                        let proof = TrieMerkleProof::new(
+                            balance_request.purse_uref().into(),
+                            StoredValue::CLValue(CLValue::from_t(()).expect("should get CLValue")),
+                            VecDeque::new(),
+                        );
+                        let result = if balance_request.purse_uref() == VALID_PURSE_UREF {
+                            BalanceResult::Success {
+                                motes: *VALID_BALANCE_AMOUNT,
+                                proof: Box::new(proof),
+                            }
+                        } else if balance_request.purse_uref() == INVALID_PURSE_UREF {
                             BalanceResult::Success {
                                 motes: *INVALID_BALANCE_AMOUNT,
                                 proof: Box::new(proof),
@@ -432,6 +454,76 @@ fn put_block_to_storage(
     }
 }
 
+async fn run_deploy_acceptor(rng: &mut NodeRng, public_key: PublicKey) -> Result<(), super::Error> {
+    const TIMEOUT: Duration = Duration::from_secs(20);
+    const QUIET_FOR: Duration = Duration::from_millis(50);
+
+    let (deploy_sender, deploy_receiver) = oneshot::channel();
+    let deploy_responder = Responder::create(deploy_sender);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = Network::<Reactor>::new();
+
+    let node_ids = network.add_nodes(rng, 1).await;
+
+    let deploy = Box::new(Deploy::random_with_account(rng, Some(public_key.clone())));
+    let deploy_hash = *deploy.id();
+
+    let block = Box::new(Block::random(rng));
+
+    let (block_sender, block_receiver) = oneshot::channel();
+    let block_responder = Responder::create(block_sender);
+    let _block_hash = block.hash();
+
+    network
+        .process_injected_effect_on(&node_ids[0], put_block_to_storage(block, block_responder))
+        .await;
+
+    network
+        .process_injected_effect_on(
+            &node_ids[0],
+            announce_deploy_received(deploy, Some(deploy_responder)),
+        )
+        .await;
+
+    // We expect this deploy to be rejected, therefore it should not be present in storage.
+    let no_such_deploy = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+        nodes.values().all(|runner| {
+            if runner
+                .reactor()
+                .inner()
+                .storage
+                .get_deploy_by_hash(deploy_hash)
+                .is_none()
+            {
+                true
+            } else {
+                false
+            }
+        })
+    };
+
+    network.settle_on(rng, no_such_deploy, TIMEOUT).await;
+
+    // Ensure all responders are called before dropping the network.
+    network.settle(rng, QUIET_FOR, TIMEOUT).await;
+
+    match block_receiver.await {
+        Ok(result) => assert!(result),
+        Err(_) => panic!("Responder was dropped"),
+    }
+
+    let result = match deploy_receiver.await {
+        Ok(result) => result,
+        Err(_) => panic!("receiver error implies a bug"),
+    };
+
+    NetworkController::<NodeMessage>::remove_active();
+
+    result
+}
+
+// Test that deploys from a peer are accepted.
 #[tokio::test]
 async fn should_accept_deploys_from_peer() {
     const TIMEOUT: Duration = Duration::from_secs(20);
@@ -472,121 +564,27 @@ async fn should_accept_deploys_from_peer() {
     NetworkController::<NodeMessage>::remove_active();
 }
 
+// Test deploys sent from a client are rejected due to an invalid account.
 #[tokio::test]
-async fn should_fail_due_to_invalid_account() {
-    const TIMEOUT: Duration = Duration::from_secs(20);
-    const QUIET_FOR: Duration = Duration::from_millis(50);
-
+async fn should_reject_due_to_invalid_account() {
     let mut rng = crate::new_rng();
-    let (deploy_sender, deploy_receiver) = oneshot::channel();
-    let deploy_responder = Responder::create(deploy_sender);
-
-    NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
-
-    let node_ids = network.add_nodes(&mut rng, 1).await;
-
-    let deploy = Box::new(Deploy::random(&mut rng));
-    let deploy_hash = *deploy.id();
-
-    network
-        .process_injected_effect_on(
-            &node_ids[0],
-            announce_deploy_received(deploy, Some(deploy_responder)),
-        )
-        .await;
-
-    let no_such_deploy = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
-        nodes.values().all(|runner| {
-            runner
-                .reactor()
-                .inner()
-                .storage
-                .get_deploy_by_hash(deploy_hash)
-                .is_none()
-        })
-    };
-
-    network.settle_on(&mut rng, no_such_deploy, TIMEOUT).await;
-
-    // Ensure all responders are called before dropping the network.
-    network.settle(&mut rng, QUIET_FOR, TIMEOUT).await;
-
-    match deploy_receiver.await {
-        Ok(result) => {
-            assert!(matches!(result, Err(super::Error::InvalidAccount)))
-        }
-        Err(_) => panic!("receiver error implies a bug"),
-    }
-
-    NetworkController::<NodeMessage>::remove_active();
+    let public_key = PublicKey::random(&mut rng);
+    let result = run_deploy_acceptor(&mut rng, public_key).await;
+    assert!(matches!(result, Err(super::Error::InvalidAccount)))
 }
 
-// This test will pass if and only if the response from the test reactor returns the INVALID_BALANCE_AMOUNT
+// Test deploys sent from a client are accepted for a valid account with a minimum balance.
 #[tokio::test]
-async fn should_reject_deploy_due_to_invalid_balance() {
-    const TIMEOUT: Duration = Duration::from_secs(20);
-    const QUIET_FOR: Duration = Duration::from_millis(50);
-
+async fn should_accept_deploy_for_valid_account() {
     let mut rng = crate::new_rng();
-    let (deploy_sender, deploy_receiver) = oneshot::channel();
-    let deploy_responder = Responder::create(deploy_sender);
+    let result = run_deploy_acceptor(&mut rng, VALID_ACCOUNT_PUBLIC_KEY.clone()).await;
+    assert!(result.is_ok())
+}
 
-    NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
-
-    let node_ids = network.add_nodes(&mut rng, 1).await;
-
-    let deploy = Box::new(Deploy::random(&mut rng));
-    let deploy_hash = *deploy.id();
-
-    let block = Box::new(Block::random(&mut rng));
-
-    let (block_sender, block_receiver) = oneshot::channel();
-    let block_responder = Responder::create(block_sender);
-    let _block_hash = block.hash();
-
-    network
-        .process_injected_effect_on(&node_ids[0], put_block_to_storage(block, block_responder))
-        .await;
-
-    network
-        .process_injected_effect_on(
-            &node_ids[0],
-            announce_deploy_received(deploy, Some(deploy_responder)),
-        )
-        .await;
-
-    // We expect this deploy to be rejected, therefore it should not be present in storage.
-    let no_such_deploy = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
-        nodes.values().all(|runner| {
-            runner
-                .reactor()
-                .inner()
-                .storage
-                .get_deploy_by_hash(deploy_hash)
-                .is_none()
-        })
-    };
-
-    network.settle_on(&mut rng, no_such_deploy, TIMEOUT).await;
-
-    // Ensure all responders are called before dropping the network.
-    network.settle(&mut rng, QUIET_FOR, TIMEOUT).await;
-
-    match block_receiver.await {
-        Ok(result) => assert!(result),
-        Err(_) => panic!("Responder was dropped"),
-    }
-
-    match deploy_receiver.await {
-        Ok(result) => {
-            //assert!(matches!(result, Err(super::Error::InvalidAccount)))
-            println!("{:?}", result);
-            assert!(result.is_ok())
-        }
-        Err(_) => panic!("receiver error implies a bug"),
-    }
-
-    NetworkController::<NodeMessage>::remove_active();
+// Test deploys sent from a client are rejected for a valid account with a less than minimum balance.
+#[tokio::test]
+async fn should_reject_deploy_for_invalid_balance() {
+    let mut rng = crate::new_rng();
+    let result = run_deploy_acceptor(&mut rng, INVALID_ACCOUNT_PUBLIC_KEY.clone()).await;
+    assert!(matches!(result, Err(super::Error::InsufficientBalance)))
 }
