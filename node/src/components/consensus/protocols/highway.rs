@@ -487,7 +487,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             // We haven't made any progress. Request latest panorama from peers and schedule
             // standstill alert. If we still won't progress by the time
             // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
-            let mut outcomes = self.latest_panorama_request();
+            let mut outcomes = self.latest_state_request();
             if self.shutdown_on_standstill {
                 outcomes.push(ProtocolOutcome::ScheduleTimer(
                     now + self.standstill_timeout,
@@ -583,12 +583,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         Ok(pvv)
     }
 
-    /// Creates a message to be gossiped that sends the validator's panorama.
-    fn latest_panorama_request(&self) -> ProtocolOutcomes<I, C> {
+    /// Creates a message to send our panorama to a random peer.
+    fn latest_state_request(&self) -> ProtocolOutcomes<I, C> {
         let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
-        vec![ProtocolOutcome::CreatedGossipMessage(
-            (&request).serialize(),
-        )]
+        let payload = (&request).serialize();
+        vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)]
     }
 }
 
@@ -715,48 +714,48 @@ where
                 trace!("received a request for the latest state");
                 let state = self.highway.state();
 
-                let create_message =
-                    |observations: ((ValidatorIndex, &Observation<C>), &Observation<C>)| {
-                        let vid = observations.0 .0;
-                        let observations = (observations.0 .1, observations.1);
-                        match observations {
-                            (obs0, obs1) if obs0 == obs1 => None,
+                let create_message = |((vid, our_obs), their_obs): (
+                    (ValidatorIndex, &Observation<C>),
+                    &Observation<C>,
+                )| {
+                    match (our_obs, their_obs) {
+                        (our_obs, their_obs) if our_obs == their_obs => None,
 
-                            (Observation::None, Observation::None) => None,
+                        (Observation::None, Observation::None) => None,
 
-                            (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
-                                HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
-                            }),
+                        (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
+                            HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
+                        }),
 
-                            (_, Observation::Faulty) => {
-                                Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
-                            }
+                        (_, Observation::Faulty) => {
+                            Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                        }
 
-                            (Observation::None, Observation::Correct(hash)) => {
-                                Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
-                            }
+                        (Observation::None, Observation::Correct(hash)) => {
+                            Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                        }
 
-                            (Observation::Correct(hash), Observation::None) => state
-                                .wire_unit(hash, *self.highway.instance_id())
-                                .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+                        (Observation::Correct(hash), Observation::None) => state
+                            .wire_unit(hash, *self.highway.instance_id())
+                            .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
 
-                            (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
-                                if state.has_unit(their_hash)
-                                    && state.panorama().sees_correct(state, their_hash)
-                                {
-                                    state
-                                        .wire_unit(our_hash, *self.highway.instance_id())
-                                        .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
-                                } else if !state.has_unit(their_hash) {
-                                    Some(HighwayMessage::RequestDependency(Dependency::Unit(
-                                        *their_hash,
-                                    )))
-                                } else {
-                                    None
-                                }
+                        (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
+                            if state.has_unit(their_hash)
+                                && state.panorama().sees_correct(state, their_hash)
+                            {
+                                state
+                                    .wire_unit(our_hash, *self.highway.instance_id())
+                                    .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                            } else if !state.has_unit(their_hash) {
+                                Some(HighwayMessage::RequestDependency(Dependency::Unit(
+                                    *their_hash,
+                                )))
+                            } else {
+                                None
                             }
                         }
-                    };
+                    }
+                };
 
                 state
                     .panorama()
@@ -812,7 +811,7 @@ where
 
     fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
         // Request latest protocol state of the current era.
-        self.latest_panorama_request()
+        self.latest_state_request()
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {
