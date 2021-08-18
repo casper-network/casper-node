@@ -1275,10 +1275,10 @@ pub struct Block {
 
 /// A temporary copy of a block that has not been validated yet.
 #[derive(Debug, Deserialize)]
-pub(crate) struct UnverifiedBlock {
-    pub(crate) hash: BlockHash,
-    pub(crate) header: BlockHeader,
-    pub(crate) body: BlockBody,
+struct UnverifiedBlock {
+    hash: BlockHash,
+    header: BlockHeader,
+    body: BlockBody,
 }
 
 impl UnverifiedBlock {
