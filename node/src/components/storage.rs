@@ -986,8 +986,6 @@ impl Storage {
 
     /// Write a block to storage, updating indices as necessary
     pub fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
-        // Validate the block prior to inserting it into the database
-        block.verify()?;
         let mut txn = self.env.begin_rw_txn()?;
         // Write the block body
         {
