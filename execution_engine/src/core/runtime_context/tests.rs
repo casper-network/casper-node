@@ -13,11 +13,12 @@ use casper_types::{
         Account, AccountHash, ActionType, AddKeyFailure, AssociatedKeys, RemoveKeyFailure,
         SetThresholdFailure, Weight,
     },
+    bytesrepr::ToBytes,
     contracts::NamedKeys,
-    stored_value::StoredValue,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, BlockTime, CLValue, Contract, ContractHash, DeployHash, EntryPointType,
-    EntryPoints, Key, Phase, ProtocolVersion, RuntimeArgs, URef, KEY_HASH_LENGTH, U512,
+    EntryPoints, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, URef, KEY_HASH_LENGTH,
+    U512,
 };
 
 use super::{Address, Error, RuntimeContext};
@@ -867,7 +868,6 @@ fn validate_valid_purse_of_an_account() {
 
 #[test]
 fn should_meter_for_gas_storage_write() {
-    use casper_types::bytesrepr::ToBytes;
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
@@ -898,7 +898,6 @@ fn should_meter_for_gas_storage_write() {
 
 #[test]
 fn should_meter_for_gas_storage_add() {
-    use casper_types::bytesrepr::ToBytes;
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref = create_uref(&mut rng, AccessRights::ADD_WRITE);

@@ -4,9 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
-    runtime_args,
-    stored_value::StoredValue,
-    CLValue, ContractPackageHash, RuntimeArgs,
+    runtime_args, CLValue, ContractPackageHash, RuntimeArgs, StoredValue,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";

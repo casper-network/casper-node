@@ -7,8 +7,7 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    stored_value::StoredValue,
-    CLValue, Key,
+    CLValue, Key, StoredValue,
 };
 
 fn serialize_trie_leaf(b: &mut Bencher) {

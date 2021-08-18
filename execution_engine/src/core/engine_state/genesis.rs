@@ -16,7 +16,6 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     runtime_args,
-    stored_value::StoredValue,
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -34,7 +33,7 @@ use casper_types::{
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{

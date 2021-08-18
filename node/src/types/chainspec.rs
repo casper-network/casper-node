@@ -215,7 +215,7 @@ mod tests {
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
-    use casper_types::{stored_value::StoredValue, EraId, ProtocolVersion, U512};
+    use casper_types::{EraId, ProtocolVersion, StoredValue, U512};
 
     use super::*;
     use crate::{

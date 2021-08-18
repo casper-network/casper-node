@@ -31,7 +31,7 @@ use casper_execution_engine::core::engine_state::{
     genesis::GenesisSuccess,
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
-use casper_types::{bytesrepr::FromBytes, stored_value::StoredValue, EraId, ProtocolVersion};
+use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion, StoredValue};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;

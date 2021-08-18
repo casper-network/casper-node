@@ -16,8 +16,8 @@ use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
 use casper_types::{
-    bytesrepr::ToBytes, stored_value::StoredValue as DomainStoredValue, CLValue, Key,
-    ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue as DomainStoredValue, URef, U512,
 };
 
 use super::{

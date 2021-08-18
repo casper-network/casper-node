@@ -11,7 +11,7 @@ use smallvec::smallvec;
 use tracing::{debug, error, info};
 
 use casper_execution_engine::{shared::newtypes::Blake2bHash, storage::trie::Trie};
-use casper_types::{stored_value::StoredValue, Key};
+use casper_types::{Key, StoredValue};
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},

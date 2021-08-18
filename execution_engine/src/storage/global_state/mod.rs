@@ -10,7 +10,7 @@ use std::hash::BuildHasher;
 
 use tracing::error;
 
-use casper_types::{bytesrepr, stored_value::StoredValue, Key};
+use casper_types::{bytesrepr, Key, StoredValue};
 
 use crate::{
     shared::{

@@ -5,12 +5,11 @@ use thiserror::Error;
 
 use casper_types::{
     bytesrepr,
-    stored_value::StoredValue,
     system::{
         auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion,
+    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use crate::{

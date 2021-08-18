@@ -15,7 +15,7 @@ use casper_execution_engine::{
     },
     shared::{additive_map::AdditiveMap, gas::Gas, transform::Transform},
 };
-use casper_types::{account::Account, stored_value::StoredValue, Key};
+use casper_types::{account::Account, Key, StoredValue};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{

@@ -30,8 +30,8 @@ use casper_execution_engine::{
 };
 
 use casper_types::{
-    stored_value::StoredValue, system::auction::EraValidators, EraId, ExecutionResult, Key,
-    ProtocolVersion, PublicKey, Transfer, URef,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, URef,
 };
 
 use crate::{

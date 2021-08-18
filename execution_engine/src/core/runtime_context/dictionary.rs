@@ -1,7 +1,6 @@
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    stored_value::StoredValue,
-    CLType, CLTyped, CLValue, CLValueError, Key,
+    CLType, CLTyped, CLValue, CLValueError, Key, StoredValue,
 };
 
 /// Wraps a [`CLValue`] for storage in a dictionary.

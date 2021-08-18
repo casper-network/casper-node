@@ -1,8 +1,7 @@
 use std::collections::VecDeque;
 
 use casper_types::{
-    bytesrepr::FromBytes, stored_value::StoredValue, CLTyped, CLValue, CLValueError, Key,
-    TransferAddr,
+    bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, StoredValue, TransferAddr,
 };
 
 use super::{error, execution_effect::ExecutionEffect, op::Op};

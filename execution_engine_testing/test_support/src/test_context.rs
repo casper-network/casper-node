@@ -5,7 +5,7 @@ use casper_execution_engine::{
     },
     shared::motes::Motes,
 };
-use casper_types::{stored_value::StoredValue, AccessRights, Key, PublicKey, URef, U512};
+use casper_types::{AccessRights, Key, PublicKey, StoredValue, URef, U512};
 
 use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},

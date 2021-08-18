@@ -36,7 +36,7 @@ use casper_execution_engine::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{stored_value::StoredValue, Key, ProtocolVersion};
+use casper_types::{Key, ProtocolVersion, StoredValue};
 
 use crate::{
     components::Component,

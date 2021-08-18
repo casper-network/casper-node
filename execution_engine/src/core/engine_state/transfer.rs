@@ -2,9 +2,8 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_types::{
     account::{Account, AccountHash},
-    stored_value::StoredValue,
     system::mint,
-    AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -171,7 +170,7 @@ impl TransferRuntimeArgsBuilder {
                         }
                     }
                     Some(key) => Err(Error::Exec(ExecError::TypeMismatch(
-                        casper_types::stored_value::TypeMismatch::new(
+                        casper_types::StoredValueTypeMismatch::new(
                             "Key::URef".to_string(),
                             key.type_string(),
                         ),

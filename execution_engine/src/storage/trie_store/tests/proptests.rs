@@ -5,7 +5,7 @@ use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
 use crate::shared::newtypes::Blake2bHash;
-use casper_types::{bytesrepr::ToBytes, stored_value::StoredValue, Key};
+use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
 use crate::storage::{
     store::tests as store_tests,
