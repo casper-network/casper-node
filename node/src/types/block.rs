@@ -1281,11 +1281,9 @@ pub(crate) struct UnverifiedBlock {
     pub(crate) body: BlockBody,
 }
 
-impl TryFrom<UnverifiedBlock> for Block {
-    type Error = BlockValidationError;
-
-    fn try_from(unverified_block: UnverifiedBlock) -> Result<Block, BlockValidationError> {
-        let UnverifiedBlock { hash, header, body } = unverified_block;
+impl UnverifiedBlock {
+    pub(crate) fn verify(self) -> Result<Block, BlockValidationError> {
+        let UnverifiedBlock { hash, header, body } = self;
         let block = Block { hash, header, body };
         block.verify()?;
         Ok(block)
@@ -1294,7 +1292,9 @@ impl TryFrom<UnverifiedBlock> for Block {
 
 impl<'de> Deserialize<'de> for Block {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Block::try_from(UnverifiedBlock::deserialize(deserializer)?).map_err(SerdeError::custom)
+        UnverifiedBlock::deserialize(deserializer)?
+            .verify()
+            .map_err(SerdeError::custom)
     }
 }
 
@@ -1860,11 +1860,12 @@ pub(crate) mod json_compatibility {
         type Error = BlockValidationError;
 
         fn try_from(block: JsonBlock) -> Result<Self, BlockValidationError> {
-            Block::try_from(UnverifiedBlock {
+            UnverifiedBlock {
                 hash: block.hash,
                 header: BlockHeader::from(block.header),
                 body: BlockBody::from(block.body),
-            })
+            }
+            .verify()
         }
     }
 
@@ -1963,7 +1964,7 @@ impl Display for FinalitySignature {
 
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryInto, rc::Rc};
+    use std::rc::Rc;
 
     use casper_types::bytesrepr;
 
@@ -2008,7 +2009,7 @@ mod tests {
         let deserialized_unverified_block = bytesrepr::deserialize::<UnverifiedBlock>(serialized)
             .expect("Unable to deserialize data");
         let deserialized_block = deserialized_unverified_block
-            .try_into()
+            .verify()
             .expect("deserialized block was invalid");
         assert_eq!(block, deserialized_block);
     }
