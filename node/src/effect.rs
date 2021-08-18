@@ -95,8 +95,8 @@ use casper_execution_engine::{
     storage::trie::Trie,
 };
 use casper_types::{
-    stored_value::StoredValue, system::auction::EraValidators, EraId, ExecutionResult, Key,
-    ProtocolVersion, PublicKey, Transfer, U512,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, U512,
 };
 
 use crate::{

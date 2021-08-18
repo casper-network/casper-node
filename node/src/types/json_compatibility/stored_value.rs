@@ -11,9 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    stored_value::StoredValue as ExecutionEngineStoredValue,
     system::auction::{Bid, EraInfo, UnbondingPurse},
-    CLValue, DeployInfo, Transfer,
+    CLValue, DeployInfo, StoredValue as ExecutionEngineStoredValue, Transfer,
 };
 
 use super::{Account, Contract, ContractPackage};

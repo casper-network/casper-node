@@ -1,6 +1,14 @@
-//! The stored_value module is used for working with stored values.
-
 mod type_mismatch;
+
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::{convert::TryFrom, fmt::Debug};
+
+use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
+use serde_bytes::ByteBuf;
 
 use crate::{
     account::Account,
@@ -9,19 +17,10 @@ use crate::{
     system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
-use alloc::{
-    boxed::Box,
-    string::{String, ToString},
-    vec::Vec,
-};
-use core::{convert::TryFrom, fmt::Debug};
-use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
-use serde_bytes::ByteBuf;
 pub use type_mismatch::TypeMismatch;
 
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
-
 enum Tag {
     CLValue = 0,
     Account = 1,
@@ -392,41 +391,11 @@ impl<'de> Deserialize<'de> for StoredValue {
     }
 }
 
-#[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
-pub mod gens {
-    use proptest::prelude::*;
-
-    use crate::{
-        account::gens::account_arb,
-        gens::{
-            cl_value_arb, contract_arb, contract_package_arb, contract_wasm_arb, deploy_info_arb,
-            transfer_arb,
-        },
-        system::auction::gens::era_info_arb,
-    };
-
-    use super::StoredValue;
-
-    pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
-        prop_oneof![
-            cl_value_arb().prop_map(StoredValue::CLValue),
-            account_arb().prop_map(StoredValue::Account),
-            contract_package_arb().prop_map(StoredValue::ContractPackage),
-            contract_arb().prop_map(StoredValue::Contract),
-            contract_wasm_arb().prop_map(StoredValue::ContractWasm),
-            era_info_arb(1..10).prop_map(StoredValue::EraInfo),
-            deploy_info_arb().prop_map(StoredValue::DeployInfo),
-            transfer_arb().prop_map(StoredValue::Transfer)
-        ]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use proptest::proptest;
 
-    use super::*;
+    use crate::{bytesrepr, gens};
 
     proptest! {
         #[test]

@@ -5,7 +5,7 @@ use crate::shared::{
     newtypes::{Blake2bHash, CorrelationId},
     transform::Transform,
 };
-use casper_types::{stored_value::StoredValue, Key};
+use casper_types::{Key, StoredValue};
 
 use crate::storage::{
     error,

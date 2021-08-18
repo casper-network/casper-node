@@ -192,9 +192,8 @@ mod full_tries {
 
     use casper_types::{
         bytesrepr::{self, FromBytes, ToBytes},
-        gens::colliding_key_arb,
-        stored_value::{gens::stored_value_arb, StoredValue},
-        Key,
+        gens::{colliding_key_arb, stored_value_arb},
+        Key, StoredValue,
     };
 
     use crate::{

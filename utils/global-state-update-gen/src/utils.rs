@@ -5,8 +5,7 @@ use std::{
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{
-    bytesrepr::ToBytes, stored_value::StoredValue, system::auction::SeigniorageRecipientsSnapshot,
-    Key, PublicKey,
+    bytesrepr::ToBytes, system::auction::SeigniorageRecipientsSnapshot, Key, PublicKey, StoredValue,
 };
 
 /// Parses a Blake2bHash from a string. Panics if parsing fails.

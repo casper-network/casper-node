@@ -2,8 +2,7 @@ use std::convert::{TryFrom, TryInto};
 
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    stored_value::StoredValue,
-    CLTyped, CLValue,
+    CLTyped, CLValue, StoredValue,
 };
 
 use crate::{Account, Result};

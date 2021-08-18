@@ -25,7 +25,6 @@ use casper_types::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
         DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
-    stored_value::StoredValue,
     system::{
         self,
         auction::{self, Auction, EraInfo},
@@ -36,8 +35,8 @@ use casper_types::{
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, NamedArg, Parameter,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
+    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
 };
 
 use crate::{

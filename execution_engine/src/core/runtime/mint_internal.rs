@@ -1,12 +1,11 @@
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    stored_value::StoredValue,
     system::{
         mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
         CallStackElement,
     },
-    CLTyped, CLValue, Key, Phase, URef, U512,
+    CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;

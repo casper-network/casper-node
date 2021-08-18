@@ -4,7 +4,6 @@ use casper_types::{
     account::{self, AccountHash},
     bytesrepr::{FromBytes, ToBytes},
     contracts::NamedKeys,
-    stored_value::StoredValue,
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
@@ -12,8 +11,8 @@ use casper_types::{
         },
         mint, CallStackElement,
     },
-    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH,
-    U512,
+    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
+    BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 use super::Runtime;

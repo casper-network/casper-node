@@ -9,8 +9,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
-    account::Account, runtime_args, stored_value::StoredValue, system::CallStackElement, CLValue,
-    ContractHash, ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs,
+    account::Account, runtime_args, system::CallStackElement, CLValue, ContractHash,
+    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue,
 };
 
 use get_call_stack_recursive_subcall::{

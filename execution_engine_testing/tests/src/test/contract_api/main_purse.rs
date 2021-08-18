@@ -5,9 +5,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_types::{
-    account::AccountHash, runtime_args, stored_value::StoredValue, Key, RuntimeArgs,
-};
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue};
 
 const CONTRACT_MAIN_PURSE: &str = "main_purse.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

@@ -1,10 +1,9 @@
 use casper_types::{
-    stored_value::StoredValue,
     system::{
         handle_payment, mint,
         standard_payment::{AccountProvider, HandlePaymentProvider, MintProvider, StandardPayment},
     },
-    ApiError, Key, RuntimeArgs, URef, U512,
+    ApiError, Key, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{

@@ -240,9 +240,8 @@ mod gens {
     use proptest::{collection::vec, prelude::*};
 
     use casper_types::{
-        gens::key_arb,
-        stored_value::{gens::stored_value_arb, StoredValue},
-        Key,
+        gens::{key_arb, stored_value_arb},
+        Key, StoredValue,
     };
 
     use crate::storage::trie::{

@@ -3,10 +3,8 @@ use thiserror::Error;
 
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr,
-    stored_value::TypeMismatch,
-    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasmHash, Key, URef,
+    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };
 
 use crate::{core::resolvers::error::ResolverError, shared::wasm_prep, storage};
@@ -26,7 +24,7 @@ pub enum Error {
     #[error("Account {:?} not found", _0)]
     AccountNotFound(Key),
     #[error("{}", _0)]
-    TypeMismatch(TypeMismatch),
+    TypeMismatch(StoredValueTypeMismatch),
     #[error("Invalid access rights: {}", required)]
     InvalidAccess { required: AccessRights },
     #[error("Forged reference: {}", _0)]
@@ -122,10 +120,10 @@ impl From<pwasm_utils::OptimizerError> for Error {
 
 impl Error {
     pub fn type_mismatch(expected: CLType, found: CLType) -> Error {
-        Error::TypeMismatch(TypeMismatch {
-            expected: format!("{:?}", expected),
-            found: format!("{:?}", found),
-        })
+        Error::TypeMismatch(StoredValueTypeMismatch::new(
+            format!("{:?}", expected),
+            format!("{:?}", found),
+        ))
     }
 }
 

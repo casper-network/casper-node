@@ -3,8 +3,7 @@
 use casper_types::{
     account::{Account, AccountHash},
     contracts::NamedKeys,
-    stored_value::StoredValue,
-    AccessRights, Key, URef,
+    AccessRights, Key, StoredValue, URef,
 };
 
 /// Returns an account value paired with its key

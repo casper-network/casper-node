@@ -25,14 +25,13 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    stored_value::StoredValue,
     system::{
         auction::{
             AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    CLValue, EraId, ProtocolVersion, U512,
+    CLValue, EraId, ProtocolVersion, StoredValue, U512,
 };
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;

@@ -14,9 +14,8 @@ use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
 use casper_types::{
-    bytesrepr,
-    stored_value::{StoredValue, TypeMismatch},
-    CLType, CLValue, CLValueError, Key, KeyTag, Tagged, U512,
+    bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
+    Tagged, U512,
 };
 
 pub use self::ext::TrackingCopyExt;
@@ -222,7 +221,7 @@ pub struct TrackingCopy<R> {
 pub enum AddResult {
     Success,
     KeyNotFound(Key),
-    TypeMismatch(TypeMismatch),
+    TypeMismatch(StoredValueTypeMismatch),
     Serialization(bytesrepr::Error),
 }
 
@@ -233,7 +232,7 @@ impl From<CLValueError> for AddResult {
             CLValueError::Type(type_mismatch) => {
                 let expected = format!("{:?}", type_mismatch.expected);
                 let found = format!("{:?}", type_mismatch.found);
-                AddResult::TypeMismatch(TypeMismatch::new(expected, found))
+                AddResult::TypeMismatch(StoredValueTypeMismatch::new(expected, found))
             }
         }
     }
@@ -351,7 +350,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
         let type_name = value.type_name();
         let mismatch = || {
-            Ok(AddResult::TypeMismatch(TypeMismatch::new(
+            Ok(AddResult::TypeMismatch(StoredValueTypeMismatch::new(
                 "I32, U64, U128, U256, U512 or (String, Key) tuple".to_string(),
                 type_name,
             )))

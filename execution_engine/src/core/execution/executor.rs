@@ -8,10 +8,9 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
     contracts::NamedKeys,
-    stored_value::StoredValue,
     system::{auction, handle_payment, mint, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT},
     BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
-    Phase, ProtocolVersion, RuntimeArgs,
+    Phase, ProtocolVersion, RuntimeArgs, StoredValue,
 };
 
 use crate::{

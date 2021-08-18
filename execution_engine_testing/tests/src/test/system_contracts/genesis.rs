@@ -17,8 +17,7 @@ use casper_execution_engine::{
     shared::motes::Motes,
 };
 use casper_types::{
-    stored_value::StoredValue, system::auction::DelegationRate, ProtocolVersion, PublicKey,
-    SecretKey, U512,
+    system::auction::DelegationRate, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
