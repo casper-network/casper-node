@@ -798,7 +798,7 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
 
-                            match self.storage.read_block_header_by_hash(&block_hash) {
+                            match self.storage.get_block_header_by_hash(&block_hash) {
                                 Ok(Some(block_header)) => {
                                     match Message::new_get_response(&block_header) {
                                         Err(error) => {
