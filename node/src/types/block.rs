@@ -1281,19 +1281,9 @@ struct UnverifiedBlock {
     body: BlockBody,
 }
 
-impl UnverifiedBlock {
-    pub(crate) fn verify(self) -> Result<Block, BlockValidationError> {
-        let UnverifiedBlock { hash, header, body } = self;
-        let block = Block { hash, header, body };
-        block.verify()?;
-        Ok(block)
-    }
-}
-
 impl<'de> Deserialize<'de> for Block {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        UnverifiedBlock::deserialize(deserializer)?
-            .verify()
+        Block::from_unverified(UnverifiedBlock::deserialize(deserializer)?)
             .map_err(SerdeError::custom)
     }
 }
@@ -1531,6 +1521,13 @@ impl Block {
             protocol_version,
         )
         .expect("Could not create random block with specifics")
+    }
+
+    fn from_unverified(unverified_block: UnverifiedBlock) -> Result<Block, BlockValidationError> {
+        let UnverifiedBlock { hash, header, body } = unverified_block;
+        let block = Block { hash, header, body };
+        block.verify()?;
+        Ok(block)
     }
 }
 
@@ -1860,12 +1857,11 @@ pub(crate) mod json_compatibility {
         type Error = BlockValidationError;
 
         fn try_from(block: JsonBlock) -> Result<Self, BlockValidationError> {
-            UnverifiedBlock {
+            Block::from_unverified(UnverifiedBlock {
                 hash: block.hash,
                 header: BlockHeader::from(block.header),
                 body: BlockBody::from(block.body),
-            }
-            .verify()
+            })
         }
     }
 
@@ -2008,8 +2004,7 @@ mod tests {
         );
         let deserialized_unverified_block = bytesrepr::deserialize::<UnverifiedBlock>(serialized)
             .expect("Unable to deserialize data");
-        let deserialized_block = deserialized_unverified_block
-            .verify()
+        let deserialized_block = Block::from_unverified(deserialized_unverified_block)
             .expect("deserialized block was invalid");
         assert_eq!(block, deserialized_block);
     }
