@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Changed
+* Add support for providing node uptime via the addition of an `uptime` parameter in the response to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
 * The following parameters in the `[gossip]` section of the config has been renamed:

@@ -447,7 +447,6 @@ impl RpcWithoutParamsExt for ListRpcs {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use crate::{types::Chainspec, utils::Loadable};
