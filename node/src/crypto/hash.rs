@@ -245,9 +245,7 @@ where
 ///
 /// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
 pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
-    slice
-        .iter()
-        .rfold(SENTINEL1, |prev, next| hash_pair(next, &prev))
+    hash_slice_with_proof(slice, SENTINEL1)
 }
 
 /// Hashes a `&[Digest]` using a [right fold][1]. Uses `proof` as a Merkle proof for the missing

@@ -776,7 +776,7 @@ impl Storage {
                 let was_written =
                     txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
                 if !was_written {
-                    error!(?block_hash, "failed to write deploy metadata");
+                    error!(?block_hash, "failed to write transfers");
                     debug_assert!(was_written);
                 }
 
@@ -935,7 +935,7 @@ impl Storage {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
-    /// Write a block to storage, updating indices as necessary
+    /// Writes a block to storage, updating indices as necessary
     pub fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
@@ -1933,15 +1933,15 @@ fn initialize_block_body_v2_db(
 ) -> Result<(), Error> {
     info!("initializing v2 block body database");
 
-    let txn = env.begin_rw_txn()?;
-
-    let block_body_hash_to_header_map = if any_v2_block_deleted || should_check_integrity {
-        construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?
-    } else {
-        BTreeMap::new()
-    };
-
     if should_check_integrity {
+        let txn = env.begin_rw_txn()?;
+
+        let block_body_hash_to_header_map = if any_v2_block_deleted || should_check_integrity {
+            construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?
+        } else {
+            BTreeMap::new()
+        };
+
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V2;
         for (raw_key, _raw_val) in txn.open_ro_cursor(*block_body_v2_db)?.iter() {
             let block_body_hash = Digest::try_from(raw_key)
@@ -1986,9 +1986,8 @@ fn initialize_block_body_v2_db(
             };
             txn2.commit()?;
         }
+        txn.commit()?;
     }
-
-    txn.commit()?;
 
     info!("v2 block body database initialized");
     Ok(())
