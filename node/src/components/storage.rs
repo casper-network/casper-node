@@ -65,7 +65,7 @@ use thiserror::Error;
 use tracing::{debug, error, info};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, Transfer, Transform};
+use casper_types::{EraId, JsonExecutionResult, ProtocolVersion, Transfer, Transform};
 
 use super::Component;
 #[cfg(test)]
@@ -619,7 +619,7 @@ impl Storage {
                         }
                     }
 
-                    if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
+                    if let JsonExecutionResult::Success { effect, .. } = execution_result.clone() {
                         for transform_entry in effect.transforms {
                             if let Transform::WriteTransfer(transfer) = transform_entry.transform {
                                 transfers.push(transfer);

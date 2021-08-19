@@ -2040,6 +2040,7 @@ where
         }
 
         let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         // commit
         let post_state_hash = self
@@ -2047,7 +2048,7 @@ where
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                execution_effect.transforms.clone(),
+                execution_effect.transforms,
             )
             .map_err(Into::into)?;
 
@@ -2074,7 +2075,7 @@ where
         Ok(StepSuccess {
             post_state_hash,
             next_era_validators,
-            execution_effect,
+            execution_journal,
         })
     }
 

@@ -760,6 +760,7 @@ dependencies = [
  "chrono",
  "criterion",
  "datasize",
+ "derive_more",
  "hex",
  "hex-buffer-serde",
  "hex_fmt",

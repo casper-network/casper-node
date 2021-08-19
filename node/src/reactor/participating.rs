@@ -1086,7 +1086,7 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::StepSuccess {
                     era_id,
-                    execution_effect,
+                    json_execution_journal: execution_effect,
                 },
             ) => {
                 let reactor_event =

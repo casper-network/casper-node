@@ -8,7 +8,7 @@ use crate::{
     crypto::hash::Digest,
     types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_types::{JsonExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
@@ -31,7 +31,7 @@ pub(super) enum Outcome {
     // Store block signatures to storage.
     StoreBlockSignatures(BlockSignatures),
     // Store execution results to storage.
-    StoreExecutionResults(BlockHash, HashMap<DeployHash, ExecutionResult>),
+    StoreExecutionResults(BlockHash, HashMap<DeployHash, JsonExecutionResult>),
     // Store block.
     StoreBlock(Box<Block>),
     // Read finality signatures for the block from storage.
@@ -222,7 +222,7 @@ impl LinearChain {
     pub(super) fn handle_new_block(
         &mut self,
         block: Box<Block>,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, JsonExecutionResult>,
     ) -> Outcomes {
         let mut outcomes = vec![];
         let signatures = self.new_block(&*block);

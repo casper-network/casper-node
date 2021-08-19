@@ -66,20 +66,7 @@ const TRANSFORM_ADD_KEYS_TAG: u8 = 16;
 const TRANSFORM_FAILURE_TAG: u8 = 17;
 
 #[cfg(feature = "std")]
-static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
-    let operations = vec![
-        Operation {
-            key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
-                .to_string(),
-            kind: OpKind::Write,
-        },
-        Operation {
-            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
-                .to_string(),
-            kind: OpKind::Read,
-        },
-    ];
-
+static EXECUTION_RESULT: Lazy<JsonExecutionResult> = Lazy::new(|| {
     let transforms = vec![
         TransformEntry {
             key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
@@ -93,18 +80,13 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
         },
     ];
 
-    let effect = ExecutionEffect {
-        operations,
-        transforms,
-    };
-
     let transfers = vec![
         TransferAddr::new([89; KEY_HASH_LENGTH]),
         TransferAddr::new([130; KEY_HASH_LENGTH]),
     ];
 
-    ExecutionResult::Success {
-        effect,
+    JsonExecutionResult::Success {
+        effect: JsonExecutionJournal::new(transforms),
         transfers,
         cost: U512::from(123_456),
     }
@@ -114,11 +96,11 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub enum ExecutionResult {
+pub enum JsonExecutionResult {
     /// The result of a failed execution.
     Failure {
         /// The effect of executing the deploy.
-        effect: ExecutionEffect,
+        effect: JsonExecutionJournal,
         /// A record of Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
@@ -129,7 +111,7 @@ pub enum ExecutionResult {
     /// The result of a successful execution.
     Success {
         /// The effect of executing the deploy.
-        effect: ExecutionEffect,
+        effect: JsonExecutionJournal,
         /// A record of Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
@@ -137,7 +119,7 @@ pub enum ExecutionResult {
     },
 }
 
-impl ExecutionResult {
+impl JsonExecutionResult {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "std")]
@@ -146,8 +128,8 @@ impl ExecutionResult {
     }
 }
 
-impl Distribution<ExecutionResult> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResult {
+impl Distribution<JsonExecutionResult> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> JsonExecutionResult {
         let op_count = rng.gen_range(0..6);
         let mut operations = Vec::new();
         for _ in 0..op_count {
@@ -169,10 +151,7 @@ impl Distribution<ExecutionResult> for Standard {
             });
         }
 
-        let execution_effect = ExecutionEffect {
-            operations,
-            transforms,
-        };
+        let execution_effect = JsonExecutionJournal::new(transforms);
 
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
@@ -181,14 +160,14 @@ impl Distribution<ExecutionResult> for Standard {
         }
 
         if rng.gen() {
-            ExecutionResult::Failure {
+            JsonExecutionResult::Failure {
                 effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
-            ExecutionResult::Success {
+            JsonExecutionResult::Success {
                 effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
@@ -197,11 +176,11 @@ impl Distribution<ExecutionResult> for Standard {
     }
 }
 
-impl ToBytes for ExecutionResult {
+impl ToBytes for JsonExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
-            ExecutionResult::Failure {
+            JsonExecutionResult::Failure {
                 effect,
                 transfers,
                 cost,
@@ -213,7 +192,7 @@ impl ToBytes for ExecutionResult {
                 buffer.extend(cost.to_bytes()?);
                 buffer.extend(error_message.to_bytes()?);
             }
-            ExecutionResult::Success {
+            JsonExecutionResult::Success {
                 effect,
                 transfers,
                 cost,
@@ -230,7 +209,7 @@ impl ToBytes for ExecutionResult {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ExecutionResult::Failure {
+                JsonExecutionResult::Failure {
                     effect: execution_effect,
                     transfers,
                     cost,
@@ -241,7 +220,7 @@ impl ToBytes for ExecutionResult {
                         + cost.serialized_length()
                         + error_message.serialized_length()
                 }
-                ExecutionResult::Success {
+                JsonExecutionResult::Success {
                     effect: execution_effect,
                     transfers,
                     cost,
@@ -254,16 +233,16 @@ impl ToBytes for ExecutionResult {
     }
 }
 
-impl FromBytes for ExecutionResult {
+impl FromBytes for JsonExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             EXECUTION_RESULT_FAILURE_TAG => {
-                let (effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
+                let (effect, remainder) = JsonExecutionJournal::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
-                let execution_result = ExecutionResult::Failure {
+                let execution_result = JsonExecutionResult::Failure {
                     effect,
                     transfers,
                     cost,
@@ -272,10 +251,10 @@ impl FromBytes for ExecutionResult {
                 Ok((execution_result, remainder))
             }
             EXECUTION_RESULT_SUCCESS_TAG => {
-                let (execution_effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
+                let (execution_effect, remainder) = JsonExecutionJournal::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
-                let execution_result = ExecutionResult::Success {
+                let execution_result = JsonExecutionResult::Success {
                     effect: execution_effect,
                     transfers,
                     cost,
@@ -287,18 +266,31 @@ impl FromBytes for ExecutionResult {
     }
 }
 
-/// The effect of executing a single deploy.
+/// The journal of execution transforms from a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct ExecutionEffect {
+pub struct JsonExecutionJournal {
     /// The resulting operations.
+    #[deprecated(since = "1.4.0")]
     pub operations: Vec<Operation>,
-    /// The resulting transformations.
+    /// The journal of execution transforms.
     pub transforms: Vec<TransformEntry>,
 }
 
-impl ToBytes for ExecutionEffect {
+impl JsonExecutionJournal {
+    /// Constructor for [`JsonExecutionJournal`].
+    #[allow(deprecated)]
+    pub fn new(transforms: Vec<TransformEntry>) -> Self {
+        Self {
+            transforms,
+            operations: Default::default(),
+        }
+    }
+}
+
+impl ToBytes for JsonExecutionJournal {
+    #[allow(deprecated)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.operations.to_bytes()?);
@@ -306,20 +298,22 @@ impl ToBytes for ExecutionEffect {
         Ok(buffer)
     }
 
+    #[allow(deprecated)]
     fn serialized_length(&self) -> usize {
         self.operations.serialized_length() + self.transforms.serialized_length()
     }
 }
 
-impl FromBytes for ExecutionEffect {
+impl FromBytes for JsonExecutionJournal {
+    #[allow(deprecated)]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (operations, remainder) = Vec::<Operation>::from_bytes(bytes)?;
         let (transforms, remainder) = Vec::<TransformEntry>::from_bytes(remainder)?;
-        let execution_effect = ExecutionEffect {
+        let json_execution_journal = JsonExecutionJournal {
             operations,
             transforms,
         };
-        Ok((execution_effect, remainder))
+        Ok((json_execution_journal, remainder))
     }
 }
 
@@ -680,7 +674,7 @@ mod tests {
     #[test]
     fn bytesrepr_test_execution_result() {
         let mut rng = get_rng();
-        let execution_result: ExecutionResult = rng.gen();
+        let execution_result: JsonExecutionResult = rng.gen();
         bytesrepr::test_serialization_roundtrip(&execution_result);
     }
 }

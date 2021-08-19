@@ -10,7 +10,7 @@ use std::{
 
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use casper_types::{EraId, JsonExecutionJournal, JsonExecutionResult, PublicKey};
 
 use crate::{
     components::{
@@ -224,8 +224,8 @@ pub(crate) enum ContractRuntimeAnnouncement {
     StepSuccess {
         /// The era id in which the step was committed to global state.
         era_id: EraId,
-        /// The operations and transforms committed to global state.
-        execution_effect: ExecutionEffect,
+        /// The JSON API format journal of transforms committed to global state.
+        json_execution_journal: JsonExecutionJournal,
     },
 }
 
@@ -233,7 +233,7 @@ impl ContractRuntimeAnnouncement {
     /// Create a ContractRuntimeAnnouncement::LinearChainBlock from it's parts.
     pub(crate) fn linear_chain_block(
         block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+        execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
     ) -> Self {
         Self::LinearChainBlock(Box::new(LinearChainBlock {
             block,
@@ -242,10 +242,13 @@ impl ContractRuntimeAnnouncement {
     }
 
     /// Create a ContractRuntimeAnnouncement::StepSuccess from an execution effect.
-    pub(crate) fn step_success(era_id: EraId, execution_effect: ExecutionEffect) -> Self {
+    pub(crate) fn step_success(
+        era_id: EraId,
+        json_execution_journal: JsonExecutionJournal,
+    ) -> Self {
         Self::StepSuccess {
             era_id,
-            execution_effect,
+            json_execution_journal,
         }
     }
 }
@@ -256,7 +259,7 @@ pub(crate) struct LinearChainBlock {
     /// The block.
     pub(crate) block: Block,
     /// The results of executing the deploys in this block.
-    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
 }
 
 impl Display for ContractRuntimeAnnouncement {

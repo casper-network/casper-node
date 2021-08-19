@@ -1055,7 +1055,7 @@ async fn execute_block<REv>(
     let BlockAndExecutionEffects {
         block,
         execution_results,
-        maybe_step_execution_effect: _,
+        maybe_step_execution_journal: _,
     } = match effect_builder
         .execute_finalized_block(
             protocol_version,

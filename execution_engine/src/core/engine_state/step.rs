@@ -6,10 +6,10 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, Error, GetEraValidatorsError},
+        engine_state::{Error, GetEraValidatorsError},
         execution,
     },
-    shared::{newtypes::Blake2bHash, TypeMismatch},
+    shared::{execution_journal::ExecutionJournal, newtypes::Blake2bHash, TypeMismatch},
 };
 
 #[derive(Debug)]
@@ -146,5 +146,5 @@ pub enum StepError {
 pub struct StepSuccess {
     pub post_state_hash: Blake2bHash,
     pub next_era_validators: BTreeMap<PublicKey, U512>,
-    pub execution_effect: ExecutionEffect,
+    pub execution_journal: ExecutionJournal,
 }

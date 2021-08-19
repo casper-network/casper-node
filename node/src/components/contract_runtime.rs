@@ -590,7 +590,7 @@ impl ContractRuntime {
         let BlockAndExecutionEffects {
             block,
             execution_results,
-            maybe_step_execution_effect,
+            maybe_step_execution_journal,
         } = match tokio::task::unconstrained(async move {
             operations::execute_finalized_block(
                 engine_state.as_ref(),
@@ -614,9 +614,9 @@ impl ContractRuntime {
         effect_builder
             .announce_linear_chain_block(block, execution_results)
             .await;
-        if let Some(step_execution_effect) = maybe_step_execution_effect {
+        if let Some(step_execution_journal) = maybe_step_execution_journal {
             effect_builder
-                .announce_step_success(era_id, step_execution_effect)
+                .announce_step_success(era_id, step_execution_journal.into())
                 .await;
         }
 

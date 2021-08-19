@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use casper_execution_engine::{
-    core::engine_state::{execution_effect::ExecutionEffect, GetEraValidatorsRequest},
-    shared::newtypes::Blake2bHash,
+    core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
 };
-use casper_types::{EraId, ExecutionResult, ProtocolVersion};
+use casper_types::{EraId, JsonExecutionResult, ProtocolVersion};
 
 use crate::types::{Block, DeployHash, DeployHeader};
+use casper_execution_engine::shared::execution_journal::ExecutionJournal;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +88,7 @@ pub struct BlockAndExecutionEffects {
     /// The [`Block`] the contract runtime executed.
     pub block: Block,
     /// The results from executing the deploys in the block.
-    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    /// An [`ExecutionEffect`] created if an era ended.
-    pub maybe_step_execution_effect: Option<ExecutionEffect>,
+    pub execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
+    /// An [`ExecutionJournal`] created if an era ended.
+    pub maybe_step_execution_journal: Option<ExecutionJournal>,
 }

@@ -31,7 +31,10 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
-    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{
+        execution_journal::ExecutionJournal, gas::Gas, newtypes::CorrelationId,
+        stored_value::StoredValue,
+    },
     storage::global_state::StateReader,
 };
 
@@ -529,6 +532,10 @@ where
 
     pub fn effect(&self) -> ExecutionEffect {
         self.tracking_copy.borrow_mut().effect()
+    }
+
+    pub fn execution_journal(&self) -> ExecutionJournal {
+        self.tracking_copy.borrow_mut().execution_journal()
     }
 
     pub fn transfers(&self) -> &Vec<TransferAddr> {

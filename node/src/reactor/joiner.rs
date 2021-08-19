@@ -777,7 +777,7 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::StepSuccess {
                     era_id,
-                    execution_effect,
+                    json_execution_journal: execution_effect,
                 },
             ) => self.dispatch_event(
                 effect_builder,

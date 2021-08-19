@@ -15,7 +15,7 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
-use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey};
+use casper_types::{EraId, JsonExecutionResult, Key, ProtocolVersion, PublicKey};
 
 use crate::{
     components::{
@@ -50,7 +50,7 @@ pub(super) fn execute_finalized_block(
         next_block_height: _,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)> =
+    let mut execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)> =
         HashMap::new();
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
@@ -101,7 +101,7 @@ pub(super) fn execute_finalized_block(
     let block_and_execution_effects = if let Some(StepSuccess {
         post_state_hash,
         next_era_validators,
-        execution_effect,
+        execution_journal: execution_effect,
     }) = maybe_step_success
     {
         BlockAndExecutionEffects {
@@ -114,7 +114,7 @@ pub(super) fn execute_finalized_block(
                 protocol_version,
             )?,
             execution_results,
-            maybe_step_execution_effect: Some(execution_effect),
+            maybe_step_execution_journal: Some(execution_effect),
         }
     } else {
         BlockAndExecutionEffects {
@@ -127,7 +127,7 @@ pub(super) fn execute_finalized_block(
                 protocol_version,
             )?,
             execution_results,
-            maybe_step_execution_effect: None,
+            maybe_step_execution_journal: None,
         }
     };
     Ok(block_and_execution_effects)
@@ -140,12 +140,12 @@ fn commit_execution_effects(
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult), BlockExecutionError> {
+) -> Result<(Digest, JsonExecutionResult), BlockExecutionError> {
     let ee_execution_result = execution_results
         .into_iter()
         .exactly_one()
         .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-    let execution_result = ExecutionResult::from(&ee_execution_result);
+    let json_execution_result = JsonExecutionResult::from(ee_execution_result.clone());
 
     let execution_effect = match ee_execution_result {
         EngineExecutionResult::Success {
@@ -177,7 +177,7 @@ fn commit_execution_effects(
         state_root_hash,
         execution_effect.transforms,
     )?;
-    Ok((new_state_root, execution_result))
+    Ok((new_state_root, json_execution_result))
 }
 
 fn commit_transforms(

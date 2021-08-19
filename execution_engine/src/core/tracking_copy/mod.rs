@@ -33,6 +33,7 @@ use crate::{
 };
 
 use super::engine_state::EngineConfig;
+use crate::shared::execution_journal::ExecutionJournal;
 
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {
@@ -214,6 +215,7 @@ pub struct TrackingCopy<R> {
     cache: TrackingCopyCache<HeapSize>,
     ops: AdditiveMap<Key, Op>,
     fns: AdditiveMap<Key, Transform>,
+    journal: Vec<(Key, Transform)>,
 }
 
 #[derive(Debug)]
@@ -247,6 +249,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
              * limit? */
             ops: AdditiveMap::new(),
             fns: AdditiveMap::new(),
+            journal: Vec::new(),
         }
     }
 
@@ -318,6 +321,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         if let Some(value) = self.get(correlation_id, &normalized_key)? {
             self.ops.insert_add(normalized_key, Op::Read);
             self.fns.insert_add(normalized_key, Transform::Identity);
+            self.journal.push((normalized_key, Transform::Identity));
             Ok(Some(value))
         } else {
             Ok(None)
@@ -328,7 +332,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
         self.ops.insert_add(normalized_key, Op::Write);
-        self.fns.insert_add(normalized_key, Transform::Write(value));
+        let transform = Transform::Write(value);
+        self.fns.insert_add(normalized_key, transform.clone());
+        self.journal.push((normalized_key, transform));
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.
@@ -398,7 +404,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             Ok(new_value) => {
                 self.cache.insert_write(normalized_key, new_value);
                 self.ops.insert_add(normalized_key, Op::Add);
-                self.fns.insert_add(normalized_key, transform);
+                self.fns.insert_add(normalized_key, transform.clone());
+                self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
             }
             Err(transform::Error::TypeMismatch(type_mismatch)) => {
@@ -410,6 +417,10 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
     pub fn effect(&self) -> ExecutionEffect {
         ExecutionEffect::new(self.ops.clone(), self.fns.clone())
+    }
+
+    pub fn execution_journal(&self) -> ExecutionJournal {
+        self.journal.clone().into()
     }
 
     /// Calling `query()` avoids calling into `self.cache`, so this will not return any values

@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use casper_types::{EraId, JsonExecutionJournal, JsonExecutionResult, PublicKey};
 
 use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp};
 
@@ -12,7 +12,7 @@ pub enum Event {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
         block_hash: BlockHash,
-        execution_result: Box<ExecutionResult>,
+        execution_result: Box<JsonExecutionResult>,
     },
     Fault {
         era_id: EraId,
@@ -22,7 +22,7 @@ pub enum Event {
     FinalitySignature(Box<FinalitySignature>),
     Step {
         era_id: EraId,
-        execution_effect: ExecutionEffect,
+        execution_effect: JsonExecutionJournal,
     },
 }
 

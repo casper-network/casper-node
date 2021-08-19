@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_types::{JsonExecutionResult, ProtocolVersion};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -33,9 +33,9 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
-    execution_results: vec![JsonExecutionResult {
+    execution_results: vec![JsonBlockHashAndExecutionResult {
         block_hash: Block::doc_example().id(),
-        result: ExecutionResult::example().clone(),
+        result: JsonExecutionResult::example().clone(),
     }],
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
@@ -60,11 +60,11 @@ impl DocExample for GetDeployParams {
 /// The execution result of a single deploy.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JsonExecutionResult {
+pub struct JsonBlockHashAndExecutionResult {
     /// The block hash.
     pub block_hash: BlockHash,
     /// Execution result.
-    pub result: ExecutionResult,
+    pub result: JsonExecutionResult,
 }
 
 /// Result for "info_get_deploy" RPC response.
@@ -77,7 +77,7 @@ pub struct GetDeployResult {
     /// The deploy.
     pub deploy: Deploy,
     /// The map of block hash to execution result.
-    pub execution_results: Vec<JsonExecutionResult>,
+    pub execution_results: Vec<JsonBlockHashAndExecutionResult>,
 }
 
 impl DocExample for GetDeployResult {
@@ -132,7 +132,7 @@ impl RpcWithParamsExt for GetDeploy {
             let execution_results = metadata
                 .execution_results
                 .into_iter()
-                .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
+                .map(|(block_hash, result)| JsonBlockHashAndExecutionResult { block_hash, result })
                 .collect();
 
             let result = Self::ResponseResult {

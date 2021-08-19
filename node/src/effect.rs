@@ -85,7 +85,6 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
-        execution_effect::ExecutionEffect,
         genesis::GenesisSuccess,
         upgrade::{UpgradeConfig, UpgradeSuccess},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
@@ -95,8 +94,8 @@ use casper_execution_engine::{
     storage::trie::Trie,
 };
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    Transfer, U512,
+    system::auction::EraValidators, EraId, JsonExecutionJournal, JsonExecutionResult, Key,
+    ProtocolVersion, PublicKey, Transfer, U512,
 };
 
 use crate::{
@@ -706,7 +705,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_linear_chain_block(
         self,
         block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+        execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
     ) where
         REv: From<ContractRuntimeAnnouncement>,
     {
@@ -722,13 +721,13 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_step_success(
         self,
         era_id: EraId,
-        execution_effect: ExecutionEffect,
+        json_execution_journal: JsonExecutionJournal,
     ) where
         REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
+                ContractRuntimeAnnouncement::step_success(era_id, json_execution_journal),
                 QueueKind::Regular,
             )
             .await
@@ -996,7 +995,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_execution_results_to_storage(
         self,
         block_hash: BlockHash,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, JsonExecutionResult>,
     ) where
         REv: From<StorageRequest>,
     {
