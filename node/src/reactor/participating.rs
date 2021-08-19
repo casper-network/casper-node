@@ -435,7 +435,7 @@ impl Reactor {
             }
             Tag::BlockHeaderByHash => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_hash| {
-                    self.storage.get_block_header_by_hash(&block_hash)
+                    self.storage.read_block_header_by_hash(&block_hash)
                 })
             }
             Tag::BlockHeaderAndFinalitySignaturesByHeight => {
@@ -586,10 +586,10 @@ impl reactor::Reactor for Reactor {
             match chainspec.protocol_config.activation_point {
                 ActivationPoint::Genesis(genesis_timestamp) => {
                     // Check that no blocks exist in storage so we don't try to run genesis again on
-                    // an existing blockchain
-                    if let Some(first_block_header) = storage.read_block_header_by_height(1)? {
+                    // an existing blockchain.
+                    if let Some(highest_block_header) = storage.read_highest_block_header()? {
                         return Err(Error::CannotRunGenesisOnPreExistingBlockchain {
-                            first_block_header: Box::new(first_block_header),
+                            highest_block_header: Box::new(highest_block_header),
                         });
                     }
                     let GenesisSuccess {
@@ -647,8 +647,11 @@ impl reactor::Reactor for Reactor {
                         Some(chainspec.core_config.unbonding_delay),
                         global_state_update,
                     ))?;
-                    info!("upgrade chainspec name {}", chainspec.network_config.name);
-                    info!("upgrade state root hash {}", post_state_hash);
+                    info!(
+                        network_name = %chainspec.network_config.name,
+                        %post_state_hash,
+                        "upgrade committed"
+                    );
                     trace!(%post_state_hash, ?execution_effect);
                     initial_pre_state = ExecutionPreState::new(
                         upgrade_block_header.height() + 1,
