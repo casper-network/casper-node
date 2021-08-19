@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
+* Pay rewards more predictably, and never burn them, even if there are faulty validators.
 * The following parameters in the `[gossip]` section of the config has been renamed:
   * `[finished_entry_duration_secs]` => `[finished_entry_duration]`
   * `[gossip_request_timeout_secs]` => `[gossip_request_timeout]`
@@ -32,6 +33,7 @@ All notable changes to this project will be documented in this file.  The format
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 * The `MismatchedEraValidators` auction error is deprecated.
+* The chainspec option `reduced_reward_multiplier` has been removed.
 
 
 
