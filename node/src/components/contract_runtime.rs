@@ -31,7 +31,6 @@ use casper_execution_engine::{
     },
     shared::{
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
     },
@@ -40,7 +39,7 @@ use casper_execution_engine::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{Key, ProtocolVersion};
+use casper_types::{Key, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},

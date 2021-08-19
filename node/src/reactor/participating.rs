@@ -13,6 +13,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -328,6 +329,7 @@ pub(crate) struct ParticipatingInitConfig {
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
     pub(super) network_identity: NetworkIdentity,
+    pub(super) node_startup_instant: Instant,
 }
 
 #[cfg(test)]
@@ -416,6 +418,7 @@ impl reactor::Reactor for Reactor {
             event_stream_server,
             small_network_identity,
             network_identity,
+            node_startup_instant,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
@@ -438,12 +441,17 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
-        let rpc_server =
-            RpcServer::new(config.rpc_server.clone(), effect_builder, *protocol_version)?;
+        let rpc_server = RpcServer::new(
+            config.rpc_server.clone(),
+            effect_builder,
+            *protocol_version,
+            node_startup_instant,
+        )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
+            node_startup_instant,
         )?;
 
         let deploy_acceptor =

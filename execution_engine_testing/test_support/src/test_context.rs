@@ -3,9 +3,9 @@ use casper_execution_engine::{
         genesis::{GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{motes::Motes, stored_value::StoredValue},
+    shared::motes::Motes,
 };
-use casper_types::{AccessRights, Key, PublicKey, URef, U512};
+use casper_types::{AccessRights, Key, PublicKey, StoredValue, URef, U512};
 
 use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},

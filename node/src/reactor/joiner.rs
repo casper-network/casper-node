@@ -7,6 +7,7 @@ use std::{
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -341,6 +342,7 @@ pub(crate) struct Reactor {
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
+    node_startup_instant: Instant,
 }
 
 impl reactor::Reactor for Reactor {
@@ -367,6 +369,10 @@ impl reactor::Reactor for Reactor {
             small_network_identity,
             network_identity,
         } = initializer;
+
+        // We don't need to be super precise about the startup time, i.e.
+        // we can skip the time spent in `initializer` for the sake of code simplicity.
+        let node_startup_instant = Instant::now();
 
         // TODO: Remove wrapper around Reactor::Config instead.
         let (_, config) = config.into_parts();
@@ -438,6 +444,7 @@ impl reactor::Reactor for Reactor {
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
+            node_startup_instant,
         )?;
 
         let event_stream_server = EventStreamServer::new(
@@ -525,6 +532,7 @@ impl reactor::Reactor for Reactor {
                 rest_server,
                 event_stream_server,
                 memory_metrics,
+                node_startup_instant,
             },
             effects,
         ))
@@ -941,6 +949,7 @@ impl Reactor {
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),
+            node_startup_instant: self.node_startup_instant,
         };
         self.network.finalize().await;
         self.small_network.finalize().await;

@@ -19,7 +19,7 @@ mod event;
 mod http_server;
 pub mod rpcs;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
@@ -85,13 +85,17 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RpcServer {}
+pub(crate) struct RpcServer {
+    /// The instant at which the node has started.
+    node_startup_instant: Instant,
+}
 
 impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        node_startup_instant: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -104,7 +108,9 @@ impl RpcServer {
             config.qps_limit,
         ));
 
-        Ok(RpcServer {})
+        Ok(RpcServer {
+            node_startup_instant,
+        })
     }
 }
 
@@ -262,18 +268,26 @@ where
                     peers,
                     main_responder: responder,
                 }),
-            Event::RpcRequest(RpcRequest::GetStatus { responder }) => async move {
-                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
-                    effect_builder.get_highest_block_from_storage(),
-                    effect_builder.network_peers(),
-                    effect_builder.get_chainspec_info(),
-                    effect_builder.consensus_status()
-                );
-                let status_feed =
-                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
-                responder.respond(status_feed).await;
+            Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
+                let node_uptime = self.node_startup_instant.elapsed();
+                async move {
+                    let (last_added_block, peers, chainspec_info, consensus_status) = join!(
+                        effect_builder.get_highest_block_from_storage(),
+                        effect_builder.network_peers(),
+                        effect_builder.get_chainspec_info(),
+                        effect_builder.consensus_status()
+                    );
+                    let status_feed = StatusFeed::new(
+                        last_added_block,
+                        peers,
+                        chainspec_info,
+                        consensus_status,
+                        node_uptime,
+                    );
+                    responder.respond(status_feed).await;
+                }
+                .ignore()
             }
-            .ignore(),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,

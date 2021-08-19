@@ -9,7 +9,7 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     system::auction::EraInfo,
-    ContractHash, ContractPackageHash, ContractVersion, EraId, Group, Key, URef, U512,
+    ContractHash, ContractPackageHash, ContractVersion, EraId, Group, Key, StoredValue, URef, U512,
 };
 
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
@@ -18,7 +18,6 @@ use crate::{
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
-        stored_value::StoredValue,
     },
     storage::global_state::StateReader,
 };

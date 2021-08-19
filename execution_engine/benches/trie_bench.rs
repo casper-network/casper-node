@@ -1,13 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
 use casper_execution_engine::{
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    shared::newtypes::Blake2bHash,
     storage::trie::{Pointer, PointerBlock, Trie},
 };
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    CLValue, Key,
+    CLValue, Key, StoredValue,
 };
 
 fn serialize_trie_leaf(b: &mut Bencher) {
