@@ -190,9 +190,20 @@ impl<I> Era<I> {
                 u64::MAX
             });
 
+        let is_active = |public_key: &PublicKey| {
+            !(total_rewards == 0
+                || self.accusations.contains(public_key)
+                || self.faulty.contains(public_key)
+                || inactive_validators.contains(public_key))
+        };
+
         // The total rewards are distributed proportionally by weight. To make sure that the
         // computation doesn't overflow we divide all weights by 2^64 if the numbers are too large.
-        let total_weight: U512 = self.validators.values().cloned().sum();
+        let total_weight: U512 = self
+            .validators
+            .iter()
+            .filter_map(|(public_key, weight)| is_active(public_key).then(|| weight.clone()))
+            .sum();
         let shift = if total_weight.checked_mul(total_rewards.into()).is_none() {
             64
         } else {
@@ -202,16 +213,10 @@ impl<I> Era<I> {
             .validators
             .iter()
             .filter_map(|(public_key, weight)| {
-                if total_rewards == 0
-                    || self.accusations.contains(public_key)
-                    || self.faulty.contains(public_key)
-                    || inactive_validators.contains(public_key)
-                {
-                    None // Equivocators and inactive validators get no reward.
-                } else {
+                is_active(public_key).then(|| {
                     let reward = (weight >> shift) * total_rewards / (total_weight >> shift);
-                    Some((public_key.clone(), AsPrimitive::as_(reward)))
-                }
+                    (public_key.clone(), AsPrimitive::as_(reward))
+                })
             })
             .collect();
         EraReport {
@@ -291,12 +296,17 @@ mod tests {
 
     #[test]
     fn create_report() {
+        const ALICE_STAKE: u64 = 40;
+        const BOB_STAKE: u64 = 40;
+        const CAROL_STAKE: u64 = 40;
+        const DAN_STAKE: u64 = 40;
+        const ERIC_STAKE: u64 = 40;
         let validators: BTreeMap<PublicKey, U512> = vec![
-            (ALICE_PUBLIC_KEY.clone(), 50.into()),
-            (BOB_PUBLIC_KEY.clone(), 20.into()),
-            (CAROL_PUBLIC_KEY.clone(), 10.into()),
-            (DAN_PUBLIC_KEY.clone(), 5.into()),
-            (ERIC_PUBLIC_KEY.clone(), 15.into()),
+            (ALICE_PUBLIC_KEY.clone(), ALICE_STAKE.into()),
+            (BOB_PUBLIC_KEY.clone(), BOB_STAKE.into()),
+            (CAROL_PUBLIC_KEY.clone(), CAROL_STAKE.into()),
+            (DAN_PUBLIC_KEY.clone(), DAN_STAKE.into()),
+            (ERIC_PUBLIC_KEY.clone(), ERIC_STAKE.into()),
         ]
         .into_iter()
         .collect();
@@ -317,23 +327,36 @@ mod tests {
             validators,
         );
 
-        let time = start_time + round_len * 4;
+        let number_of_rounds_in_this_era = 4;
+        let time = start_time + round_len * number_of_rounds_in_this_era;
 
         // The era lasted four rounds, so the total reward is 4 * BLOCK_REWARD.
         // Dan and Eric recently equivocated, so they don't get a reward.
         let tbd = TerminalBlockData {
             inactive_validators: vec![],
         };
-        let report = EraReport {
-            rewards: vec![
-                (ALICE_PUBLIC_KEY.clone(), 50 * 4 * BLOCK_REWARD / 100),
-                (BOB_PUBLIC_KEY.clone(), 20 * 4 * BLOCK_REWARD / 100),
-                (CAROL_PUBLIC_KEY.clone(), 10 * 4 * BLOCK_REWARD / 100),
-            ]
-            .into_iter()
-            .collect(),
-            equivocators: vec![],
-            inactive_validators: vec![],
+        let report = {
+            let total = ALICE_STAKE + BOB_STAKE + CAROL_STAKE;
+            EraReport {
+                rewards: vec![
+                    (
+                        ALICE_PUBLIC_KEY.clone(),
+                        ALICE_STAKE * number_of_rounds_in_this_era * BLOCK_REWARD / total,
+                    ),
+                    (
+                        BOB_PUBLIC_KEY.clone(),
+                        BOB_STAKE * number_of_rounds_in_this_era * BLOCK_REWARD / total,
+                    ),
+                    (
+                        CAROL_PUBLIC_KEY.clone(),
+                        CAROL_STAKE * number_of_rounds_in_this_era * BLOCK_REWARD / total,
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                equivocators: vec![],
+                inactive_validators: vec![],
+            }
         };
         assert_eq!(report, era.create_report(tbd, time, &protocol_config));
 
@@ -341,15 +364,24 @@ mod tests {
         let tbd = TerminalBlockData {
             inactive_validators: vec![CAROL_PUBLIC_KEY.clone()],
         };
-        let report = EraReport {
-            rewards: vec![
-                (ALICE_PUBLIC_KEY.clone(), 50 * 4 * BLOCK_REWARD / 100),
-                (BOB_PUBLIC_KEY.clone(), 20 * 4 * BLOCK_REWARD / 100),
-            ]
-            .into_iter()
-            .collect(),
-            equivocators: vec![],
-            inactive_validators: vec![CAROL_PUBLIC_KEY.clone()],
+        let report = {
+            let total = ALICE_STAKE + BOB_STAKE;
+            EraReport {
+                rewards: vec![
+                    (
+                        ALICE_PUBLIC_KEY.clone(),
+                        ALICE_STAKE * number_of_rounds_in_this_era * BLOCK_REWARD / total,
+                    ),
+                    (
+                        BOB_PUBLIC_KEY.clone(),
+                        BOB_STAKE * number_of_rounds_in_this_era * BLOCK_REWARD / total,
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                equivocators: vec![],
+                inactive_validators: vec![CAROL_PUBLIC_KEY.clone()],
+            }
         };
         assert_eq!(report, era.create_report(tbd, time, &protocol_config));
 
@@ -358,15 +390,24 @@ mod tests {
             inactive_validators: vec![],
         };
         era.add_accusations(&[CAROL_PUBLIC_KEY.clone()]);
-        let report = EraReport {
-            rewards: vec![
-                (ALICE_PUBLIC_KEY.clone(), 50 * 4 * BLOCK_REWARD / 100),
-                (BOB_PUBLIC_KEY.clone(), 20 * 4 * BLOCK_REWARD / 100),
-            ]
-            .into_iter()
-            .collect(),
-            equivocators: vec![CAROL_PUBLIC_KEY.clone()],
-            inactive_validators: vec![],
+        let report = {
+            let total = ALICE_STAKE + BOB_STAKE;
+            EraReport {
+                rewards: vec![
+                    (
+                        ALICE_PUBLIC_KEY.clone(),
+                        ALICE_STAKE * number_of_rounds_in_this_era * BLOCK_REWARD / total,
+                    ),
+                    (
+                        BOB_PUBLIC_KEY.clone(),
+                        BOB_STAKE * number_of_rounds_in_this_era * BLOCK_REWARD / total,
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                equivocators: vec![CAROL_PUBLIC_KEY.clone()],
+                inactive_validators: vec![],
+            }
         };
         assert_eq!(report, era.create_report(tbd, time, &protocol_config));
     }
