@@ -589,9 +589,7 @@ mod tests {
 
     #[test]
     fn should_round_trip_check_summed_sample_deploy_json() {
-        let bytes = CHECK_SUMMED_SAMPLE_DEPLOY.as_bytes();
-        let reader = BufReader::new(bytes);
-        let deploy: Deploy = serde_json::from_reader(reader).unwrap();
+        let deploy: Deploy = serde_json::from_str(CHECK_SUMMED_SAMPLE_DEPLOY).unwrap();
         let casper_case_json_string = serde_json::to_string_pretty(&deploy).unwrap();
 
         assert_eq!(CHECK_SUMMED_SAMPLE_DEPLOY, casper_case_json_string);
