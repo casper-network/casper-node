@@ -9,15 +9,12 @@ use casper_engine_test_support::{
     },
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisValidator, GenesisAccount},
-    shared::motes::Motes,
-};
+use casper_execution_engine::core::engine_state::{genesis::GenesisValidator, GenesisAccount};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{DelegationRate, ARG_DELEGATOR, ARG_VALIDATOR},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";

@@ -1,4 +1,7 @@
-use std::{fmt, iter::Sum};
+//! TODO: module doc comment.
+
+use alloc::vec::Vec;
+use core::{fmt, iter::Sum};
 
 use datasize::DataSize;
 use num::Zero;
@@ -9,24 +12,29 @@ use crate::{
     Gas, U512,
 };
 
+/// TODO: doc comment.
 #[derive(
     DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
 )]
 pub struct Motes(U512);
 
 impl Motes {
+    /// TODO: doc comment.
     pub fn new(value: U512) -> Motes {
         Motes(value)
     }
 
+    /// TODO: doc comment.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
+    /// TODO: doc comment.
     pub fn value(&self) -> U512 {
         self.0
     }
 
+    /// TODO: doc comment.
     pub fn from_gas(gas: Gas, conv_rate: u64) -> Option<Self> {
         gas.value()
             .checked_mul(U512::from(conv_rate))
@@ -40,7 +48,7 @@ impl fmt::Display for Motes {
     }
 }
 
-impl std::ops::Add for Motes {
+impl core::ops::Add for Motes {
     type Output = Motes;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -49,7 +57,7 @@ impl std::ops::Add for Motes {
     }
 }
 
-impl std::ops::Sub for Motes {
+impl core::ops::Sub for Motes {
     type Output = Motes;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -58,7 +66,7 @@ impl std::ops::Sub for Motes {
     }
 }
 
-impl std::ops::Div for Motes {
+impl core::ops::Div for Motes {
     type Output = Motes;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -67,7 +75,7 @@ impl std::ops::Div for Motes {
     }
 }
 
-impl std::ops::Mul for Motes {
+impl core::ops::Mul for Motes {
     type Output = Motes;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -88,7 +96,7 @@ impl Zero for Motes {
 
 impl Sum for Motes {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Motes::zero(), std::ops::Add::add)
+        iter.fold(Motes::zero(), core::ops::Add::add)
     }
 }
 

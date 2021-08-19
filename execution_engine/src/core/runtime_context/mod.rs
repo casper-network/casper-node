@@ -18,9 +18,9 @@ use casper_types::{
     contracts::NamedKeys,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH,
+    ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Gas, Key,
+    KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr,
+    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH,
 };
 
 use crate::{
@@ -31,7 +31,7 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
-    shared::{gas::Gas, newtypes::CorrelationId},
+    shared::newtypes::CorrelationId,
     storage::global_state::StateReader,
 };
 

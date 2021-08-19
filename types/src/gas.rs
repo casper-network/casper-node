@@ -1,21 +1,27 @@
-use std::{fmt, iter::Sum};
+//! TODO: module doc comment.
+
+use core::{fmt, iter::Sum};
 
 use num::Zero;
 
 use crate::{Motes, U512};
 
+/// TODO: doc comment.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Gas(U512);
 
 impl Gas {
+    /// TODO: doc comment.
     pub fn new(value: U512) -> Self {
         Gas(value)
     }
 
+    /// TODO: doc comment.
     pub fn value(&self) -> U512 {
         self.0
     }
 
+    /// TODO: doc comment.
     pub fn from_motes(motes: Motes, conv_rate: u64) -> Option<Self> {
         motes
             .value()
@@ -23,10 +29,12 @@ impl Gas {
             .map(Self::new)
     }
 
+    /// TODO: doc comment.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
+    /// TODO: doc comment.
     pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
         self.0.checked_sub(rhs.value()).map(Self::new)
     }
@@ -38,7 +46,7 @@ impl fmt::Display for Gas {
     }
 }
 
-impl std::ops::Add for Gas {
+impl core::ops::Add for Gas {
     type Output = Gas;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -47,7 +55,7 @@ impl std::ops::Add for Gas {
     }
 }
 
-impl std::ops::Sub for Gas {
+impl core::ops::Sub for Gas {
     type Output = Gas;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -56,7 +64,7 @@ impl std::ops::Sub for Gas {
     }
 }
 
-impl std::ops::Div for Gas {
+impl core::ops::Div for Gas {
     type Output = Gas;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -65,7 +73,7 @@ impl std::ops::Div for Gas {
     }
 }
 
-impl std::ops::Mul for Gas {
+impl core::ops::Mul for Gas {
     type Output = Gas;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -74,7 +82,7 @@ impl std::ops::Mul for Gas {
     }
 }
 
-impl std::ops::AddAssign for Gas {
+impl core::ops::AddAssign for Gas {
     fn add_assign(&mut self, rhs: Self) {
         self.0 += rhs.0
     }
@@ -92,7 +100,7 @@ impl Zero for Gas {
 
 impl Sum for Gas {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Gas::zero(), std::ops::Add::add)
+        iter.fold(Gas::zero(), core::ops::Add::add)
     }
 }
 

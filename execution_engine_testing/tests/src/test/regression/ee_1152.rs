@@ -10,14 +10,13 @@ use casper_engine_test_support::{
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisValidator, GenesisAccount, RewardItem},
-    shared::motes::Motes,
+use casper_execution_engine::core::engine_state::{
+    genesis::GenesisValidator, GenesisAccount, RewardItem,
 };
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
