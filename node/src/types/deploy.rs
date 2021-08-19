@@ -800,12 +800,6 @@ impl Deploy {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        Deploy::random_with_account(rng, None)
-    }
-
-    /// Generates a random deploy with a specified account using a `TestRng`
-    #[cfg(test)]
-    pub fn random_with_account(rng: &mut TestRng, account: Option<PublicKey>) -> Self {
         let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
         let gas_price = rng.gen_range(1..100);
@@ -831,8 +825,13 @@ impl Deploy {
             payment,
             session,
             &secret_key,
-            account,
+            None,
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn invalidate(&mut self) {
+        self.header.chain_name.clear();
     }
 }
 

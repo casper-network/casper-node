@@ -7,6 +7,8 @@ use std::{convert::Infallible, fmt::Debug};
 use thiserror::Error;
 use tracing::{debug, error, info};
 
+use casper_types::Key;
+
 use crate::{
     components::Component,
     effect::{
@@ -18,7 +20,6 @@ use crate::{
     utils::Source,
     NodeRng,
 };
-use casper_types::Key;
 
 use crate::effect::Responder;
 pub(crate) use config::Config;
@@ -203,7 +204,7 @@ impl DeployAcceptor {
                     .ignore(),
             );
         }
-        // We can now repond with result of accepting of the deploy
+        // We can now respond with result of accepting of the deploy
         if let Some(responder) = maybe_responder {
             effects.extend(responder.respond(Ok(())).ignore());
         }
