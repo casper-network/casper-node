@@ -2,9 +2,7 @@ use std::{fmt, iter::Sum};
 
 use num::Zero;
 
-use casper_types::U512;
-
-use crate::shared::motes::Motes;
+use crate::{Motes, U512};
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Gas(U512);
@@ -114,9 +112,9 @@ impl From<u64> for Gas {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::U512;
+    use crate::U512;
 
-    use crate::shared::{gas::Gas, motes::Motes};
+    use crate::{Gas, Motes};
 
     #[test]
     fn should_be_able_to_get_instance_of_gas() {

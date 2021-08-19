@@ -17,10 +17,17 @@ bitflags = "1"
 blake2 = { version = "0.9.0", default-features = false }
 datasize = { version = "0.2.4", default-features = false }
 displaydoc = { version = "0.1", default-features = false, optional = true }
-ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
+ed25519-dalek = { version = "1.0.0", default-features = false, features = [
+    "rand",
+    "u64_backend",
+] }
 hex = { version = "0.4.2", default-features = false }
 hex_fmt = "0.3.0"
-k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "zeroize"] }
+k256 = { version = "0.7.2", default-features = false, features = [
+    "ecdsa",
+    "zeroize",
+] }
+num = { version = "0.4.0", default-features = false }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-rational = { version = "0.4.0", default-features = false }
@@ -59,9 +66,18 @@ std = [
     "serde_json/std",
     "serde_bytes/std",
     "schemars",
-    "thiserror"
+    "thiserror",
+    "num/std",
 ]
-no-std = ["base16/alloc", "hex/alloc", "serde/alloc", "serde_json/alloc", "serde_bytes/alloc", "displaydoc"]
+no-std = [
+    "base16/alloc",
+    "hex/alloc",
+    "serde/alloc",
+    "serde_json/alloc",
+    "serde_bytes/alloc",
+    "displaydoc",
+    "num/alloc",
+]
 gens = ["std", "proptest/std"]
 
 [[bench]]

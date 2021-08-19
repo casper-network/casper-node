@@ -4,12 +4,10 @@ use datasize::DataSize;
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    U512,
+    Gas, U512,
 };
-
-use crate::shared::gas::Gas;
 
 #[derive(
     DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
@@ -113,9 +111,9 @@ impl FromBytes for Motes {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::U512;
+    use crate::U512;
 
-    use crate::shared::{gas::Gas, motes::Motes};
+    use crate::{Gas, Motes};
 
     #[test]
     fn should_be_able_to_get_instance_of_motes() {
