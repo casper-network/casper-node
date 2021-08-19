@@ -202,7 +202,7 @@ impl<I> Era<I> {
         let total_weight: U512 = self
             .validators
             .iter()
-            .filter_map(|(public_key, weight)| is_active(public_key).then(|| weight.clone()))
+            .filter_map(|(public_key, weight)| is_active(public_key).then(|| *weight))
             .sum();
         let shift = if total_weight.checked_mul(total_rewards.into()).is_none() {
             64
