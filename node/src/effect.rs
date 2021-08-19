@@ -90,12 +90,12 @@ use casper_execution_engine::{
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
 use casper_types::{
     system::auction::EraValidators, EraId, JsonExecutionJournal, JsonExecutionResult, Key,
-    ProtocolVersion, PublicKey, Transfer, U512,
+    ProtocolVersion, PublicKey, StoredValue, Transfer, U512,
 };
 
 use crate::{
@@ -173,26 +173,24 @@ impl<T: 'static + Send> Responder<T> {
     }
 }
 
-impl<T> Responder<T> {
+impl<T> Responder<T>
+where
+    T: Debug,
+{
     /// Send `data` to the origin of the request.
-    pub(crate) fn respond(mut self, data: T) -> impl Future<Output = ()> {
-        let caller_backtrace = backtrace::Backtrace::new();
-        async move {
-            if let Some(sender) = self.0.take() {
-                if sender.send(data).is_err() {
-                    error!(
-                        responder = ?self,
-                        ?caller_backtrace,
-                        "could not send response to request down oneshot channel"
-                    );
-                }
-            } else {
+    pub(crate) async fn respond(mut self, data: T) {
+        if let Some(sender) = self.0.take() {
+            if let Err(data) = sender.send(data) {
                 error!(
-                    responder = ?self,
-                    ?caller_backtrace,
-                    "tried to send a value down a responder channel, but it was already used"
+                    ?data,
+                    "could not send response to request down oneshot channel"
                 );
             }
+        } else {
+            error!(
+                ?data,
+                "tried to send a value down a responder channel, but it was already used"
+            );
         }
     }
 }

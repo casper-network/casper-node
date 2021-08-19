@@ -1,7 +1,8 @@
 use std::{collections::BTreeMap, vec::Vec};
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey, U512,
+    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey,
+    StoredValueTypeMismatch, U512,
 };
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
         engine_state::{Error, GetEraValidatorsError},
         execution,
     },
-    shared::{execution_journal::ExecutionJournal, newtypes::Blake2bHash, TypeMismatch},
+    shared::{execution_journal::ExecutionJournal, newtypes::Blake2bHash},
 };
 
 #[derive(Debug)]
@@ -127,7 +128,7 @@ pub enum StepError {
     #[error("Key not found: {0}")]
     KeyNotFound(Key),
     #[error("Type mismatch: {0}")]
-    TypeMismatch(TypeMismatch),
+    TypeMismatch(StoredValueTypeMismatch),
     #[error("Era validators missing: {0}")]
     EraValidatorsMissing(EraId),
     #[error(transparent)]

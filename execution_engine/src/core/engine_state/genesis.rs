@@ -33,7 +33,7 @@ use casper_types::{
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -47,7 +47,6 @@ use crate::{
         gas::Gas,
         motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
     },

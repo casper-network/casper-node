@@ -1,12 +1,14 @@
 use std::collections::VecDeque;
 
-use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, TransferAddr};
+use casper_types::{
+    bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, StoredValue, TransferAddr,
+};
 
 use super::{error, execution_effect::ExecutionEffect, op::Op};
 use crate::{
     shared::{
         additive_map::AdditiveMap, execution_journal::ExecutionJournal, gas::Gas, motes::Motes,
-        newtypes::CorrelationId, stored_value::StoredValue, transform::Transform,
+        newtypes::CorrelationId, transform::Transform,
     },
     storage::global_state::StateReader,
 };
