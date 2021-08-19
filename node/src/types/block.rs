@@ -1038,9 +1038,9 @@ impl<'a, T> MerkleBlockBodyPart<'a, T> {
 /// ```
 #[derive(Debug, Clone)]
 pub struct MerkleBlockBody<'a> {
-    /// Merklized [`BlockBody::deploy_hashes`].
+    /// Merklized list of the deploy hashes from the block body.
     pub deploy_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
-    /// Merklized [`BlockBody::transfer_hashes`].
+    /// Merklized list of the transfer hashes from the block body.
     pub transfer_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
     /// Merklized [`BlockBody::proposer`].
     pub proposer: MerkleBlockBodyPart<'a, PublicKey>,
