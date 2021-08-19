@@ -12,12 +12,15 @@ use warp_json_rpc::Builder;
 use casper_node::crypto::Error as CryptoError;
 use hex::FromHexError;
 
-use casper_client::{DeployStrParams, Error, PaymentStrParams, SessionStrParams};
+use casper_client::{
+    DeployStrParams, DictionaryItemStrParams, Error, GlobalStateStrParams, PaymentStrParams,
+    SessionStrParams,
+};
 use casper_node::rpcs::{
     account::{PutDeploy, PutDeployParams},
     chain::{GetStateRootHash, GetStateRootHashParams},
     info::{GetDeploy, GetDeployParams},
-    state::{GetBalance, GetBalanceParams},
+    state::{GetBalance, GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams},
     RpcWithOptionalParams, RpcWithParams,
 };
 
@@ -143,10 +146,38 @@ impl MockServerHandle {
             .map(|_| ())
     }
 
+    #[allow(deprecated)]
     async fn get_item(&self, state_root_hash: &str, key: &str, path: &str) -> Result<(), Error> {
         casper_client::get_item("1", &self.url(), 0, state_root_hash, key, path)
             .await
             .map(|_| ())
+    }
+
+    async fn query_global_state(
+        &self,
+        global_state_params: GlobalStateStrParams<'_>,
+        key: &str,
+        path: &str,
+    ) -> Result<(), Error> {
+        casper_client::query_global_state("1", &self.url(), 0, global_state_params, key, path)
+            .await
+            .map(|_| ())
+    }
+
+    async fn get_dictionary_item(
+        &self,
+        state_root_hash: &str,
+        dictionary_str_params: DictionaryItemStrParams<'_>,
+    ) -> Result<(), Error> {
+        casper_client::get_dictionary_item(
+            "1",
+            &self.url(),
+            0,
+            state_root_hash,
+            dictionary_str_params,
+        )
+        .await
+        .map(|_| ())
     }
 
     async fn transfer(
@@ -256,6 +287,89 @@ mod session_params {
 
     pub fn test_data_with_package_hash() -> SessionStrParams<'static> {
         SessionStrParams::with_package_hash(PKG_HASH, VERSION, ENTRYPOINT, args_simple(), "")
+    }
+}
+
+/// Sample data creation methods for GlobalStateStrParams
+mod global_state_params {
+    use super::*;
+
+    pub fn test_params_as_state_root_hash() -> GlobalStateStrParams<'static> {
+        GlobalStateStrParams {
+            is_block_hash: false,
+            hash_value: VALID_STATE_ROOT_HASH,
+        }
+    }
+
+    pub fn invalid_global_state_str_params() -> GlobalStateStrParams<'static> {
+        GlobalStateStrParams {
+            is_block_hash: false,
+            hash_value: "invalid state root has",
+        }
+    }
+}
+
+/// Sample data creation methods for DictionaryItemStrParams.
+mod dictionary_item_str_params {
+    use super::*;
+
+    const DICTIONARY_NAME: &str = "test-dictionary";
+    const DICTIONARY_ITEM_KEY: &str = "test-item";
+
+    pub fn generate_valid_account_params() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::AccountNamedKey {
+            key: "account-hash-09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+            dictionary_name: DICTIONARY_NAME,
+            dictionary_item_key: DICTIONARY_ITEM_KEY,
+        }
+    }
+
+    pub fn generate_invalid_account_params() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::AccountNamedKey {
+            key: "invalid account hash",
+            dictionary_name: DICTIONARY_NAME,
+            dictionary_item_key: DICTIONARY_ITEM_KEY,
+        }
+    }
+
+    pub fn generate_valid_contract_params() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::ContractNamedKey {
+            key: "hash-09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+            dictionary_name: DICTIONARY_NAME,
+            dictionary_item_key: DICTIONARY_ITEM_KEY,
+        }
+    }
+
+    pub fn generate_invalid_contract_params() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::ContractNamedKey {
+            key: "invalid contract hash",
+            dictionary_name: DICTIONARY_NAME,
+            dictionary_item_key: DICTIONARY_ITEM_KEY,
+        }
+    }
+
+    pub fn generate_valid_uref_params() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::URef {
+            seed_uref: VALID_PURSE_UREF,
+            dictionary_item_key: DICTIONARY_ITEM_KEY,
+        }
+    }
+
+    pub fn generate_invalid_uref_params() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::URef {
+            seed_uref: "invalid uref",
+            dictionary_item_key: DICTIONARY_ITEM_KEY,
+        }
+    }
+
+    pub fn generate_valid_dictionary_address() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::Dictionary(
+            "dictionary-09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+        )
+    }
+
+    pub fn generate_invalid_dictionary_address() -> DictionaryItemStrParams<'static> {
+        DictionaryItemStrParams::Dictionary("invalid dictionary address")
     }
 }
 
@@ -493,6 +607,191 @@ mod get_item {
             Err(Error::CryptoError {
                 context: "state_root_hash",
                 error: CryptoError::FromHex(FromHexError::OddLength)
+            })
+        ));
+    }
+}
+
+mod get_dictionary_item {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_succeed_with_valid_dictionary_params() {
+        let server_handle =
+            MockServerHandle::spawn::<GetDictionaryItemParams>(GetDictionaryItem::METHOD);
+        let dictionary_str_account_params =
+            dictionary_item_str_params::generate_valid_account_params();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_str_account_params)
+                .await,
+            Ok(())
+        ));
+
+        let dictionary_contract_params =
+            dictionary_item_str_params::generate_valid_contract_params();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_contract_params)
+                .await,
+            Ok(())
+        ));
+
+        let dictionary_uref_params = dictionary_item_str_params::generate_valid_uref_params();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_uref_params)
+                .await,
+            Ok(())
+        ));
+
+        let dictionary_address_params =
+            dictionary_item_str_params::generate_valid_dictionary_address();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, dictionary_address_params)
+                .await,
+            Ok(())
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_invalid_params() {
+        let server_handle =
+            MockServerHandle::spawn::<GetDictionaryItemParams>(GetDictionaryItem::METHOD);
+        let invalid_dictionary_account_params =
+            dictionary_item_str_params::generate_invalid_account_params();
+
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, invalid_dictionary_account_params)
+                .await,
+            Err(Error::FailedToParseDictionaryIdentifier)
+        ));
+
+        let invalid_dictionary_contract_params =
+            dictionary_item_str_params::generate_invalid_contract_params();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, invalid_dictionary_contract_params)
+                .await,
+            Err(Error::FailedToParseDictionaryIdentifier)
+        ));
+
+        let invalid_dictionary_uref_params =
+            dictionary_item_str_params::generate_invalid_uref_params();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, invalid_dictionary_uref_params)
+                .await,
+            Err(Error::FailedToParseDictionaryIdentifier)
+        ));
+
+        let invalid_dictionary_address =
+            dictionary_item_str_params::generate_invalid_dictionary_address();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item(VALID_STATE_ROOT_HASH, invalid_dictionary_address)
+                .await,
+            Err(Error::FailedToParseDictionaryIdentifier)
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_invalid_state_root_hash() {
+        let server_handle =
+            MockServerHandle::spawn::<GetDictionaryItemParams>(GetDictionaryItem::METHOD);
+        let dictionary_params = dictionary_item_str_params::generate_valid_account_params();
+        assert!(matches!(
+            server_handle
+                .get_dictionary_item("<invalid state root hash>", dictionary_params)
+                .await,
+            Err(Error::CryptoError {
+                context: "state_root_hash",
+                error: CryptoError::FromHex(FromHexError::OddLength)
+            })
+        ));
+    }
+}
+
+mod query_global_state {
+    use casper_client::ValidateResponseError;
+    use casper_node::rpcs::state::{QueryGlobalState, QueryGlobalStateParams};
+
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_succeed_with_valid_global_state_params() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+
+        // in this case, the error means that the request was sent successfully, but due to to the
+        // mock implementation fails to validate
+
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::test_params_as_state_root_hash(),
+                    VALID_PURSE_UREF,
+                    ""
+                )
+                .await,
+            Err(Error::InvalidResponse(
+                ValidateResponseError::ValidateResponseFailedToParse
+            ))
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_invalid_global_state_params() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::invalid_global_state_str_params(),
+                    VALID_PURSE_UREF,
+                    ""
+                )
+                .await,
+            Err(Error::CryptoError {
+                context: "global_state_identifier",
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+            })
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_invalid_key() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::test_params_as_state_root_hash(),
+                    "invalid key",
+                    ""
+                )
+                .await,
+            Err(Error::FailedToParseKey)
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_fail_with_empty_key() {
+        let server_handle =
+            MockServerHandle::spawn::<QueryGlobalStateParams>(QueryGlobalState::METHOD);
+        assert!(matches!(
+            server_handle
+                .query_global_state(
+                    global_state_params::invalid_global_state_str_params(),
+                    "",
+                    ""
+                )
+                .await,
+            Err(Error::CryptoError {
+                context: "global_state_identifier",
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             })
         ));
     }

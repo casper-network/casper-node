@@ -14,9 +14,12 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult};
+use casper_execution_engine::{
+    core::engine_state::{BalanceResult, GetBidsResult, QueryResult},
+    shared::stored_value::StoredValue as DomainStoredValue,
+};
 use casper_types::{
-    bytesrepr::ToBytes, CLType, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey, URef, U512,
 };
 
 use super::{
@@ -34,8 +37,8 @@ use crate::{
         RpcWithOptionalParamsExt,
     },
     types::{
-        json_compatibility::{Account, AuctionState, StoredValue},
-        Block,
+        json_compatibility::{Account as JsonAccount, AuctionState, StoredValue},
+        Block, BlockHash, JsonBlockHeader,
     },
 };
 
@@ -76,7 +79,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
 });
 static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    account: Account::doc_example().clone(),
+    account: JsonAccount::doc_example().clone(),
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
@@ -97,7 +100,19 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
         stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
-
+static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
+    Lazy::new(|| QueryGlobalStateParams {
+        state_identifier: GlobalStateIdentifier::BlockHash(*Block::doc_example().hash()),
+        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+        path: vec![],
+    });
+static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
+    Lazy::new(|| QueryGlobalStateResult {
+        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        block_header: Some(JsonBlockHeader::doc_example().clone()),
+        stored_value: StoredValue::Account(JsonAccount::doc_example().clone()),
+        merkle_proof: MERKLE_PROOF.clone(),
+    });
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -470,7 +485,7 @@ pub struct GetAccountInfoResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The account.
-    pub account: Account,
+    pub account: JsonAccount,
     /// The merkle proof.
     pub merkle_proof: String,
 }
@@ -623,44 +638,43 @@ impl DictionaryIdentifier {
         }
     }
 
-    fn get_base_query_path(&self) -> Result<Option<Vec<String>>, Error> {
-        match self {
-            DictionaryIdentifier::AccountNamedKey {
-                dictionary_name, ..
-            }
-            | DictionaryIdentifier::ContractNamedKey {
-                dictionary_name, ..
-            } => Ok(Some(vec![dictionary_name.clone()])),
-            DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => Ok(None),
-        }
-    }
-
     fn get_dictionary_address(
         &self,
-        maybe_stored_value: Option<StoredValue>,
+        maybe_stored_value: Option<DomainStoredValue>,
     ) -> Result<Key, Error> {
         match self {
             DictionaryIdentifier::AccountNamedKey {
+                dictionary_name,
                 dictionary_item_key,
                 ..
             }
             | DictionaryIdentifier::ContractNamedKey {
+                dictionary_name,
                 dictionary_item_key,
                 ..
-            } => match maybe_stored_value {
-                Some(StoredValue::CLValue(value)) => {
-                    if *value.cl_type() == CLType::URef {
-                        let seed: URef = value
-                            .into_t()
-                            .map_err(|_| Error("Failed to parse URef".to_string()))?;
-                        let key_bytes = dictionary_item_key.as_str().as_bytes();
-                        Ok(Key::dictionary(seed, key_bytes))
-                    } else {
-                        Err(Error("Failed create dictionary address".to_string()))
+            } => {
+                let named_keys = match &maybe_stored_value {
+                    Some(DomainStoredValue::Account(account)) => account.named_keys(),
+                    Some(DomainStoredValue::Contract(contract)) => contract.named_keys(),
+                    Some(other) => {
+                        return Err(Error(format!(
+                            "Unexpected StoredValue {}",
+                            other.type_name()
+                        )))
                     }
-                }
-                Some(_) | None => Err(Error("Failed to create dictionary address".to_string())),
-            },
+                    None => return Err(Error("Could not retrieve account".to_string())),
+                };
+
+                let key_bytes = dictionary_item_key.as_str().as_bytes();
+                let seed_uref = match named_keys.get(dictionary_name) {
+                    Some(key) => *key
+                        .as_uref()
+                        .ok_or_else(|| Error("Failed to parse key into URef:".to_string()))?,
+                    None => return Err(Error("Failed to get seed Uref".to_string())),
+                };
+
+                Ok(Key::dictionary(seed_uref, key_bytes))
+            }
             DictionaryIdentifier::URef {
                 seed_uref,
                 dictionary_item_key,
@@ -676,7 +690,7 @@ impl DictionaryIdentifier {
     }
 }
 
-/// Params for "state_get_dict" RPC request.
+/// Params for "state_get_dictionary_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetDictionaryItemParams {
@@ -692,7 +706,7 @@ impl DocExample for GetDictionaryItemParams {
     }
 }
 
-/// Result for "state_get_dictionary" RPC response.
+/// Result for "state_get_dictionary_item" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetDictionaryItemResult {
@@ -713,7 +727,7 @@ impl DocExample for GetDictionaryItemResult {
     }
 }
 
-/// "state_get_dictionary" RPC.
+/// "state_get_dictionary_item" RPC.
 pub struct GetDictionaryItem {}
 
 impl RpcWithParams for GetDictionaryItem {
@@ -744,35 +758,33 @@ impl RpcWithParamsExt for GetDictionaryItem {
                         }
                     };
 
-                    let path = match params.dictionary_identifier.get_base_query_path() {
-                        Ok(Some(path)) => path,
-                        Err(_) | Ok(None) => {
-                            error!("Failed to execute query");
-                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                                ErrorCode::NoDictionaryName as i64,
-                                "Failed to execute query",
-                            ))?);
-                        }
-                    };
+                    let empty_path = Vec::new();
 
                     let query_result = effect_builder
                         .make_request(
                             |responder| RpcRequest::QueryGlobalState {
                                 state_root_hash: params.state_root_hash,
                                 base_key,
-                                path,
+                                path: empty_path,
                                 responder,
                             },
                             QueueKind::Api,
                         )
                         .await;
 
-                    let (stored_value, _) = match common::extract_query_result(query_result) {
-                        Ok(tuple) => tuple,
-                        Err((error_code, error_msg)) => {
-                            info!("{}", error_msg);
+                    let value = match query_result {
+                        Ok(QueryResult::Success { value, .. }) => value,
+                        Ok(query_result) => {
+                            let error_msg = format!("state query failed: {:?}", query_result);
                             return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                                error_code as i64,
+                                ErrorCode::QueryFailed as i64,
+                                error_msg,
+                            ))?);
+                        }
+                        Err(error) => {
+                            let error_msg = format!("state query failed to execute: {:?}", error);
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                ErrorCode::QueryFailedToExecute as i64,
                                 error_msg,
                             ))?);
                         }
@@ -780,7 +792,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
 
                     params
                         .dictionary_identifier
-                        .get_dictionary_address(Some(stored_value))
+                        .get_dictionary_address(Some(*value))
                 }
                 DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
                     params.dictionary_identifier.get_dictionary_address(None)
@@ -821,6 +833,144 @@ impl RpcWithParamsExt for GetDictionaryItem {
             let result = Self::ResponseResult {
                 api_version,
                 dictionary_key: dictionary_query_key.to_formatted_string(),
+                stored_value,
+                merkle_proof: hex::encode(proof_bytes),
+            };
+
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Identifier for possible ways to query Global State
+#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+#[serde(deny_unknown_fields)]
+pub enum GlobalStateIdentifier {
+    /// Query using a block hash.
+    BlockHash(BlockHash),
+    /// Query using the state root hash.
+    StateRootHash(Digest),
+}
+
+/// Params for "query_global_state" RPC
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QueryGlobalStateParams {
+    /// The identifier used for the query.
+    pub state_identifier: GlobalStateIdentifier,
+    /// `casper_types::Key` as formatted string.
+    pub key: String,
+    /// The path components starting from the key as base.
+    #[serde(default)]
+    pub path: Vec<String>,
+}
+
+impl DocExample for QueryGlobalStateParams {
+    fn doc_example() -> &'static Self {
+        &*QUERY_GLOBAL_STATE_PARAMS
+    }
+}
+
+/// Result for "query_global_state" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QueryGlobalStateResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The block header if a Block hash was provided.
+    pub block_header: Option<JsonBlockHeader>,
+    /// The stored value.
+    pub stored_value: StoredValue,
+    /// The merkle proof.
+    pub merkle_proof: String,
+}
+
+impl DocExample for QueryGlobalStateResult {
+    fn doc_example() -> &'static Self {
+        &*QUERY_GLOBAL_STATE_RESULT
+    }
+}
+
+/// "query_global_state" RPC
+pub struct QueryGlobalState {}
+
+impl RpcWithParams for QueryGlobalState {
+    const METHOD: &'static str = "query_global_state";
+    type RequestParams = QueryGlobalStateParams;
+    type ResponseResult = QueryGlobalStateResult;
+}
+
+impl RpcWithParamsExt for QueryGlobalState {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let (state_root_hash, maybe_block_header) = match params.state_identifier {
+                GlobalStateIdentifier::BlockHash(block_hash) => {
+                    match effect_builder
+                        .get_block_header_from_storage(block_hash)
+                        .await
+                    {
+                        Some(header) => {
+                            let json_block_header = JsonBlockHeader::from(header.clone());
+                            (*header.state_root_hash(), Some(json_block_header))
+                        }
+                        None => {
+                            let error_msg =
+                                "query_global_state failed to retrieve specified block header"
+                                    .to_string();
+                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                                ErrorCode::NoSuchBlock as i64,
+                                error_msg,
+                            ))?);
+                        }
+                    }
+                }
+                GlobalStateIdentifier::StateRootHash(state_root_hash) => (state_root_hash, None),
+            };
+
+            let base_key = match Key::from_formatted_str(&params.key)
+                .map_err(|error| format!("failed to parse key: {}", error))
+            {
+                Ok(key) => key,
+                Err(error_msg) => {
+                    info!("{}", error_msg);
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::ParseQueryKey as i64,
+                        error_msg,
+                    ))?);
+                }
+            };
+
+            let query_result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::QueryGlobalState {
+                        state_root_hash,
+                        base_key,
+                        path: params.path,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+                Ok(tuple) => tuple,
+                Err((error_code, error_msg)) => {
+                    info!("{}", error_msg);
+                    return Ok(response_builder
+                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                block_header: maybe_block_header,
                 stored_value,
                 merkle_proof: hex::encode(proof_bytes),
             };
