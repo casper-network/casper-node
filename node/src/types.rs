@@ -32,6 +32,7 @@ pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployOrTransferHash,
     DeployValidationFailure, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
+pub use error::BlockValidationError;
 pub use exit_code::ExitCode;
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;

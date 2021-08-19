@@ -458,7 +458,6 @@ impl Storage {
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
-        let mut any_v2_block_deleted = false;
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
@@ -470,13 +469,8 @@ impl Storage {
                 if block_header.era_id() >= invalid_era
                     && block_header.protocol_version() < protocol_version
                 {
-                    match block_header.hashing_algorithm_version() {
-                        HashingAlgorithmVersion::V1 => {
-                            let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
-                        }
-                        HashingAlgorithmVersion::V2 => {
-                            any_v2_block_deleted = true;
-                        }
+                    if block_header.hashing_algorithm_version() == HashingAlgorithmVersion::V1 {
+                        let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                     }
                     let _ = deleted_block_hashes.insert(block_header.hash());
                     cursor.del(WriteFlags::empty())?;
@@ -552,7 +546,6 @@ impl Storage {
             &deploy_hashes_db,
             &transfer_hashes_db,
             &proposer_db,
-            any_v2_block_deleted,
             should_check_integrity,
         )?;
         initialize_block_metadata_db(
@@ -1928,7 +1921,6 @@ fn initialize_block_body_v2_db(
     deploy_hashes_db: &Database,
     transfer_hashes_db: &Database,
     proposer_db: &Database,
-    any_v2_block_deleted: bool,
     should_check_integrity: bool,
 ) -> Result<(), Error> {
     info!("initializing v2 block body database");
