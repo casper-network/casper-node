@@ -1143,12 +1143,10 @@ impl Storage {
 
     /// Retrieves the highest block header from the storage, if one exists.
     pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, Error> {
-        let highest_block_hash = match self.block_height_index
-            .iter()
-            .last() {
-                Some((_, highest_block_hash)) => highest_block_hash,
-                None => return Ok(None),
-            };
+        let highest_block_hash = match self.block_height_index.iter().last() {
+            Some((_, highest_block_hash)) => highest_block_hash,
+            None => return Ok(None),
+        };
         self.read_block_header_by_hash(highest_block_hash)
     }
 
