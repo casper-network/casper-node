@@ -31,8 +31,7 @@ fn bytes_to_bits_cycle(bytes: Vec<u8>) -> impl Iterator<Item = bool> {
         .flat_map(move |byte| (0..8usize).map(move |offset| ((byte >> offset) & 0x01) == 0x01))
 }
 
-/// Computes a Blake2b hash outputs it as a vector of *nibbles* (ie, 4-bit values) represented as
-/// `usize`s.
+/// Computes a Blake2b hash.
 fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
     let mut hasher = Blake2b::new();
     hasher.update(data);
