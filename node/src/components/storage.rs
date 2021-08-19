@@ -1936,11 +1936,8 @@ fn initialize_block_body_v2_db(
     if should_check_integrity {
         let txn = env.begin_rw_txn()?;
 
-        let block_body_hash_to_header_map = if any_v2_block_deleted || should_check_integrity {
-            construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?
-        } else {
-            BTreeMap::new()
-        };
+        let block_body_hash_to_header_map =
+            construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
 
         let expected_hashing_algorithm_version = HashingAlgorithmVersion::V2;
         for (raw_key, _raw_val) in txn.open_ro_cursor(*block_body_v2_db)?.iter() {
