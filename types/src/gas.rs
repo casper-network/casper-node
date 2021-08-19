@@ -1,4 +1,4 @@
-//! TODO: module doc comment.
+//! The `gas` module is used for working with Gas including converting to and from Motes.
 
 use core::{fmt, iter::Sum};
 
@@ -6,22 +6,22 @@ use num::Zero;
 
 use crate::{Motes, U512};
 
-/// TODO: doc comment.
+/// The `Gas` struct represents a `U512` amount of gas.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Gas(U512);
 
 impl Gas {
-    /// TODO: doc comment.
+    /// Constructs a new `Gas`.
     pub fn new(value: U512) -> Self {
         Gas(value)
     }
 
-    /// TODO: doc comment.
+    /// Returns the inner `U512` value.
     pub fn value(&self) -> U512 {
         self.0
     }
 
-    /// TODO: doc comment.
+    /// Returns an `Option<Gas>`. Returns `None` if the conversion cannot be performed.
     pub fn from_motes(motes: Motes, conv_rate: u64) -> Option<Self> {
         motes
             .value()
@@ -29,12 +29,12 @@ impl Gas {
             .map(Self::new)
     }
 
-    /// TODO: doc comment.
+    /// Safe addition method that returns an `Option<Gas>`. Returns `None` if an overflow has occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
-    /// TODO: doc comment.
+    /// Safe subtraction method that returns an `Option<Gas>`. Returns `None` if an overflowhas occurred.
     pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
         self.0.checked_sub(rhs.value()).map(Self::new)
     }

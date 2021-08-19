@@ -1,4 +1,4 @@
-//! TODO: module doc comment.
+//! The `motes` module is used for working with Motes.
 
 use alloc::vec::Vec;
 use core::{fmt, iter::Sum};
@@ -12,29 +12,29 @@ use crate::{
     Gas, U512,
 };
 
-/// TODO: doc comment.
+/// `Motes` are small amounts of cspr, expressed as `U512`.
 #[derive(
     DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
 )]
 pub struct Motes(U512);
 
 impl Motes {
-    /// TODO: doc comment.
+    /// Constructs a new `Motes`.
     pub fn new(value: U512) -> Motes {
         Motes(value)
     }
 
-    /// TODO: doc comment.
+    /// Safe addition method. Returns an `Option<Motes>`. Returns `None` if an overflow occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
-    /// TODO: doc comment.
+    /// Returns the `U512` value.
     pub fn value(&self) -> U512 {
         self.0
     }
 
-    /// TODO: doc comment.
+    /// Returns a `Option<Motes>`. Returns `None` if the conversion cannot be performed.
     pub fn from_gas(gas: Gas, conv_rate: u64) -> Option<Self> {
         gas.value()
             .checked_mul(U512::from(conv_rate))
