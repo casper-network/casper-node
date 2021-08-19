@@ -12,6 +12,7 @@ members = [
     "smart_contracts/contracts/[!.]*/*",
     "types",
     "utils/global-state-update-gen",
+    "utils/rpc-server-tests",
 ]
 
 default-members = [
