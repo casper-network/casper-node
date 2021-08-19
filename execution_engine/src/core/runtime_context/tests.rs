@@ -17,7 +17,7 @@ use casper_types::{
     contracts::NamedKeys,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, BlockTime, CLValue, Contract, ContractHash, DeployHash, EntryPointType,
-    EntryPoints, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef,
+    EntryPoints, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef,
     KEY_HASH_LENGTH, U256, U512,
 };
 
@@ -29,10 +29,7 @@ use crate::{
         runtime::extract_access_rights_from_keys,
         tracking_copy::TrackingCopy,
     },
-    shared::{
-        additive_map::AdditiveMap, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue,
-        transform::Transform,
-    },
+    shared::{additive_map::AdditiveMap, gas::Gas, newtypes::CorrelationId, transform::Transform},
     storage::global_state::{
         in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
         StateProvider,

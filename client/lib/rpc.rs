@@ -21,6 +21,7 @@ use casper_node::{
         state::{
             GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
             GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams, GetItem, GetItemParams,
+            GlobalStateIdentifier, QueryGlobalState, QueryGlobalStateParams,
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
@@ -31,7 +32,7 @@ use casper_types::{AsymmetricType, Key, PublicKey, URef};
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
-    validation, DictionaryItemStrParams,
+    validation, DictionaryItemStrParams, GlobalStateStrParams,
 };
 
 /// Struct representing a single JSON-RPC call to the casper node.
@@ -289,6 +290,41 @@ impl RpcCall {
         GetAccountInfo::request_with_map_params(self, params).await
     }
 
+    pub(crate) async fn query_global_state(
+        self,
+        global_state_str_params: GlobalStateStrParams<'_>,
+        key: &str,
+        path: &str,
+    ) -> Result<JsonRpc> {
+        let global_state_identifier: GlobalStateIdentifier = global_state_str_params.try_into()?;
+
+        let key = {
+            if let Ok(key) = Key::from_formatted_str(key) {
+                key
+            } else if let Ok(public_key) = PublicKey::from_hex(key) {
+                Key::Account(public_key.to_account_hash())
+            } else {
+                return Err(Error::FailedToParseKey);
+            }
+        };
+
+        let path = if path.is_empty() {
+            vec![]
+        } else {
+            path.split('/').map(ToString::to_string).collect()
+        };
+
+        let params = QueryGlobalStateParams {
+            state_identifier: global_state_identifier.clone(),
+            key: key.to_formatted_string(),
+            path: path.clone(),
+        };
+
+        let response = QueryGlobalState::request_with_map_params(self, params).await?;
+        validation::validate_query_global_state(&response, global_state_identifier, &key, &path)?;
+        Ok(response)
+    }
+
     fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {
         if maybe_block_identifier.is_empty() {
             return Ok(None);
@@ -427,6 +463,10 @@ impl RpcClient for GetDictionaryItem {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for QueryGlobalState {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 pub(crate) trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
@@ -451,3 +491,4 @@ impl IntoJsonMap for ListRpcs {}
 impl IntoJsonMap for GetAuctionInfoParams {}
 impl IntoJsonMap for GetAccountInfoParams {}
 impl IntoJsonMap for GetDictionaryItemParams {}
+impl IntoJsonMap for QueryGlobalStateParams {}

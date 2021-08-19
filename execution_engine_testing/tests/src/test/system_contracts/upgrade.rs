@@ -24,7 +24,6 @@ use casper_execution_engine::{
             DEFAULT_UNREACHABLE_COST,
         },
         storage_costs::StorageCosts,
-        stored_value::StoredValue,
         system_config::{
             auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
             mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
@@ -42,7 +41,7 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    CLValue, EraId, ProtocolVersion, RuntimeArgs, U256, U512,
+    CLValue, EraId, ProtocolVersion, RuntimeArgs, StoredValue, U256, U512,
 };
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;

@@ -18,14 +18,13 @@ use casper_execution_engine::{
         host_function_costs::{HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
+    CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{

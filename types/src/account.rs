@@ -428,9 +428,50 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
+#[doc(hidden)]
+#[cfg(any(feature = "gens", test))]
+pub mod gens {
+    use proptest::prelude::*;
+
+    use crate::{
+        account::{
+            action_thresholds::gens::action_thresholds_arb,
+            associated_keys::gens::associated_keys_arb, Account, Weight,
+        },
+        gens::{account_hash_arb, named_keys_arb, uref_arb},
+    };
+
+    prop_compose! {
+        pub fn account_arb()(
+            account_hash in account_hash_arb(),
+            urefs in named_keys_arb(3),
+            purse in uref_arb(),
+            thresholds in action_thresholds_arb(),
+            mut associated_keys in associated_keys_arb(),
+        ) -> Account {
+                associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
+                Account::new(
+                    account_hash,
+                    urefs,
+                    purse,
+                    associated_keys,
+                    thresholds,
+                )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryFrom, vec::Vec};
+    use crate::{
+        account::{
+            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
+            SetThresholdFailure, UpdateKeyFailure, Weight,
+        },
+        contracts::NamedKeys,
+        AccessRights, URef,
+    };
+    use std::{collections::BTreeSet, convert::TryFrom, iter::FromIterator, vec::Vec};
 
     use super::*;
 
@@ -540,17 +581,6 @@ mod tests {
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(account_hash, decoded);
     }
-
-    use std::{collections::BTreeSet, iter::FromIterator};
-
-    use crate::{
-        account::{
-            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
-            SetThresholdFailure, UpdateKeyFailure, Weight,
-        },
-        contracts::NamedKeys,
-        AccessRights, URef,
-    };
 
     #[test]
     fn associated_keys_can_authorize_keys() {
@@ -892,39 +922,6 @@ mod tests {
         account
             .update_associated_key(key_1, Weight::new(1))
             .expect("should work");
-    }
-}
-
-#[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
-pub mod gens {
-    use proptest::prelude::*;
-
-    use crate::{
-        account::{
-            action_thresholds::gens::action_thresholds_arb,
-            associated_keys::gens::associated_keys_arb, Account, Weight,
-        },
-        gens::{account_hash_arb, named_keys_arb, uref_arb},
-    };
-
-    prop_compose! {
-        pub fn account_arb()(
-            account_hash in account_hash_arb(),
-            urefs in named_keys_arb(3),
-            purse in uref_arb(),
-            thresholds in action_thresholds_arb(),
-            mut associated_keys in associated_keys_arb(),
-        ) -> Account {
-                associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
-                Account::new(
-                    account_hash,
-                    urefs,
-                    purse,
-                    associated_keys,
-                    thresholds,
-                )
-        }
     }
 }
 

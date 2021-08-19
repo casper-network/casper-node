@@ -3,12 +3,11 @@ use casper_types::{
         handle_payment, mint,
         standard_payment::{AccountProvider, HandlePaymentProvider, MintProvider, StandardPayment},
     },
-    ApiError, Key, RuntimeArgs, URef, U512,
+    ApiError, Key, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{
     core::{execution, runtime::Runtime},
-    shared::stored_value::StoredValue,
     storage::global_state::StateReader,
 };
 
