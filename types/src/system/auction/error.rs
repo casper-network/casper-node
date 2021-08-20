@@ -200,6 +200,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::UnbondTooLarge as u8 => Ok(Error::UnbondTooLarge),
             d if d == Error::BondTooSmall as u8 => Ok(Error::BondTooSmall),
             d if d == Error::MissingDelegations as u8 => Ok(Error::MissingDelegations),
+            #[allow(deprecated)]
             d if d == Error::MismatchedEraValidators as u8 => Ok(Error::MismatchedEraValidators),
             d if d == Error::MintReward as u8 => Ok(Error::MintReward),
             d if d == Error::MintReduceTotalSupply as u8 => Ok(Error::MintReduceTotalSupply),
