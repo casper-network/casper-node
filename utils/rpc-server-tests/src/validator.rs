@@ -77,6 +77,6 @@ impl Validator {
             .as_i64()
             .ok_or(RpcServerTestError::CantExtractErrorCode())?;
 
-        Ok(i16::try_from(error_code).map_err(|_| RpcServerTestError::CantExtractErrorCode())?)
+        i16::try_from(error_code).map_err(|_| RpcServerTestError::CantExtractErrorCode())
     }
 }

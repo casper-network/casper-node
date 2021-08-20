@@ -1,4 +1,4 @@
-use std::{convert::TryInto, fs, path::Path};
+use std::{convert::TryInto, fs, path::Path, str::FromStr};
 
 use reqwest::StatusCode;
 
@@ -29,7 +29,7 @@ impl TestCase {
         let query = DataSource::from_file(query_path.as_path());
         let expected_schema = DataSource::from_file(response_schema_path.as_path());
         let expected_code = TestCase::status_code_from_path(response_code_path)?;
-        let expected_error_code = TestCase::integer_from_path(error_response_code_path);
+        let expected_error_code = TestCase::status_code_from_path(error_response_code_path);
 
         Ok(Self {
             input: query.try_into()?,
@@ -45,16 +45,10 @@ impl TestCase {
         })
     }
 
-    fn status_code_from_path(path: impl AsRef<Path>) -> Result<StatusCode, RpcServerTestError> {
-        let code = fs::read_to_string(path)
-            .map_err(|err| RpcServerTestError::ExpectedCodeFileError(err.to_string()))?;
-        let code = code
-            .parse()
-            .map_err(|_| RpcServerTestError::IncorrectExpectedCode())?;
-        Ok(code)
-    }
-
-    fn integer_from_path(path: impl AsRef<Path>) -> Result<i16, RpcServerTestError> {
+    fn status_code_from_path<T>(path: impl AsRef<Path>) -> Result<T, RpcServerTestError>
+    where
+        T: FromStr,
+    {
         let code = fs::read_to_string(path)
             .map_err(|err| RpcServerTestError::ExpectedCodeFileError(err.to_string()))?;
         let code = code
