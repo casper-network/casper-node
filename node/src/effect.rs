@@ -85,7 +85,6 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
-        execution_effect::ExecutionEffect,
         genesis::GenesisSuccess,
         upgrade::{UpgradeConfig, UpgradeSuccess},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
@@ -119,9 +118,9 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    NetworkAnnouncement, RpcServerAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
 };
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -131,7 +130,7 @@ use requests::{
 
 use self::announcements::BlocklistAnnouncement;
 use crate::components::contract_runtime::{
-    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
+    BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeAnnouncement, ExecutionPreState,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -404,6 +403,14 @@ impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
     pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
         EffectBuilder(event_queue_handle)
+    }
+
+    /// Schedules a regular event.
+    pub(crate) async fn schedule_regular<E>(self, event: E)
+    where
+        REv: From<E>,
+    {
+        self.0.schedule(event, QueueKind::Regular).await
     }
 
     /// Extract the event queue handle out of the effect builder.
@@ -711,22 +718,6 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce a committed Step success.
-    pub(crate) async fn announce_step_success(
-        self,
-        era_id: EraId,
-        execution_effect: ExecutionEffect,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
                 QueueKind::Regular,
             )
             .await

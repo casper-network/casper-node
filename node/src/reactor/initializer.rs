@@ -13,7 +13,7 @@ use tracing::info;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
         gossiper,
         network::NetworkIdentity,
         small_network::{GossipedAddress, SmallNetworkIdentity, SmallNetworkIdentityError},
@@ -21,9 +21,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-        },
+        announcements::{ChainspecLoaderAnnouncement, ControlAnnouncement},
         requests::{
             ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
             RestRequest, StateStoreRequest, StorageRequest,

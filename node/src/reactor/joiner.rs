@@ -24,7 +24,7 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::ContractRuntime,
+        contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
@@ -41,9 +41,8 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            LinearChainBlock, NetworkAnnouncement,
+            ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -399,7 +398,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            None,
         )?;
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
@@ -834,15 +832,10 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockAdded(block.clone()),
                     ),
                 );
-                let reactor_event = JoinerEvent::LinearChainSync(
-                    linear_chain_sync::Event::BlockHandled(block.clone()),
-                );
+                let reactor_event =
+                    JoinerEvent::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
-                ));
+
                 effects
             }
             JoinerEvent::LinearChainAnnouncement(
@@ -907,6 +900,12 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 // no consensus, respond with None
                 responder.respond(None).ignore()
+            }
+            JoinerEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators { .. },
+            ) => {
+                // Upcoming validators are not used by joiner reactor
+                Effects::new()
             }
         }
     }

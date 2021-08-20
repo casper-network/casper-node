@@ -21,15 +21,15 @@ use casper_types::ProtocolVersion;
 use super::*;
 use crate::{
     components::{
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
     effect::{
         announcements::{
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
         Responder,

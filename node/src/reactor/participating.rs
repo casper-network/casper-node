@@ -32,7 +32,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
-        contract_runtime::{ContractRuntime, ExecutionPreState},
+        contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
         fetcher::{self, Fetcher},
@@ -49,9 +49,8 @@ use crate::{
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -487,7 +486,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            Some(initial_era),
         )?;
 
         let mut effects =
@@ -1140,15 +1138,11 @@ impl reactor::Reactor for Reactor {
                     consensus::Event::BlockAdded(Box::new(block.header().clone())),
                 );
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
-                    event_stream_server::Event::BlockAdded(block.clone()),
+                    event_stream_server::Event::BlockAdded(block),
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
-                ));
+
                 effects
             }
             ParticipatingEvent::LinearChainAnnouncement(
@@ -1174,6 +1168,11 @@ impl reactor::Reactor for Reactor {
                 effects
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::SmallNetwork(ann.into()),
+            ),
+            ParticipatingEvent::ContractRuntimeAnnouncement(ann) => self.dispatch_event(
                 effect_builder,
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),

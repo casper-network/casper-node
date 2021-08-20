@@ -69,6 +69,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Removed
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
 * Removed dead code revealed by making modules `pub(crate)`.
+* The networking layer no longer gives preferences to validators from the previous era.
 
 ### Fixed
 * Avoid redundant requests caused by the Highway synchronizer.
