@@ -5,13 +5,11 @@ use casper_types::{
         mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
         CallStackElement,
     },
-    CLTyped, CLValue, Key, Phase, URef, U512,
+    CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;
-use crate::{
-    core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
-};
+use crate::{core::execution, storage::global_state::StateReader};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {

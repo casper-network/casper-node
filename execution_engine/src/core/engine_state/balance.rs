@@ -1,9 +1,6 @@
-use casper_types::{Key, URef, U512};
+use casper_types::{Key, StoredValue, URef, U512};
 
-use crate::{
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::trie::merkle_proof::TrieMerkleProof,
-};
+use crate::{shared::newtypes::Blake2bHash, storage::trie::merkle_proof::TrieMerkleProof};
 
 #[derive(Debug)]
 pub enum BalanceResult {

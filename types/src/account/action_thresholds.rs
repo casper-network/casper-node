@@ -1,6 +1,9 @@
+//! This module contains types and functions for managing action thresholds.
+
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     account::{ActionType, SetThresholdFailure, Weight, WEIGHT_SERIALIZED_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes},
 };
@@ -60,10 +63,12 @@ impl ActionThresholds {
         }
     }
 
+    /// Returns the deployment action threshold.
     pub fn deployment(&self) -> &Weight {
         &self.deployment
     }
 
+    /// Returns key management action threshold.
     pub fn key_management(&self) -> &Weight {
         &self.key_management
     }
@@ -116,6 +121,7 @@ impl FromBytes for ActionThresholds {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;

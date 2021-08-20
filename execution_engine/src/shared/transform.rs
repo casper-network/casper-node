@@ -11,10 +11,8 @@ use num::traits::{AsPrimitive, WrappingAdd};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
-    CLType, CLTyped, CLValue, CLValueError, U128, U256, U512,
+    CLType, CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
-
-use crate::shared::{stored_value::StoredValue, TypeMismatch};
 
 /// Error type for applying and combining transforms. A `TypeMismatch`
 /// occurs when a transform cannot be applied because the types are
@@ -28,7 +26,7 @@ pub enum Error {
     #[error(transparent)]
     Serialization(bytesrepr::Error),
     #[error(transparent)]
-    TypeMismatch(#[from] TypeMismatch),
+    TypeMismatch(#[from] StoredValueTypeMismatch),
 }
 
 impl From<CLValueError> for Error {
@@ -38,7 +36,7 @@ impl From<CLValueError> for Error {
             CLValueError::Type(cl_type_mismatch) => {
                 let expected = format!("{:?}", cl_type_mismatch.expected);
                 let found = format!("{:?}", cl_type_mismatch.found);
-                let type_mismatch = TypeMismatch { expected, found };
+                let type_mismatch = StoredValueTypeMismatch::new(expected, found);
                 Error::TypeMismatch(type_mismatch)
             }
         }
@@ -116,7 +114,7 @@ where
         other => {
             let expected = format!("integral type compatible with {}", any::type_name::<Y>());
             let found = format!("{:?}", other);
-            Err(TypeMismatch::new(expected, found).into())
+            Err(StoredValueTypeMismatch::new(expected, found).into())
         }
     }
 }
@@ -154,42 +152,42 @@ impl Transform {
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::ContractPackage(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractPackage".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::ContractWasm(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractWasm".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Transfer(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Transfer".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::DeployInfo(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "DeployInfo".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::EraInfo(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "EraInfo".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Bid(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Bid".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Withdraw(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Withdraw".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
             Transform::Failure(error) => Err(error),
@@ -217,11 +215,7 @@ where
     } else {
         match T::try_from(b) {
             Err(b_type) => Transform::Failure(
-                TypeMismatch {
-                    expected: String::from(expected),
-                    found: b_type,
-                }
-                .into(),
+                StoredValueTypeMismatch::new(String::from(expected), b_type).into(),
             ),
 
             Ok(j) => i.wrapping_add(&j).into(),
@@ -253,7 +247,8 @@ impl Add for Transform {
                 Transform::AddUInt256(j) => Transform::AddUInt256(j.wrapping_add(&(i.as_()))),
                 Transform::AddUInt512(j) => Transform::AddUInt512(j.wrapping_add(&i.as_())),
                 other => Transform::Failure(
-                    TypeMismatch::new("AddInt32".to_owned(), format!("{:?}", other)).into(),
+                    StoredValueTypeMismatch::new("AddInt32".to_owned(), format!("{:?}", other))
+                        .into(),
                 ),
             },
             (Transform::AddUInt64(i), b) => match b {
@@ -263,7 +258,8 @@ impl Add for Transform {
                 Transform::AddUInt256(j) => Transform::AddUInt256(j.wrapping_add(&i.into())),
                 Transform::AddUInt512(j) => Transform::AddUInt512(j.wrapping_add(&i.into())),
                 other => Transform::Failure(
-                    TypeMismatch::new("AddUInt64".to_owned(), format!("{:?}", other)).into(),
+                    StoredValueTypeMismatch::new("AddUInt64".to_owned(), format!("{:?}", other))
+                        .into(),
                 ),
             },
             (Transform::AddUInt128(i), b) => wrapped_transform_addition(i, b, "U128"),
@@ -275,7 +271,8 @@ impl Add for Transform {
                     Transform::AddKeys(ks1)
                 }
                 other => Transform::Failure(
-                    TypeMismatch::new("AddKeys".to_owned(), format!("{:?}", other)).into(),
+                    StoredValueTypeMismatch::new("AddKeys".to_owned(), format!("{:?}", other))
+                        .into(),
                 ),
             },
         }
@@ -355,8 +352,9 @@ impl From<&Transform> for casper_types::Transform {
 pub mod gens {
     use proptest::{collection::vec, prelude::*};
 
+    use casper_types::gens::stored_value_arb;
+
     use super::Transform;
-    use crate::shared::stored_value::gens::stored_value_arb;
 
     pub fn transform_arb() -> impl Strategy<Value = Transform> {
         prop_oneof![
@@ -384,12 +382,12 @@ mod tests {
     use num::{Bounded, Num};
 
     use casper_types::{
-        account::AccountHash, bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256,
-        U512,
+        account::{Account, AccountHash, ActionThresholds, AssociatedKeys},
+        bytesrepr::Bytes,
+        AccessRights, ContractWasm, Key, URef, U128, U256, U512,
     };
 
     use super::*;
-    use crate::shared::account::{Account, ActionThresholds, AssociatedKeys};
     use std::collections::BTreeMap;
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];

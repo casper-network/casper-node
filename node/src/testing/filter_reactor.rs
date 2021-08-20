@@ -1,0 +1,94 @@
+use std::fmt::{self, Debug, Formatter};
+
+use either::Either;
+use futures::future::BoxFuture;
+use prometheus::Registry;
+
+use super::network::NetworkedReactor;
+use crate::{
+    effect::{EffectBuilder, Effects},
+    reactor::{EventQueueHandle, Finalize, Reactor, ReactorExit},
+    NodeRng,
+};
+
+pub(crate) trait EventFilter<Ev>:
+    FnMut(Ev) -> Either<Effects<Ev>, Ev> + Send + 'static
+{
+}
+impl<Ev, T> EventFilter<Ev> for T where T: FnMut(Ev) -> Either<Effects<Ev>, Ev> + Send + 'static {}
+
+/// A reactor wrapping an inner reactor, which has a hook into `Reactor::dispatch_event()` that
+/// allows overriding or modifying event handling.
+pub(crate) struct FilterReactor<R: Reactor> {
+    reactor: R,
+    filter: Box<dyn EventFilter<R::Event>>,
+}
+
+/// A filter that doesn't modify the behavior.
+impl<R: Reactor> FilterReactor<R> {
+    /// Sets the event filter.
+    pub(crate) fn set_filter(&mut self, filter: impl EventFilter<R::Event>) {
+        self.filter = Box::new(filter);
+    }
+
+    /// Returns a reference to the wrapped reactor.
+    pub(crate) fn inner(&self) -> &R {
+        &self.reactor
+    }
+}
+
+impl<R: Reactor> Reactor for FilterReactor<R> {
+    type Event = R::Event;
+    type Config = R::Config;
+    type Error = R::Error;
+
+    fn new(
+        config: Self::Config,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        rng: &mut NodeRng,
+    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
+        let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
+        let filter = Box::new(Either::Right);
+        Ok((Self { reactor, filter }, effects))
+    }
+
+    fn dispatch_event(
+        &mut self,
+        effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut NodeRng,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        match (self.filter)(event) {
+            Either::Left(effects) => effects,
+            Either::Right(event) => self.reactor.dispatch_event(effect_builder, rng, event),
+        }
+    }
+
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.reactor.maybe_exit()
+    }
+}
+
+impl<R: Reactor + Finalize> Finalize for FilterReactor<R> {
+    fn finalize(self) -> BoxFuture<'static, ()> {
+        self.reactor.finalize()
+    }
+}
+
+impl<R: Reactor + NetworkedReactor> NetworkedReactor for FilterReactor<R> {
+    type NodeId = R::NodeId;
+
+    fn node_id(&self) -> Self::NodeId {
+        self.reactor.node_id()
+    }
+}
+
+impl<R: Reactor + Debug> Debug for FilterReactor<R> {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter
+            .debug_struct("FilterReactor")
+            .field("reactor", &self.reactor)
+            .finish()
+    }
+}

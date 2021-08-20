@@ -8,11 +8,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
-use casper_execution_engine::{
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::trie::Trie,
-};
-use casper_types::{bytesrepr::ToBytes, Key};
+use casper_execution_engine::{shared::newtypes::Blake2bHash, storage::trie::Trie};
+use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.

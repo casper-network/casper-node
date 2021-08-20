@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     time::Instant,
 };
 
@@ -15,18 +15,21 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
-use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey};
+use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::{
         consensus::EraReport,
         contract_runtime::{
-            error::BlockExecutionError, BlockAndExecutionEffects, ContractRuntimeMetrics,
-            ExecutionPreState,
+            error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
+            BlockAndExecutionEffects, ContractRuntimeMetrics, ExecutionPreState,
         },
     },
     crypto::hash::Digest,
     types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
+};
+use casper_execution_engine::{
+    core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
 };
 
 pub(super) fn execute_finalized_block(
@@ -83,57 +86,66 @@ pub(super) fn execute_finalized_block(
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 
-    // If the finalized block has an era report, run the auction contract
-    let maybe_step_success = match finalized_block.era_report() {
-        None => None,
-        Some(era_report) => Some(commit_step(
-            engine_state,
-            metrics,
-            protocol_version,
-            state_root_hash,
-            era_report,
-            finalized_block.timestamp().millis(),
-            finalized_block.era_id().successor(),
-        )?),
-    };
+    // If the finalized block has an era report, run the auction contract and get the upcoming era
+    // validators
+    let maybe_step_effect_and_upcoming_era_validators =
+        if let Some(era_report) = finalized_block.era_report() {
+            let StepSuccess {
+                post_state_hash,
+                execution_effect,
+            } = commit_step(
+                engine_state,
+                metrics,
+                protocol_version,
+                state_root_hash,
+                era_report,
+                finalized_block.timestamp().millis(),
+                finalized_block.era_id().successor(),
+            )?;
+            state_root_hash = Digest::from(post_state_hash);
+            let upcoming_era_validators = engine_state.get_era_validators(
+                CorrelationId::new(),
+                GetEraValidatorsRequest::new(Blake2bHash::from(state_root_hash), protocol_version),
+            )?;
+            Some(StepEffectAndUpcomingEraValidators {
+                step_execution_effect: execution_effect,
+                upcoming_era_validators,
+            })
+        } else {
+            None
+        };
 
     // Update the metric.
     let block_height = finalized_block.height();
     metrics.chain_height.set(block_height as i64);
 
-    let block_and_execution_effects = if let Some(StepSuccess {
-        post_state_hash,
-        next_era_validators,
-        execution_effect,
-    }) = maybe_step_success
-    {
-        BlockAndExecutionEffects {
-            block: Block::new(
-                parent_hash,
-                parent_seed,
-                post_state_hash.into(),
-                finalized_block,
-                Some(next_era_validators),
-                protocol_version,
-            )?,
-            execution_results,
-            maybe_step_execution_effect: Some(execution_effect),
-        }
-    } else {
-        BlockAndExecutionEffects {
-            block: Block::new(
-                parent_hash,
-                parent_seed,
-                state_root_hash,
-                finalized_block,
-                None,
-                protocol_version,
-            )?,
-            execution_results,
-            maybe_step_execution_effect: None,
-        }
-    };
-    Ok(block_and_execution_effects)
+    let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+        maybe_step_effect_and_upcoming_era_validators
+            .as_ref()
+            .and_then(
+                |StepEffectAndUpcomingEraValidators {
+                     upcoming_era_validators,
+                     ..
+                 }| {
+                    upcoming_era_validators
+                        .get(&finalized_block.era_id().successor())
+                        .cloned()
+                },
+            );
+    let block = Block::new(
+        parent_hash,
+        parent_seed,
+        state_root_hash,
+        finalized_block,
+        next_era_validator_weights,
+        protocol_version,
+    )?;
+
+    Ok(BlockAndExecutionEffects {
+        block,
+        execution_results,
+        maybe_step_effect_and_upcoming_era_validators,
+    })
 }
 
 /// Commits the execution effects.
