@@ -14,12 +14,12 @@ impl TestRunner {
         api_path: &str,
     ) -> Result<Option<ValidationErrors>, RpcServerTestError> {
         let executor = Executor::new(node_address, api_path);
-        let (_status_code, body) = executor
+        let (status_code, body) = executor
             .execute(&test_suite.input)
             .await
             .map_err(|err| RpcServerTestError::Other(err.to_string()))?;
 
-        let validator = Validator::try_from_schema(&test_suite.expected)?;
-        Ok(validator.validate(&body))
+        let validator = Validator::try_from_test_suite(&test_suite)?;
+        Ok(validator.validate(status_code, &body))
     }
 }
