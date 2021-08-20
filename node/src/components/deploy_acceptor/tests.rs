@@ -1,13 +1,5 @@
 #![cfg(test)]
 
-// TODO -
-//  * for each success case, check deploy is put to storage
-//  * for all success cases, where the deploy is newly put to storage, check the deploy acceptor
-//    announces the new deploy
-//  * for all success cases, where the deploy is not put to storage (i.e. the deploy has already
-//    been accepted), check the deploy acceptor doesn't make an announcement
-//  * for all failure cases, ensure the deploy acceptor makes an announcement
-
 use std::{
     collections::{BTreeMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
@@ -46,9 +38,11 @@ use crate::{
 };
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
+const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
+#[allow(clippy::large_enum_variant)]
 #[must_use]
 enum Event {
     #[from]
@@ -109,6 +103,7 @@ enum TestScenario {
     FromPeerInvalidDeploy,
     FromPeerValidDeploy,
     FromPeerRepeatedValidDeploy,
+    FromPeerRegression,
     FromClientInvalidDeploy,
     FromClientMissingAccount,
     FromClientInsufficientBalance,
@@ -121,7 +116,8 @@ impl TestScenario {
         match self {
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromPeerValidDeploy
-            | TestScenario::FromPeerRepeatedValidDeploy => Source::Peer(NodeId::random(rng)),
+            | TestScenario::FromPeerRepeatedValidDeploy
+            | TestScenario::FromPeerRegression => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidDeploy
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
@@ -141,9 +137,38 @@ impl TestScenario {
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientValidDeploy
-            | TestScenario::FromClientRepeatedValidDeploy => (),
+            | TestScenario::FromClientRepeatedValidDeploy
+            | TestScenario::FromPeerRegression => (),
         }
         deploy
+    }
+
+    fn is_from_peer(&self) -> bool {
+        match self {
+            TestScenario::FromPeerInvalidDeploy
+            | TestScenario::FromPeerValidDeploy
+            | TestScenario::FromPeerRepeatedValidDeploy
+            | TestScenario::FromPeerRegression => true,
+            TestScenario::FromClientInvalidDeploy
+            | TestScenario::FromClientMissingAccount
+            | TestScenario::FromClientInsufficientBalance
+            | TestScenario::FromClientValidDeploy
+            | TestScenario::FromClientRepeatedValidDeploy => false,
+        }
+    }
+
+    fn is_valid_deploy_case(&self) -> bool {
+        match self {
+            TestScenario::FromPeerRepeatedValidDeploy
+            | TestScenario::FromPeerValidDeploy
+            | TestScenario::FromClientRepeatedValidDeploy
+            | TestScenario::FromClientValidDeploy => true,
+            TestScenario::FromPeerInvalidDeploy
+            | TestScenario::FromPeerRegression
+            | TestScenario::FromClientInsufficientBalance
+            | TestScenario::FromClientMissingAccount
+            | TestScenario::FromClientInvalidDeploy => false,
+        }
     }
 }
 
@@ -216,49 +241,54 @@ impl reactor::Reactor for Reactor {
                 // We do not care about deploy acceptor announcements in the acceptor tests.
                 Effects::new()
             }
-            Event::ContractRuntime(event) => match event {
-                ContractRuntimeRequest::Query {
-                    query_request,
-                    responder,
-                } => {
-                    let query_result =
-                        if self.test_scenario == TestScenario::FromClientMissingAccount {
-                            QueryResult::ValueNotFound(String::new())
-                        } else if let Key::Account(account_hash) = query_request.key() {
-                            let preset_account =
-                                Account::create(account_hash, BTreeMap::new(), URef::default());
-                            QueryResult::Success {
-                                value: Box::new(StoredValue::Account(preset_account)),
-                                proofs: vec![],
-                            }
-                        } else {
-                            panic!("expect only queries using Key::Account variant");
+            Event::ContractRuntime(event) => {
+                // Contract runtime requests should not be made in the case of a deploy sent
+                // by a peer.
+                assert!(!self.test_scenario.is_from_peer());
+                match event {
+                    ContractRuntimeRequest::Query {
+                        query_request,
+                        responder,
+                    } => {
+                        let query_result =
+                            if self.test_scenario == TestScenario::FromClientMissingAccount {
+                                QueryResult::ValueNotFound(String::new())
+                            } else if let Key::Account(account_hash) = query_request.key() {
+                                let preset_account =
+                                    Account::create(account_hash, BTreeMap::new(), URef::default());
+                                QueryResult::Success {
+                                    value: Box::new(StoredValue::Account(preset_account)),
+                                    proofs: vec![],
+                                }
+                            } else {
+                                panic!("expect only queries using Key::Account variant");
+                            };
+                        responder.respond(Ok(query_result)).ignore()
+                    }
+                    ContractRuntimeRequest::GetBalance {
+                        balance_request,
+                        responder,
+                    } => {
+                        let proof = TrieMerkleProof::new(
+                            balance_request.purse_uref().into(),
+                            StoredValue::CLValue(CLValue::from_t(()).expect("should get CLValue")),
+                            VecDeque::new(),
+                        );
+                        let motes =
+                            if self.test_scenario == TestScenario::FromClientInsufficientBalance {
+                                MAX_PAYMENT_AMOUNT - 1
+                            } else {
+                                MAX_PAYMENT_AMOUNT
+                            };
+                        let balance_result = BalanceResult::Success {
+                            motes: U512::from(motes),
+                            proof: Box::new(proof),
                         };
-                    responder.respond(Ok(query_result)).ignore()
+                        responder.respond(Ok(balance_result)).ignore()
+                    }
+                    _ => panic!("should not receive {:?}", event),
                 }
-                ContractRuntimeRequest::GetBalance {
-                    balance_request,
-                    responder,
-                } => {
-                    let proof = TrieMerkleProof::new(
-                        balance_request.purse_uref().into(),
-                        StoredValue::CLValue(CLValue::from_t(()).expect("should get CLValue")),
-                        VecDeque::new(),
-                    );
-                    let motes = if self.test_scenario == TestScenario::FromClientInsufficientBalance
-                    {
-                        MAX_PAYMENT_AMOUNT - 1
-                    } else {
-                        MAX_PAYMENT_AMOUNT
-                    };
-                    let balance_result = BalanceResult::Success {
-                        motes: U512::from(motes),
-                        proof: Box::new(proof),
-                    };
-                    responder.respond(Ok(balance_result)).ignore()
-                }
-                _ => panic!("should not receive {:?}", event),
-            },
+            }
         }
     }
 
@@ -276,6 +306,21 @@ fn put_block_to_storage(
             .into_inner()
             .schedule(
                 StorageRequest::PutBlock { block, responder },
+                QueueKind::Regular,
+            )
+            .ignore()
+    }
+}
+
+fn put_deploy_to_storage(
+    deploy: Box<Deploy>,
+    responder: Responder<bool>,
+) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    |effect_builder: EffectBuilder<Event>| {
+        effect_builder
+            .into_inner()
+            .schedule(
+                StorageRequest::PutDeploy { deploy, responder },
                 QueueKind::Regular,
             )
             .ignore()
@@ -302,13 +347,16 @@ fn schedule_accept_deploy(
     }
 }
 
-async fn run_deploy_acceptor(test_scenario: TestScenario) -> Result<(), super::Error> {
+async fn run_deploy_acceptor_without_timeout(
+    test_scenario: TestScenario,
+) -> Result<(), super::Error> {
     let mut rng = crate::new_rng();
 
     let mut runner: Runner<ConditionCheckReactor<Reactor>> =
         Runner::new(test_scenario, &mut rng).await.unwrap();
 
     let block = Box::new(Block::random(&mut rng));
+    // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
     let block_responder = Responder::create(block_sender);
 
@@ -323,15 +371,40 @@ async fn run_deploy_acceptor(test_scenario: TestScenario) -> Result<(), super::E
     }
     assert!(block_receiver.await.unwrap());
 
+    // Create a responder to assert the validity of the deploy
     let (deploy_sender, deploy_receiver) = oneshot::channel();
     let deploy_responder = Responder::create(deploy_sender);
 
+    // Create a deploy specific to the test scenario
     let deploy = test_scenario.deploy(&mut rng);
+    // Mark the source as either a peer or a client depending on the scenario.
     let source = test_scenario.source(&mut rng);
+
+    {
+        // Inject the deploy artificially into storage to simulate a previously seen deploy.
+        if test_scenario == TestScenario::FromClientRepeatedValidDeploy
+            || test_scenario == TestScenario::FromPeerRepeatedValidDeploy
+        {
+            let injected_deploy = Box::new(deploy.clone());
+            let (injected_sender, injected_receiver) = oneshot::channel();
+            let injected_responder = Responder::create(injected_sender);
+            runner
+                .process_injected_effects(put_deploy_to_storage(
+                    injected_deploy,
+                    injected_responder,
+                ))
+                .await;
+            while runner.try_crank(&mut rng).await.is_none() {
+                time::sleep(POLL_INTERVAL).await;
+            }
+            // Check that the "previously seen" deploy is present in storage.
+            assert!(injected_receiver.await.unwrap());
+        }
+    }
 
     runner
         .process_injected_effects(schedule_accept_deploy(
-            Box::new(deploy),
+            Box::new(deploy.clone()),
             source,
             deploy_responder,
         ))
@@ -341,19 +414,72 @@ async fn run_deploy_acceptor(test_scenario: TestScenario) -> Result<(), super::E
     // announcement, so use the deploy acceptor `PutToStorage` event as the condition.
     let stopping_condition = move |event: &Event| -> bool {
         match test_scenario {
-            TestScenario::FromPeerInvalidDeploy
-            | TestScenario::FromPeerValidDeploy
-            | TestScenario::FromClientInvalidDeploy
+            // Check that invalid deploys sent by a client raise the `InvalidDeploy` announcement
+            // with the appropriate source.
+            TestScenario::FromClientInvalidDeploy
             | TestScenario::FromClientMissingAccount
-            | TestScenario::FromClientInsufficientBalance
-            | TestScenario::FromClientValidDeploy => {
-                matches!(event, Event::DeployAcceptorAnnouncement(_))
+            | TestScenario::FromClientInsufficientBalance => {
+                matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
+                        source: Source::Client,
+                        ..
+                    })
+                )
             }
+            // Check that invalid deploys sent by a peer raise the `InvalidDeploy` announcement
+            // with the appropriate source.
+            TestScenario::FromPeerInvalidDeploy => {
+                matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
+                        source: Source::Peer(_),
+                        ..
+                    })
+                )
+            }
+            // Check that a, new and valid, deploy sent by a peer raises an `AcceptedNewDeploy`
+            // announcement with the appropriate source.
+            TestScenario::FromPeerValidDeploy => {
+                matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(
+                        DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                            source: Source::Peer(_),
+                            ..
+                        }
+                    )
+                )
+            }
+            // Check that a, new and valid, deploy sent by a client raises an `AcceptedNewDeploy`
+            // announcement with the appropriate source.
+            TestScenario::FromClientValidDeploy => {
+                matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(
+                        DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                            source: Source::Client,
+                            ..
+                        }
+                    )
+                )
+            }
+            // Check that repeated valid deploys raise the `PutToStorageResult` with the
+            // `is_new` flag as false.
             TestScenario::FromClientRepeatedValidDeploy
             | TestScenario::FromPeerRepeatedValidDeploy => {
                 matches!(
                     event,
                     Event::DeployAcceptor(super::Event::PutToStorageResult { is_new: false, .. })
+                )
+            }
+            // Deploys received from a peer should not raise `ContractRuntimeRequest` events
+            // as part of the validation process.
+            // This test scenario should therefore, keep running and eventually timeout.
+            TestScenario::FromPeerRegression => {
+                matches!(
+                    event,
+                    Event::ContractRuntime(ContractRuntimeRequest::Query { .. })
                 )
             }
         }
@@ -372,41 +498,88 @@ async fn run_deploy_acceptor(test_scenario: TestScenario) -> Result<(), super::E
         }
     }
 
+    {
+        // Assert that the deploy is present in the case of a valid deploy.
+        // Conversely, assert its absence in the invalid case.
+        let is_in_storage = runner
+            .reactor()
+            .inner()
+            .storage
+            .get_deploy_by_hash(*deploy.id())
+            .is_some();
+
+        if test_scenario.is_valid_deploy_case() {
+            assert!(is_in_storage)
+        } else {
+            assert!(!is_in_storage)
+        }
+    }
+
     deploy_receiver.await.unwrap()
 }
 
+async fn run_deploy_acceptor(test_scenario: TestScenario) -> Result<(), super::Error> {
+    time::timeout(TIMEOUT, run_deploy_acceptor_without_timeout(test_scenario))
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
-async fn should_accept_from_peer() {
+async fn should_accept_valid_deploy_from_peer() {
     let result = run_deploy_acceptor(TestScenario::FromPeerValidDeploy).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
-async fn should_reject_invalid_from_peer() {
+async fn should_reject_invalid_deploy_from_peer() {
     let result = run_deploy_acceptor(TestScenario::FromPeerInvalidDeploy).await;
     assert!(matches!(result, Err(super::Error::InvalidDeploy(_))))
 }
 
 #[tokio::test]
-async fn should_accept_from_client() {
+async fn should_accept_valid_deploy_from_client() {
     let result = run_deploy_acceptor(TestScenario::FromClientValidDeploy).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
-async fn should_reject_invalid_from_client() {
+async fn should_reject_invalid_deploy_from_client() {
     let result = run_deploy_acceptor(TestScenario::FromClientInvalidDeploy).await;
     assert!(matches!(result, Err(super::Error::InvalidDeploy(_))))
 }
 
 #[tokio::test]
-async fn should_reject_from_client_for_invalid_account() {
+async fn should_reject_valid_deploy_from_client_for_invalid_account() {
     let result = run_deploy_acceptor(TestScenario::FromClientMissingAccount).await;
     assert!(matches!(result, Err(super::Error::InvalidAccount)))
 }
 
 #[tokio::test]
-async fn should_reject_from_client_for_insufficient_balance() {
+async fn should_reject_valid_deploy_from_client_for_insufficient_balance() {
     let result = run_deploy_acceptor(TestScenario::FromClientInsufficientBalance).await;
     assert!(matches!(result, Err(super::Error::InsufficientBalance)))
+}
+
+#[tokio::test]
+async fn should_accept_repeated_valid_deploy_from_peer() {
+    let result = run_deploy_acceptor(TestScenario::FromPeerRepeatedValidDeploy).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_repeated_valid_deploy_from_client() {
+    let result = run_deploy_acceptor(TestScenario::FromClientRepeatedValidDeploy).await;
+    assert!(result.is_ok())
+}
+
+// The test scenario should timeout as the stopping condition of raising a `ContractRuntimeRequest`
+// is never raised.
+#[tokio::test]
+async fn should_timeout_deploy_acceptor() {
+    let result = time::timeout(
+        TIMEOUT,
+        run_deploy_acceptor_without_timeout(TestScenario::FromPeerRegression),
+    )
+    .await;
+    assert!(result.is_err())
 }
