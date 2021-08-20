@@ -312,7 +312,7 @@ async fn run_equivocator_network() {
     // We configure the era to take five rounds, and delay all messages to and from one of Alice's
     // nodes until two rounds after genesis. That should guarantee that the two nodes equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
-    chain.chainspec_mut().core_config.minimum_era_height = 5;
+    chain.chainspec_mut().core_config.minimum_era_height = 10;
     let protocol_config = consensus::ProtocolConfig::from(&*chain.chainspec);
 
     let mut net = chain

@@ -2050,29 +2050,8 @@ where
             )
             .map_err(Into::into)?;
 
-        let next_era_validators = {
-            let mut era_validators = match self.get_era_validators(
-                correlation_id,
-                GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
-            ) {
-                Ok(era_validators) => era_validators,
-                Err(error) => {
-                    return Err(StepError::GetEraValidatorsError(error));
-                }
-            };
-
-            let era_id = &step_request.next_era_id;
-            match era_validators.remove(era_id) {
-                Some(validator_weights) => validator_weights,
-                None => {
-                    return Err(StepError::EraValidatorsMissing(*era_id));
-                }
-            }
-        };
-
         Ok(StepSuccess {
             post_state_hash,
-            next_era_validators,
             execution_effect,
         })
     }
