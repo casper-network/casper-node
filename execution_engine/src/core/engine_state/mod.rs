@@ -616,11 +616,13 @@ where
         let handle_payment_extra_keys: Vec<Key> = vec![];
         let handle_payment_base_key = Key::from(*handle_payment_contract_hash);
 
-        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let gas_limit = Gas::MAX;
 
-        let wasmless_transfer_gas_cost = Gas::new(U512::from(
-            self.config().system_config().wasmless_transfer_cost(),
-        ));
+        let wasmless_transfer_gas_cost: Gas = self
+            .config()
+            .system_config()
+            .wasmless_transfer_cost()
+            .into();
 
         let wasmless_transfer_motes = match Motes::from_gas(
             wasmless_transfer_gas_cost,
@@ -1056,13 +1058,13 @@ where
         // Create + persist deploy info.
         {
             let transfers = session_result.transfers();
-            let cost = wasmless_transfer_gas_cost.value();
+            let cost = wasmless_transfer_gas_cost;
             let deploy_info = DeployInfo::new(
                 deploy_item.deploy_hash,
                 transfers,
                 account.account_hash(),
                 account.main_purse(),
-                cost,
+                cost.into(),
             );
             tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_item.deploy_hash),
@@ -1459,17 +1461,27 @@ where
             // session_code_spec_1: gas limit = ((balance of handle payment payment purse) /
             // gas_price)
             // - (gas spent during payment execution)
-            let session_gas_limit: Gas =
-                match Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
-                    .and_then(|gas| gas.checked_sub(payment_result_cost))
-                {
-                    Some(gas) => gas,
-                    None => {
-                        return Ok(ExecutionResult::precondition_failure(
-                            Error::GasConversionOverflow,
-                        ))
-                    }
-                };
+            let gas_price = deploy_item.gas_price;
+
+            // Original expression from `session_code_spec_1` will fail if user really wants to pay
+            // more than a `Gas` counter can contain i.e. `Gas::MAX + 1`.
+            // By rewriting this expression: (payment_purse_balance/gas_price)-payment_result_cost
+            // into: (payment_purse_balance-gas_price*payment_result_cost) / gas_price
+            // we will not run into a gas overflow as we will first subtract payment result (in
+            // motes) and later we will convert the result into a gas.
+            let session_gas_limit: Gas = match Motes::from_gas(payment_result_cost, gas_price)
+                .and_then(|payment_result_motes| {
+                    payment_purse_balance.checked_sub(payment_result_motes)
+                })
+                .and_then(|motes| Gas::from_motes(motes, gas_price))
+            {
+                Some(gas) => gas,
+                None => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::GasConversionOverflow,
+                    ))
+                }
+            };
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
@@ -1497,13 +1509,13 @@ where
         // Create + persist deploy info.
         {
             let transfers = session_result.transfers();
-            let cost = payment_result_cost.value() + session_result.cost().value();
+            let cost = payment_result_cost + session_result.cost();
             let deploy_info = DeployInfo::new(
                 deploy_hash,
                 transfers,
                 account.account_hash(),
                 account.main_purse(),
-                cost,
+                cost.into(),
             );
             session_tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_hash),
@@ -1581,7 +1593,7 @@ where
 
             let mut handle_payment_keys = handle_payment_contract.named_keys().to_owned();
 
-            let gas_limit = Gas::new(U512::from(std::u64::MAX));
+            let gas_limit = Gas::MAX;
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             let handle_payment_call_stack = {
@@ -1733,7 +1745,7 @@ where
 
         let mut named_keys = auction_contract.named_keys().to_owned();
         let base_key = Key::from(*auction_contract_hash);
-        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let gas_limit = Gas::MAX;
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
@@ -1879,7 +1891,7 @@ where
             ret
         };
         let mut named_keys = auction_contract.named_keys().to_owned();
-        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let gas_limit = Gas::MAX;
         let deploy_hash = {
             // seeds address generator w/ protocol version
             let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();

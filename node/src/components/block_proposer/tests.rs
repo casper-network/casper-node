@@ -1,12 +1,15 @@
 use std::time::Duration;
 
+use itertools::Itertools;
+use once_cell::sync::Lazy;
+
 use casper_execution_engine::{
-    core::engine_state::executable_deploy_item::ExecutableDeployItem, shared::gas::Gas,
+    core::engine_state::executable_deploy_item::ExecutableDeployItem, shared::motes::Motes,
 };
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, RuntimeArgs, SecretKey,
+    U512,
 };
-use itertools::Itertools;
 
 use super::*;
 use crate::{
@@ -17,23 +20,21 @@ use crate::{
 
 const DEFAULT_TEST_GAS_PRICE: u64 = 1;
 
-fn default_gas_payment() -> Gas {
-    Gas::from(1u32)
-}
+static DEFAULT_PAYMENT_AMOUNT: Lazy<Motes> = Lazy::new(|| Motes::new(U512::from(1u64)));
 
 fn generate_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
     dependencies: Vec<DeployHash>,
-    payment_amount: Gas,
+    payment_amount: Motes,
 ) -> Deploy {
     let gas_price = DEFAULT_TEST_GAS_PRICE;
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
 
     let args = runtime_args! {
-        ARG_AMOUNT => payment_amount.value()
+        ARG_AMOUNT => U512::from(payment_amount),
     };
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
@@ -62,13 +63,13 @@ fn generate_deploy(
     timestamp: Timestamp,
     ttl: TimeDiff,
     dependencies: Vec<DeployHash>,
-    payment_amount: Gas,
+    payment_amount: Motes,
     gas_price: u64,
 ) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let args = runtime_args! {
-        ARG_AMOUNT => payment_amount.value()
+        ARG_AMOUNT => U512::from(payment_amount),
     };
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
@@ -122,7 +123,7 @@ fn should_add_and_take_deploys() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
@@ -130,7 +131,7 @@ fn should_add_and_take_deploys() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let deploy3 = generate_deploy(
@@ -138,7 +139,7 @@ fn should_add_and_take_deploys() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let deploy4 = generate_deploy(
@@ -146,7 +147,7 @@ fn should_add_and_take_deploys() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
 
@@ -268,7 +269,7 @@ fn should_successfully_prune() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
@@ -276,7 +277,7 @@ fn should_successfully_prune() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let deploy3 = generate_deploy(
@@ -284,7 +285,7 @@ fn should_successfully_prune() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let deploy4 = generate_deploy(
@@ -292,7 +293,7 @@ fn should_successfully_prune() {
         creation_time + Duration::from_secs(20).into(),
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let mut proposer = create_test_proposer(0.into());
@@ -353,7 +354,7 @@ fn should_keep_track_of_unhandled_deploys() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
@@ -361,7 +362,7 @@ fn should_keep_track_of_unhandled_deploys() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let mut proposer = create_test_proposer(0.into());
@@ -460,7 +461,7 @@ fn should_respect_limits_for_gas_cost() {
         max_transfer_count: 20,
         deploy_count: 30,
         max_deploy_count: 20,
-        payment_amount: default_gas_payment(),
+        payment_amount: *DEFAULT_PAYMENT_AMOUNT,
         block_gas_limit: 10,
         proposed_count: 25,
         remaining_pending_count: 20,
@@ -472,7 +473,7 @@ fn should_respect_limits_for_gas_cost() {
 fn should_respect_block_gas_limit_for_deploys() {
     test_proposer_with(TestArgs {
         deploy_count: 15,
-        payment_amount: default_gas_payment(),
+        payment_amount: *DEFAULT_PAYMENT_AMOUNT,
         block_gas_limit: 5,
         max_deploy_count: 15,
         proposed_count: 5,
@@ -486,7 +487,7 @@ fn should_propose_deploy_if_block_size_limit_met() {
     test_proposer_with(TestArgs {
         transfer_count: 1,
         deploy_count: 1,
-        payment_amount: default_gas_payment(),
+        payment_amount: *DEFAULT_PAYMENT_AMOUNT,
         block_gas_limit: 10,
         max_transfer_count: 2,
         max_deploy_count: 2,
@@ -501,7 +502,7 @@ fn should_not_propose_deploy_if_block_size_limit_within_threshold() {
     test_proposer_with(TestArgs {
         transfer_count: 2,
         deploy_count: 2,
-        payment_amount: default_gas_payment(),
+        payment_amount: *DEFAULT_PAYMENT_AMOUNT,
         block_gas_limit: 10,
         max_transfer_count: 3,
         max_deploy_count: 3,
@@ -516,7 +517,7 @@ fn should_not_propose_deploy_if_block_size_limit_passed() {
     test_proposer_with(TestArgs {
         deploy_count: 3,
         transfer_count: 2, // transfers should -not- count towards the block size limit
-        payment_amount: default_gas_payment(),
+        payment_amount: *DEFAULT_PAYMENT_AMOUNT,
         block_gas_limit: 100,
         max_transfer_count: 5,
         max_deploy_count: 5,
@@ -531,7 +532,7 @@ fn should_allow_transfers_to_exceed_block_size_limit() {
     test_proposer_with(TestArgs {
         deploy_count: 3,
         transfer_count: 60,
-        payment_amount: default_gas_payment(),
+        payment_amount: *DEFAULT_PAYMENT_AMOUNT,
         block_gas_limit: 100,
         max_transfer_count: 40,
         max_deploy_count: 5,
@@ -552,7 +553,7 @@ struct TestArgs {
     /// Number of transfer deploys to create.
     max_transfer_count: u32,
     /// Payment amount for transfers.
-    payment_amount: Gas,
+    payment_amount: Motes,
     /// Max gas cost for block.
     block_gas_limit: u64,
     /// Post-finalization of proposed block, how many transfers and deploys remain.
@@ -650,7 +651,7 @@ fn should_return_deploy_dependencies() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     // let deploy2 depend on deploy1
@@ -659,7 +660,7 @@ fn should_return_deploy_dependencies() {
         creation_time,
         ttl,
         vec![*deploy1.id()],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
 
@@ -726,7 +727,7 @@ fn should_respect_deploy_delay() {
         creation_time,
         ttl,
         vec![],
-        default_gas_payment(),
+        *DEFAULT_PAYMENT_AMOUNT,
         DEFAULT_TEST_GAS_PRICE,
     );
     let mut proposer = create_test_proposer(10.into()); // Deploy delay: 10 milliseconds

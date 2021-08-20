@@ -1,4 +1,5 @@
 use assert_matches::assert_matches;
+use num_traits::Zero;
 use parity_wasm::{
     builder,
     elements::{BlockType, Instruction, Instructions},
@@ -7,15 +8,31 @@ use parity_wasm::{
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
-        DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_WASM_CONFIG,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+        DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+        DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::Error,
-    shared::{gas::Gas, wasm_prep::PreprocessingError},
+    core::engine_state::{
+        run_genesis_request::RunGenesisRequest, Error, ExecConfig, GenesisAccount,
+    },
+    shared::{gas::Gas, motes::Motes, wasm_prep::PreprocessingError},
 };
-use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
+use casper_types::{
+    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, system::mint, RuntimeArgs, U512,
+};
+
+const ARG_PURSE_NAME: &str = "purse_name";
+const NEW_PURSE: &str = "new_purse";
+const NAMED_PURSE_PAYMENT_CONTRACT: &str = "named_purse_payment.wasm";
+const CREATE_PURSE_01_CONTRACT: &str = "create_purse_01.wasm";
+const GET_ARG_CONTRACT: &str = "get_arg.wasm";
+const ARG_VALUE0: &str = "value0";
+const ARG_VALUE1: &str = "value1";
 
 /// Creates minimal session code that does nothing
 fn make_minimal_do_nothing() -> Vec<u8> {
@@ -258,4 +275,120 @@ fn should_correctly_measure_gas_for_opcodes() {
         "accounted costs {:?}",
         accounted_opcodes
     );
+}
+
+#[ignore]
+#[test]
+fn should_not_fail_with_payment_amount_larger_than_u64_max() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    let genesis_request = {
+        let accounts = {
+            let mut ret = Vec::new();
+            let genesis_account = GenesisAccount::account(
+                DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+                Motes::new(U512::MAX),
+                None,
+            );
+            ret.push(genesis_account);
+            let proposer_account = GenesisAccount::account(
+                DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
+                Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+                None,
+            );
+            ret.push(proposer_account);
+            ret
+        };
+        let exec_config = ExecConfig::new(
+            accounts,
+            *DEFAULT_WASM_CONFIG,
+            *DEFAULT_SYSTEM_CONFIG,
+            DEFAULT_VALIDATOR_SLOTS,
+            DEFAULT_AUCTION_DELAY,
+            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+            DEFAULT_ROUND_SEIGNIORAGE_RATE,
+            DEFAULT_UNBONDING_DELAY,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        );
+
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+        )
+    };
+
+    builder.run_genesis(&genesis_request);
+
+    let create_purse_request = {
+        ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CREATE_PURSE_01_CONTRACT,
+            runtime_args! {
+                ARG_PURSE_NAME => NEW_PURSE,
+            },
+        )
+        .build()
+    };
+
+    builder.exec(create_purse_request).expect_success().commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let new_purse = account
+        .named_keys()
+        .get(NEW_PURSE)
+        .cloned()
+        .expect("should have new purse")
+        .into_uref()
+        .expect("should be uref");
+
+    let large_amount = U512::from(u128::MAX);
+
+    let transfer_request = {
+        ExecuteRequestBuilder::transfer(
+            *DEFAULT_ACCOUNT_ADDR,
+            runtime_args! {
+                mint::ARG_SOURCE => account.main_purse(),
+                mint::ARG_TARGET => new_purse,
+                mint::ARG_AMOUNT => large_amount,
+                mint::ARG_ID => <Option<u64>>::None,
+            },
+        )
+        .build()
+    };
+
+    builder.exec(transfer_request).expect_success().commit();
+
+    let payment_amount = U512::from(u64::MAX) + U512::from(1);
+
+    let exec_request = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_session_code(
+                GET_ARG_CONTRACT,
+                runtime_args! {
+                    ARG_VALUE0 => "Hello, world!".to_string(),
+                    ARG_VALUE1 => U512::from(42),
+                },
+            )
+            .with_payment_code(
+                NAMED_PURSE_PAYMENT_CONTRACT,
+                runtime_args! {
+                    ARG_PURSE_NAME => NEW_PURSE,
+                    ARG_AMOUNT => payment_amount,
+                },
+            )
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
+            .with_gas_price(1)
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder.exec(exec_request).commit().expect_success();
+
+    assert_ne!(builder.last_exec_gas_cost(), Gas::zero());
 }

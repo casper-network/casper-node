@@ -3,6 +3,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_types::{bytesrepr::Bytes, runtime_args, ContractHash, RuntimeArgs};
+use num_traits::Zero;
 
 const HOST_FUNCTION_COSTS_NAME: &str = "host_function_costs.wasm";
 const CONTRACT_KEY_NAME: &str = "contract";
@@ -60,7 +61,7 @@ fn should_measure_gas_cost() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let do_nothing_cost = builder.last_exec_gas_cost().value();
+    let do_nothing_cost = builder.last_exec_gas_cost();
 
     //
     // Measure opcodes (doing something)
@@ -75,7 +76,7 @@ fn should_measure_gas_cost() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let do_something_cost = builder.last_exec_gas_cost().value();
+    let do_something_cost = builder.last_exec_gas_cost();
     assert!(
         !do_something_cost.is_zero(),
         "executing nothing should cost zero"
@@ -127,7 +128,7 @@ fn should_measure_nested_host_function_call_cost() {
     .build();
 
     builder.exec(exec_request_2).expect_success().commit();
-    let level_1_cost = builder.last_exec_gas_cost().value();
+    let level_1_cost = builder.last_exec_gas_cost();
 
     assert!(
         !level_1_cost.is_zero(),
@@ -147,7 +148,7 @@ fn should_measure_nested_host_function_call_cost() {
     .build();
 
     builder.exec(exec_request_3).expect_success().commit();
-    let level_2_cost = builder.last_exec_gas_cost().value();
+    let level_2_cost = builder.last_exec_gas_cost();
 
     assert!(
         !level_2_cost.is_zero(),
@@ -206,7 +207,7 @@ fn should_measure_argument_size_in_host_function_call() {
     .build();
 
     builder.exec(exec_request_2).expect_success().commit();
-    let call_1_cost = builder.last_exec_gas_cost().value();
+    let call_1_cost = builder.last_exec_gas_cost();
 
     assert!(
         !call_1_cost.is_zero(),
@@ -226,7 +227,7 @@ fn should_measure_argument_size_in_host_function_call() {
     .build();
 
     builder.exec(exec_request_3).expect_success().commit();
-    let call_2_cost = builder.last_exec_gas_cost().value();
+    let call_2_cost = builder.last_exec_gas_cost();
 
     assert!(
         call_2_cost > call_1_cost,

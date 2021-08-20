@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use num_traits::Zero;
+
 use casper_types::{
     bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, StoredValue, TransferAddr,
 };
@@ -117,7 +119,7 @@ impl ExecutionResult {
                 cost,
                 execution_effect,
                 ..
-            } => cost.value() == 0.into() && *execution_effect == Default::default(),
+            } => cost.is_zero() && *execution_effect == Default::default(),
             ExecutionResult::Success { .. } => false,
         }
     }
@@ -307,7 +309,7 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
             } => casper_types::ExecutionResult::Success {
                 effect: execution_effect.into(),
                 transfers: transfers.clone(),
-                cost: cost.value(),
+                cost: (*cost).into(),
             },
             ExecutionResult::Failure {
                 error,
@@ -317,7 +319,7 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
             } => casper_types::ExecutionResult::Failure {
                 effect: execution_effect.into(),
                 transfers: transfers.clone(),
-                cost: cost.value(),
+                cost: (*cost).into(),
                 error_message: error.to_string(),
             },
         }

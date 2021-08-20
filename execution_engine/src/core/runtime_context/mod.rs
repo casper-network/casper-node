@@ -6,6 +6,7 @@ use std::{
     rc::Rc,
 };
 
+use num::CheckedAdd;
 use tracing::error;
 
 use casper_types::{
@@ -748,7 +749,7 @@ where
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
         // gas charge overflow protection
-        match prev.checked_add(amount) {
+        match prev.checked_add(&amount) {
             None => {
                 self.set_gas_counter(gas_limit);
                 Err(Error::GasLimit)

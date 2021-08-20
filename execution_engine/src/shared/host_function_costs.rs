@@ -1,4 +1,6 @@
 use datasize::DataSize;
+use num::Saturating;
+use num_traits::SaturatingMul;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -135,7 +137,7 @@ where
         for (argument, weight) in self.arguments.as_ref().iter().zip(weights.as_ref()) {
             let lhs = Gas::new((*argument).into());
             let rhs = Gas::new((*weight).into());
-            gas += lhs * rhs;
+            gas = gas.saturating_add(lhs.saturating_mul(&rhs));
         }
         gas
     }
@@ -731,9 +733,9 @@ mod tests {
             host_function.calculate_gas_cost([large_value, large_value, large_value, large_value]);
 
         let large_value = U512::from(large_value);
-        let rhs = large_value + (U512::from(4) * large_value * large_value);
-
-        assert_eq!(lhs, Gas::new(rhs));
+        let expected_value = large_value + (U512::from(4) * large_value * large_value);
+        assert!(expected_value > U512::from(u64::MAX));
+        assert_eq!(lhs, Gas::MAX);
     }
 }
 

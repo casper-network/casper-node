@@ -16,7 +16,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash, bytesrepr::FromBytes, system::CallStackElement, BlockTime, CLTyped,
-    DeployHash, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    DeployHash, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
@@ -68,7 +68,7 @@ where
         let fn_store_id = AddressGenerator::new(deploy_hash.as_bytes(), phase);
         Rc::new(RefCell::new(fn_store_id))
     };
-    let gas_limit = Gas::new(U512::from(std::u64::MAX));
+    let gas_limit = Gas::new(std::u64::MAX);
     let protocol_version = ProtocolVersion::V1_0_0;
     let correlation_id = CorrelationId::new();
     let base_key = Key::Account(address);

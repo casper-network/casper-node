@@ -1,4 +1,5 @@
 use num_rational::Ratio;
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
@@ -15,6 +16,7 @@ use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_B
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
     shared::{
+        gas::Gas,
         host_function_costs::{HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
@@ -174,6 +176,8 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
 #[ignore]
 #[test]
 fn should_verify_isolate_host_side_payment_code_is_free() {
+    use num_traits::Zero;
+
     let mut builder = initialize_isolated_storage_costs();
 
     let exec_request = ExecuteRequestBuilder::standard(
@@ -202,7 +206,7 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
         balance_before - transaction_fee,
         "balance before and after should match"
     );
-    assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
+    assert_eq!(builder.last_exec_gas_cost(), Gas::zero());
 }
 
 #[cfg(not(feature = "use-as-wasm"))]
@@ -267,15 +271,15 @@ fn should_verify_isolated_auction_storage_is_free() {
         expected - balance_after
     );
     assert_eq!(
-        builder.last_exec_gas_cost().value(),
-        U512::from(DEFAULT_ADD_BID_COST)
+        builder.last_exec_gas_cost(),
+        Gas::from(DEFAULT_ADD_BID_COST)
     );
 }
 
 #[ignore]
 #[test]
 fn should_measure_gas_cost_for_storage_usage_write() {
-    let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
+    let cost_per_byte = Gas::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = initialize_isolated_storage_costs();
 
@@ -289,7 +293,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
 
     builder.exec(install_exec_request).expect_success().commit();
 
-    assert!(!builder.last_exec_gas_cost().value().is_zero());
+    assert!(!builder.last_exec_gas_cost().is_zero());
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -330,13 +334,13 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     let expected_small_write_data =
         StoredValue::from(CLValue::from_t(Bytes::from(WRITE_SMALL_VALUE.to_vec())).unwrap());
 
-    let expected_small_cost = U512::from(expected_small_write_data.serialized_length());
+    let expected_small_cost = Gas::from(expected_small_write_data.serialized_length());
 
-    let small_write_cost = Ratio::new(small_write_function_cost.value(), cost_per_byte);
+    let small_write_cost = Ratio::new(small_write_function_cost, cost_per_byte);
 
     assert_eq!(
         small_write_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "small cost does not divide without remainder"
     );
     assert!(
@@ -370,13 +374,13 @@ fn should_measure_gas_cost_for_storage_usage_write() {
 
     let expected_large_write_data =
         StoredValue::from(CLValue::from_t(Bytes::from(WRITE_LARGE_VALUE.to_vec())).unwrap());
-    let expected_large_cost = U512::from(expected_large_write_data.serialized_length());
+    let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
-    let large_write_cost = Ratio::new(large_write_function_cost.value(), cost_per_byte);
+    let large_write_cost = Ratio::new(large_write_function_cost, cost_per_byte);
 
     assert_eq!(
         large_write_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "cost does not divide without remainder"
     );
     assert!(
@@ -389,7 +393,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
 #[ignore]
 #[test]
 fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
-    let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
+    let cost_per_byte = Gas::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -441,13 +445,13 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let expected_small_write_data =
         StoredValue::from(CLValue::from_t(Bytes::from(WRITE_SMALL_VALUE.to_vec())).unwrap());
 
-    let expected_small_cost = U512::from(expected_small_write_data.serialized_length());
+    let expected_small_cost = Gas::from(expected_small_write_data.serialized_length());
 
-    let small_write_cost = Ratio::new(small_write_function_cost.value(), cost_per_byte);
+    let small_write_cost = Ratio::new(small_write_function_cost, cost_per_byte);
 
     assert_eq!(
         small_write_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "small cost does not divide without remainder"
     );
     assert!(
@@ -480,13 +484,13 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
 
     let expected_large_write_data =
         StoredValue::from(CLValue::from_t(Bytes::from(WRITE_LARGE_VALUE.to_vec())).unwrap());
-    let expected_large_cost = U512::from(expected_large_write_data.serialized_length());
+    let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
-    let large_write_cost = Ratio::new(large_write_function_cost.value(), cost_per_byte);
+    let large_write_cost = Ratio::new(large_write_function_cost, cost_per_byte);
 
     assert_eq!(
         large_write_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "cost does not divide without remainder"
     );
     assert!(
@@ -499,7 +503,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
 #[ignore]
 #[test]
 fn should_measure_gas_cost_for_storage_usage_add() {
-    let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
+    let cost_per_byte = Gas::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = initialize_isolated_storage_costs();
 
@@ -554,13 +558,13 @@ fn should_measure_gas_cost_for_storage_usage_add() {
     let expected_small_add_data =
         StoredValue::from(CLValue::from_t(U512::from(ADD_SMALL_VALUE)).unwrap());
 
-    let expected_small_cost = U512::from(expected_small_add_data.serialized_length());
+    let expected_small_cost = Gas::from(expected_small_add_data.serialized_length());
 
-    let small_add_cost = Ratio::new(small_add_function_cost.value(), cost_per_byte);
+    let small_add_cost = Ratio::new(small_add_function_cost, cost_per_byte);
 
     assert_eq!(
         small_add_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "small cost does not divide without remainder"
     );
     assert!(
@@ -594,15 +598,15 @@ fn should_measure_gas_cost_for_storage_usage_add() {
 
     let expected_large_write_data =
         StoredValue::from(CLValue::from_t(U512::from(ADD_LARGE_VALUE)).unwrap());
-    let expected_large_cost = U512::from(expected_large_write_data.serialized_length());
+    let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
     assert!(expected_large_cost > expected_small_cost);
 
-    let large_write_cost = Ratio::new(large_add_function_cost.value(), cost_per_byte);
+    let large_write_cost = Ratio::new(large_add_function_cost, cost_per_byte);
 
     assert_eq!(
         large_write_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "cost does not divide without remainder"
     );
     assert!(
@@ -615,7 +619,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
 #[ignore]
 #[test]
 fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
-    let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
+    let cost_per_byte = Gas::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -669,13 +673,13 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let expected_small_add_data =
         StoredValue::from(CLValue::from_t(U512::from(ADD_SMALL_VALUE)).unwrap());
 
-    let expected_small_cost = U512::from(expected_small_add_data.serialized_length());
+    let expected_small_cost = Gas::from(expected_small_add_data.serialized_length());
 
-    let small_add_cost = Ratio::new(small_add_function_cost.value(), cost_per_byte);
+    let small_add_cost = Ratio::new(small_add_function_cost, cost_per_byte);
 
     assert_eq!(
         small_add_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "small cost does not divide without remainder"
     );
     assert!(
@@ -708,15 +712,15 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
 
     let expected_large_write_data =
         StoredValue::from(CLValue::from_t(U512::from(ADD_LARGE_VALUE)).unwrap());
-    let expected_large_cost = U512::from(expected_large_write_data.serialized_length());
+    let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
     assert!(expected_large_cost > expected_small_cost);
 
-    let large_write_cost = Ratio::new(large_add_function_cost.value(), cost_per_byte);
+    let large_write_cost = Ratio::new(large_add_function_cost, cost_per_byte);
 
     assert_eq!(
         large_write_cost.fract().to_integer(),
-        U512::zero(),
+        Gas::zero(),
         "cost does not divide without remainder"
     );
     assert!(

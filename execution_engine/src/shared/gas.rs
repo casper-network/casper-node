@@ -1,36 +1,38 @@
 use std::{fmt, iter::Sum};
 
-use num::Zero;
+use num::{CheckedMul, Integer, Zero};
+use num_derive::{Num, NumOps, One, Zero};
+use num_traits::{CheckedAdd, CheckedSub, Saturating, SaturatingMul};
 
 use casper_types::U512;
 
 use crate::shared::motes::Motes;
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Gas(U512);
+pub(crate) const GAS_MAX_AS_U512: U512 = U512([u64::MAX, 0, 0, 0, 0, 0, 0, 0]);
+
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Num, Zero, One, NumOps)]
+pub struct Gas(u64);
 
 impl Gas {
-    pub fn new(value: U512) -> Self {
+    pub const MAX: Gas = Gas::new(u64::MAX);
+    pub const MIN: Gas = Gas::new(u64::MIN);
+
+    pub const fn new(value: u64) -> Self {
         Gas(value)
     }
 
-    pub fn value(&self) -> U512 {
-        self.0
+    pub fn from_u512(value: U512) -> Option<Gas> {
+        if value > GAS_MAX_AS_U512 {
+            return None;
+        }
+        Some(Gas(value.as_u64()))
     }
 
     pub fn from_motes(motes: Motes, conv_rate: u64) -> Option<Self> {
         motes
             .value()
             .checked_div(U512::from(conv_rate))
-            .map(Self::new)
-    }
-
-    pub fn checked_add(&self, rhs: Self) -> Option<Self> {
-        self.0.checked_add(rhs.value()).map(Self::new)
-    }
-
-    pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
-        self.0.checked_sub(rhs.value()).map(Self::new)
+            .and_then(Self::from_u512)
     }
 }
 
@@ -40,55 +42,37 @@ impl fmt::Display for Gas {
     }
 }
 
-impl std::ops::Add for Gas {
-    type Output = Gas;
+impl Saturating for Gas {
+    fn saturating_add(self, rhs: Self) -> Self {
+        Gas(self.0.saturating_add(rhs.0))
+    }
 
-    fn add(self, rhs: Self) -> Self::Output {
-        let val = self.value() + rhs.value();
-        Gas::new(val)
+    fn saturating_sub(self, rhs: Self) -> Self {
+        Gas(self.0.saturating_sub(rhs.0))
     }
 }
 
-impl std::ops::Sub for Gas {
-    type Output = Gas;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        let val = self.value() - rhs.value();
-        Gas::new(val)
+impl SaturatingMul for Gas {
+    fn saturating_mul(&self, v: &Self) -> Self {
+        Gas(self.0.saturating_mul(v.0))
     }
 }
 
-impl std::ops::Div for Gas {
-    type Output = Gas;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        let val = self.value() / rhs.value();
-        Gas::new(val)
+impl CheckedAdd for Gas {
+    fn checked_add(&self, v: &Self) -> Option<Self> {
+        self.0.checked_add(v.0).map(Gas)
     }
 }
 
-impl std::ops::Mul for Gas {
-    type Output = Gas;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        let val = self.value() * rhs.value();
-        Gas::new(val)
+impl CheckedMul for Gas {
+    fn checked_mul(&self, v: &Self) -> Option<Self> {
+        self.0.checked_add(v.0).map(Gas)
     }
 }
 
-impl std::ops::AddAssign for Gas {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0
-    }
-}
-
-impl Zero for Gas {
-    fn zero() -> Self {
-        Gas::new(U512::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0.is_zero()
+impl CheckedSub for Gas {
+    fn checked_sub(&self, v: &Self) -> Option<Self> {
+        self.0.checked_sub(v.0).map(Gas)
     }
 }
 
@@ -98,75 +82,135 @@ impl Sum for Gas {
     }
 }
 
+impl Integer for Gas {
+    fn div_floor(&self, other: &Self) -> Self {
+        Gas(self.0.div_floor(&other.0))
+    }
+
+    fn mod_floor(&self, other: &Self) -> Self {
+        Gas(self.0.mod_floor(&other.0))
+    }
+
+    fn gcd(&self, other: &Self) -> Self {
+        Gas(self.0.gcd(&other.0))
+    }
+
+    fn lcm(&self, other: &Self) -> Self {
+        Gas(self.0.lcm(&other.0))
+    }
+
+    fn divides(&self, other: &Self) -> bool {
+        self.0.divides(&other.0)
+    }
+
+    fn is_multiple_of(&self, other: &Self) -> bool {
+        self.0.is_multiple_of(&other.0)
+    }
+
+    fn is_even(&self) -> bool {
+        self.0.is_even()
+    }
+
+    fn is_odd(&self) -> bool {
+        self.0.is_odd()
+    }
+
+    fn div_rem(&self, other: &Self) -> (Self, Self) {
+        let (div, rem) = self.0.div_rem(&other.0);
+        (Gas(div), Gas(rem))
+    }
+}
+
 impl From<u32> for Gas {
     fn from(gas: u32) -> Self {
-        let gas_u512: U512 = gas.into();
-        Gas::new(gas_u512)
+        Gas::new(gas as u64)
     }
 }
 
 impl From<u64> for Gas {
     fn from(gas: u64) -> Self {
-        let gas_u512: U512 = gas.into();
-        Gas::new(gas_u512)
+        Gas::new(gas)
+    }
+}
+
+impl From<usize> for Gas {
+    fn from(gas_value: usize) -> Self {
+        Gas(gas_value as u64)
+    }
+}
+
+impl From<Gas> for U512 {
+    fn from(gas: Gas) -> Self {
+        U512::from(gas.0)
+    }
+}
+
+impl From<Gas> for u64 {
+    fn from(gas: Gas) -> Self {
+        gas.0
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use num_traits::One;
+
     use casper_types::U512;
 
     use crate::shared::{gas::Gas, motes::Motes};
 
+    use super::*;
+
+    #[test]
+    fn u64_max_as_u512_is_correct() {
+        assert_eq!(GAS_MAX_AS_U512, U512::from(u64::MAX));
+    }
+
     #[test]
     fn should_be_able_to_get_instance_of_gas() {
         let initial_value = 1;
-        let gas = Gas::new(U512::from(initial_value));
-        assert_eq!(
-            initial_value,
-            gas.value().as_u64(),
-            "should have equal value"
-        )
+        let gas = Gas::new(initial_value);
+        assert_eq!(gas, Gas::one(), "should have equal value")
     }
 
     #[test]
     fn should_be_able_to_compare_two_instances_of_gas() {
-        let left_gas = Gas::new(U512::from(1));
-        let right_gas = Gas::new(U512::from(1));
+        let left_gas = Gas::new(1);
+        let right_gas = Gas::new(1);
         assert_eq!(left_gas, right_gas, "should be equal");
-        let right_gas = Gas::new(U512::from(2));
+        let right_gas = Gas::new(2);
         assert_ne!(left_gas, right_gas, "should not be equal")
     }
 
     #[test]
     fn should_be_able_to_add_two_instances_of_gas() {
-        let left_gas = Gas::new(U512::from(1));
-        let right_gas = Gas::new(U512::from(1));
-        let expected_gas = Gas::new(U512::from(2));
+        let left_gas = Gas::new(1);
+        let right_gas = Gas::new(1);
+        let expected_gas = Gas::new(2);
         assert_eq!((left_gas + right_gas), expected_gas, "should be equal")
     }
 
     #[test]
     fn should_be_able_to_subtract_two_instances_of_gas() {
-        let left_gas = Gas::new(U512::from(1));
-        let right_gas = Gas::new(U512::from(1));
-        let expected_gas = Gas::new(U512::from(0));
+        let left_gas = Gas::new(1);
+        let right_gas = Gas::new(1);
+        let expected_gas = Gas::new(0);
         assert_eq!((left_gas - right_gas), expected_gas, "should be equal")
     }
 
     #[test]
     fn should_be_able_to_multiply_two_instances_of_gas() {
-        let left_gas = Gas::new(U512::from(100));
-        let right_gas = Gas::new(U512::from(10));
-        let expected_gas = Gas::new(U512::from(1000));
+        let left_gas = Gas::new(100);
+        let right_gas = Gas::new(10);
+        let expected_gas = Gas::new(1000);
         assert_eq!((left_gas * right_gas), expected_gas, "should be equal")
     }
 
     #[test]
     fn should_be_able_to_divide_two_instances_of_gas() {
-        let left_gas = Gas::new(U512::from(1000));
-        let right_gas = Gas::new(U512::from(100));
-        let expected_gas = Gas::new(U512::from(10));
+        let left_gas = Gas::new(1000);
+        let right_gas = Gas::new(100);
+        let expected_gas = Gas::new(10);
         assert_eq!((left_gas / right_gas), expected_gas, "should be equal")
     }
 
@@ -174,36 +218,35 @@ mod tests {
     fn should_be_able_to_convert_from_mote() {
         let mote = Motes::new(U512::from(100));
         let gas = Gas::from_motes(mote, 10).expect("should have gas");
-        let expected_gas = Gas::new(U512::from(10));
+        let expected_gas = Gas::new(10);
         assert_eq!(gas, expected_gas, "should be equal")
     }
 
     #[test]
     fn should_be_able_to_default() {
         let gas = Gas::default();
-        let expected_gas = Gas::new(U512::from(0));
+        let expected_gas = Gas::new(0);
         assert_eq!(gas, expected_gas, "should be equal")
     }
 
     #[test]
     fn should_be_able_to_compare_relative_value() {
-        let left_gas = Gas::new(U512::from(100));
-        let right_gas = Gas::new(U512::from(10));
+        let left_gas = Gas::new(100);
+        let right_gas = Gas::new(10);
         assert!(left_gas > right_gas, "should be gt");
-        let right_gas = Gas::new(U512::from(100));
+        let right_gas = Gas::new(100);
         assert!(left_gas >= right_gas, "should be gte");
         assert!(left_gas <= right_gas, "should be lte");
-        let left_gas = Gas::new(U512::from(10));
+        let left_gas = Gas::new(10);
         assert!(left_gas < right_gas, "should be lt");
     }
 
     #[test]
     fn should_default() {
-        let left_gas = Gas::new(U512::from(0));
+        let left_gas = Gas::new(0);
         let right_gas = Gas::default();
         assert_eq!(left_gas, right_gas, "should be equal");
-        let u512 = U512::zero();
-        assert_eq!(left_gas.value(), u512, "should be equal");
+        assert_eq!(left_gas, Gas::zero(), "should be equal");
     }
 
     #[test]

@@ -2,10 +2,7 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    U512,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::gas::Gas;
 
@@ -27,8 +24,12 @@ impl StorageCosts {
     }
 
     /// Calculates gas cost for storing `bytes`.
+    ///
+    /// This method will never overflow
     pub fn calculate_gas_cost(&self, bytes: usize) -> Gas {
-        let value = U512::from(self.gas_per_byte) * U512::from(bytes);
+        let gas_per_byte = self.gas_per_byte as u64;
+        let bytes_size = bytes as u64;
+        let value = gas_per_byte.saturating_mul(bytes_size);
         Gas::new(value)
     }
 }
@@ -78,7 +79,7 @@ pub mod tests {
     use super::*;
 
     const SMALL_WEIGHT: usize = 123456789;
-    const LARGE_WEIGHT: usize = usize::max_value();
+    const LARGE_WEIGHT: usize = u64::max_value() as usize;
 
     #[test]
     fn should_calculate_gas_cost() {
@@ -86,7 +87,7 @@ pub mod tests {
 
         let cost = storage_costs.calculate_gas_cost(SMALL_WEIGHT);
 
-        let expected_cost = U512::from(DEFAULT_GAS_PER_BYTE_COST) * U512::from(SMALL_WEIGHT);
+        let expected_cost = (DEFAULT_GAS_PER_BYTE_COST as u64) * (SMALL_WEIGHT as u64);
         assert_eq!(cost, Gas::new(expected_cost));
     }
 
@@ -97,7 +98,10 @@ pub mod tests {
         let cost = storage_costs.calculate_gas_cost(LARGE_WEIGHT);
 
         let expected_cost = U512::from(DEFAULT_GAS_PER_BYTE_COST) * U512::from(LARGE_WEIGHT);
-        assert_eq!(cost, Gas::new(expected_cost));
+
+        assert!(expected_cost > U512::from(u64::MAX));
+
+        assert_eq!(cost, Gas::MAX);
     }
 }
 

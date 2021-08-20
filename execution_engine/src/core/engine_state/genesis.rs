@@ -1207,7 +1207,7 @@ where
                 Default::default(),
                 Default::default(),
                 deploy_hash,
-                Gas::new(U512::MAX),
+                Gas::MAX,
                 Rc::clone(&self.hash_address_generator),
                 Rc::clone(&self.uref_address_generator),
                 Rc::clone(&self.transfer_address_generator),

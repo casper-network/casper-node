@@ -1,6 +1,6 @@
 use tracing::warn;
 
-use casper_types::{Key, U512};
+use casper_types::Key;
 
 use super::Error;
 use crate::{
@@ -26,8 +26,8 @@ fn on_fail_charge_test_helper<T>(
 
 #[test]
 fn on_fail_charge_ok_test() {
-    let val = Gas::new(U512::from(123));
-    match on_fail_charge_test_helper(|| Ok(()), val, Gas::new(U512::from(456))) {
+    let val = Gas::new(123);
+    match on_fail_charge_test_helper(|| Ok(()), val, Gas::new(456)) {
         ExecutionResult::Success { cost, .. } => assert_eq!(cost, val),
         ExecutionResult::Failure { .. } => panic!("Should be success"),
     }
@@ -36,8 +36,8 @@ fn on_fail_charge_ok_test() {
 #[test]
 fn on_fail_charge_err_laziness_test() {
     let input: Result<(), Error> = Err(Error::GasLimit);
-    let error_cost = Gas::new(U512::from(456));
-    match on_fail_charge_test_helper(|| input.clone(), Gas::new(U512::from(123)), error_cost) {
+    let error_cost = Gas::new(456);
+    match on_fail_charge_test_helper(|| input.clone(), Gas::new(123), error_cost) {
         ExecutionResult::Success { .. } => panic!("Should fail"),
         ExecutionResult::Failure { cost, .. } => assert_eq!(cost, error_cost),
     }
@@ -50,7 +50,7 @@ fn on_fail_charge_with_action() {
         let transfers = Vec::default();
         on_fail_charge!(
             input,
-            Gas::new(U512::from(456)),
+            Gas::new(456),
             {
                 let mut effect = ExecutionEffect::default();
 
@@ -76,7 +76,7 @@ fn on_fail_charge_with_action() {
             execution_effect,
             ..
         } => {
-            assert_eq!(cost, Gas::new(U512::from(456)));
+            assert_eq!(cost, Gas::new(456));
             // Check if the containers are non-empty
             assert_eq!(execution_effect.ops.len(), 1);
             assert_eq!(execution_effect.transforms.len(), 1);

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use casper_execution_engine::shared::gas::Gas;
 use casper_types::PublicKey;
 use datasize::DataSize;
+use num::CheckedAdd;
 use num_traits::Zero;
 use thiserror::Error;
 
@@ -119,7 +120,7 @@ impl AppendableBlock {
         let payment_amount = deploy_info.payment_amount;
         let gas_price = deploy_info.header.gas_price();
         let gas = Gas::from_motes(payment_amount, gas_price).ok_or(AddError::InvalidGasAmount)?;
-        let new_total_gas = self.total_gas.checked_add(gas).ok_or(AddError::GasLimit)?;
+        let new_total_gas = self.total_gas.checked_add(&gas).ok_or(AddError::GasLimit)?;
         if new_total_gas > Gas::from(self.deploy_config.block_gas_limit) {
             return Err(AddError::GasLimit);
         }
