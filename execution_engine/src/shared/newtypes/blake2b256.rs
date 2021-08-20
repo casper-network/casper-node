@@ -1,5 +1,5 @@
 /// The number of bytes in a Blake2b hash
-use std::{array::TryFromSliceError, borrow::Cow, convert::TryFrom};
+use std::{array::TryFromSliceError, convert::TryFrom};
 
 use blake2::{
     digest::{Update, VariableOutput},
@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     check_summed_hex,
-    check_summed_hex::CheckSummedHex,
 };
 
 /// Represents a 32-byte BLAKE2b hash digest
@@ -95,19 +94,5 @@ impl FromBytes for Blake2bHash {
     #[inline(always)]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         FromBytes::from_bytes(bytes).map(|(arr, rem)| (Blake2bHash(arr), rem))
-    }
-}
-
-impl CheckSummedHex<Blake2bHash> for Blake2bHash {
-    type Error = &'static str; // TODO: replace with proper error type.
-
-    fn create_bytes(value: &Blake2bHash) -> Cow<[u8]> {
-        Cow::from(value.to_bytes().unwrap())
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Blake2bHash, Self::Error> {
-        FromBytes::from_bytes(bytes)
-            .map(|(b, _rem)| b)
-            .map_err(|_error| "replace me with real error.")
     }
 }
