@@ -396,11 +396,17 @@ where
                         .put_trie_and_find_missing_descendant_trie_keys(correlation_id, &*trie);
                     // PERF: this *could* be called only periodically.
                     if let Err(lmdb_error) = engine_state.flush_environment() {
-                        error!(?lmdb_error, "error flushing lmdb environment");
+                        fatal!(
+                            effect_builder,
+                            "error flushing lmdb environment {:?}",
+                            lmdb_error
+                        )
+                        .await;
+                    } else {
+                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                        trace!(?result, "put_trie response");
+                        responder.respond(result).await
                     }
-                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "put_trie response");
-                    responder.respond(result).await
                 }
                 .ignore()
             }
