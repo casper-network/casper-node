@@ -32,7 +32,6 @@ use casper_execution_engine::{
         gas::Gas,
         logging::{self, Settings, Style},
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::Transform,
         utils::OS_PAGE_SIZE,
     },
@@ -58,8 +57,8 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr,
-    URef, U512,
+    DeployHash, DeployInfo, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, U512,
 };
 
 use crate::internal::{

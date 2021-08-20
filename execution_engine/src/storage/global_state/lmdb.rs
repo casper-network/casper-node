@@ -3,10 +3,9 @@ use std::{ops::Deref, sync::Arc};
 use crate::shared::{
     additive_map::AdditiveMap,
     newtypes::{Blake2bHash, CorrelationId},
-    stored_value::StoredValue,
     transform::Transform,
 };
-use casper_types::Key;
+use casper_types::{Key, StoredValue};
 
 use crate::storage::{
     error,
