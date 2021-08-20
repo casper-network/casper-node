@@ -96,6 +96,8 @@ pub enum Error {
     /// delegations.
     #[cfg_attr(feature = "std", error("Validators has not received any delegations"))]
     MissingDelegations = 22,
+    /// The validators returned by the consensus component should match
+    /// current era validators when distributing rewards.
     #[deprecated(since = "1.4.0")]
     #[cfg_attr(
         feature = "std",
