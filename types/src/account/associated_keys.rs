@@ -1,18 +1,25 @@
-use std::collections::{BTreeMap, BTreeSet};
+//! This module contains types and functions for working with keys associated with an account.
+
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    vec::Vec,
+};
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     account::{
         AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight, MAX_ASSOCIATED_KEYS,
     },
     bytesrepr::{Error, FromBytes, ToBytes},
 };
 
+/// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
 
 impl AssociatedKeys {
+    /// Constructs a new AssociatedKeys.
     pub fn new(key: AccountHash, weight: Weight) -> AssociatedKeys {
         let mut bt: BTreeMap<AccountHash, Weight> = BTreeMap::new();
         bt.insert(key, weight);
@@ -55,22 +62,27 @@ impl AssociatedKeys {
         Ok(())
     }
 
+    /// Returns the weight of an account hash.
     pub fn get(&self, key: &AccountHash) -> Option<&Weight> {
         self.0.get(key)
     }
 
+    /// Returns `true` if a given key exists.
     pub fn contains_key(&self, key: &AccountHash) -> bool {
         self.0.contains_key(key)
     }
 
+    /// Returns an iterator over the account hash and the weights.
     pub fn iter(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
         self.0.iter()
     }
 
+    /// Returns the count of the associated keys.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns `true` if the associated keys are empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -140,11 +152,12 @@ impl FromBytes for AssociatedKeys {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
 
-    use casper_types::{
+    use crate::{
         account::MAX_ASSOCIATED_KEYS,
         gens::{account_hash_arb, weight_arb},
     };
@@ -170,7 +183,7 @@ mod tests {
         iter::FromIterator,
     };
 
-    use casper_types::{
+    use crate::{
         account::{AccountHash, AddKeyFailure, Weight, ACCOUNT_HASH_LENGTH, MAX_ASSOCIATED_KEYS},
         bytesrepr::{self, ToBytes},
     };

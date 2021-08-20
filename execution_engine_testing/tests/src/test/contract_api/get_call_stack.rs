@@ -7,13 +7,10 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{
-    shared::{account::Account, stored_value::StoredValue},
-    storage::global_state::in_memory::InMemoryGlobalState,
-};
+use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
-    runtime_args, system::CallStackElement, CLValue, ContractHash, ContractPackageHash,
-    EntryPointType, HashAddr, Key, RuntimeArgs,
+    account::Account, runtime_args, system::CallStackElement, CLValue, ContractHash,
+    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue,
 };
 
 use get_call_stack_recursive_subcall::{

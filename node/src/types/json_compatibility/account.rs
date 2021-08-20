@@ -7,8 +7,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{rpcs::docs::DocExample, types::json_compatibility::vectorize};
-use casper_execution_engine::shared::account::Account as ExecutionEngineAccount;
-use casper_types::{account::AccountHash, NamedKey, PublicKey, SecretKey, URef};
+use casper_types::{
+    account::{Account as ExecutionEngineAccount, AccountHash},
+    NamedKey, PublicKey, SecretKey, URef,
+};
 
 static ACCOUNT: Lazy<Account> = Lazy::new(|| {
     let main_purse = URef::from_formatted_str(

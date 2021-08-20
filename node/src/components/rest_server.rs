@@ -23,7 +23,7 @@ mod event;
 mod filters;
 mod http_server;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -85,6 +85,8 @@ pub(crate) struct RestServer {
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
+    /// The instant at which the node has started.
+    node_startup_instant: Instant,
 }
 
 impl RestServer {
@@ -92,6 +94,7 @@ impl RestServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        node_startup_instant: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -110,6 +113,7 @@ impl RestServer {
         Ok(RestServer {
             shutdown_sender,
             server_join_handle: Some(server_join_handle),
+            node_startup_instant,
         })
     }
 }
@@ -128,16 +132,24 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::RestRequest(RestRequest::Status { responder }) => async move {
-                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
-                    effect_builder.get_highest_block_from_storage(),
-                    effect_builder.network_peers(),
-                    effect_builder.get_chainspec_info(),
-                    effect_builder.consensus_status()
-                );
-                let status_feed =
-                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
-                responder.respond(status_feed).await;
+            Event::RestRequest(RestRequest::Status { responder }) => {
+                let node_uptime = self.node_startup_instant.elapsed();
+                async move {
+                    let (last_added_block, peers, chainspec_info, consensus_status) = join!(
+                        effect_builder.get_highest_block_from_storage(),
+                        effect_builder.network_peers(),
+                        effect_builder.get_chainspec_info(),
+                        effect_builder.consensus_status()
+                    );
+                    let status_feed = StatusFeed::new(
+                        last_added_block,
+                        peers,
+                        chainspec_info,
+                        consensus_status,
+                        node_uptime,
+                    );
+                    responder.respond(status_feed).await;
+                }
             }
             .ignore(),
             Event::RestRequest(RestRequest::Metrics { responder }) => effect_builder

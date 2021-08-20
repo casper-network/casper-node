@@ -1,6 +1,6 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-use std::time::Duration;
+use std::str::FromStr;
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:34553";
 const DEFAULT_PUBLIC_ADDRESS: &str = "127.0.0.1:0";
 
 /// Default interval for gossiping network addresses.
-const DEFAULT_GOSSIP_INTERVAL: Duration = Duration::from_secs(30);
+const DEFAULT_GOSSIP_INTERVAL: &str = "30sec";
 
 // Default values for networking configuration:
 impl Default for Config {
@@ -27,8 +27,7 @@ impl Default for Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
-            gossip_interval: DEFAULT_GOSSIP_INTERVAL,
-            isolation_reconnect_delay: TimeDiff::from_seconds(2),
+            gossip_interval: TimeDiff::from_str(DEFAULT_GOSSIP_INTERVAL).unwrap(),
             initial_gossip_delay: TimeDiff::from_seconds(5),
             max_addr_pending_time: TimeDiff::from_seconds(60),
             max_outgoing_byte_rate_non_validators: 0,
@@ -51,10 +50,7 @@ pub struct Config {
     /// Known address of a node on the network used for joining.
     pub known_addresses: Vec<String>,
     /// Interval in milliseconds used for gossiping.
-    #[serde(with = "crate::utils::milliseconds")]
-    pub gossip_interval: Duration,
-    /// Minimum amount of time that has to pass before attempting to reconnect after isolation.
-    pub isolation_reconnect_delay: TimeDiff,
+    pub gossip_interval: TimeDiff,
     /// Initial delay before the first round of gossip.
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for an address to be kept in the pending set.
@@ -67,7 +63,7 @@ pub struct Config {
 
 #[cfg(test)]
 /// Reduced gossip interval for local testing.
-const DEFAULT_TEST_GOSSIP_INTERVAL: Duration = Duration::from_secs(1);
+const DEFAULT_TEST_GOSSIP_INTERVAL: &str = "1sec";
 
 #[cfg(test)]
 /// Address used to bind all local testing networking to by default.
@@ -82,7 +78,7 @@ impl Config {
             bind_address: bind_address.to_string(),
             public_address: bind_address.to_string(),
             known_addresses: vec![bind_address.to_string()],
-            gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            gossip_interval: TimeDiff::from_str(DEFAULT_TEST_GOSSIP_INTERVAL).unwrap(),
             ..Default::default()
         }
     }
@@ -100,7 +96,7 @@ impl Config {
             known_addresses: vec![
                 SocketAddr::from((TEST_BIND_INTERFACE, known_peer_port)).to_string()
             ],
-            gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            gossip_interval: TimeDiff::from_str(DEFAULT_TEST_GOSSIP_INTERVAL).unwrap(),
             ..Default::default()
         }
     }

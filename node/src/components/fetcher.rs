@@ -10,11 +10,8 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::{
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::trie::Trie,
-};
-use casper_types::Key;
+use casper_execution_engine::{shared::newtypes::Blake2bHash, storage::trie::Trie};
+use casper_types::{Key, StoredValue};
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -188,7 +185,7 @@ impl<T: Item> Fetcher<T> {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
-            get_from_peer_timeout: Duration::from_secs(config.get_from_peer_timeout()),
+            get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
             metrics: FetcherMetrics::new(name, registry)?,
         })

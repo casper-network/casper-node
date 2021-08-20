@@ -13,14 +13,15 @@ use proptest::{
 };
 
 use crate::{
-    account::{AccountHash, Weight},
+    account::{gens::account_arb, AccountHash, Weight},
     contracts::{
         ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
     },
+    system::auction::gens::era_info_arb,
     transfer::TransferAddr,
     AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
     ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedArg, Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
+    NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
@@ -371,4 +372,17 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
                 ContractPackageStatus::default(),
             )
         })
+}
+
+pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
+    prop_oneof![
+        cl_value_arb().prop_map(StoredValue::CLValue),
+        account_arb().prop_map(StoredValue::Account),
+        contract_package_arb().prop_map(StoredValue::ContractPackage),
+        contract_arb().prop_map(StoredValue::Contract),
+        contract_wasm_arb().prop_map(StoredValue::ContractWasm),
+        era_info_arb(1..10).prop_map(StoredValue::EraInfo),
+        deploy_info_arb().prop_map(StoredValue::DeployInfo),
+        transfer_arb().prop_map(StoredValue::Transfer)
+    ]
 }

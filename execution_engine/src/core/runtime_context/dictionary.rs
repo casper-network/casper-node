@@ -1,9 +1,7 @@
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    CLType, CLTyped, CLValue, CLValueError, Key,
+    CLType, CLTyped, CLValue, CLValueError, Key, StoredValue,
 };
-
-use crate::shared::stored_value::StoredValue;
 
 /// Wraps a [`CLValue`] for storage in a dictionary.
 ///

@@ -165,6 +165,10 @@ pub enum Error {
     #[error("Failed to parse the dictionary identifier")]
     FailedToParseDictionaryIdentifier,
 
+    /// Failed to identify the hash as either block hash or state root hash.
+    #[error("Failed to parse state identifier")]
+    FailedToParseStateIdentifier,
+
     /// Must call FFI's setup function prior to making FFI calls.
     #[cfg(feature = "ffi")]
     #[error("Failed to call casper_setup_client()")]
