@@ -29,8 +29,8 @@ pub struct Config {
 
     /// Enable synchronizing to disk only after each block is written.
     ///
-    /// Defaults to true.
-    enable_manual_sync: bool,
+    /// Defaults to `true`.
+    enable_manual_sync: Option<bool>,
 }
 
 impl Config {
@@ -51,7 +51,7 @@ impl Config {
     }
 
     pub(crate) fn manual_sync_enabled(&self) -> bool {
-        self.enable_manual_sync
+        self.enable_manual_sync.unwrap_or(true)
     }
 }
 
@@ -61,7 +61,7 @@ impl Default for Config {
             max_global_state_size: Some(DEFAULT_MAX_GLOBAL_STATE_SIZE),
             max_readers: Some(DEFAULT_MAX_READERS),
             max_query_depth: Some(DEFAULT_MAX_QUERY_DEPTH),
-            enable_manual_sync: true,
+            enable_manual_sync: Some(true),
         }
     }
 }
