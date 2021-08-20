@@ -25,12 +25,13 @@ use casper_execution_engine::{
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
         upgrade::{UpgradeConfig, UpgradeSuccess},
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
+
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    Transfer, URef,
+    StoredValue, Transfer, URef,
 };
 
 use crate::{

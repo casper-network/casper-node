@@ -6,6 +6,7 @@ use std::{
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -22,7 +23,7 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::ContractRuntime,
+        contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
@@ -38,9 +39,8 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            LinearChainBlock, NetworkAnnouncement,
+            ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -330,6 +330,7 @@ pub(crate) struct Reactor {
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
+    node_startup_instant: Instant,
 }
 
 impl reactor::Reactor for Reactor {
@@ -356,6 +357,10 @@ impl reactor::Reactor for Reactor {
             small_network_identity,
         } = initializer;
 
+        // We don't need to be super precise about the startup time, i.e.
+        // we can skip the time spent in `initializer` for the sake of code simplicity.
+        let node_startup_instant = Instant::now();
+
         // TODO: Remove wrapper around Reactor::Config instead.
         let (_, config) = config.into_parts();
 
@@ -372,7 +377,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            None,
         )?;
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
@@ -415,6 +419,7 @@ impl reactor::Reactor for Reactor {
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
+            node_startup_instant,
         )?;
 
         let event_stream_server = EventStreamServer::new(
@@ -501,6 +506,7 @@ impl reactor::Reactor for Reactor {
                 rest_server,
                 event_stream_server,
                 memory_metrics,
+                node_startup_instant,
             },
             effects,
         ))
@@ -796,15 +802,10 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockAdded(block.clone()),
                     ),
                 );
-                let reactor_event = JoinerEvent::LinearChainSync(
-                    linear_chain_sync::Event::BlockHandled(block.clone()),
-                );
+                let reactor_event =
+                    JoinerEvent::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
-                ));
+
                 effects
             }
             JoinerEvent::LinearChainAnnouncement(
@@ -866,6 +867,12 @@ impl reactor::Reactor for Reactor {
                 // no consensus, respond with None
                 responder.respond(None).ignore()
             }
+            JoinerEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators { .. },
+            ) => {
+                // Upcoming validators are not used by joiner reactor
+                Effects::new()
+            }
         }
     }
 
@@ -907,6 +914,7 @@ impl Reactor {
             maybe_latest_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
+            node_startup_instant: self.node_startup_instant,
         };
         self.small_network.finalize().await;
         self.rest_server.finalize().await;

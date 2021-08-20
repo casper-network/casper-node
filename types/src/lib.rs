@@ -43,6 +43,7 @@ mod phase;
 mod protocol_version;
 pub mod runtime_args;
 mod semver;
+mod stored_value;
 pub mod system;
 mod tagged;
 mod transfer;
@@ -80,6 +81,7 @@ pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 #[doc(inline)]
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
+pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
 pub use transfer::{
     DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,

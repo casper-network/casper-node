@@ -35,8 +35,8 @@ use casper_types::{
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, NamedArg, Parameter,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
+    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
 };
 
 use crate::{
@@ -51,7 +51,6 @@ use crate::{
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction},
-        stored_value::StoredValue,
         wasm_config::WasmConfig,
     },
     storage::global_state::StateReader,
