@@ -8,7 +8,6 @@ pub mod logging;
 pub mod motes;
 pub mod newtypes;
 pub mod opcode_costs;
-pub mod socket;
 pub mod storage_costs;
 pub mod system_config;
 pub mod test_utils;
