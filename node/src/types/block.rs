@@ -1280,7 +1280,7 @@ pub struct Block {
     body: BlockBody,
 }
 
-/// The hashing algorithm used for the header and the block body of a block
+/// The hashing algorithm used for the header and the body of a block
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum HashingAlgorithmVersion {
     /// Version 1
