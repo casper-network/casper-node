@@ -3600,6 +3600,7 @@ dependencies = [
  "jsonschema",
  "reqwest",
  "serde_json",
+ "structopt",
  "tokio",
 ]
 

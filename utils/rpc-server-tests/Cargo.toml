@@ -12,4 +12,5 @@ features = "0.10.0"
 jsonschema = "0.12.1"
 reqwest = { version = "0.11.4", features = ["json"] }
 serde_json = "1.0.66"
+structopt = "0.3.22"
 tokio = { version = "1.10.0", features = ["rt-multi-thread", "macros"] }
