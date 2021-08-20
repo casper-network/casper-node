@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.  The format
 * Support building and testing using stable Rust.
 * Increase price of `create_purse` to 2.5CSPR.
 * Improve doc comments to clarify behavior of the bidding functionality.
+* Changed parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
 
 ### Fixed
 * Fix a case where user could potentially supply a refund purse as a payment purse.

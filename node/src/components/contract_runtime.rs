@@ -394,9 +394,19 @@ where
                     let start = Instant::now();
                     let result = engine_state
                         .put_trie_and_find_missing_descendant_trie_keys(correlation_id, &*trie);
-                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "put_trie response");
-                    responder.respond(result).await
+                    // PERF: this *could* be called only periodically.
+                    if let Err(lmdb_error) = engine_state.flush_environment() {
+                        fatal!(
+                            effect_builder,
+                            "error flushing lmdb environment {:?}",
+                            lmdb_error
+                        )
+                        .await;
+                    } else {
+                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                        trace!(?result, "put_trie response");
+                        responder.respond(result).await
+                    }
                 }
                 .ignore()
             }
@@ -507,6 +517,7 @@ impl ContractRuntime {
             storage_dir,
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
+            contract_runtime_config.manual_sync_enabled(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(

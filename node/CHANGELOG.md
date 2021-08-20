@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+
 ### Changed
 * Add support for providing node uptime via the addition of an `uptime` parameter in the response to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Support building and testing using stable Rust.
@@ -63,6 +66,7 @@ All notable changes to this project will be documented in this file.  The format
 * Improve logging around stalled consensus detection.
 * Skip storage integrity checks if the node didn't previously crash.
 * Update pinned version of Rust to `nightly-2021-06-17`.
+* Changed LMDB flags to reduce flushing and optimize IO performance in the Contract Runtime.
 * Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
 * Major rewrite of the contract runtime component.
 * Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.

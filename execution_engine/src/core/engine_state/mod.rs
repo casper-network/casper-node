@@ -82,7 +82,10 @@ use crate::{
         transform::Transform,
         wasm_prep::Preprocessor,
     },
-    storage::{global_state::StateProvider, trie::Trie},
+    storage::{
+        global_state::{lmdb::LmdbGlobalState, StateProvider},
+        trie::Trie,
+    },
 };
 
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -97,6 +100,16 @@ pub struct EngineState<S> {
     config: EngineConfig,
     system_contract_cache: SystemContractCache,
     state: S,
+}
+
+impl EngineState<LmdbGlobalState> {
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
+    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+        if self.state.environment.is_manual_sync_enabled() {
+            self.state.environment.sync()?
+        }
+        Ok(())
+    }
 }
 
 impl<S> EngineState<S>
