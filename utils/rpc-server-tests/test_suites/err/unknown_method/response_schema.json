@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "id": {
+      "type": "integer"
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ]
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "id",
+    "error"
+  ]
+}
