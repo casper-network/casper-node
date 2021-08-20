@@ -299,15 +299,22 @@ pub fn multiple_native_transfers(group: &mut BenchmarkGroup<WallTime>) {
     );
 }
 
+/// This test simulates flushing at the end of a block.
 fn transfer_to_account_multiple_native_transfers(
     builder: &mut LmdbWasmTestBuilder,
     execute_requests: &[ExecuteRequest],
 ) {
-    for exec_request in execute_requests.iter().cloned() {
-        let builder = builder.exec(exec_request).expect_success();
+    for exec_request in execute_requests {
+        let request = ExecuteRequest::new(
+            exec_request.parent_state_hash,
+            exec_request.block_time,
+            exec_request.deploys.clone(),
+            exec_request.protocol_version,
+            exec_request.proposer.clone(),
+        );
+        let builder = builder.exec(request).expect_success(); // flush to disk only after entire set
         builder.commit();
     }
-    // flush to disk only after entire set of deploys has been executed
     builder.flush_environment();
 }
 
