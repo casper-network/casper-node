@@ -29,13 +29,19 @@ impl TestCase {
         let query = DataSource::from_file(query_path.as_path());
         let expected_schema = DataSource::from_file(response_schema_path.as_path());
         let expected_code = TestCase::status_code_from_path(response_code_path)?;
-        let expected_error_code = TestCase::integer_from_path(error_response_code_path).ok();
+        let expected_error_code = TestCase::integer_from_path(error_response_code_path);
 
         Ok(Self {
             input: query.try_into()?,
             expected_schema: expected_schema.try_into()?,
             expected_response_code: expected_code,
-            expected_error_response_code: expected_error_code,
+            expected_error_response_code: match expected_error_code {
+                Ok(code) => Some(code),
+                Err(err) => match err {
+                    RpcServerTestError::IncorrectExpectedCode() => return Err(err),
+                    _ => None,
+                },
+            },
         })
     }
 

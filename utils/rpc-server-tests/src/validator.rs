@@ -1,6 +1,7 @@
 use jsonschema::JSONSchema;
 use reqwest::StatusCode;
 use serde_json::Value;
+use std::convert::TryFrom;
 
 use crate::{error::RpcServerTestError, test_case::TestCase};
 
@@ -29,12 +30,12 @@ impl Validator {
         &self,
         actual_response_status_code: StatusCode,
         actual_response_body: &str,
-    ) -> Option<ValidationErrors> {
+    ) -> Result<Option<ValidationErrors>, RpcServerTestError> {
         if actual_response_status_code != self.expected_http_response_code {
-            return Some(vec![format!(
+            return Ok(Some(vec![format!(
                 "Return code mismatch. Expected '{}' got '{}'",
                 self.expected_http_response_code, actual_response_status_code
-            )]);
+            )]));
         }
 
         let actual: Result<Value, _> = serde_json::from_str(actual_response_body);
@@ -42,26 +43,40 @@ impl Validator {
             match self.schema.validate(&actual) {
                 Ok(_) => {
                     if let Some(expected_error_code) = self.expected_error_response_code {
-                        let error = actual.get("error").unwrap();
-                        let actual_error_code = error.get("code").unwrap();
-                        let actual_error_code = actual_error_code.as_i64().unwrap() as i16;
+                        let actual_error_code = Validator::extract_error_code(&actual)?;
                         if actual_error_code != expected_error_code {
-                            return Some(vec![format!(
+                            return Ok(Some(vec![format!(
                                 "Error code mismatch. Expected '{}' got '{}'",
                                 expected_error_code, actual_error_code
-                            )]);
+                            )]));
                         } else {
-                            None
+                            Ok(None)
                         }
                     } else {
-                        None
+                        Ok(None)
                     }
                 }
 
-                Err(errors) => Some(errors.into_iter().map(|err| err.to_string()).collect()),
+                Err(errors) => Ok(Some(
+                    errors.into_iter().map(|err| err.to_string()).collect(),
+                )),
             }
         } else {
-            Some(vec!["Provided 'actual' is not a correct JSON".to_string()])
+            Ok(Some(vec![
+                "Provided 'actual' is not a correct JSON".to_string()
+            ]))
         }
+    }
+
+    fn extract_error_code(body: &Value) -> Result<i16, RpcServerTestError> {
+        let error_code = body
+            .get("error")
+            .ok_or(RpcServerTestError::CantExtractErrorCode())?
+            .get("code")
+            .ok_or(RpcServerTestError::CantExtractErrorCode())?
+            .as_i64()
+            .ok_or(RpcServerTestError::CantExtractErrorCode())?;
+
+        Ok(i16::try_from(error_code).map_err(|_| RpcServerTestError::CantExtractErrorCode())?)
     }
 }

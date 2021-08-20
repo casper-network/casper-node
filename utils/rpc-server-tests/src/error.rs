@@ -5,5 +5,6 @@ pub(crate) enum RpcServerTestError {
     ErrorInDataSource(String),
     ExpectedCodeFileError(String),
     IncorrectExpectedCode(),
+    CantExtractErrorCode(),
     Other(String),
 }

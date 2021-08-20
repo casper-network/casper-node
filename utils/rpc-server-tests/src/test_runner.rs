@@ -20,6 +20,6 @@ impl TestRunner {
             .map_err(|err| RpcServerTestError::Other(err.to_string()))?;
 
         let validator = Validator::try_from_test_case(&test_case)?;
-        Ok(validator.validate(status_code, &body))
+        validator.validate(status_code, &body)
     }
 }
