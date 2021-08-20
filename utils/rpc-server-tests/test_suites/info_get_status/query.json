@@ -1,0 +1,5 @@
+{
+    "id": 1,
+    "jsonrpc": "2.0",
+    "method": "info_get_status"
+}

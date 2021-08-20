@@ -15,13 +15,8 @@ impl Executor {
 
     pub(crate) async fn execute<'a>(
         &self,
-        json: JsonSource<'a>,
+        json: &str,
     ) -> Result<(StatusCode, String), reqwest::Error> {
-        let json = match json {
-            JsonSource::Raw(query) => query,
-            JsonSource::File(_) => unimplemented!(),
-        };
-
         let client = reqwest::Client::new(); // TODO: Create client in constructor
 
         Executor::json_resp(client, &self.endpoint, json.to_string()).await
