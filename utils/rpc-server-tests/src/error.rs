@@ -2,6 +2,6 @@
 pub(crate) enum RpcServerTestError {
     SchemaSyntax(String),
     SchemaIsNotAJson(String),
-    UnableToCreateQuery(String),
+    ErrorInDataSource(String),
     Other(String),
 }

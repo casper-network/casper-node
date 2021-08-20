@@ -1,7 +1,5 @@
 use reqwest::{Client, StatusCode};
 
-use crate::json_source::JsonSource;
-
 pub(crate) struct Executor {
     endpoint: String,
 }

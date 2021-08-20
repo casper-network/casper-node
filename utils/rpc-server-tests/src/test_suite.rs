@@ -1,6 +1,4 @@
-use std::fs;
-
-use crate::{error::RpcServerTestError, json_source::JsonSource};
+use crate::{data_source::DataSource, error::RpcServerTestError};
 
 pub(crate) struct TestSuite {
     pub(crate) input: String,
@@ -8,14 +6,10 @@ pub(crate) struct TestSuite {
 }
 
 impl TestSuite {
-    pub(crate) fn new(input: JsonSource, expected: String) -> Result<Self, RpcServerTestError> {
+    pub(crate) fn new(input: DataSource, expected: DataSource) -> Result<Self, RpcServerTestError> {
         Ok(Self {
-            input: match input {
-                JsonSource::Raw(query) => query.to_string(),
-                JsonSource::File(path) => fs::read_to_string(path)
-                    .map_err(|err| RpcServerTestError::UnableToCreateQuery(err.to_string()))?,
-            },
-            expected,
+            input: input.get()?,
+            expected: expected.get()?,
         })
     }
 }
