@@ -17,10 +17,9 @@ use tokio::time;
 
 use casper_execution_engine::{
     core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT},
-    shared::{account::Account, stored_value::StoredValue},
     storage::trie::merkle_proof::TrieMerkleProof,
 };
-use casper_types::{CLValue, ProtocolVersion, URef, U512};
+use casper_types::{account::Account, CLValue, ProtocolVersion, StoredValue, URef, U512};
 
 use super::*;
 use crate::{
