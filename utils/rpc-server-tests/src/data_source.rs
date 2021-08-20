@@ -1,4 +1,5 @@
 use std::{
+    convert::TryInto,
     fs,
     path::{Path, PathBuf},
 };
@@ -20,8 +21,12 @@ impl<'a> DataSource<'a> {
     pub(crate) fn from_file(path: &Path) -> Self {
         DataSource::File(path.into())
     }
+}
 
-    pub(crate) fn get(&self) -> Result<String, RpcServerTestError> {
+impl TryInto<String> for DataSource<'_> {
+    type Error = RpcServerTestError;
+
+    fn try_into(self) -> Result<String, Self::Error> {
         Ok(match self {
             DataSource::Raw(query) => query.to_string(),
             DataSource::File(path) => fs::read_to_string(path)
