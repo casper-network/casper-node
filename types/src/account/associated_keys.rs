@@ -134,16 +134,8 @@ impl ToBytes for AssociatedKeys {
 
 impl FromBytes for AssociatedKeys {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (num_keys, mut stream) = u32::from_bytes(bytes)?;
-
-        let mut associated_keys = BTreeMap::new();
-        for _ in 0..num_keys {
-            let (k, rem) = FromBytes::from_bytes(stream)?;
-            let (v, rem) = FromBytes::from_bytes(rem)?;
-            associated_keys.insert(k, v);
-            stream = rem;
-        }
-        Ok((AssociatedKeys(associated_keys), stream))
+        let (associated_keys, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((AssociatedKeys(associated_keys), rem))
     }
 }
 
