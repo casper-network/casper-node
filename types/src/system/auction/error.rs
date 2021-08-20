@@ -96,7 +96,7 @@ pub enum Error {
     /// delegations.
     #[cfg_attr(feature = "std", error("Validators has not received any delegations"))]
     MissingDelegations = 22,
-    #[deprecated(since="1.4.0")]
+    #[deprecated(since = "1.4.0")]
     #[cfg_attr(
         feature = "std",
         error("Mismatched era validator sets to distribute rewards")
