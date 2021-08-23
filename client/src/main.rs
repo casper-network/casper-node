@@ -94,9 +94,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(GetDictionaryItem::build(
             DisplayOrder::GetDictionaryItem as usize,
         ))
-        .subcommand(QueryGlobalState::build(
-            DisplayOrder::QueryGlobalState as usize,
-        ))
+        .subcommand(
+            QueryGlobalState::build(DisplayOrder::QueryGlobalState as usize).alias("query-state"),
+        )
 }
 
 #[tokio::main]
