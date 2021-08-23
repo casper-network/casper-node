@@ -377,15 +377,6 @@ async fn fetch_and_store_block_by_hash(
                 return Ok(Some(block.take_header()));
             }
             Ok(FetchedData::FromPeer { item: block, .. }) => {
-                if let Err(error) = block.verify() {
-                    warn!(
-                        ?error,
-                        ?peer,
-                        "Error validating block from peer; banning peer.",
-                    );
-                    effect_builder.announce_disconnect_from_peer(peer).await;
-                    continue;
-                }
                 let header = block.header().clone();
                 effect_builder.put_block_to_storage(block).await;
                 return Ok(Some(header));
