@@ -169,6 +169,20 @@ impl TestScenario {
             | TestScenario::FromClientInvalidDeploy => false,
         }
     }
+
+    fn is_repeated_deploy_case(&self) -> bool {
+        match self {
+            TestScenario::FromPeerInvalidDeploy
+            | TestScenario::FromPeerValidDeploy
+            | TestScenario::FromPeerRegression
+            | TestScenario::FromClientInvalidDeploy
+            | TestScenario::FromClientMissingAccount
+            | TestScenario::FromClientInsufficientBalance
+            | TestScenario::FromClientValidDeploy => false,
+            TestScenario::FromPeerRepeatedValidDeploy
+            | TestScenario::FromClientRepeatedValidDeploy => true,
+        }
+    }
 }
 
 struct Reactor {
@@ -381,9 +395,7 @@ async fn run_deploy_acceptor_without_timeout(
 
     {
         // Inject the deploy artificially into storage to simulate a previously seen deploy.
-        if test_scenario == TestScenario::FromClientRepeatedValidDeploy
-            || test_scenario == TestScenario::FromPeerRepeatedValidDeploy
-        {
+        if test_scenario.is_repeated_deploy_case() {
             let injected_deploy = Box::new(deploy.clone());
             let (injected_sender, injected_receiver) = oneshot::channel();
             let injected_responder = Responder::create(injected_sender);
@@ -548,7 +560,7 @@ async fn should_reject_invalid_deploy_from_client() {
 }
 
 #[tokio::test]
-async fn should_reject_valid_deploy_from_client_for_invalid_account() {
+async fn should_reject_valid_deploy_from_client_for_missing_account() {
     let result = run_deploy_acceptor(TestScenario::FromClientMissingAccount).await;
     assert!(matches!(result, Err(super::Error::InvalidAccount)))
 }
