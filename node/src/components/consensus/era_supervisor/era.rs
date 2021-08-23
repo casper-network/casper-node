@@ -190,9 +190,16 @@ impl<I> Era<I> {
                 u64::MAX
             });
 
+        if total_rewards == 0 {
+            return EraReport {
+                rewards: BTreeMap::new(),
+                equivocators: self.accusations(),
+                inactive_validators,
+            };
+        }
+
         let is_active = |public_key: &PublicKey| {
-            !(total_rewards == 0
-                || self.accusations.contains(public_key)
+            !(self.accusations.contains(public_key)
                 || self.faulty.contains(public_key)
                 || inactive_validators.contains(public_key))
         };
@@ -405,6 +412,20 @@ mod tests {
                 ]
                 .into_iter()
                 .collect(),
+                equivocators: vec![CAROL_PUBLIC_KEY.clone()],
+                inactive_validators: vec![],
+            }
+        };
+        assert_eq!(report, era.create_report(tbd, time, &protocol_config));
+
+        // Finally, if the era had length 0, the rewards will be empty.
+        let time = start_time;
+        let tbd = TerminalBlockData {
+            inactive_validators: vec![],
+        };
+        let report = {
+            EraReport {
+                rewards: BTreeMap::new(),
                 equivocators: vec![CAROL_PUBLIC_KEY.clone()],
                 inactive_validators: vec![],
             }
