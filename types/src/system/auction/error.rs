@@ -153,7 +153,6 @@ pub enum Error {
     /// An arithmetic overflow has occurred.
     #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
     ArithmeticOverflow = 39,
-
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]

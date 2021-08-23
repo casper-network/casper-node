@@ -1,3 +1,5 @@
+// Unrestricted event size is okay in tests.
+#![allow(clippy::large_enum_variant)]
 #![cfg(test)]
 use std::{
     collections::{BTreeSet, HashMap},
@@ -15,26 +17,28 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
+use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 use casper_types::ProtocolVersion;
 
 use super::*;
 use crate::{
     components::{
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
     effect::{
         announcements::{
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
         Responder,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
+    testing,
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
@@ -189,6 +193,8 @@ impl reactor::Reactor for Reactor {
             ProtocolVersion::from_parts(1, 0, 0),
             storage.root_path(),
             &contract_runtime_config,
+            WasmConfig::default(),
+            SystemConfig::default(),
             registry,
         )
         .unwrap();
@@ -494,11 +500,8 @@ async fn should_get_from_alternate_source() {
     network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
 
     // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
-    let secs_to_advance = Config::default().get_remainder_timeout_secs();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance)).await;
-    time::resume();
-    debug!("advanced time by {} secs", secs_to_advance);
+    let duration_to_advance = Config::default().get_remainder_timeout();
+    testing::advance_time(duration_to_advance.into()).await;
 
     // Check node 0 has the deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
@@ -566,11 +569,8 @@ async fn should_timeout_gossip_response() {
     }
 
     // Advance time to trigger node 0's timeout causing it to gossip to the new nodes.
-    let secs_to_advance = Config::default().gossip_request_timeout_secs();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance)).await;
-    time::resume();
-    debug!("advanced time by {} secs", secs_to_advance);
+    let duration_to_advance = Config::default().gossip_request_timeout();
+    testing::advance_time(duration_to_advance.into()).await;
 
     // Check every node has every deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {

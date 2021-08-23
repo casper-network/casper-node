@@ -12,34 +12,34 @@ use crate::{
 #[derive(DataSize, Debug, Default, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub(crate) struct Config {
     /// Node configuration.
-    pub node: NodeConfig,
+    pub(crate) node: NodeConfig,
     /// Logging configuration.
-    pub logging: LoggingConfig,
+    pub(crate) logging: LoggingConfig,
     /// Consensus configuration.
-    pub consensus: ConsensusConfig,
+    pub(crate) consensus: ConsensusConfig,
     /// Network configuration.
-    pub network: SmallNetworkConfig,
+    pub(crate) network: SmallNetworkConfig,
     /// Event stream API server configuration.
-    pub event_stream_server: EventStreamServerConfig,
+    pub(crate) event_stream_server: EventStreamServerConfig,
     /// REST API server configuration.
-    pub rest_server: RestServerConfig,
+    pub(crate) rest_server: RestServerConfig,
     /// RPC API server configuration.
-    pub rpc_server: RpcServerConfig,
+    pub(crate) rpc_server: RpcServerConfig,
     /// On-disk storage configuration.
-    pub storage: StorageConfig,
+    pub(crate) storage: StorageConfig,
     /// Gossip protocol configuration.
-    pub gossip: GossipConfig,
+    pub(crate) gossip: GossipConfig,
     /// Fetcher configuration.
-    pub fetcher: FetcherConfig,
+    pub(crate) fetcher: FetcherConfig,
     /// Contract runtime configuration.
-    pub contract_runtime: ContractRuntimeConfig,
+    pub(crate) contract_runtime: ContractRuntimeConfig,
     /// Deploy acceptor configuration.
-    pub deploy_acceptor: DeployAcceptorConfig,
+    pub(crate) deploy_acceptor: DeployAcceptorConfig,
     /// Linear chain sync configuration.
-    pub linear_chain_sync: LinearChainSyncConfig,
+    pub(crate) linear_chain_sync: LinearChainSyncConfig,
     /// Block proposer configuration.
     #[serde(default)]
-    pub block_proposer: BlockProposerConfig,
+    pub(crate) block_proposer: BlockProposerConfig,
 }

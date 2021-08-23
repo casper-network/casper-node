@@ -2,10 +2,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    CLValue, Key, Transform, U512,
+    CLValue, Key, StoredValue, Transform, U512,
 };
 
 use crate::test_case::{Error, TestCase};

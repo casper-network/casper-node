@@ -1,6 +1,7 @@
 use crate::{
+    components::contract_runtime::ContractRuntimeAnnouncement,
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::ControlAnnouncement,
         requests::{
             BlockValidationRequest, ContractRuntimeRequest, FetcherRequest, StateStoreRequest,
             StorageRequest,
@@ -9,7 +10,7 @@ use crate::{
     types::{Block, BlockByHeight},
 };
 
-pub trait ReactorEventT<I>:
+pub(crate) trait ReactorEventT<I>:
     From<StorageRequest>
     + From<FetcherRequest<I, Block>>
     + From<FetcherRequest<I, BlockByHeight>>

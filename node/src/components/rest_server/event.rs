@@ -15,7 +15,7 @@ const _REST_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_REST_EVENT_SIZE < 89);
 
 #[derive(Debug, From)]
-pub enum Event {
+pub(crate) enum Event {
     #[from]
     RestRequest(RestRequest<NodeId>),
     GetMetricsResult {

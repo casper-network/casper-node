@@ -12,7 +12,7 @@ use casper_types::Key;
 
 /// `DeployAcceptor` events.
 #[derive(Debug, Serialize)]
-pub enum Event {
+pub(crate) enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {
         deploy: Box<Deploy>,

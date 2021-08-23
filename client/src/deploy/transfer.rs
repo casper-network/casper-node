@@ -121,6 +121,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let gas_price = creation_common::gas_price::get(matches);
         let dependencies = creation_common::dependencies::get(matches);
         let chain_name = creation_common::chain_name::get(matches);
+        let session_account = common::session_account::get(matches)?;
 
         let payment_str_params = creation_common::payment_str_params(matches);
 
@@ -138,6 +139,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
                 gas_price,
                 dependencies,
                 chain_name,
+                session_account: &session_account,
             },
             payment_str_params,
         )

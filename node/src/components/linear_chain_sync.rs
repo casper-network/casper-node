@@ -45,9 +45,11 @@ use super::{
     Component,
 };
 use crate::{
-    components::contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
+    components::contract_runtime::{
+        BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState,
+    },
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::ControlAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
@@ -58,14 +60,14 @@ use crate::{
     },
     NodeRng,
 };
-pub use config::Config;
+pub(crate) use config::Config;
 use event::BlockByHeightResult;
-pub use event::Event;
-pub use metrics::LinearChainSyncMetrics;
-pub use peers::PeersState;
+pub(crate) use event::Event;
+pub(crate) use metrics::LinearChainSyncMetrics;
+pub(crate) use peers::PeersState;
 use smallvec::SmallVec;
-pub use state::State;
-pub use traits::ReactorEventT;
+pub(crate) use state::State;
+pub(crate) use traits::ReactorEventT;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainSync<I> {
@@ -94,7 +96,7 @@ pub(crate) struct LinearChainSync<I> {
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     // TODO: fix this
     #[allow(clippy::too_many_arguments)]
-    pub fn new<REv, Err>(
+    pub(crate) fn new<REv, Err>(
         registry: &Registry,
         effect_builder: EffectBuilder<REv>,
         chainspec: &Chainspec,
@@ -137,7 +139,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
                 }
                 None if after_upgrade => {
-                    info!("No synchronization of the linear chain will be done.");
+                    info!(
+                        "No synchronization of the linear chain will be done because the node \
+                        was started right after an upgrade without a trusted hash."
+                    );
                     // Right after upgrade, no linear chain to synchronize.
                     State::Done(highest_block.map(Box::new))
                 }
@@ -149,7 +154,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         // still be trusted – i.e. it's within the unbonding period.
                         State::sync_descendants(*highest_block.hash(), highest_block, None)
                     } else {
-                        info!("No synchronization of the linear chain will be done.");
+                        info!(
+                            "No synchronization of the linear chain will be done because there \
+                            is neither a trusted hash nor a highest block present."
+                        );
                         State::Done(None)
                     }
                 }
@@ -189,7 +197,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             chainspec.core_config.era_duration,
         );
         if matches!(state, State::None | State::Done(_)) {
-            info!("No synchronization of the linear chain will be done.");
+            info!(
+                "No synchronization of the linear chain will be done because the component is \
+                already in State::Done or in State::None."
+            );
         }
         Ok(LinearChainSync {
             peers: PeersState::new(),
@@ -217,12 +228,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     /// Returns `true` if we have finished syncing linear chain.
-    pub fn is_synced(&self) -> bool {
+    pub(crate) fn is_synced(&self) -> bool {
         matches!(self.state, State::Done(_))
     }
 
     /// Returns `true` if we should stop for upgrade.
-    pub fn stopped_for_upgrade(&self) -> bool {
+    pub(crate) fn stopped_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
     }
 
@@ -530,7 +541,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    pub fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
+    pub(crate) fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
         match self.state {
             State::SyncingTrustedHash { latest_block, .. } => latest_block.map(Block::take_header),
             State::SyncingDescendants { latest_block, .. } => Some(latest_block.take_header()),
@@ -1046,7 +1057,7 @@ async fn execute_block<REv>(
     let BlockAndExecutionEffects {
         block,
         execution_results,
-        maybe_step_execution_effect: _,
+        ..
     } = match effect_builder
         .execute_finalized_block(
             protocol_version,

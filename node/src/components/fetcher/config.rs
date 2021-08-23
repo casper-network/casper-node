@@ -1,16 +1,20 @@
+use std::str::FromStr;
+
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_GET_FROM_PEER_TIMEOUT_SECS: u64 = 3;
+use crate::types::TimeDiff;
+
+const DEFAULT_GET_FROM_PEER_TIMEOUT: &str = "3sec";
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
-    get_from_peer_timeout: u64,
+    get_from_peer_timeout: TimeDiff,
 }
 
 impl Config {
-    pub(crate) fn get_from_peer_timeout(&self) -> u64 {
+    pub(crate) fn get_from_peer_timeout(&self) -> TimeDiff {
         self.get_from_peer_timeout
     }
 }
@@ -18,7 +22,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            get_from_peer_timeout: DEFAULT_GET_FROM_PEER_TIMEOUT_SECS,
+            get_from_peer_timeout: TimeDiff::from_str(DEFAULT_GET_FROM_PEER_TIMEOUT).unwrap(),
         }
     }
 }

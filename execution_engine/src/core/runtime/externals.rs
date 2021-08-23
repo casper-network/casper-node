@@ -9,7 +9,7 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     system::auction::EraInfo,
-    ContractHash, ContractPackageHash, ContractVersion, EraId, Group, Key, URef, U512,
+    ContractHash, ContractPackageHash, ContractVersion, EraId, Group, Key, StoredValue, URef, U512,
 };
 
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
@@ -18,7 +18,6 @@ use crate::{
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
-        stored_value::StoredValue,
     },
     storage::global_state::StateReader,
 };
@@ -36,10 +35,7 @@ where
         let func = FunctionIndex::try_from(index).expect("unknown function index");
         let mut scoped_instrumenter = ScopedInstrumenter::new(func);
 
-        let host_function_costs = self
-            .protocol_data()
-            .wasm_config()
-            .take_host_function_costs();
+        let host_function_costs = self.config.wasm_config().take_host_function_costs();
 
         match func {
             FunctionIndex::ReadFuncIndex => {

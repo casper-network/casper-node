@@ -14,9 +14,11 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisValidator},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{motes::Motes, stored_value::StoredValue},
+    shared::motes::Motes,
 };
-use casper_types::{system::auction::DelegationRate, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{
+    system::auction::DelegationRate, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+};
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;

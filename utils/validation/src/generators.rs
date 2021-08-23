@@ -3,20 +3,16 @@ use std::{
     iter::FromIterator,
 };
 
-use casper_execution_engine::shared::{
-    account::{Account, ActionThresholds, AssociatedKeys},
-    stored_value::StoredValue,
-    wasm,
-};
+use casper_execution_engine::shared::wasm;
 use casper_types::{
-    account::{AccountHash, Weight},
+    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse},
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
     DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedKey, Parameter, ProtocolVersion, PublicKey, SecretKey, Transfer, TransferAddr, Transform,
-    URef, U128, U256, U512,
+    NamedKey, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer,
+    TransferAddr, Transform, URef, U128, U256, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -266,7 +262,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
-        let action_thresholds = Account::new(
+        let account = Account::new(
             account_hash,
             account_named_keys,
             URef::new([17; 32], AccessRights::WRITE),
@@ -274,7 +270,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ActionThresholds::new(Weight::new(1), Weight::new(1)).unwrap(),
         );
 
-        let account = action_thresholds;
         stored_value.insert(
             "Account".to_string(),
             ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,

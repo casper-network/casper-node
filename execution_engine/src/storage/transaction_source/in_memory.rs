@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{self, Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use casper_types::bytesrepr::Bytes;
@@ -18,7 +18,8 @@ type WriteLock<'a> = MutexGuard<'a, WriteCapability>;
 
 type BytesMap = HashMap<Bytes, Bytes>;
 
-type PoisonError<'a> = sync::PoisonError<MutexGuard<'a, HashMap<Option<String>, BytesMap>>>;
+#[cfg(test)]
+type PoisonError<'a> = std::sync::PoisonError<MutexGuard<'a, HashMap<Option<String>, BytesMap>>>;
 
 /// A read transaction for the in-memory trie store.
 pub struct InMemoryReadTransaction {
@@ -26,7 +27,7 @@ pub struct InMemoryReadTransaction {
 }
 
 impl InMemoryReadTransaction {
-    pub fn new(store: &InMemoryEnvironment) -> Result<InMemoryReadTransaction, Error> {
+    pub(crate) fn new(store: &InMemoryEnvironment) -> Result<InMemoryReadTransaction, Error> {
         let view = {
             let db_ref = Arc::clone(&store.data);
             let view_lock = db_ref.lock()?;
@@ -64,7 +65,9 @@ pub struct InMemoryReadWriteTransaction<'a> {
 }
 
 impl<'a> InMemoryReadWriteTransaction<'a> {
-    pub fn new(store: &'a InMemoryEnvironment) -> Result<InMemoryReadWriteTransaction<'a>, Error> {
+    pub(crate) fn new(
+        store: &'a InMemoryEnvironment,
+    ) -> Result<InMemoryReadWriteTransaction<'a>, Error> {
         let store_ref = Arc::clone(&store.data);
         let view = {
             let view_lock = store_ref.lock()?;
@@ -128,10 +131,12 @@ impl Default for InMemoryEnvironment {
 }
 
 impl InMemoryEnvironment {
+    /// Default constructor for `InMemoryEnvironment`.
     pub fn new() -> Self {
         Default::default()
     }
 
+    #[cfg(test)]
     pub fn data(&self, name: Option<&str>) -> Result<Option<BytesMap>, PoisonError> {
         let data = self.data.lock()?;
         let name = name.map(ToString::to_string);

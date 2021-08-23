@@ -32,7 +32,7 @@ use crate::{
 };
 use casper_types::ProtocolVersion;
 
-pub use event::Event;
+pub(crate) use event::Event;
 use state::LinearChain;
 
 #[derive(DataSize, Debug)]
@@ -206,10 +206,6 @@ where
                     is_bonded,
                 );
                 outcomes_to_effects(effect_builder, outcomes)
-            }
-            Event::KnownLinearChainBlock(block) => {
-                self.linear_chain_state.set_latest_block(*block);
-                Effects::new()
             }
         }
     }

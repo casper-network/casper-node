@@ -20,11 +20,11 @@ use crate::{
 use casper_types::Key;
 
 use crate::effect::Responder;
-pub use config::Config;
-pub use event::Event;
+pub(crate) use config::Config;
+pub(crate) use event::Event;
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub(crate) enum Error {
     /// An invalid deploy was received from the client.
     #[error("invalid deploy: {0}")]
     InvalidDeploy(DeployValidationFailure),
@@ -37,7 +37,7 @@ pub enum Error {
 }
 
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
-pub trait ReactorEventT:
+pub(crate) trait ReactorEventT:
     From<Event>
     + From<DeployAcceptorAnnouncement<NodeId>>
     + From<StorageRequest>

@@ -42,36 +42,22 @@ pub static RESOURCES_PATH: Lazy<PathBuf> =
 /// used instead.
 #[derive(Clone, DataSize, Eq, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
-pub enum External<T> {
+pub(crate) enum External {
     /// Value that should be loaded from an external path.
     Path(PathBuf),
-    /// Loaded or immediate value.
-    #[serde(skip)]
-    Loaded(T),
     /// The value has not been specified, but a default has been requested.
     #[serde(skip)]
     Missing,
 }
 
-impl<T> External<T> {
-    /// Creates an external from a value.
-    pub fn from_value(value: T) -> Self {
-        External::Loaded(value)
-    }
-
-    /// Creates an external referencing a path.
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Self {
-        External::Path(path.as_ref().to_owned())
-    }
-}
-
-impl<T> External<T>
-where
-    T: Loadable,
-{
+impl External {
     /// Loads the value if not loaded already, resolving relative paths from `root` or returns
     /// available value. If the value is `Missing`, returns an error.
-    pub fn load<P: AsRef<Path>>(self, root: P) -> Result<T, LoadError<T::Error>> {
+    pub fn load<T, P>(self, root: P) -> Result<T, LoadError<T::Error>>
+    where
+        T: Loadable,
+        P: AsRef<Path>,
+    {
         match self {
             External::Path(path) => {
                 let full_path = if path.is_relative() {
@@ -88,33 +74,7 @@ where
                     path: full_path.canonicalize().unwrap_or(full_path),
                 })
             }
-            External::Loaded(value) => Ok(value),
             External::Missing => Err(LoadError::Missing),
-        }
-    }
-
-    /// Returns the full path to the external item, or `None` if the type is `Loaded` or `Missing`.
-    pub fn full_path<P: AsRef<Path>>(&self, root: P) -> Option<PathBuf> {
-        match self {
-            External::Path(path) => Some(if path.is_relative() {
-                root.as_ref().join(&path)
-            } else {
-                path.clone()
-            }),
-            _ => None,
-        }
-    }
-}
-
-impl<T> External<T>
-where
-    T: Loadable + Default,
-{
-    /// Insert a default value if missing.
-    pub fn with_default(self) -> Self {
-        match self {
-            External::Missing => External::Loaded(Default::default()),
-            _ => self,
         }
     }
 }
@@ -140,7 +100,7 @@ pub trait Loadable: Sized {
     }
 }
 
-impl<T> Default for External<T> {
+impl Default for External {
     fn default() -> Self {
         External::Missing
     }
@@ -208,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_to_string() {
-        let val: External<()> = External::Path("foo/bar.toml".into());
+        let val: External = External::Path("foo/bar.toml".into());
         assert_eq!(
             "\"foo/bar.toml\"",
             serde_json::to_string(&val).expect("serialization error")
@@ -219,7 +179,7 @@ mod tests {
     fn test_load_from_string() {
         let input = "\"foo/bar.toml\"";
 
-        let val: External<()> = serde_json::from_str(input).expect("deserialization failed");
+        let val: External = serde_json::from_str(input).expect("deserialization failed");
 
         assert_eq!(External::Path("foo/bar.toml".into()), val);
     }

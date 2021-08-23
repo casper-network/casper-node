@@ -25,9 +25,9 @@
 //! [`run`](struct.Runner.html#method.crank).
 
 mod event_queue_metrics;
-pub mod initializer;
-pub mod joiner;
-pub mod participating;
+pub(crate) mod initializer;
+pub(crate) mod joiner;
+pub(crate) mod participating;
 mod queue_kind;
 
 #[cfg(test)]
@@ -39,6 +39,7 @@ use std::{
     fmt::{Debug, Display},
     fs::File,
     mem,
+    num::NonZeroU64,
     str::FromStr,
     sync::atomic::Ordering,
 };
@@ -52,7 +53,7 @@ use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, instrument, warn};
+use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 #[cfg(target_os = "linux")]
@@ -67,7 +68,7 @@ use crate::{
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
-pub use queue_kind::QueueKind;
+pub(crate) use queue_kind::QueueKind;
 
 /// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
 const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
@@ -153,7 +154,7 @@ fn adjust_open_files_limit() {
 
 /// The value returned by a reactor on completion of the `run()` loop.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
-pub enum ReactorExit {
+pub(crate) enum ReactorExit {
     /// The process should continue running, moving to the next reactor.
     ProcessShouldContinue,
     /// The process should exit with the given exit code to allow the launcher to react
@@ -167,7 +168,10 @@ pub enum ReactorExit {
 /// is the central hook for any part of the program that schedules events directly.
 ///
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
-pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
+///
+/// Schedule tuples contain an optional ancestor ID and the actual event. The ancestor ID indicates
+/// which potential previous event resulted in the event being created.
+pub(crate) type Scheduler<Ev> = WeightedRoundRobin<(Option<NonZeroU64>, Ev), QueueKind>;
 
 /// Event queue handle
 ///
@@ -175,7 +179,7 @@ pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 #[derive(DataSize, Debug)]
-pub struct EventQueueHandle<REv>(&'static Scheduler<REv>)
+pub(crate) struct EventQueueHandle<REv>(&'static Scheduler<REv>)
 where
     REv: 'static;
 
@@ -193,16 +197,28 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Schedule an event on a specific queue.
-    #[inline]
+    ///
+    /// The scheduled event will not have an ancestor.
     pub(crate) async fn schedule<Ev>(self, event: Ev, queue_kind: QueueKind)
     where
         REv: From<Ev>,
     {
-        self.0.push(event.into(), queue_kind).await
+        self.schedule_with_ancestor(None, event, queue_kind).await
+    }
+
+    /// Schedule an event on a specific queue.
+    pub(crate) async fn schedule_with_ancestor<Ev>(
+        self,
+        ancestor: Option<NonZeroU64>,
+        event: Ev,
+        queue_kind: QueueKind,
+    ) where
+        REv: From<Ev>,
+    {
+        self.0.push((ancestor, event.into()), queue_kind).await
     }
 
     /// Returns number of events in each of the scheduler's queues.
-    #[inline]
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
         self.0.event_queues_counts()
     }
@@ -211,7 +227,7 @@ impl<REv> EventQueueHandle<REv> {
 /// Reactor core.
 ///
 /// Any reactor should implement this trait and be executed by the `reactor::run` function.
-pub trait Reactor: Sized {
+pub(crate) trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
@@ -260,7 +276,7 @@ pub trait Reactor: Sized {
 }
 
 /// A reactor event type.
-pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
+pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
     /// Returns the event as a control announcement, if possible.
     ///
     /// Returns a reference to a wrapped
@@ -272,7 +288,7 @@ pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
 /// A drop-like trait for `async` compatible drop-and-wait.
 ///
 /// Shuts down a type by explicitly freeing resources, but allowing to wait on cleanup to complete.
-pub trait Finalize: Sized {
+pub(crate) trait Finalize: Sized {
     /// Runs cleanup code and waits for a shutdown to complete.
     ///
     /// This function must always be optional and a way to wait for all resources to be freed, not
@@ -294,10 +310,10 @@ struct AllocatedMem {
 
 /// A runner for a reactor.
 ///
-/// The runner manages a reactors event queue and reactor itself and can run it either continuously
+/// The runner manages a reactor's event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
-pub struct Runner<R>
+pub(crate) struct Runner<R>
 where
     R: Reactor,
 {
@@ -308,7 +324,7 @@ where
     reactor: R,
 
     /// Counter for events, to aid tracing.
-    event_count: usize,
+    current_event_id: u64,
 
     /// Timestamp of last reactor metrics update.
     last_metrics: Instant,
@@ -317,7 +333,7 @@ where
     metrics: RunnerMetrics,
 
     /// Check if we need to update reactor metrics every this many events.
-    event_metrics_threshold: usize,
+    event_metrics_threshold: u64,
 
     /// Only update reactor metrics if at least this much time has passed.
     event_metrics_min_delay: Duration,
@@ -419,20 +435,9 @@ where
     R::Event: Serialize,
     R::Error: From<prometheus::Error>,
 {
-    /// Creates a new runner from a given configuration.
-    ///
-    /// Creates a metrics registry that is only going to be used in this runner.
-    #[inline]
-    pub async fn new(cfg: R::Config, rng: &mut NodeRng) -> Result<Self, R::Error> {
-        // Instantiate a new registry for metrics for this reactor.
-        let registry = Registry::new();
-        Self::with_metrics(cfg, rng, &registry).await
-    }
-
     /// Creates a new runner from a given configuration, using existing metrics.
-    #[inline]
-    #[instrument("runner creation", level = "debug", skip(cfg, rng, registry))]
-    pub async fn with_metrics(
+    #[instrument("init", level = "debug", skip(cfg, rng, registry))]
+    pub(crate) async fn with_metrics(
         cfg: R::Config,
         rng: &mut NodeRng,
         registry: &Registry,
@@ -457,7 +462,7 @@ where
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
-        process_effects(scheduler, initial_effects)
+        process_effects(None, scheduler, initial_effects)
             .instrument(debug_span!("process initial effects"))
             .await;
 
@@ -466,7 +471,7 @@ where
         Ok(Runner {
             scheduler,
             reactor,
-            event_count: 0,
+            current_event_id: 1,
             metrics: RunnerMetrics::new(registry)?,
             last_metrics: Instant::now(),
             event_metrics_min_delay: Duration::from_secs(30),
@@ -476,39 +481,18 @@ where
         })
     }
 
-    /// Inject (schedule then process) effects created via a call to `create_effects` which is
-    /// itself passed an instance of an `EffectBuilder`.
-    #[cfg(test)]
-    pub(crate) async fn process_injected_effects<F>(&mut self, create_effects: F)
-    where
-        F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
-    {
-        let event_queue = EventQueueHandle::new(self.scheduler);
-        let effect_builder = EffectBuilder::new(event_queue);
-
-        let effects = create_effects(effect_builder);
-
-        process_effects(self.scheduler, effects)
-            .instrument(debug_span!(
-                "process injected effects",
-                ev = self.event_count
-            ))
-            .await;
-    }
-
     /// Processes a single event on the event queue.
     ///
     /// Returns `false` if processing should stop.
-    #[inline]
-    #[instrument("crank", level = "debug", fields(ev = self.event_count), skip(self, rng))]
-    pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
+    #[instrument("dispatch", level = "debug", fields(a, ev = self.current_event_id), skip(self, rng))]
+    pub(crate) async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
 
         // Update metrics like memory usage and event queue sizes.
-        if self.event_count % self.event_metrics_threshold == 0 {
+        if self.current_event_id % self.event_metrics_threshold == 0 {
             // We update metrics on the first very event as well to get a good baseline.
             if self.last_metrics.elapsed() >= self.event_metrics_min_delay {
                 self.reactor.update_metrics(event_queue);
@@ -552,50 +536,56 @@ where
             QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
-        let (event, queue) = self.scheduler.pop().await;
+        let ((ancestor, event), queue) = self.scheduler.pop().await;
+        trace!(%event, %queue, "current");
 
         // Create another span for tracing the processing of one event.
-        let event_span = debug_span!("dispatch", event_count = self.event_count, %event, %queue);
-        let (effects, keep_going) = event_span.in_scope(|| {
-            // Dispatch the event, then execute the resulting effect.
-            let start = self.clock.start();
+        Span::current().record("ev", &self.current_event_id);
 
-            let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
-                // We've received a control event, which will _not_ be handled by the reactor.
-                match ctrl_ann {
-                    ControlAnnouncement::FatalError { file, line, msg } => {
-                        error!(%file, %line, %msg, "fatal error via control announcement");
-                        (Default::default(), false)
-                    }
+        // If we know the ancestor of an event, record it.
+        if let Some(ancestor) = ancestor {
+            Span::current().record("a", &ancestor.get());
+        }
+
+        // Dispatch the event, then execute the resulting effect.
+        let start = self.clock.start();
+
+        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+            // We've received a control event, which will _not_ be handled by the reactor.
+            match ctrl_ann {
+                ControlAnnouncement::FatalError { file, line, msg } => {
+                    error!(%file, %line, %msg, "fatal error via control announcement");
+                    (Default::default(), false)
                 }
-            } else {
-                (
-                    self.reactor.dispatch_event(effect_builder, rng, event),
-                    true,
-                )
-            };
-
-            let end = self.clock.end();
-
-            // Warn if processing took a long time, record to histogram.
-            let delta = self.clock.delta(start, end);
-            if delta > *DISPATCH_EVENT_THRESHOLD {
-                warn!(ev=%self.event_count,
-                      ns = delta.into_nanos(),
-                      "event took very long to dispatch");
             }
-            self.metrics
-                .event_dispatch_duration
-                .observe(delta.into_nanos() as f64);
+        } else {
+            (
+                self.reactor.dispatch_event(effect_builder, rng, event),
+                true,
+            )
+        };
 
-            (effects, keep_going)
-        });
+        let end = self.clock.end();
 
-        process_effects(self.scheduler, effects)
-            .instrument(debug_span!("process effects", ev = self.event_count))
-            .await;
+        // Warn if processing took a long time, record to histogram.
+        let delta = self.clock.delta(start, end);
+        if delta > *DISPATCH_EVENT_THRESHOLD {
+            warn!(ns = delta.into_nanos(), "event took very long to dispatch");
+        }
+        self.metrics
+            .event_dispatch_duration
+            .observe(delta.into_nanos() as f64);
 
-        self.event_count += 1;
+        // Run effects, with the current event ID as the ancestor for resulting set of events.
+        process_effects(
+            NonZeroU64::new(self.current_event_id),
+            self.scheduler,
+            effects,
+        )
+        .in_current_span()
+        .await;
+
+        self.current_event_id += 1;
 
         keep_going
     }
@@ -680,21 +670,9 @@ where
         }
     }
 
-    /// Processes a single event if there is one, returns `None` otherwise.
-    #[inline]
-    #[cfg(test)]
-    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
-        if self.scheduler.item_count() == 0 {
-            None
-        } else {
-            Some(self.crank(rng).await)
-        }
-    }
-
     /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
     /// signal.
-    #[inline]
-    pub async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
+    pub(crate) async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
         loop {
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
@@ -709,7 +687,9 @@ where
                         // since that workaround of making two attempts with the first wrapped in a
                         // timeout should no longer be required.
 
-                        for event in self.scheduler.drain_queue(QueueKind::Control).await {
+                        for (ancestor, event) in
+                            self.scheduler.drain_queue(QueueKind::Control).await
+                        {
                             if let Some(ctrl_ann) = event.as_control() {
                                 match ctrl_ann {
                                     ControlAnnouncement::FatalError { file, line, msg } => {
@@ -718,7 +698,7 @@ where
                                     }
                                 }
                             } else {
-                                debug!(%event, "found non-control announcement while draining queue")
+                                debug!(?ancestor, %event, "found non-control announcement while draining queue")
                             }
                         }
 
@@ -736,26 +716,69 @@ where
         }
     }
 
+    /// Shuts down a reactor, sealing and draining the entire queue before returning it.
+    pub(crate) async fn drain_into_inner(self) -> R {
+        self.scheduler.seal();
+        for (ancestor, event) in self.scheduler.drain_queues().await {
+            debug!(?ancestor, %event, "drained event");
+        }
+        self.reactor
+    }
+}
+
+#[cfg(test)]
+impl<R> Runner<R>
+where
+    R: Reactor,
+    R::Event: Serialize,
+    R::Error: From<prometheus::Error>,
+{
+    /// Creates a new runner from a given configuration.
+    ///
+    /// Creates a metrics registry that is only going to be used in this runner.
+    pub(crate) async fn new(cfg: R::Config, rng: &mut NodeRng) -> Result<Self, R::Error> {
+        // Instantiate a new registry for metrics for this reactor.
+        let registry = Registry::new();
+        Self::with_metrics(cfg, rng, &registry).await
+    }
+
+    /// Inject (schedule then process) effects created via a call to `create_effects` which is
+    /// itself passed an instance of an `EffectBuilder`.
+    #[cfg(test)]
+    pub(crate) async fn process_injected_effects<F>(&mut self, create_effects: F)
+    where
+        F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
+    {
+        let event_queue = EventQueueHandle::new(self.scheduler);
+        let effect_builder = EffectBuilder::new(event_queue);
+
+        let effects = create_effects(effect_builder);
+
+        process_effects(None, self.scheduler, effects)
+            .instrument(debug_span!(
+                "process injected effects",
+                ev = self.current_event_id
+            ))
+            .await;
+    }
+
+    /// Processes a single event if there is one, returns `None` otherwise.
+    pub(crate) async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
+        if self.scheduler.item_count() == 0 {
+            None
+        } else {
+            Some(self.crank(rng).await)
+        }
+    }
+
     /// Returns a reference to the reactor.
-    #[inline]
-    pub fn reactor(&self) -> &R {
+    pub(crate) fn reactor(&self) -> &R {
         &self.reactor
     }
 
     /// Returns a mutable reference to the reactor.
-    #[inline]
-    pub fn reactor_mut(&mut self) -> &mut R {
+    pub(crate) fn reactor_mut(&mut self) -> &mut R {
         &mut self.reactor
-    }
-
-    /// Shuts down a reactor, sealing and draining the entire queue before returning it.
-    #[inline]
-    pub async fn drain_into_inner(self) -> R {
-        self.scheduler.seal();
-        for event in self.scheduler.drain_queues().await {
-            debug!(event=%event, "drained event");
-        }
-        self.reactor
     }
 }
 
@@ -774,7 +797,7 @@ impl Runner<InitializerReactor> {
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");
-        process_effects(scheduler, initial_effects)
+        process_effects(None, scheduler, initial_effects)
             .instrument(span)
             .await;
 
@@ -785,7 +808,9 @@ impl Runner<InitializerReactor> {
         Ok(Runner {
             scheduler,
             reactor,
-            event_count: 0,
+            // It is important to initial event count to 1, as we use an ancestor event of 0
+            // to mean "no ancestor".
+            current_event_id: 1,
             metrics: RunnerMetrics::new(&registry)?,
             // Calculate the `last_metrics` timestamp to be exactly one delay in the past. This will
             // cause the runner to collect metrics at the first opportunity.
@@ -799,9 +824,13 @@ impl Runner<InitializerReactor> {
 }
 
 /// Spawns tasks that will process the given effects.
-#[inline]
-async fn process_effects<Ev>(scheduler: &'static Scheduler<Ev>, effects: Effects<Ev>)
-where
+///
+/// Result events from processing the events will be scheduled with the given ancestor.
+async fn process_effects<Ev>(
+    ancestor: Option<NonZeroU64>,
+    scheduler: &'static Scheduler<Ev>,
+    effects: Effects<Ev>,
+) where
     Ev: Send + 'static,
 {
     // TODO: Properly carry around priorities.
@@ -810,14 +839,13 @@ where
     for effect in effects {
         tokio::spawn(async move {
             for event in effect.await {
-                scheduler.push(event, queue_kind).await
+                scheduler.push((ancestor, event), queue_kind).await
             }
         });
     }
 }
 
 /// Converts a single effect into another by wrapping it.
-#[inline]
 fn wrap_effect<Ev, REv, F>(wrap: F, effect: Effect<Ev>) -> Effect<REv>
 where
     F: Fn(Ev) -> REv + Send + 'static,
@@ -833,8 +861,7 @@ where
 }
 
 /// Converts multiple effects into another by wrapping.
-#[inline]
-pub fn wrap_effects<Ev, REv, F>(wrap: F, effects: Effects<Ev>) -> Effects<REv>
+pub(crate) fn wrap_effects<Ev, REv, F>(wrap: F, effects: Effects<Ev>) -> Effects<REv>
 where
     F: Fn(Ev) -> REv + Send + 'static + Clone,
     Ev: Send + 'static,

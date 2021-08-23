@@ -27,7 +27,7 @@ tempfile = "3"
 
 [dev-dependencies]
 assert_matches = "1.3.0"
-criterion = "0.3.0"
+criterion = "0.3.5"
 gh-1470-regression = { path = "../../smart_contracts/contracts/test/gh-1470-regression", default-features = false, features = ["std"] }
 gh-1470-regression-call = { path = "../../smart_contracts/contracts/test/gh-1470-regression-call", default-features = false, features = ["std"] }
 num-rational = "0.4.0"

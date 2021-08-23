@@ -1,17 +1,25 @@
-use std::{convert::TryFrom, fmt::Debug};
+mod type_mismatch;
+
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::{convert::TryFrom, fmt::Debug};
 
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
-use casper_types::{
+use crate::{
+    account::Account,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
+pub use type_mismatch::TypeMismatch;
 
-use crate::shared::{account::Account, TypeMismatch};
-
+#[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 enum Tag {
     CLValue = 0,
@@ -26,21 +34,34 @@ enum Tag {
     Withdraw = 9,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Eq, PartialEq, Clone, Debug)]
+/// StoredValue represents all possible variants of values stored in Global State.
 pub enum StoredValue {
+    /// Variant that stores [`CLValue`].
     CLValue(CLValue),
+    /// Variant that stores [`Account`].
     Account(Account),
+    /// Variant that stores [`ContractWasm`].
     ContractWasm(ContractWasm),
+    /// Variant that stores [`Contract`].
     Contract(Contract),
+    /// Variant that stores [`ContractPackage`].
     ContractPackage(ContractPackage),
+    /// Variant that stores [`Transfer`].
     Transfer(Transfer),
+    /// Variant that stores [`DeployInfo`].
     DeployInfo(DeployInfo),
+    /// Variant that stores [`EraInfo`].
     EraInfo(EraInfo),
+    /// Variant that stores [`Bid`].
     Bid(Box<Bid>),
+    /// Variant that stores unbonding information.
     Withdraw(Vec<UnbondingPurse>),
 }
 
 impl StoredValue {
+    /// Returns a wrapped [`CLValue`] if this is a `CLValue` variant.
     pub fn as_cl_value(&self) -> Option<&CLValue> {
         match self {
             StoredValue::CLValue(cl_value) => Some(cl_value),
@@ -48,6 +69,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped [`Account`] if this is an `Account` variant.
     pub fn as_account(&self) -> Option<&Account> {
         match self {
             StoredValue::Account(account) => Some(account),
@@ -55,6 +77,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped [`Contract`] if this is a `Contract` variant.
     pub fn as_contract(&self) -> Option<&Contract> {
         match self {
             StoredValue::Contract(contract) => Some(contract),
@@ -62,6 +85,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped [`ContractWasm`] if this is a `ContractWasm` variant.
     pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
         match self {
             StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
@@ -69,6 +93,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped [`ContractPackage`] if this is a `ContractPackage` variant.
     pub fn as_contract_package(&self) -> Option<&ContractPackage> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
@@ -76,6 +101,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped [`DeployInfo`] if this is a `DeployInfo` variant.
     pub fn as_deploy_info(&self) -> Option<&DeployInfo> {
         match self {
             StoredValue::DeployInfo(deploy_info) => Some(deploy_info),
@@ -83,6 +109,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped [`EraInfo`] if this is a `EraInfo` variant.
     pub fn as_era_info(&self) -> Option<&EraInfo> {
         match self {
             StoredValue::EraInfo(era_info) => Some(era_info),
@@ -90,6 +117,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped [`Bid`] if this is a `Bid` variant.
     pub fn as_bid(&self) -> Option<&Bid> {
         match self {
             StoredValue::Bid(bid) => Some(bid),
@@ -97,6 +125,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a wrapped list of [`UnbondingPurse`]s if this is a `Withdraw` variant.
     pub fn as_withdraw(&self) -> Option<&Vec<UnbondingPurse>> {
         match self {
             StoredValue::Withdraw(unbonding_purses) => Some(unbonding_purses),
@@ -104,6 +133,9 @@ impl StoredValue {
         }
     }
 
+    /// Returns the type name of the [`StoredValue`] enum variant.
+    ///
+    /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
@@ -359,40 +391,11 @@ impl<'de> Deserialize<'de> for StoredValue {
     }
 }
 
-#[cfg(any(feature = "gens", test))]
-pub mod gens {
-    use proptest::prelude::*;
-
-    use casper_types::{
-        gens::{
-            cl_value_arb, contract_arb, contract_package_arb, contract_wasm_arb, deploy_info_arb,
-            transfer_arb,
-        },
-        system::auction::gens::era_info_arb,
-    };
-
-    use super::StoredValue;
-    use crate::shared::account::gens::account_arb;
-
-    pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
-        prop_oneof![
-            cl_value_arb().prop_map(StoredValue::CLValue),
-            account_arb().prop_map(StoredValue::Account),
-            contract_package_arb().prop_map(StoredValue::ContractPackage),
-            contract_arb().prop_map(StoredValue::Contract),
-            contract_wasm_arb().prop_map(StoredValue::ContractWasm),
-            era_info_arb(1..10).prop_map(StoredValue::EraInfo),
-            deploy_info_arb().prop_map(StoredValue::DeployInfo),
-            transfer_arb().prop_map(StoredValue::Transfer)
-        ]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use proptest::proptest;
 
-    use super::*;
+    use crate::{bytesrepr, gens};
 
     proptest! {
         #[test]

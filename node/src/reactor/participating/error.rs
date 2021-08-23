@@ -1,20 +1,16 @@
 use thiserror::Error;
 
 use crate::{
-    components::{contract_runtime, network, small_network, storage},
+    components::{contract_runtime, small_network, storage},
     utils::ListeningError,
 };
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
-pub enum Error {
+pub(crate) enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
-
-    /// `Network` component error.
-    #[error("network error: {0}")]
-    Network(#[from] network::Error),
 
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]
@@ -22,7 +18,7 @@ pub enum Error {
 
     /// An error starting one of the HTTP servers.
     #[error("http server listening error: {0}")]
-    ListeningError(#[from] ListeningError),
+    HttpServerListening(#[from] ListeningError),
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
@@ -35,8 +31,4 @@ pub enum Error {
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
-
-    /// Failed to serialize data.
-    #[error("serialization: {0}")]
-    Serialization(#[source] bincode::ErrorKind),
 }

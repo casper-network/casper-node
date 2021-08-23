@@ -139,7 +139,6 @@ impl MemoryMetrics {
         let timer = self.mem_estimator_runtime_s.start_timer();
 
         let metrics = reactor.metrics.estimate_heap_size() as i64;
-        let network = reactor.network.estimate_heap_size() as i64;
         let small_network = reactor.small_network.estimate_heap_size() as i64;
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let config = reactor.config.estimate_heap_size() as i64;
@@ -153,7 +152,6 @@ impl MemoryMetrics {
         let linear_chain = reactor.linear_chain.estimate_heap_size() as i64;
 
         let total = metrics
-            + network
             + small_network
             + address_gossiper
             + config
@@ -168,7 +166,6 @@ impl MemoryMetrics {
 
         self.mem_total.set(total);
         self.mem_metrics.set(metrics);
-        self.mem_network.set(network);
         self.mem_small_network.set(small_network);
         self.mem_address_gossiper.set(address_gossiper);
         self.mem_config.set(config);
@@ -188,7 +185,6 @@ impl MemoryMetrics {
         %total,
         %duration_s,
         %metrics,
-        %network,
         %small_network,
         %address_gossiper,
         %config ,

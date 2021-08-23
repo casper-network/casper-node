@@ -5,9 +5,8 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::{
-    core::engine_state::{self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult},
-    storage::protocol_data::ProtocolData,
+use casper_execution_engine::core::engine_state::{
+    self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult,
 };
 use casper_types::{system::auction::EraValidators, Transfer};
 
@@ -18,7 +17,7 @@ use crate::{
 };
 
 #[derive(Debug, From)]
-pub enum Event {
+pub(crate) enum Event {
     #[from]
     RpcRequest(RpcRequest<NodeId>),
     GetBlockResult {
@@ -30,10 +29,6 @@ pub enum Event {
         block_hash: BlockHash,
         result: Box<Option<Vec<Transfer>>>,
         main_responder: Responder<Option<Vec<Transfer>>>,
-    },
-    QueryProtocolDataResult {
-        result: Result<Option<Box<ProtocolData>>, engine_state::Error>,
-        main_responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
     },
     QueryGlobalStateResult {
         result: Result<QueryResult, engine_state::Error>,
@@ -55,10 +50,6 @@ pub enum Event {
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,
         main_responder: Responder<BTreeMap<NodeId, String>>,
-    },
-    GetMetricsResult {
-        text: Option<String>,
-        main_responder: Responder<Option<String>>,
     },
     GetBalanceResult {
         result: Result<BalanceResult, engine_state::Error>,
@@ -92,9 +83,6 @@ impl Display for Event {
                 "get block transfers result for block_hash {}: {:?}",
                 block_hash, result
             ),
-            Event::QueryProtocolDataResult { result, .. } => {
-                write!(formatter, "query protocol data result: {:?}", result)
-            }
             Event::QueryGlobalStateResult { result, .. } => {
                 write!(formatter, "query result: {:?}", result)
             }
@@ -111,10 +99,6 @@ impl Display for Event {
                 write!(formatter, "get deploy result for {}: {:?}", hash, result)
             }
             Event::GetPeersResult { peers, .. } => write!(formatter, "get peers: {}", peers.len()),
-            Event::GetMetricsResult { text, .. } => match text {
-                Some(txt) => write!(formatter, "get metrics ({} bytes)", txt.len()),
-                None => write!(formatter, "get metrics (failed)"),
-            },
         }
     }
 }

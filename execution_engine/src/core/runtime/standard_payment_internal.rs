@@ -3,12 +3,11 @@ use casper_types::{
         handle_payment, mint,
         standard_payment::{AccountProvider, HandlePaymentProvider, MintProvider, StandardPayment},
     },
-    ApiError, Key, RuntimeArgs, URef, U512,
+    ApiError, Key, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{
     core::{execution, runtime::Runtime},
-    shared::stored_value::StoredValue,
     storage::global_state::StateReader,
 };
 
@@ -50,7 +49,9 @@ where
         target: URef,
         amount: U512,
     ) -> Result<(), ApiError> {
-        let mint_contract_hash = self.get_mint_contract();
+        let mint_contract_hash = self
+            .get_mint_contract()
+            .map_err(|_| ApiError::MissingSystemContractHash)?;
         match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(mint_error)) => Err(mint_error.into()),
@@ -68,7 +69,9 @@ where
     R::Error: Into<execution::Error>,
 {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
-        let handle_payment_contract_hash = self.get_handle_payment_contract();
+        let handle_payment_contract_hash = self
+            .get_handle_payment_contract()
+            .map_err(|_| ApiError::MissingSystemContractHash)?;
 
         let cl_value = self
             .call_contract(

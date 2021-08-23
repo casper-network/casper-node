@@ -10,8 +10,7 @@ use casper_execution_engine::{
         engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
         execution,
     },
-    shared::{gas::Gas, motes::Motes},
-    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
+    shared::{gas::Gas, motes::Motes, system_config::DEFAULT_WASMLESS_TRANSFER_COST},
 };
 use casper_types::{
     runtime_args,

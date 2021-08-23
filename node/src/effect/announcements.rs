@@ -10,7 +10,7 @@ use std::{
 
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
@@ -33,7 +33,7 @@ use crate::{
 /// that this happens.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum ControlAnnouncement {
+pub(crate) enum ControlAnnouncement {
     /// The component has encountered a fatal error and cannot continue.
     ///
     /// This usually triggers a shutdown of the component, reactor or whole application.
@@ -60,7 +60,7 @@ impl Display for ControlAnnouncement {
 /// A networking layer announcement.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum NetworkAnnouncement<I, P> {
+pub(crate) enum NetworkAnnouncement<I, P> {
     /// A payload message has been received from a peer.
     MessageReceived {
         /// The sender of the message
@@ -99,7 +99,7 @@ where
 /// An RPC API server announcement.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum RpcServerAnnouncement {
+pub(crate) enum RpcServerAnnouncement {
     /// A new deploy received.
     DeployReceived {
         /// The received deploy.
@@ -121,7 +121,7 @@ impl Display for RpcServerAnnouncement {
 
 /// A `DeployAcceptor` announcement.
 #[derive(Debug, Serialize)]
-pub enum DeployAcceptorAnnouncement<I> {
+pub(crate) enum DeployAcceptorAnnouncement<I> {
     /// A deploy which wasn't previously stored on this node has been accepted and stored.
     AcceptedNewDeploy {
         /// The new deploy.
@@ -157,7 +157,7 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 
 /// A consensus announcement.
 #[derive(Debug)]
-pub enum ConsensusAnnouncement {
+pub(crate) enum ConsensusAnnouncement {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
     /// A finality signature was created.
@@ -197,7 +197,7 @@ impl Display for ConsensusAnnouncement {
 
 /// A block-list related announcement.
 #[derive(Debug, Serialize)]
-pub enum BlocklistAnnouncement<I> {
+pub(crate) enum BlocklistAnnouncement<I> {
     /// A given peer committed a blockable offense.
     OffenseCommitted(Box<I>),
 }
@@ -215,70 +215,18 @@ where
     }
 }
 
-/// A ContractRuntime announcement.
-#[derive(Debug)]
-pub enum ContractRuntimeAnnouncement {
-    /// A new block from the linear chain was produced.
-    LinearChainBlock(Box<LinearChainBlock>),
-    /// A Step succeeded and has altered global state.
-    StepSuccess {
-        /// The era id in which the step was committed to global state.
-        era_id: EraId,
-        /// The operations and transforms committed to global state.
-        execution_effect: ExecutionEffect,
-    },
-}
-
-impl ContractRuntimeAnnouncement {
-    /// Create a ContractRuntimeAnnouncement::LinearChainBlock from it's parts.
-    pub fn linear_chain_block(
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) -> Self {
-        Self::LinearChainBlock(Box::new(LinearChainBlock {
-            block,
-            execution_results,
-        }))
-    }
-
-    /// Create a ContractRuntimeAnnouncement::StepSuccess from an execution effect.
-    pub fn step_success(era_id: EraId, execution_effect: ExecutionEffect) -> Self {
-        Self::StepSuccess {
-            era_id,
-            execution_effect,
-        }
-    }
-}
-
 /// A ContractRuntimeAnnouncement's block.
 #[derive(Debug)]
-pub struct LinearChainBlock {
+pub(crate) struct LinearChainBlock {
     /// The block.
-    pub block: Block,
+    pub(crate) block: Block,
     /// The results of executing the deploys in this block.
-    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-}
-
-impl Display for ContractRuntimeAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ContractRuntimeAnnouncement::LinearChainBlock(linear_chain_block) => {
-                write!(
-                    f,
-                    "created linear chain block {}",
-                    linear_chain_block.block.hash()
-                )
-            }
-            ContractRuntimeAnnouncement::StepSuccess { era_id, .. } => {
-                write!(f, "step completed for {}", era_id)
-            }
-        }
-    }
+    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
 }
 
 /// A Gossiper announcement.
 #[derive(Debug)]
-pub enum GossiperAnnouncement<T: Item> {
+pub(crate) enum GossiperAnnouncement<T: Item> {
     /// A new item has been received, where the item's ID is the complete item.
     NewCompleteItem(T::Id),
 
@@ -299,7 +247,7 @@ impl<T: Item> Display for GossiperAnnouncement<T> {
 
 /// A linear chain announcement.
 #[derive(Debug)]
-pub enum LinearChainAnnouncement {
+pub(crate) enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
     BlockAdded(Box<Block>),
     /// New finality signature received.
@@ -321,7 +269,7 @@ impl Display for LinearChainAnnouncement {
 
 /// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
-pub enum ChainspecLoaderAnnouncement {
+pub(crate) enum ChainspecLoaderAnnouncement {
     /// New upgrade recognized.
     UpgradeActivationPointRead(NextUpgrade),
 }

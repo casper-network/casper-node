@@ -46,7 +46,7 @@ use keyed_counter::KeyedCounter;
 use super::fetcher::FetchResult;
 
 #[derive(DataSize, Debug, Display, Clone, Hash, Eq, PartialEq)]
-pub enum ValidatingBlock {
+pub(crate) enum ValidatingBlock {
     #[display(fmt = "{}", _0.display())]
     Block(Box<Block>),
     #[display(fmt = "{}", _0.display())]
@@ -102,7 +102,7 @@ impl ValidatingBlock {
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]
-pub enum Event<I> {
+pub(crate) enum Event<I> {
     /// A request made of the block validator component.
     #[from]
     Request(BlockValidationRequest<I>),

@@ -10,11 +10,11 @@ use casper_execution_engine::{
         engine_state::{Error as CoreError, ExecuteRequest},
         execution::Error as ExecError,
     },
-    shared::{account::Account, wasm},
+    shared::wasm,
 };
 use casper_types::{
-    runtime_args, system::mint, AccessRights, ContractHash, PublicKey, RuntimeArgs, SecretKey,
-    URef, U512,
+    account::Account, runtime_args, system::mint, AccessRights, ContractHash, PublicKey,
+    RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 

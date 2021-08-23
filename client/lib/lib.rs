@@ -28,15 +28,19 @@ use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
-use casper_types::{Key, UIntParseError, U512};
+use casper_node::{
+    crypto::hash::Digest,
+    rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
+    types::{BlockHash, Deploy},
+};
+use casper_types::Key;
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
-use rpc::{RpcCall, TransferTarget};
+use rpc::RpcCall;
 pub use validation::ValidateResponseError;
 
 /// Creates a `Deploy` and sends it to the network for execution.
@@ -205,17 +209,11 @@ pub async fn transfer(
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-    let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .transfer(
             amount,
-            source_purse,
-            target,
+            None,
+            target_account,
             transfer_id,
             deploy_params.try_into()?,
             payment_params.try_into()?,
@@ -252,12 +250,6 @@ pub fn make_transfer(
     payment_params: PaymentStrParams<'_>,
     force: bool,
 ) -> Result<()> {
-    let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-    let source_purse = None;
-    let target = parsing::get_transfer_target(target_account)?;
-    let transfer_id = parsing::transfer_id(transfer_id)?;
-
     let output = if maybe_output_path.is_empty() {
         OutputKind::Stdout
     } else {
@@ -266,8 +258,8 @@ pub fn make_transfer(
 
     Deploy::new_transfer(
         amount,
-        source_purse,
-        target,
+        None,
+        target_account,
         transfer_id,
         deploy_params.try_into()?,
         payment_params.try_into()?,
@@ -393,14 +385,21 @@ pub async fn get_state_root_hash(
 ///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
 ///   take one of the following forms:
 /// ```text
-/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c           # PublicKey
+/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c             # PublicKey
 /// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
-/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::Hash
-/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
-/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
-/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
+/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20          # Key::Hash
+/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007      # Key::URef
+/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Transfer
+/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::DeployInfo
+/// era-1                                                                          # Key::EraInfo
+/// bid-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20           # Key::Bid
+/// withdraw-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Withdraw
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Dictionary
+/// The Key::SystemContractRegistry variant is unique and can only take the following value:
+/// system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
+#[deprecated(note = "Users should use `casper_client::query_global_state` instead.")]
 pub async fn get_item(
     maybe_rpc_id: &str,
     node_address: &str,
@@ -522,6 +521,51 @@ pub async fn get_account_info(
         .await
 }
 
+/// Retrieves information from global state using either a Block hash or a state root hash.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+/// * `global_state_str_params` contains global state identifier related options for this query. See
+///   [`GlobalStateStrParams`](struct.GlobalStateStrParams.html) for more details.
+/// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
+///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.Key.html). This will take one
+///   of the following forms:
+/// ```text
+/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c             # PublicKey
+/// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
+/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20          # Key::Hash
+/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007      # Key::URef
+/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Transfer
+/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::DeployInfo
+/// era-1                                                                          # Key::EraInfo
+/// bid-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20           # Key::Bid
+/// withdraw-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Withdraw
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Dictionary
+/// The Key::SystemContractRegistry variant is unique and can only take the following value:
+/// system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000
+/// ```
+/// * `path` is comprised of components starting from the `key`, separated by `/`s.
+pub async fn query_global_state(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+    global_state_str_params: GlobalStateStrParams<'_>,
+    key: &str,
+    path: &str,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .query_global_state(global_state_str_params, key, path)
+        .await
+}
+
 /// Retrieves information and examples for all currently supported RPCs.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
@@ -544,7 +588,7 @@ pub async fn list_rpcs(
         .await
 }
 
-/// Retrieves a stored value from the network.
+/// Retrieves a stored value from a dictionary.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
 ///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
@@ -558,7 +602,7 @@ pub async fn list_rpcs(
 ///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
 /// * `dictionary_str_params` contains options to query a dictionary item.
-pub async fn get_dictionary(
+pub async fn get_dictionary_item(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -600,6 +644,9 @@ pub struct DeployStrParams<'a> {
     /// Name of the chain, to avoid the `Deploy` from being accidentally or maliciously included in
     /// a different chain.
     pub chain_name: &'a str,
+    /// The hex-encoded public key of the account context under which the session code will be
+    /// executed.
+    pub session_account: &'a str,
 }
 
 impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
@@ -613,6 +660,7 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
             gas_price,
             dependencies,
             chain_name,
+            session_account,
         } = self;
         parsing::parse_deploy_params(
             secret_key,
@@ -621,6 +669,7 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
             gas_price,
             &dependencies,
             chain_name,
+            session_account,
         )
     }
 }
@@ -705,31 +754,7 @@ impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let PaymentStrParams {
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        } = self;
-
-        parsing::parse_payment_info(
-            payment_amount,
-            payment_hash,
-            payment_name,
-            payment_package_hash,
-            payment_package_name,
-            payment_path,
-            &payment_args_simple,
-            payment_args_complex,
-            payment_version,
-            payment_entry_point,
-        )
+        parsing::parse_payment_info(self)
     }
 }
 
@@ -866,31 +891,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<ExecutableDeployItem> {
-        let SessionStrParams {
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        } = self;
-
-        parsing::parse_session_info(
-            session_hash,
-            session_name,
-            session_package_hash,
-            session_package_name,
-            session_path,
-            &session_args_simple,
-            session_args_complex,
-            session_version,
-            session_entry_point,
-            is_session_transfer,
-        )
+        parsing::parse_session_info(self)
     }
 }
 
@@ -1143,6 +1144,33 @@ impl<'a> TryInto<DictionaryIdentifier> for DictionaryItemStrParams<'a> {
     }
 }
 
+/// The two ways to construct a query to global state.
+#[derive(Default, Debug)]
+pub struct GlobalStateStrParams<'a> {
+    /// Identifier to mark the hash as either a Block hash or `state_root_hash`
+    /// When true, the hash provided is a Block hash.
+    pub is_block_hash: bool,
+    /// The hex-encoded hash value.
+    pub hash_value: &'a str,
+}
+
+impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> Result<GlobalStateIdentifier> {
+        let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
+            context: "global_state_identifier",
+            error,
+        })?;
+
+        if self.is_block_hash {
+            Ok(GlobalStateIdentifier::BlockHash(BlockHash::new(hash)))
+        } else {
+            Ok(GlobalStateIdentifier::StateRootHash(hash))
+        }
+    }
+}
+
 /// When `verbosity_level` is `1`, the value will be printed to `stdout` with long string fields
 /// (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char count of the
 /// field.  When `verbosity_level` is greater than `1`, the value will be printed to `stdout` with
@@ -1270,7 +1298,7 @@ mod param_tests {
     mod payment_params {
         use std::collections::BTreeMap;
 
-        use casper_types::CLValue;
+        use casper_types::{CLValue, U512};
 
         use super::*;
 
@@ -1396,10 +1424,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimestamp(
-                    "timestamp",
-                    TimestampError::InvalidFormat
-                ))
+                Err(Error::FailedToParseTimestamp {
+                    context: "timestamp",
+                    error: TimestampError::InvalidFormat
+                })
             ));
         }
 
@@ -1409,7 +1437,7 @@ mod param_tests {
             params.gas_price = "fifteen";
             let result: StdResult<DeployParams, Error> = params.try_into();
             let result = result.map(|_| ());
-            if let Err(Error::FailedToParseInt(context, _)) = result {
+            if let Err(Error::FailedToParseInt { context, error: _ }) = result {
                 assert_eq!(context, "gas_price");
             } else {
                 panic!("should be an error");
@@ -1431,10 +1459,10 @@ mod param_tests {
             let result: StdResult<DeployParams, Error> = params.try_into();
             assert!(matches!(
                 result,
-                Err(Error::FailedToParseTimeDiff(
-                    "ttl",
-                    DurationError::NumberExpected(0)
-                ))
+                Err(Error::FailedToParseTimeDiff {
+                    context: "ttl",
+                    error: DurationError::NumberExpected(0)
+                })
             ));
         }
 

@@ -1,22 +1,24 @@
+use std::collections::BTreeMap;
+
 use casper_engine_test_support::{
     internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
         DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-
 use casper_execution_engine::{
-    core::{engine_state::Error, execution},
-    shared::TypeMismatch,
+    core::{
+        engine_state::{Error, SystemContractRegistry},
+        execution,
+    },
+    shared::newtypes::Blake2bHash,
 };
 use casper_types::{
     runtime_args,
-    system::{
-        auction::{self, DelegationRate},
-        mint,
-    },
-    CLTyped, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
+    system::{auction, auction::DelegationRate, mint},
+    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::lmdb_fixture;
@@ -51,6 +53,31 @@ fn setup() -> InMemoryWasmTestBuilder {
     builder.exec(transfer).expect_success().commit();
 
     builder
+}
+
+fn apply_global_state_update(
+    builder: &LmdbWasmTestBuilder,
+    post_state_hash: Blake2bHash,
+) -> BTreeMap<Key, StoredValue> {
+    let key = URef::new([0u8; 32], AccessRights::all()).into();
+
+    let system_contract_hashes = builder
+        .query(Some(post_state_hash), key, &Vec::new())
+        .expect("Must have stored system contract hashes")
+        .as_cl_value()
+        .expect("must be CLValue")
+        .clone()
+        .into_t::<SystemContractRegistry>()
+        .expect("must convert to btree map");
+
+    let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
+    let registry = CLValue::from_t(system_contract_hashes)
+        .expect("must convert to StoredValue")
+        .into();
+
+    global_state_update.insert(Key::SystemContractRegistry, registry);
+
+    global_state_update
 }
 
 #[ignore]
@@ -479,7 +506,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     let found = gh_1470_regression::Arg3Type::cl_type();
 
     let expected_type_mismatch =
-        TypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
+        StoredValueTypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
@@ -586,7 +613,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     let found = gh_1470_regression::Arg4Type::cl_type();
 
     let expected_type_mismatch =
-        TypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
+        StoredValueTypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
@@ -614,44 +641,36 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 #[test]
 fn should_transfer_after_major_version_bump_from_1_2_0() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+
+    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version =
+        ProtocolVersion::from_parts(current_protocol_version.value().major + 1, 0, 0);
+
+    let global_state_update =
+        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(previous_protocol_version)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .expect_upgrade_success();
 
     let transfer_args = runtime_args! {
         mint::ARG_AMOUNT => U512::one(),
         mint::ARG_TARGET => AccountHash::new([3; 32]),
         mint::ARG_ID => Some(1u64),
     };
-
-    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let old_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(current_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
-    let new_protocol_version =
-        ProtocolVersion::from_parts(current_protocol_version.value().major + 1, 0, 0);
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(current_protocol_version)
-            .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .build()
-    };
-
-    builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
-        .expect_upgrade_success();
-
-    let new_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
-    assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
         .with_protocol_version(new_protocol_version)
@@ -663,7 +682,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
 #[test]
 fn should_transfer_after_minor_version_bump_from_1_2_0() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
     let transfer_args = runtime_args! {
         mint::ARG_AMOUNT => U512::one(),
@@ -673,37 +692,27 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
-    let old_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(current_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
     let new_protocol_version = ProtocolVersion::from_parts(
         current_protocol_version.value().major,
         current_protocol_version.value().minor + 1,
         0,
     );
 
+    let global_state_update =
+        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
+
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(current_protocol_version)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
-
-    let new_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
-    assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
         .with_protocol_version(new_protocol_version)
@@ -715,38 +724,28 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
 #[test]
 fn should_add_bid_after_major_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
-    let old_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(current_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
     let new_protocol_version =
         ProtocolVersion::from_parts(current_protocol_version.value().major + 1, 0, 0);
+
+    let global_state_update =
+        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(current_protocol_version)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
-
-    let new_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
-    assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -771,15 +770,9 @@ fn should_add_bid_after_major_bump() {
 #[test]
 fn should_add_bid_after_minor_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let old_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(current_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
 
     let new_protocol_version = ProtocolVersion::from_parts(
         current_protocol_version.value().major,
@@ -787,25 +780,21 @@ fn should_add_bid_after_minor_bump() {
         0,
     );
 
+    let global_state_update =
+        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
+
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(current_protocol_version)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
-
-    let new_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
-    assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -830,38 +819,28 @@ fn should_add_bid_after_minor_bump() {
 #[test]
 fn should_wasm_transfer_after_major_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
-    let old_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(current_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
     let new_protocol_version =
         ProtocolVersion::from_parts(current_protocol_version.value().major + 1, 0, 0);
+
+    let global_state_update =
+        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(current_protocol_version)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
-
-    let new_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
-    assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -885,15 +864,9 @@ fn should_wasm_transfer_after_major_bump() {
 #[test]
 fn should_wasm_transfer_after_minor_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let old_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(current_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
 
     let new_protocol_version = ProtocolVersion::from_parts(
         current_protocol_version.value().major,
@@ -901,25 +874,21 @@ fn should_wasm_transfer_after_minor_bump() {
         0,
     );
 
+    let global_state_update =
+        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
+
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(current_protocol_version)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
-
-    let new_protocol_data = builder
-        .get_engine_state()
-        .get_protocol_data(new_protocol_version)
-        .expect("should have result")
-        .expect("should have protocol data");
-
-    assert_eq!(new_protocol_data.mint(), old_protocol_data.mint());
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -937,4 +906,35 @@ fn should_wasm_transfer_after_minor_bump() {
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_upgrade_from_1_3_1_rel_fixture() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+
+    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version = ProtocolVersion::from_parts(
+        previous_protocol_version.value().major,
+        previous_protocol_version.value().minor + 1,
+        0,
+    );
+
+    let global_state_update =
+        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(previous_protocol_version)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .expect_upgrade_success();
 }

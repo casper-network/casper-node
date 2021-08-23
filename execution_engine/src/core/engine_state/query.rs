@@ -1,8 +1,7 @@
-use casper_types::{system::auction::Bids, Key};
+use casper_types::{system::auction::Bids, Key, StoredValue};
 
 use crate::{
-    core::tracking_copy::TrackingCopyQueryResult,
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    core::tracking_copy::TrackingCopyQueryResult, shared::newtypes::Blake2bHash,
     storage::trie::merkle_proof::TrieMerkleProof,
 };
 

@@ -3,16 +3,14 @@ use std::convert::TryInto;
 use parity_wasm::elements::Module;
 
 use casper_types::{
-    account::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, Key, URef,
+    account::{Account, AccountHash},
+    CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
+    ContractWasmHash, Key, StoredValue, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
-    core::{execution, tracking_copy::TrackingCopy},
-    shared::{
-        account::Account, motes::Motes, newtypes::CorrelationId, stored_value::StoredValue, wasm,
-        wasm_prep::Preprocessor, TypeMismatch,
-    },
+    core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy},
+    shared::{motes::Motes, newtypes::CorrelationId, wasm, wasm_prep::Preprocessor},
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
@@ -84,6 +82,11 @@ pub trait TrackingCopyExt<R> {
     ) -> Result<ContractPackage, Self::Error>;
 
     fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error>;
+
+    fn get_system_contracts(
+        &mut self,
+        correlation_id: CorrelationId,
+    ) -> Result<SystemContractRegistry, Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -101,10 +104,9 @@ where
         let account_key = Key::Account(account_hash);
         match self.get(correlation_id, &account_key).map_err(Into::into)? {
             Some(StoredValue::Account(account)) => Ok(account),
-            Some(other) => Err(execution::Error::TypeMismatch(TypeMismatch::new(
-                "Account".to_string(),
-                other.type_name(),
-            ))),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
+            )),
             None => Err(execution::Error::KeyNotFound(account_key)),
         }
     }
@@ -120,10 +122,9 @@ where
             .map_err(Into::into)?
         {
             Some(StoredValue::Account(account)) => Ok(account),
-            Some(other) => Err(execution::Error::TypeMismatch(TypeMismatch::new(
-                "Account".to_string(),
-                other.type_name(),
-            ))),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
+            )),
             None => Err(execution::Error::KeyNotFound(account_key)),
         }
     }
@@ -203,10 +204,9 @@ where
         let key = contract_wasm_hash.into();
         match self.get(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::ContractWasm(contract_wasm)) => Ok(contract_wasm),
-            Some(other) => Err(execution::Error::TypeMismatch(TypeMismatch::new(
-                "ContractHeader".to_string(),
-                other.type_name(),
-            ))),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("ContractHeader".to_string(), other.type_name()),
+            )),
             None => Err(execution::Error::KeyNotFound(key)),
         }
     }
@@ -220,10 +220,9 @@ where
         let key = contract_hash.into();
         match self.get(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::Contract(contract)) => Ok(contract),
-            Some(other) => Err(execution::Error::TypeMismatch(TypeMismatch::new(
-                "Contract".to_string(),
-                other.type_name(),
-            ))),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
+            )),
             None => Err(execution::Error::KeyNotFound(key)),
         }
     }
@@ -236,15 +235,34 @@ where
         let key = contract_package_hash.into();
         match self.get(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package),
-            Some(other) => Err(execution::Error::TypeMismatch(TypeMismatch::new(
-                "ContractPackage".to_string(),
-                other.type_name(),
-            ))),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+            )),
             None => Err(execution::Error::KeyNotFound(key)),
         }
     }
 
     fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error> {
         Ok(wasm::do_nothing_module(preprocessor)?)
+    }
+
+    fn get_system_contracts(
+        &mut self,
+        correlation_id: CorrelationId,
+    ) -> Result<SystemContractRegistry, Self::Error> {
+        match self
+            .get(correlation_id, &Key::SystemContractRegistry)
+            .map_err(Into::into)?
+        {
+            Some(StoredValue::CLValue(registry)) => {
+                let registry: SystemContractRegistry =
+                    CLValue::into_t(registry).map_err(Self::Error::from)?;
+                Ok(registry)
+            }
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
+            )),
+            None => Err(execution::Error::KeyNotFound(Key::SystemContractRegistry)),
+        }
     }
 }
