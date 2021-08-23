@@ -321,5 +321,10 @@ impl Drop for NetworkingMetrics {
         unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
         unregister_metric!(self.registry, self.out_bytes_block_transfer);
         unregister_metric!(self.registry, self.out_bytes_other);
+        unregister_metric!(self.registry, self.out_state_connecting);
+        unregister_metric!(self.registry, self.out_state_waiting);
+        unregister_metric!(self.registry, self.out_state_connected);
+        unregister_metric!(self.registry, self.out_state_blocked);
+        unregister_metric!(self.registry, self.out_state_loopback);
     }
 }
