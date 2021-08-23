@@ -260,7 +260,7 @@ impl NetworkingMetrics {
         }
     }
 
-    pub(crate) fn update_outgoing<H, E>(&mut self, manager: &OutgoingManager<H, E>)
+    pub(crate) fn update_outgoing<H, E>(&self, manager: &OutgoingManager<H, E>)
     where
         H: Clone + DataSize,
         E: DataSize + error::Error,

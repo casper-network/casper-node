@@ -482,6 +482,7 @@ where
                     }),
                 );
 
+                self.net_metrics.update_outgoing(&self.outgoing_manager);
                 effects
             }
         })
@@ -573,6 +574,7 @@ where
                         .into_iter(),
                 );
 
+                self.net_metrics.update_outgoing(&self.outgoing_manager);
                 self.process_dial_requests(requests)
             }
             OutgoingConnection::Loopback { peer_addr } => {
@@ -865,6 +867,7 @@ where
                     false,
                     Instant::now(),
                 );
+                self.net_metrics.update_outgoing(&self.outgoing_manager);
                 self.process_dial_requests(requests)
             }
             Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)) => {
@@ -874,6 +877,7 @@ where
 
                 if let Some(addr) = self.outgoing_manager.get_addr(*peer_id) {
                     let requests = self.outgoing_manager.block_addr(addr, Instant::now());
+                    self.net_metrics.update_outgoing(&self.outgoing_manager);
                     self.process_dial_requests(requests)
                 } else {
                     // Peer got away with it, no longer an outgoing connection.
@@ -940,6 +944,8 @@ where
             Event::SweepOutgoing => {
                 let now = Instant::now();
                 let requests = self.outgoing_manager.perform_housekeeping(now);
+                self.net_metrics.update_outgoing(&self.outgoing_manager);
+
                 let mut effects = self.process_dial_requests(requests);
 
                 effects.extend(
