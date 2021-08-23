@@ -140,12 +140,18 @@ impl TestChain {
 
         // Add the nodes to the chain
         test_chain
-            .add_node(true, first_node_secret_key_with_stake.secret_key, None, rng)
+            .add_node(
+                true,
+                first_node_secret_key_with_stake.secret_key,
+                None,
+                false,
+                rng,
+            )
             .await;
 
         for secret_key_with_stake in other_secret_keys_with_stakes {
             test_chain
-                .add_node(false, secret_key_with_stake.secret_key, None, rng)
+                .add_node(false, secret_key_with_stake.secret_key, None, false, rng)
                 .await;
         }
 
@@ -158,6 +164,7 @@ impl TestChain {
         first_node: bool,
         secret_key: Arc<SecretKey>,
         trusted_hash: Option<BlockHash>,
+        archival_sync: bool,
         rng: &mut NodeRng,
     ) -> NodeId {
         // Set the network configuration.
@@ -172,6 +179,8 @@ impl TestChain {
             gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
         };
+
+        participating_config.node.archival_sync = archival_sync;
 
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
@@ -362,7 +371,13 @@ async fn test_joiner_at_genesis() {
     info!("Joining with trusted hash {}", trusted_hash);
     let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
     chain
-        .add_node(false, joiner_node_secret_key, Some(trusted_hash), &mut rng)
+        .add_node(
+            false,
+            joiner_node_secret_key,
+            Some(trusted_hash),
+            false,
+            &mut rng,
+        )
         .await;
 
     assert_eq!(
@@ -378,6 +393,72 @@ async fn test_joiner_at_genesis() {
         .settle_on(
             &mut rng,
             has_passed_by_era(end_era),
+            Duration::from_secs(600),
+        )
+        .await;
+}
+
+/// Test a node joining to a single node network
+#[tokio::test]
+async fn test_archival_sync() {
+    testing::init_logging();
+
+    const INITIAL_NETWORK_SIZE: usize = 1;
+
+    let mut rng = crate::new_rng();
+
+    // Create a chain with just one node
+    let mut chain = TestChain::new(INITIAL_NETWORK_SIZE, &mut rng).await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        INITIAL_NETWORK_SIZE,
+        "There should be just one bonded validator in the network"
+    );
+
+    // Get the first switch block hash
+    // As part of the fast sync process, we will need to retrieve the first switch block
+    let switch_block_hash = await_switch_block(1, &mut chain.network, &mut rng)
+        .await
+        .hash();
+
+    let era_to_join = 3;
+    info!("Waiting for Era {} to end", era_to_join);
+    chain
+        .network
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(era_to_join),
+            Duration::from_secs(600),
+        )
+        .await;
+
+    // Have a node join the network with that hash
+    info!("Joining with trusted hash {}", switch_block_hash);
+    let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
+    chain
+        .add_node(
+            false,
+            joiner_node_secret_key,
+            Some(switch_block_hash),
+            false,
+            &mut rng,
+        )
+        .await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        2,
+        "There should be two validators in the network (one bonded and one read only)"
+    );
+
+    let synchronized_era = era_to_join + 1;
+    info!("Waiting for Era {} to end", synchronized_era);
+    chain
+        .network
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(synchronized_era),
             Duration::from_secs(600),
         )
         .await;
@@ -426,6 +507,7 @@ async fn test_joiner() {
             false,
             joiner_node_secret_key,
             Some(switch_block_hash),
+            false,
             &mut rng,
         )
         .await;
@@ -483,6 +565,7 @@ async fn test_joiner_network() {
             false,
             joiner_node_secret_key,
             Some(trusted_block_hash),
+            false,
             &mut rng,
         )
         .await;

@@ -449,13 +449,15 @@ impl reactor::Reactor for Reactor {
                 LinearChainSyncState::NotGoingToSync
             }
             Some(hash) => {
-                info!(trusted_hash=%hash, "synchronizing linear chain");
+                let node_config = config.node.clone();
                 effects.extend(
                     (async move {
+                        info!(trusted_hash=%hash, "synchronizing linear chain");
                         match linear_chain_sync::run_fast_sync_task(
                             effect_builder,
                             hash,
-                            (*chainspec).clone(),
+                            chainspec,
+                            node_config,
                         )
                         .await
                         {

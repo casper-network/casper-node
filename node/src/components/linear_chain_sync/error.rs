@@ -3,14 +3,16 @@ use std::fmt::Debug;
 use thiserror::Error;
 
 use casper_execution_engine::{
-    core::engine_state, shared::stored_value::StoredValue, storage::trie::Trie,
+    core::{engine_state, engine_state::GetEraValidatorsError},
+    shared::stored_value::StoredValue,
+    storage::trie::Trie,
 };
-use casper_types::{EraId, Key, ProtocolVersion};
+use casper_types::{system::auction::EraValidators, EraId, Key, ProtocolVersion};
 
 use crate::{
     components::{
         consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError,
+        fetcher::FetcherError, linear_chain_sync::operations::KeyBlockInfo,
     },
     crypto,
     types::{
@@ -31,6 +33,16 @@ pub(crate) enum SignatureValidationError {
         block_header: Box<BlockHeader>,
         block_hash: Box<BlockHash>,
         block_signatures: Box<BlockSignatures>,
+    },
+
+    #[error(
+        "Block header is in wrong era. \
+         block header: {block_header:?} \
+         trusted key block info: {trusted_key_block_info:?}"
+    )]
+    HeaderIsInWrongEra {
+        block_header: Box<BlockHeader>,
+        trusted_key_block_info: Box<KeyBlockInfo>,
     },
 
     #[error(transparent)]
@@ -112,10 +124,16 @@ pub(crate) enum LinearChainSyncError {
     },
 
     #[error(
-        "Can't download block before genesis. \
-         Genesis block header: {genesis_block_header}"
+        "Genesis block global state did not contain genesis validators. \
+         Genesis block header: {genesis_block_header} \
+         Genesis era validators: {era_validators:?}"
     )]
-    CantDownloadBlockBeforeGenesis {
+    GenesisGlobalStateDidNotHaveGenesisValidators {
         genesis_block_header: Box<BlockHeader>,
+        era_validators: EraValidators,
     },
+
+    /// Error getting era validators from the execution engine.
+    #[error(transparent)]
+    GetEraValidatorsError(#[from] GetEraValidatorsError),
 }

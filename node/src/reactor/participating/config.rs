@@ -12,7 +12,7 @@ use crate::{
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct Config {
-    /// Node configuration.
+    /// Node fast-sync configuration.
     pub(crate) node: NodeConfig,
     /// Logging configuration.
     pub(crate) logging: LoggingConfig,
