@@ -326,7 +326,7 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
     let mut builder = bootstrap(
         data_dir.path(),
         bootstrap_accounts.clone(),
-        U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+        U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) * 10,
     );
 
     let purse_amount = U512::one();
