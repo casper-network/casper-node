@@ -2,12 +2,12 @@ use std::{collections::BTreeMap, vec::Vec};
 
 use casper_types::{
     bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey,
-    StoredValueTypeMismatch, U512,
+    StoredValueTypeMismatch,
 };
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, Error, GetEraValidatorsError},
+        engine_state::{execution_effect::ExecutionEffect, Error},
         execution,
     },
     shared::newtypes::Blake2bHash,
@@ -135,8 +135,6 @@ pub enum StepError {
     BytesRepr(#[from] bytesrepr::Error),
     #[error(transparent)]
     CLValueError(#[from] CLValueError),
-    #[error(transparent)]
-    GetEraValidatorsError(#[from] GetEraValidatorsError),
     #[error("Other engine state error: {0}")]
     OtherEngineStateError(#[from] Error),
     #[error(transparent)]
@@ -146,6 +144,5 @@ pub enum StepError {
 #[derive(Debug)]
 pub struct StepSuccess {
     pub post_state_hash: Blake2bHash,
-    pub next_era_validators: BTreeMap<PublicKey, U512>,
     pub execution_effect: ExecutionEffect,
 }

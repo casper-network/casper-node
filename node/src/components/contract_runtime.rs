@@ -1,4 +1,5 @@
 //! Contract Runtime component.
+pub(crate) mod announcements;
 mod config;
 mod error;
 mod operations;
@@ -12,6 +13,7 @@ use std::{
     time::Instant,
 };
 
+pub(crate) use announcements::ContractRuntimeAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
 pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
@@ -40,12 +42,11 @@ use casper_execution_engine::{
 use casper_types::{Key, ProtocolVersion, StoredValue};
 
 use crate::{
-    components::Component,
+    components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     crypto::hash::Digest,
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
-        requests::ContractRuntimeRequest,
-        EffectBuilder, EffectExt, Effects,
+        announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
+        EffectExt, Effects,
     },
     fatal,
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
@@ -257,7 +258,7 @@ where
                 chainspec,
                 responder,
             } => {
-                let result = self.commit_genesis(chainspec);
+                let result = self.commit_genesis(&chainspec);
                 responder.respond(result).ignore()
             }
             ContractRuntimeRequest::Upgrade {
@@ -393,9 +394,19 @@ where
                     let start = Instant::now();
                     let result = engine_state
                         .put_trie_and_find_missing_descendant_trie_keys(correlation_id, &*trie);
-                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "put_trie response");
-                    responder.respond(result).await
+                    // PERF: this *could* be called only periodically.
+                    if let Err(lmdb_error) = engine_state.flush_environment() {
+                        fatal!(
+                            effect_builder,
+                            "error flushing lmdb environment {:?}",
+                            lmdb_error
+                        )
+                        .await;
+                    } else {
+                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                        trace!(?result, "put_trie response");
+                        responder.respond(result).await
+                    }
                 }
                 .ignore()
             }
@@ -486,7 +497,6 @@ where
 }
 
 impl ContractRuntime {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
@@ -507,6 +517,7 @@ impl ContractRuntime {
             storage_dir,
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
+            contract_runtime_config.manual_sync_enabled(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(
@@ -537,15 +548,15 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis using a chainspec
-    fn commit_genesis(
+    pub(crate) fn commit_genesis(
         &self,
-        chainspec: Arc<Chainspec>,
+        chainspec: &Chainspec,
     ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
-        let ee_config = chainspec.as_ref().into();
+        let ee_config = chainspec.into();
         self.engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash.into(),
@@ -590,7 +601,7 @@ impl ContractRuntime {
         let BlockAndExecutionEffects {
             block,
             execution_results,
-            maybe_step_execution_effect,
+            maybe_step_effect_and_upcoming_era_validators,
         } = match tokio::task::unconstrained(async move {
             operations::execute_finalized_block(
                 engine_state.as_ref(),
@@ -610,14 +621,24 @@ impl ContractRuntime {
         let new_execution_pre_state = ExecutionPreState::from(block.header());
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
-        let era_id = block.header().era_id();
-        effect_builder
-            .announce_linear_chain_block(block, execution_results)
-            .await;
-        if let Some(step_execution_effect) = maybe_step_execution_effect {
-            effect_builder
-                .announce_step_success(era_id, step_execution_effect)
+        let current_era_id = block.header().era_id();
+
+        announcements::linear_chain_block(effect_builder, block, execution_results).await;
+
+        if let Some(StepEffectAndUpcomingEraValidators {
+            step_execution_effect,
+            upcoming_era_validators,
+        }) = maybe_step_effect_and_upcoming_era_validators
+        {
+            announcements::step_success(effect_builder, current_era_id, step_execution_effect)
                 .await;
+
+            announcements::upcoming_era_validators(
+                effect_builder,
+                current_era_id,
+                upcoming_era_validators,
+            )
+            .await;
         }
 
         // If the child is already finalized, start execution.
@@ -635,7 +656,7 @@ impl ContractRuntime {
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
     pub(crate) fn read_trie(
-        &mut self,
+        &self,
         trie_key: Blake2bHash,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
