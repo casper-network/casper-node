@@ -32,7 +32,8 @@ mod gossiped_address;
 mod limiter;
 mod message;
 mod message_pack_format;
-mod outgoing;
+// Note: `outgoing` is only public because currently the metrics live outside this component.
+pub(crate) mod outgoing;
 mod symmetry;
 pub(crate) mod tasks;
 #[cfg(test)]
