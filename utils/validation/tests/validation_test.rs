@@ -3,7 +3,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::bail;
+
 use casper_validation::{abi::ABIFixture, error::Error, test_case::TestCase, Fixture};
+
+type TestPair = (String, Box<dyn TestCase>);
 
 fn get_fixtures_path() -> PathBuf {
     let mut path = Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
@@ -23,7 +27,7 @@ fn prog() -> Option<String> {
     Some(prog_name.to_string())
 }
 
-fn make_abi_tests(test_name: &str, test_fixture: ABIFixture) -> Vec<(String, Box<dyn TestCase>)> {
+fn make_abi_tests(test_name: &str, test_fixture: ABIFixture) -> Vec<TestPair> {
     let prog_name = prog().expect("should get exe");
 
     let mut tests = Vec::with_capacity(test_fixture.len());
@@ -38,7 +42,7 @@ fn make_abi_tests(test_name: &str, test_fixture: ABIFixture) -> Vec<(String, Box
     tests
 }
 
-fn make_test_cases() -> Result<Vec<(String, Box<dyn TestCase>)>, Error> {
+fn make_test_cases() -> Result<Vec<TestPair>, Error> {
     let fixtures = get_fixtures_path();
     let test_fixtures = casper_validation::load_fixtures(&fixtures)?;
 
@@ -57,13 +61,22 @@ fn make_test_cases() -> Result<Vec<(String, Box<dyn TestCase>)>, Error> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let _args: Vec<_> = env::args().collect();
+    let mut failed_tests = Vec::new();
+
     for (name, test_case) in make_test_cases()? {
         print!("{}... ", name);
         match test_case.run_test() {
             Ok(()) => println!("OK"),
-            Err(error) => println!("ERROR: {}", error),
+            Err(error) => {
+                println!("ERROR: {}", error);
+                failed_tests.push(name);
+            }
         }
     }
+
+    if !failed_tests.is_empty() {
+        bail!("List of failed tests: {:?}", failed_tests);
+    }
+
     Ok(())
 }
