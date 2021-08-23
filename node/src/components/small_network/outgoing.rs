@@ -426,6 +426,14 @@ where
         self.routes.keys().cloned()
     }
 
+    /// Iterates over all outgoing connections.
+    #[allow(clippy::needless_lifetimes)]
+    pub(crate) fn iter_outgoing<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (&'a SocketAddr, &'a Outgoing<H, E>)> + 'a {
+        self.outgoing.iter()
+    }
+
     /// Notify about a potentially new address that has been discovered.
     ///
     /// Immediately triggers the connection process to said address if it was not known before.
