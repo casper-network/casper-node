@@ -2,13 +2,13 @@ use std::{fmt, iter::Sum};
 
 use num::{CheckedMul, Integer, Zero};
 use num_derive::{Num, NumOps, One, Zero};
-use num_traits::{CheckedAdd, CheckedSub, Saturating, SaturatingMul};
+use num_traits::{CheckedAdd, CheckedSub};
 
 use casper_types::U512;
 
 use crate::shared::motes::Motes;
 
-pub(crate) const GAS_MAX_AS_U512: U512 = U512([u64::MAX, 0, 0, 0, 0, 0, 0, 0]);
+const GAS_MAX_AS_U512: U512 = U512([u64::MAX, 0, 0, 0, 0, 0, 0, 0]);
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Num, Zero, One, NumOps)]
 pub struct Gas(u64);
@@ -21,7 +21,7 @@ impl Gas {
         Gas(value)
     }
 
-    pub fn from_u512(value: U512) -> Option<Gas> {
+    fn from_u512(value: U512) -> Option<Gas> {
         if value > GAS_MAX_AS_U512 {
             return None;
         }
@@ -42,22 +42,6 @@ impl fmt::Display for Gas {
     }
 }
 
-impl Saturating for Gas {
-    fn saturating_add(self, rhs: Self) -> Self {
-        Gas(self.0.saturating_add(rhs.0))
-    }
-
-    fn saturating_sub(self, rhs: Self) -> Self {
-        Gas(self.0.saturating_sub(rhs.0))
-    }
-}
-
-impl SaturatingMul for Gas {
-    fn saturating_mul(&self, v: &Self) -> Self {
-        Gas(self.0.saturating_mul(v.0))
-    }
-}
-
 impl CheckedAdd for Gas {
     fn checked_add(&self, v: &Self) -> Option<Self> {
         self.0.checked_add(v.0).map(Gas)
@@ -66,7 +50,7 @@ impl CheckedAdd for Gas {
 
 impl CheckedMul for Gas {
     fn checked_mul(&self, v: &Self) -> Option<Self> {
-        self.0.checked_add(v.0).map(Gas)
+        self.0.checked_mul(v.0).map(Gas)
     }
 }
 
@@ -170,7 +154,7 @@ mod tests {
     fn should_be_able_to_get_instance_of_gas() {
         let initial_value = 1;
         let gas = Gas::new(initial_value);
-        assert_eq!(gas, Gas::one(), "should have equal value")
+        assert_eq!(gas, Gas::one());
     }
 
     #[test]

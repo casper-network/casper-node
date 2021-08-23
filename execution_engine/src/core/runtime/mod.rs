@@ -3496,8 +3496,8 @@ where
     where
         T: AsRef<[Cost]> + Copy,
     {
-        let cost = host_function.calculate_gas_cost(weights);
-        self.gas(cost)?;
+        self.context
+            .charge_host_function_call(host_function, weights)?;
         Ok(())
     }
 

@@ -875,7 +875,8 @@ fn should_meter_for_gas_storage_write() {
     let expected_write_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
-        .calculate_gas_cost(value.serialized_length());
+        .calculate_gas_cost(value.serialized_length())
+        .expect("should not overflow");
 
     let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
         let gas_before = rc.gas_counter();
@@ -905,7 +906,8 @@ fn should_meter_for_gas_storage_add() {
     let expected_add_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
-        .calculate_gas_cost(value.serialized_length());
+        .calculate_gas_cost(value.serialized_length())
+        .expect("should not overflow");
 
     let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
         rc.metered_write_gs(uref, value.clone())

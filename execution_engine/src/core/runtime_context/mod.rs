@@ -32,7 +32,11 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
-    shared::{gas::Gas, newtypes::CorrelationId},
+    shared::{
+        gas::Gas,
+        host_function_costs::{Cost, HostFunction},
+        newtypes::CorrelationId,
+    },
     storage::global_state::StateReader,
 };
 
@@ -748,6 +752,7 @@ where
     pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
+
         // gas charge overflow protection
         match prev.checked_add(&amount) {
             None => {
@@ -786,9 +791,34 @@ where
 
         let storage_costs = self.engine_config().wasm_config().storage_costs();
 
-        let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
+        match storage_costs.calculate_gas_cost(bytes_count) {
+            Some(cost) => self.charge_gas(cost),
+            None => {
+                // This is the case where we have to exit early as gas counter would overflow as
+                // user tried to write too much data.
+                self.set_gas_counter(self.gas_limit());
+                Err(Error::GasLimit)
+            }
+        }
+    }
 
-        self.charge_gas(gas_cost)
+    /// Calculate gas cost for a host function.
+    pub(crate) fn charge_host_function_call<T>(
+        &mut self,
+        host_function: &HostFunction<T>,
+        weights: T,
+    ) -> Result<(), Error>
+    where
+        T: AsRef<[Cost]> + Copy,
+    {
+        match host_function.calculate_gas_cost(weights) {
+            Some(cost) => self.charge_gas(cost),
+            None => {
+                // This operation would overflow the `Gas` range and we can safely exit early here.
+                self.set_gas_counter(self.gas_limit());
+                Err(Error::GasLimit)
+            }
+        }
     }
 
     /// Charges gas for using a host system contract's entrypoint.

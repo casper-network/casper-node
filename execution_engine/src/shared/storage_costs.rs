@@ -25,12 +25,14 @@ impl StorageCosts {
 
     /// Calculates gas cost for storing `bytes`.
     ///
-    /// This method will never overflow
-    pub fn calculate_gas_cost(&self, bytes: usize) -> Gas {
-        let gas_per_byte = self.gas_per_byte as u64;
-        let bytes_size = bytes as u64;
-        let value = gas_per_byte.saturating_mul(bytes_size);
-        Gas::new(value)
+    /// Returns wrapped [`Gas`] if calculation did not overflow. This method will return [`None`] if
+    /// the result would overflow [`Gas`] range - in this case the contract execution logic should
+    /// exit early with a gas limit error.
+    pub fn calculate_gas_cost(&self, bytes: usize) -> Option<Gas> {
+        let lhs = self.gas_per_byte as u64;
+        let rhs = bytes as u64;
+        let gas_cost = lhs.checked_mul(rhs).map(Gas::new)?;
+        Some(gas_cost)
     }
 }
 
@@ -88,7 +90,7 @@ pub mod tests {
         let cost = storage_costs.calculate_gas_cost(SMALL_WEIGHT);
 
         let expected_cost = (DEFAULT_GAS_PER_BYTE_COST as u64) * (SMALL_WEIGHT as u64);
-        assert_eq!(cost, Gas::new(expected_cost));
+        assert_eq!(cost, Some(Gas::new(expected_cost)));
     }
 
     #[test]
@@ -101,7 +103,7 @@ pub mod tests {
 
         assert!(expected_cost > U512::from(u64::MAX));
 
-        assert_eq!(cost, Gas::MAX);
+        assert_eq!(cost, None);
     }
 }
 

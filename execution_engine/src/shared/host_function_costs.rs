@@ -1,6 +1,5 @@
 use datasize::DataSize;
-use num::Saturating;
-use num_traits::SaturatingMul;
+use num::{CheckedAdd, CheckedMul};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -132,14 +131,17 @@ where
     }
 
     /// Calculate gas cost for a host function
-    pub fn calculate_gas_cost(&self, weights: T) -> Gas {
+    pub fn calculate_gas_cost(&self, weights: T) -> Option<Gas> {
         let mut gas = Gas::new(self.cost.into());
+
+        // sum i->n weight_i * arg_i
         for (argument, weight) in self.arguments.as_ref().iter().zip(weights.as_ref()) {
             let lhs = Gas::new((*argument).into());
             let rhs = Gas::new((*weight).into());
-            gas = gas.saturating_add(lhs.saturating_mul(&rhs));
+            let pn = lhs.checked_mul(&rhs)?;
+            gas = gas.checked_add(&pn)?;
         }
-        gas
+        Some(gas)
     }
 }
 
@@ -716,7 +718,7 @@ mod tests {
             + (ARGUMENT_COSTS[2] * WEIGHTS[2]);
         assert_eq!(
             host_function.calculate_gas_cost(WEIGHTS),
-            Gas::new(expected_cost.into())
+            Some(Gas::new(expected_cost.into()))
         );
     }
 
@@ -735,7 +737,7 @@ mod tests {
         let large_value = U512::from(large_value);
         let expected_value = large_value + (U512::from(4) * large_value * large_value);
         assert!(expected_value > U512::from(u64::MAX));
-        assert_eq!(lhs, Gas::MAX);
+        assert_eq!(lhs, None);
     }
 }
 
