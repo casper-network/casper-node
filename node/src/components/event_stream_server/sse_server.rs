@@ -101,6 +101,8 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
+    /// TODO[RC]
+    DeployExpired { deploy_hash: Box<DeployHash> },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
@@ -123,6 +125,7 @@ impl SseData {
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
             SseData::DeployAccepted { .. } => filter.contains(&EventFilter::DeployAccepted),
             SseData::DeployProcessed { .. } => filter.contains(&EventFilter::DeployProcessed),
+            SseData::DeployExpired { .. } => filter.contains(&EventFilter::DeployExpired),
             SseData::Fault { .. } => filter.contains(&EventFilter::Fault),
             SseData::FinalitySignature(_) => filter.contains(&EventFilter::FinalitySignature),
             SseData::Step { .. } => filter.contains(&EventFilter::Step),
@@ -171,6 +174,14 @@ impl SseData {
             dependencies: deploy.header().dependencies().clone(),
             block_hash: Box::new(BlockHash::random(rng)),
             execution_result: Box::new(rng.gen()),
+        }
+    }
+
+    /// TODO[RC]
+    pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
+        let deploy = Deploy::random(rng);
+        SseData::DeployExpired {
+            deploy_hash: Box::new(*deploy.id()), // TODO[RC] Is the hash enough?
         }
     }
 
@@ -257,6 +268,7 @@ pub(super) enum EventFilter {
     BlockAdded,
     DeployAccepted,
     DeployProcessed,
+    DeployExpired,
     Fault,
     FinalitySignature,
     Step,
@@ -299,6 +311,7 @@ async fn filter_map_server_sent_event(
 
         &SseData::BlockAdded { .. }
         | &SseData::DeployProcessed { .. }
+        | &SseData::DeployExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_) => Some(Ok(WarpServerSentEvent::default()

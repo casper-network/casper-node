@@ -32,7 +32,7 @@ use sse_server::{
 
 /// The total number of random events each `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.
-const EVENT_COUNT: u32 = 100;
+const EVENT_COUNT: u32 = 10;
 /// The maximum number of random events each `EventStreamServer` will emit, excluding the initial
 /// `ApiVersion` event.
 const MAX_EVENT_COUNT: u32 = 100_000_000;
@@ -198,6 +198,8 @@ struct TestFixture {
 impl TestFixture {
     /// Constructs a new `TestFixture` including `EVENT_COUNT` random events ready to be served.
     fn new(rng: &mut TestRng) -> Self {
+        const DISTINCT_EVENTS_COUNT: u32 = 7;
+
         let _ = logging::init();
         let storage_dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(&storage_dir).unwrap();
@@ -205,7 +207,7 @@ impl TestFixture {
 
         let mut deploys = HashMap::new();
         let events = (0..EVENT_COUNT)
-            .map(|i| match i % 6 {
+            .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
                     let (event, deploy) = SseData::random_deploy_accepted(rng);
@@ -213,9 +215,10 @@ impl TestFixture {
                     event
                 }
                 2 => SseData::random_deploy_processed(rng),
-                3 => SseData::random_fault(rng),
-                4 => SseData::random_step(rng),
-                5 => SseData::random_finality_signature(rng),
+                3 => SseData::random_deploy_expired(rng),
+                4 => SseData::random_fault(rng),
+                5 => SseData::random_step(rng),
+                6 => SseData::random_finality_signature(rng),
                 _ => unreachable!(),
             })
             .collect();
@@ -285,6 +288,8 @@ impl TestFixture {
                 EVENT_COUNT
             };
             for (id, event) in events.iter().cycle().enumerate().take(event_count as usize) {
+                println!("XXX Sending event: {:?}", event);
+
                 if server_stopper.should_stop() {
                     debug!("stopping server early");
                     return;
@@ -590,6 +595,9 @@ async fn should_serve_events_with_no_query(path: &str) {
     let url = url(server_address, path, None);
     let (expected_events, final_id) = fixture.all_filtered_events(path);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
+
+    dbg!(&received_events);
+
     fixture.stop_server().await;
 
     assert_eq!(received_events, expected_events);
