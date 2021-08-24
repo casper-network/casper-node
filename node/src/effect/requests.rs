@@ -558,7 +558,6 @@ pub(crate) enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
