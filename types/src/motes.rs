@@ -1,7 +1,11 @@
 //! The `motes` module is used for working with Motes.
 
 use alloc::vec::Vec;
-use core::{fmt, iter::Sum};
+use core::{
+    fmt,
+    iter::Sum,
+    ops::{Add, Div, Mul, Sub},
+};
 
 use datasize::DataSize;
 use num::Zero;
@@ -48,7 +52,7 @@ impl fmt::Display for Motes {
     }
 }
 
-impl core::ops::Add for Motes {
+impl Add for Motes {
     type Output = Motes;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -57,7 +61,7 @@ impl core::ops::Add for Motes {
     }
 }
 
-impl core::ops::Sub for Motes {
+impl Sub for Motes {
     type Output = Motes;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -66,7 +70,7 @@ impl core::ops::Sub for Motes {
     }
 }
 
-impl core::ops::Div for Motes {
+impl Div for Motes {
     type Output = Motes;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -75,7 +79,7 @@ impl core::ops::Div for Motes {
     }
 }
 
-impl core::ops::Mul for Motes {
+impl Mul for Motes {
     type Output = Motes;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -96,7 +100,7 @@ impl Zero for Motes {
 
 impl Sum for Motes {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Motes::zero(), core::ops::Add::add)
+        iter.fold(Motes::zero(), Add::add)
     }
 }
 

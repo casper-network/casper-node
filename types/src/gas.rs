@@ -1,6 +1,10 @@
 //! The `gas` module is used for working with Gas including converting to and from Motes.
 
-use core::{fmt, iter::Sum};
+use core::{
+    fmt,
+    iter::Sum,
+    ops::{Add, AddAssign, Div, Mul, Sub},
+};
 
 use num::Zero;
 
@@ -48,7 +52,7 @@ impl fmt::Display for Gas {
     }
 }
 
-impl core::ops::Add for Gas {
+impl Add for Gas {
     type Output = Gas;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -57,7 +61,7 @@ impl core::ops::Add for Gas {
     }
 }
 
-impl core::ops::Sub for Gas {
+impl Sub for Gas {
     type Output = Gas;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -66,7 +70,7 @@ impl core::ops::Sub for Gas {
     }
 }
 
-impl core::ops::Div for Gas {
+impl Div for Gas {
     type Output = Gas;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -75,7 +79,7 @@ impl core::ops::Div for Gas {
     }
 }
 
-impl core::ops::Mul for Gas {
+impl Mul for Gas {
     type Output = Gas;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -84,7 +88,7 @@ impl core::ops::Mul for Gas {
     }
 }
 
-impl core::ops::AddAssign for Gas {
+impl AddAssign for Gas {
     fn add_assign(&mut self, rhs: Self) {
         self.0 += rhs.0
     }
@@ -102,7 +106,7 @@ impl Zero for Gas {
 
 impl Sum for Gas {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Gas::zero(), core::ops::Add::add)
+        iter.fold(Gas::zero(), Add::add)
     }
 }
 
