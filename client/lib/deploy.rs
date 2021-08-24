@@ -12,7 +12,8 @@ use casper_node::{
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, UIntParseError, URef, U512,
+    account::AccountHash, AsymmetricType, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    UIntParseError, URef, U512,
 };
 
 use crate::{
@@ -263,8 +264,6 @@ impl DeployExt for Deploy {
             context: TRANSFER_ARG_AMOUNT,
             error: UIntParseError::FromDecStr(err),
         })?;
-        let target_account = parsing::parse_public_key(target_account)?;
-        let transfer_id = parsing::transfer_id(transfer_id)?;
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
@@ -273,9 +272,22 @@ impl DeployExt for Deploy {
             transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
         }
 
-        let target_account_hash = target_account.to_account_hash().value();
-        transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
+        if let Ok(public_key) = PublicKey::from_hex(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, public_key)?;
+        } else if let Ok(account_hash) = AccountHash::from_formatted_str(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, account_hash)?;
+        } else if let Ok(uref) = URef::from_formatted_str(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, uref)?;
+        } else {
+            return Err(Error::InvalidArgument {
+                context: "target_account",
+                error: String::from(
+                    "target_account could not be parsed as PublicKey, AccountHash or URef.",
+                ),
+            });
+        }
 
+        let transfer_id = parsing::transfer_id(transfer_id)?;
         let maybe_transfer_id = Some(transfer_id);
         transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
 
