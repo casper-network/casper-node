@@ -11,6 +11,7 @@ members = [
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
     "types",
+    "utils/validation",
     "utils/global-state-update-gen",
 ]
 
@@ -23,6 +24,7 @@ default-members = [
     "execution_engine_testing/tests",
     "node",
     "utils/global-state-update-gen",
+    "utils/validation"
 ]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
