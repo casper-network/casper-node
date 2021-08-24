@@ -35,8 +35,7 @@ impl Gas {
             .map(Self::new)
     }
 
-    /// Safe addition method that returns an `Option<Gas>`. Returns `None` if an overflow has
-    /// occurred.
+    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
