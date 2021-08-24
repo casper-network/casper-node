@@ -25,7 +25,9 @@ impl Gas {
         self.0
     }
 
-    /// Returns an `Option<Gas>`. Returns `None` if the conversion cannot be performed.
+    /// Converts the given `motes` to `Gas` by dividing them by `conv_rate`.
+    ///
+    /// Returns `None` if `conv_rate == 0`.
     pub fn from_motes(motes: Motes, conv_rate: u64) -> Option<Self> {
         motes
             .value()
