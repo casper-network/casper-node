@@ -28,7 +28,7 @@ impl Motes {
         Motes(value)
     }
 
-    /// Safe addition method. Returns an `Option<Motes>`. Returns `None` if an overflow occurred.
+    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
