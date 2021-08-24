@@ -215,44 +215,6 @@ where
     }
 }
 
-/// A ContractRuntime announcement.
-#[derive(Debug)]
-pub(crate) enum ContractRuntimeAnnouncement {
-    /// A new block from the linear chain was produced.
-    LinearChainBlock(Box<LinearChainBlock>),
-    /// A Step succeeded and has altered global state.
-    StepSuccess {
-        /// The era id in which the step was committed to global state.
-        era_id: EraId,
-        /// The JSON API format journal of transforms committed to global state.
-        json_execution_journal: JsonExecutionJournal,
-    },
-}
-
-impl ContractRuntimeAnnouncement {
-    /// Create a ContractRuntimeAnnouncement::LinearChainBlock from it's parts.
-    pub(crate) fn linear_chain_block(
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
-    ) -> Self {
-        Self::LinearChainBlock(Box::new(LinearChainBlock {
-            block,
-            execution_results,
-        }))
-    }
-
-    /// Create a ContractRuntimeAnnouncement::StepSuccess from an execution effect.
-    pub(crate) fn step_success(
-        era_id: EraId,
-        json_execution_journal: JsonExecutionJournal,
-    ) -> Self {
-        Self::StepSuccess {
-            era_id,
-            json_execution_journal,
-        }
-    }
-}
-
 /// A ContractRuntimeAnnouncement's block.
 #[derive(Debug)]
 pub(crate) struct LinearChainBlock {
@@ -260,23 +222,6 @@ pub(crate) struct LinearChainBlock {
     pub(crate) block: Block,
     /// The results of executing the deploys in this block.
     pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
-}
-
-impl Display for ContractRuntimeAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ContractRuntimeAnnouncement::LinearChainBlock(linear_chain_block) => {
-                write!(
-                    f,
-                    "created linear chain block {}",
-                    linear_chain_block.block.hash()
-                )
-            }
-            ContractRuntimeAnnouncement::StepSuccess { era_id, .. } => {
-                write!(f, "step completed for {}", era_id)
-            }
-        }
-    }
 }
 
 /// A Gossiper announcement.

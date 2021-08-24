@@ -833,6 +833,11 @@ impl Deploy {
             None,
         )
     }
+
+    #[cfg(test)]
+    pub(crate) fn invalidate(&mut self) {
+        self.header.chain_name.clear();
+    }
 }
 
 impl DocExample for Deploy {

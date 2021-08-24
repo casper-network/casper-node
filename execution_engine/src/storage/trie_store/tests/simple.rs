@@ -51,6 +51,7 @@ fn lmdb_put_succeeds() {
         &tmp_dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -109,6 +110,7 @@ fn lmdb_put_get_succeeds() {
         &tmp_dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -155,6 +157,7 @@ fn lmdb_put_get_many_succeeds() {
         &tmp_dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -226,6 +229,7 @@ fn lmdb_uncommitted_read_write_txn_does_not_persist() {
         &tmp_dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -274,6 +278,7 @@ fn lmdb_read_write_transaction_does_not_block_read_transaction() {
         &dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
 
@@ -330,6 +335,7 @@ fn lmdb_reads_are_isolated() {
         &dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -391,6 +397,7 @@ fn lmdb_reads_are_isolated_2() {
         &dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -458,6 +465,7 @@ fn lmdb_dbs_are_isolated() {
         &dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();
@@ -521,6 +529,7 @@ fn lmdb_transactions_can_be_used_across_sub_databases() {
         &dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();
@@ -588,6 +597,7 @@ fn lmdb_uncommitted_transactions_across_sub_databases_do_not_persist() {
         &dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();

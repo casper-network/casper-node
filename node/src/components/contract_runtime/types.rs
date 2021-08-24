@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
 };
-use casper_types::{EraId, JsonExecutionResult, ProtocolVersion};
+use casper_types::{EraId, JsonExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::types::{Block, DeployHash, DeployHeader};
 use casper_execution_engine::shared::execution_journal::ExecutionJournal;
@@ -81,6 +81,15 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
     }
 }
 
+/// Effects from running step and the next era validators that are gathered when an era ends.
+#[derive(Debug)]
+pub struct StepEffectAndUpcomingEraValidators {
+    /// An [`ExecutionEffect`] created by an era ending.
+    pub step_execution_effect: JsonExecutionEffect,
+    /// Validator sets for all upcoming eras that have already been determined.
+    pub upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+}
+
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution
 /// effects it may have.
 #[derive(Debug)]
@@ -89,6 +98,8 @@ pub struct BlockAndExecutionEffects {
     pub block: Block,
     /// The results from executing the deploys in the block.
     pub execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
+    /// The [`ExecutionEffect`] and the upcoming validator sets determined by the `step`
+    pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
     /// An [`ExecutionJournal`] created if an era ended.
     pub maybe_step_execution_journal: Option<ExecutionJournal>,
 }
