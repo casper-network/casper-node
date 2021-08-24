@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.  The format
 * Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
 
 ### Changed
+* The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
+  * `standstill_timeout` causes the node to restart if no progress is made.
+  * `request_state_interval` makes the node periodically request the latest state from a peer.
+  * `log_synchronizer_interval` periodically logs the number of entries in the synchronizer queues.
 * Add support for providing node uptime via the addition of an `uptime` parameter in the response to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
