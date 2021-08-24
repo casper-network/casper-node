@@ -108,6 +108,7 @@ fn purge_vertices() {
     // * b0: in the main queue
     // * c2: waiting for dependency c1 to be added
     let purge_vertex_timeout = 0x20;
+    #[allow(clippy::integer_arithmetic)]
     sync.purge_vertices((0x41 - purge_vertex_timeout).into());
 
     // The main queue should now contain only c1. If we remove it, the synchronizer is empty.
