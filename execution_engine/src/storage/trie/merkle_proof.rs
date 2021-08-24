@@ -239,15 +239,15 @@ where
 mod gens {
     use proptest::{collection::vec, prelude::*};
 
-    use casper_types::{gens::key_arb, Key};
+    use casper_types::{
+        gens::{key_arb, stored_value_arb},
+        Key, StoredValue,
+    };
 
-    use crate::{
-        shared::stored_value::{gens::stored_value_arb, StoredValue},
-        storage::trie::{
-            gens::trie_pointer_arb,
-            merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-            RADIX,
-        },
+    use crate::storage::trie::{
+        gens::trie_pointer_arb,
+        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
+        RADIX,
     };
 
     const POINTERS_SIZE: usize = RADIX / 8;

@@ -11,14 +11,12 @@ use casper_types::{
         },
         mint, CallStackElement,
     },
-    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH,
-    U512,
+    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
+    BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 use super::Runtime;
-use crate::{
-    core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
-};
+use crate::{core::execution, storage::global_state::StateReader};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {

@@ -85,18 +85,17 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
-        execution_effect::ExecutionEffect,
         genesis::GenesisSuccess,
         upgrade::{UpgradeConfig, UpgradeSuccess},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    Transfer, U512,
+    StoredValue, Transfer, U512,
 };
 
 use crate::{
@@ -119,9 +118,9 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    NetworkAnnouncement, RpcServerAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
 };
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -131,7 +130,7 @@ use requests::{
 
 use self::announcements::BlocklistAnnouncement;
 use crate::components::contract_runtime::{
-    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
+    BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeAnnouncement, ExecutionPreState,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -174,19 +173,24 @@ impl<T: 'static + Send> Responder<T> {
     }
 }
 
-impl<T> Responder<T> {
+impl<T> Responder<T>
+where
+    T: Debug,
+{
     /// Send `data` to the origin of the request.
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.0.take() {
-            if sender.send(data).is_err() {
-                let backtrace = backtrace::Backtrace::new();
+            if let Err(data) = sender.send(data) {
                 error!(
-                    ?backtrace,
+                    ?data,
                     "could not send response to request down oneshot channel"
                 );
             }
         } else {
-            error!("tried to send a value down a responder channel, but it was already used");
+            error!(
+                ?data,
+                "tried to send a value down a responder channel, but it was already used"
+            );
         }
     }
 }
@@ -399,6 +403,14 @@ impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
     pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
         EffectBuilder(event_queue_handle)
+    }
+
+    /// Schedules a regular event.
+    pub(crate) async fn schedule_regular<E>(self, event: E)
+    where
+        REv: From<E>,
+    {
+        self.0.schedule(event, QueueKind::Regular).await
     }
 
     /// Extract the event queue handle out of the effect builder.
@@ -706,22 +718,6 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce a committed Step success.
-    pub(crate) async fn announce_step_success(
-        self,
-        era_id: EraId,
-        execution_effect: ExecutionEffect,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
                 QueueKind::Regular,
             )
             .await

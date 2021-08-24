@@ -19,12 +19,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
-    EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, U512,
+    EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
 use super::error;
@@ -34,10 +34,7 @@ use crate::{
         execution,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{
-        account::Account, newtypes::CorrelationId, stored_value::StoredValue, wasm, wasm_prep,
-        wasm_prep::Preprocessor,
-    },
+    shared::{newtypes::CorrelationId, wasm, wasm_prep, wasm_prep::Preprocessor},
     storage::global_state::StateReader,
 };
 

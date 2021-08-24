@@ -20,7 +20,6 @@ use casper_execution_engine::{
             DEFAULT_UNREACHABLE_COST,
         },
         storage_costs::StorageCosts,
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
@@ -32,7 +31,7 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    CLValue, EraId, ProtocolVersion, U512,
+    CLValue, EraId, ProtocolVersion, StoredValue, U512,
 };
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
