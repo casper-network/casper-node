@@ -33,7 +33,7 @@ impl Motes {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
-    /// Returns the `U512` value.
+    /// Returns the inner `U512` value.
     pub fn value(&self) -> U512 {
         self.0
     }
