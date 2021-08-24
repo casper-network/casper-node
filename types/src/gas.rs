@@ -41,8 +41,7 @@ impl Gas {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
-    /// Safe subtraction method that returns an `Option<Gas>`. Returns `None` if an overflow has
-    /// occurred.
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
     pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
         self.0.checked_sub(rhs.value()).map(Self::new)
     }
