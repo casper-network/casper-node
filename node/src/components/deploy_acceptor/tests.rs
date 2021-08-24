@@ -36,6 +36,7 @@ use crate::{
     NodeRng,
 };
 
+const VERIFY_ACCOUNTS: bool = true;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -215,7 +216,7 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let deploy_acceptor = DeployAcceptor::new(
-            super::Config::new(true),
+            super::Config::new(VERIFY_ACCOUNTS),
             &Chainspec::from_resources("local"),
         );
 
