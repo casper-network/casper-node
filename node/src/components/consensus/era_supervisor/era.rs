@@ -211,6 +211,14 @@ impl<I> Era<I> {
             .iter()
             .filter_map(|(public_key, weight)| is_active(public_key).then(|| *weight))
             .sum();
+        if total_weight.is_zero() {
+            error!(total_rewards, "total validator weight is 0");
+            return EraReport {
+                rewards: BTreeMap::new(),
+                equivocators: self.accusations(),
+                inactive_validators,
+            };
+        }
         let shift = if total_weight.checked_mul(total_rewards.into()).is_none() {
             64
         } else {
