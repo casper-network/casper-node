@@ -16,7 +16,7 @@ use crate::{
     Gas, U512,
 };
 
-/// `Motes` are small amounts of cspr, expressed as `U512`.
+/// A struct representing a number of `Motes`.
 #[derive(
     DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
 )]
