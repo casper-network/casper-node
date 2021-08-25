@@ -170,6 +170,19 @@ pub enum DeployValidationFailure {
         got: usize,
     },
 
+    /// Missing payment amount.
+    #[error("missing payment amount")]
+    MissingPaymentAmount,
+
+    /// The payment amount associated with the deploy exceeds the block gas limit.
+    #[error("payment amount of {got} exceeds the block gas limit of {block_gas_limit}")]
+    ExceededBlockGasLimit {
+        /// Configured block gas limit
+        block_gas_limit: u64,
+        /// The payment amount received
+        got: U512,
+    },
+
     /// Missing transfer amount.
     #[error("missing transfer amount")]
     MissingTransferAmount,
@@ -755,6 +768,31 @@ impl Deploy {
             });
         }
 
+        // Transfers have a fixed cost and won't blow the block gas limit.
+        // Other deploys can, therefore, statically check the payment amount
+        // associated with the deploy.
+        if !self.session().is_transfer() {
+            let value = self
+                .payment()
+                .args()
+                .get(ARG_AMOUNT)
+                .ok_or(DeployValidationFailure::MissingPaymentAmount)?;
+            let payment_amount = value
+                .clone()
+                .into_t::<U512>()
+                .map_err(|_| DeployValidationFailure::MissingPaymentAmount)?;
+            if payment_amount > U512::from(config.block_gas_limit) {
+                info!(
+                    amount = %payment_amount,
+                    block_gas_limit = %config.block_gas_limit, "payment amount exceeds block gas limit"
+                );
+                return Err(DeployValidationFailure::ExceededBlockGasLimit {
+                    block_gas_limit: config.block_gas_limit,
+                    got: payment_amount,
+                });
+            }
+        }
+
         let payment_args_length = self.payment().args().serialized_length();
         if payment_args_length > config.payment_args_max_length as usize {
             info!(
@@ -1249,6 +1287,53 @@ mod tests {
         let expected_error = DeployValidationFailure::ExcessiveTimeToLive {
             max_ttl: deploy_config.max_ttl,
             got: ttl,
+        };
+
+        assert_eq!(
+            deploy.is_acceptable(chain_name, &deploy_config),
+            Err(expected_error)
+        );
+        assert!(
+            deploy.is_valid.is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
+    }
+
+    #[test]
+    fn not_acceptable_due_to_excessive_payment_amount() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let amount = U512::from(deploy_config.block_gas_limit + 1);
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => amount
+            },
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+
+        deploy.payment = payment;
+        deploy.session = session;
+
+        let expected_error = DeployValidationFailure::ExceededBlockGasLimit {
+            block_gas_limit: deploy_config.block_gas_limit,
+            got: amount,
         };
 
         assert_eq!(
