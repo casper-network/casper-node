@@ -211,7 +211,12 @@ impl<I> Era<I> {
             .iter()
             .filter_map(|(public_key, weight)| is_active(public_key).then(|| *weight))
             .sum();
-        if total_weight.is_zero() {
+        let shift = if total_weight.checked_mul(total_rewards.into()).is_none() {
+            64
+        } else {
+            0
+        };
+        if (total_weight >> shift).is_zero() {
             error!(total_rewards, "total validator weight is 0");
             return EraReport {
                 rewards: BTreeMap::new(),
@@ -219,11 +224,6 @@ impl<I> Era<I> {
                 inactive_validators,
             };
         }
-        let shift = if total_weight.checked_mul(total_rewards.into()).is_none() {
-            64
-        } else {
-            0
-        };
         let rewards = self
             .validators
             .iter()
