@@ -553,12 +553,46 @@ mod tests {
     fn should_create_transfer() {
         use casper_types::{AsymmetricType, PublicKey};
 
+        // with public key.
         let secret_key = SecretKey::generate_ed25519().unwrap();
         let public_key = PublicKey::from(&secret_key).to_hex();
         let transfer_deploy = Deploy::new_transfer(
             "10000",
             None,
             &public_key,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
+
+        // with account hash
+        let account_hash =
+            "account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            account_hash,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
+
+        // with uref.
+        let uref = "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            uref,
             "1",
             deploy_params().try_into().unwrap(),
             ExecutableDeployItem::Transfer {
