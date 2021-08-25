@@ -351,7 +351,7 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
         peer: NodeId,
     ) -> Effects<Event<BlockWithMetadata>> {
         effect_builder
-            .get_block_at_height_with_metadata_from_storage(id)
+            .get_block_and_sufficient_finality_signatures_by_height_from_storage(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,

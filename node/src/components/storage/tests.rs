@@ -5,10 +5,10 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
+    sync::Arc,
 };
 
 use lmdb::{Cursor, Transaction};
-use num::rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
@@ -32,10 +32,10 @@ use crate::{
     },
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata, FinalitySignature, FinalizedBlock, HashingAlgorithmVersion,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, Deploy,
+        DeployHash, DeployMetadata, FinalitySignature, FinalizedBlock, HashingAlgorithmVersion,
     },
-    utils::WithDir,
+    utils::{Loadable, WithDir},
 };
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
@@ -63,10 +63,9 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
+        Arc::new(Chainspec::from_resources("local")),
         None,
-        ProtocolVersion::from_parts(1, 0, 0),
         false,
-        "test",
     )
     .expect("could not create storage component fixture")
 }
@@ -83,12 +82,13 @@ fn storage_fixture_with_hard_reset(
     reset_era_id: EraId,
 ) -> Storage {
     let cfg = new_config(harness);
+    let mut chainspec = Chainspec::from_resources("local");
+    chainspec.protocol_config.version = ProtocolVersion::from_parts(1, 1, 0);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
+        Arc::new(chainspec),
         Some(reset_era_id),
-        ProtocolVersion::from_parts(1, 1, 0),
         false,
-        "test",
     )
     .expect("could not create storage component fixture")
 }
@@ -106,12 +106,13 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
     protocol_version: ProtocolVersion,
 ) -> Storage {
     let cfg = new_config(harness);
+    let mut chainspec = Chainspec::from_resources("local");
+    chainspec.protocol_config.version = protocol_version;
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
+        Arc::new(chainspec),
         Some(reset_era_id),
-        protocol_version,
         false,
-        "test",
     )
     .expect("could not create storage component fixture")
 }
@@ -511,18 +512,13 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
         vec![(alice_public_key, 123.into()), (bob_public_key, 123.into())]
             .into_iter()
             .collect();
-    let finality_threshold_fraction = Ratio::new(1, 3);
     let switch_block = switch_block_for_block_header(block.header(), genesis_validator_weights);
     let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
     assert!(was_new, "putting switch block should have returned `true`");
 
     {
         let block_header_with_metadata = storage
-            .read_block_header_and_sufficient_finality_signatures_by_height(
-                block.header().height(),
-                finality_threshold_fraction,
-                None, // last emergency restart
-            )
+            .read_block_header_and_sufficient_finality_signatures_by_height(block.header().height())
             .expect("should not throw exception")
             .expect("should not be None");
         assert_eq!(
@@ -536,11 +532,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
         );
 
         let block_with_metadata = storage
-            .read_block_and_sufficient_finality_signatures_by_height(
-                block.header().height(),
-                finality_threshold_fraction,
-                None, // last emergency restart
-            )
+            .read_block_and_sufficient_finality_signatures_by_height(block.header().height())
             .expect("should not throw exception")
             .expect("should not be None");
         assert_eq!(
@@ -1256,17 +1248,18 @@ fn should_hard_reset() {
 fn should_create_subdir_named_after_network() {
     let harness = ComponentHarness::default();
     let cfg = new_config(&harness);
-
+    let network_name = "test";
+    let mut chainspec = Chainspec::from_resources("local");
+    chainspec.network_config.name = network_name.to_string();
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
+        Arc::new(chainspec),
         None,
-        ProtocolVersion::from_parts(1, 0, 0),
         false,
-        "test",
     )
     .unwrap();
 
-    let expected_path = cfg.path.join("test");
+    let expected_path = cfg.path.join(network_name);
 
     assert!(expected_path.exists());
     assert_eq!(expected_path, storage.root_path());

@@ -49,6 +49,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -57,7 +58,6 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
-use num::rational::Ratio;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -66,7 +66,7 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, PublicKey, Transfer, Transform};
 
 use crate::{
     components::{consensus, linear_chain_sync::FinalitySignatureError, Component},
@@ -80,7 +80,7 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Chainspec, Deploy, DeployHash,
         DeployHeader, DeployMetadata, HashingAlgorithmVersion, MerkleBlockBody,
         MerkleBlockBodyPart, MerkleLinkedListNode, TimeDiff,
     },
@@ -310,6 +310,8 @@ impl From<lmdb::Error> for Error {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct Storage {
+    /// The chainspec.
+    chainspec: Arc<Chainspec>,
     /// Storage location.
     root: PathBuf,
     /// Environment holding LMDB databases.
@@ -394,16 +396,15 @@ impl Storage {
     /// only be required if the node is detected to have restarted after a crash.
     pub(crate) fn new(
         cfg: &WithDir<Config>,
+        chainspec: Arc<Chainspec>,
         hard_reset_to_start_of_era: Option<EraId>,
-        protocol_version: ProtocolVersion,
         should_check_integrity: bool,
-        network_name: &str,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
         // Create the database directory.
         let mut root = cfg.with_dir(config.path.clone());
-        let network_subdir = root.join(network_name);
+        let network_subdir = root.join(chainspec.network_config.name.clone());
 
         if !network_subdir.exists() {
             fs::create_dir_all(&network_subdir)
@@ -468,7 +469,7 @@ impl Storage {
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
                 if block_header.era_id() >= invalid_era
-                    && block_header.protocol_version() < protocol_version
+                    && block_header.protocol_version() < chainspec.protocol_config.version
                 {
                     match block_header.hashing_algorithm_version() {
                         HashingAlgorithmVersion::V1 => {
@@ -565,6 +566,7 @@ impl Storage {
 
         Ok(Storage {
             root,
+            chainspec,
             env,
             block_header_db,
             block_body_v1_db,
@@ -833,6 +835,14 @@ impl Storage {
                     }))
                     .ignore()
             }
+            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                responder,
+            } => responder
+                .respond(
+                    self.read_block_and_sufficient_finality_signatures_by_height(block_height)?,
+                )
+                .ignore(),
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
                 responder,
@@ -1039,17 +1049,10 @@ impl Storage {
     pub fn read_block_header_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
-        finality_threshold_fraction: Ratio<u64>,
-        last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_header_and_finality_signatures = self
-            .get_block_header_and_sufficient_finality_signatures_by_height(
-                &mut txn,
-                height,
-                finality_threshold_fraction,
-                last_emergency_restart,
-            )?;
+        let maybe_block_header_and_finality_signatures =
+            self.get_block_header_and_sufficient_finality_signatures_by_height(&mut txn, height)?;
         drop(txn);
         Ok(maybe_block_header_and_finality_signatures)
     }
@@ -1060,17 +1063,10 @@ impl Storage {
     pub fn read_block_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
-        finality_threshold_fraction: Ratio<u64>,
-        last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockWithMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_and_finality_signatures = self
-            .get_block_and_sufficient_finality_signatures_by_height(
-                &mut txn,
-                height,
-                finality_threshold_fraction,
-                last_emergency_restart,
-            )?;
+        let maybe_block_and_finality_signatures =
+            self.get_block_and_sufficient_finality_signatures_by_height(&mut txn, height)?;
         drop(txn);
         Ok(maybe_block_and_finality_signatures)
     }
@@ -1458,18 +1454,11 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-        finality_threshold_fraction: Ratio<u64>,
-        last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockWithMetadata>, Error> {
         let BlockHeaderWithMetadata {
             block_header,
             block_signatures,
-        } = match self.get_block_header_and_sufficient_finality_signatures_by_height(
-            tx,
-            height,
-            finality_threshold_fraction,
-            last_emergency_restart,
-        )? {
+        } = match self.get_block_header_and_sufficient_finality_signatures_by_height(tx, height)? {
             None => return Ok(None),
             Some(block_header_with_metadata) => block_header_with_metadata,
         };
@@ -1491,8 +1480,6 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-        finality_threshold_fraction: Ratio<u64>,
-        last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let block_hash = match self.block_height_index.get(&height) {
             None => return Ok(None),
@@ -1502,12 +1489,7 @@ impl Storage {
             None => return Ok(None),
             Some(block_header) => block_header,
         };
-        let block_signatures = match self.get_sufficient_finality_signatures(
-            tx,
-            &block_header,
-            finality_threshold_fraction,
-            last_emergency_restart,
-        )? {
+        let block_signatures = match self.get_sufficient_finality_signatures(tx, &block_header)? {
             None => BlockSignatures::new(*block_hash, block_header.era_id()),
             Some(signatures) => signatures,
         };
@@ -1524,10 +1506,9 @@ impl Storage {
         &self,
         tx: &mut Tx,
         block_header: &BlockHeader,
-        finality_threshold_fraction: Ratio<u64>,
-        last_emergency_restart: Option<EraId>,
     ) -> Result<Option<BlockSignatures>, Error> {
-        if let Some(last_emergency_restart) = last_emergency_restart {
+        if let Some(last_emergency_restart) = self.chainspec.protocol_config.last_emergency_restart
+        {
             if block_header.era_id() <= last_emergency_restart {
                 debug!(
                     ?block_header,
@@ -1556,7 +1537,7 @@ impl Storage {
             None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
             Some(validator_weights) => consensus::check_sufficient_finality_signatures(
                 validator_weights,
-                finality_threshold_fraction,
+                self.chainspec.highway_config.finality_threshold_fraction,
                 &block_signatures,
             ),
         };
