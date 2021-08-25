@@ -182,7 +182,7 @@ impl SseData {
     pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
         let deploy = Deploy::random(rng);
         SseData::DeployExpired {
-            deploy_hash: Box::new(*deploy.id()), // TODO[RC] Is the hash enough?
+            deploy_hash: Box::new(*deploy.id()),
         }
     }
 

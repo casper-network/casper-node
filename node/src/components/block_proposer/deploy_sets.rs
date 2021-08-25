@@ -5,7 +5,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use tracing::warn;
 
 use super::{event::DeployInfo, BlockHeight, FinalizationQueue};
 use crate::types::{DeployHash, DeployHeader, Timestamp};

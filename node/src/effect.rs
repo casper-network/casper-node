@@ -608,8 +608,6 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<BlockProposerAnnouncement>,
     {
-        warn!("TODO[RC]: XXX scheduling event BlockProposerAnnouncement::DeploysExpired(hashes)");
-
         self.0
             .schedule(
                 BlockProposerAnnouncement::DeploysExpired(hashes),

@@ -1123,11 +1123,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockProposerAnnouncement(
                 BlockProposerAnnouncement::DeploysExpired(hashes),
             ) => {
-                warn!(
-                    "TODO[RC]: Got the DeploysExpired event with {} hashes",
-                    hashes.len()
-                );
-
                 let mut effects = Effects::new();
                 for hash in hashes {
                     let reactor_event = ParticipatingEvent::EventStreamServer(
@@ -1136,15 +1131,6 @@ impl reactor::Reactor for Reactor {
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 }
                 effects
-
-                // if !hashes.is_empty() {
-                //     let reactor_event = ParticipatingEvent::EventStreamServer(
-                //         event_stream_server::Event::DeployExpired(*hashes.first().unwrap()),
-                //     );
-                //     self.dispatch_event(effect_builder, rng, reactor_event)
-                // } else {
-                //     Effects::new()
-                // }
             }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),

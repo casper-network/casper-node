@@ -181,7 +181,6 @@ where
             }),
             Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
             Event::DeployExpired(deploy_hash) => {
-                warn!("TODO[RC]: XXX broadcasting expired hash: {}", deploy_hash);
                 self.broadcast(SseData::DeployExpired { deploy_hash })
             }
             Event::DeployProcessed {

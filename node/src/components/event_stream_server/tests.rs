@@ -288,8 +288,6 @@ impl TestFixture {
                 EVENT_COUNT
             };
             for (id, event) in events.iter().cycle().enumerate().take(event_count as usize) {
-                println!("XXX Sending event: {:?}", event);
-
                 if server_stopper.should_stop() {
                     debug!("stopping server early");
                     return;
@@ -595,8 +593,6 @@ async fn should_serve_events_with_no_query(path: &str) {
     let url = url(server_address, path, None);
     let (expected_events, final_id) = fixture.all_filtered_events(path);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
-
-    dbg!(&received_events);
 
     fixture.stop_server().await;
 

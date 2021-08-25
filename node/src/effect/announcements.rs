@@ -8,6 +8,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{EraId, ExecutionResult, PublicKey};
@@ -33,8 +34,7 @@ impl Display for BlockProposerAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             BlockProposerAnnouncement::DeploysExpired(hashes) => {
-                // TODO[RC]: Check how to Display pruned hashes,
-                write!(f, "{} pruned hashes", hashes.len())
+                write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
         }
     }
