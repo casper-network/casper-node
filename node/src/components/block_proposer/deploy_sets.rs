@@ -5,6 +5,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use tracing::warn;
 
 use super::{event::DeployInfo, BlockHeight, FinalizationQueue};
 use crate::types::{DeployHash, DeployHeader, Timestamp};
@@ -56,13 +57,14 @@ impl Display for BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
-    /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
-    /// pruned
-    pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
+    /// Prunes expired deploy information from the BlockProposerState,  returns the
+    /// hashes of deploys pruned.
+    pub(crate) fn prune(&mut self, current_instant: Timestamp) -> Vec<DeployHash> {
         let pending_deploys = prune_pending_deploys(&mut self.pending_deploys, current_instant);
         let pending_transfers = prune_pending_deploys(&mut self.pending_transfers, current_instant);
         let finalized = prune_deploys(&mut self.finalized_deploys, current_instant);
-        pending_deploys.len() + pending_transfers.len() + finalized.len()
+
+        [pending_deploys, pending_transfers, finalized].concat()
     }
 }
 
@@ -93,7 +95,7 @@ where
 }
 
 /// Prunes expired deploy information from an individual deploy collection, returns the
-/// hashes of pruned deploys.
+/// hashes of deploys pruned.
 pub(super) fn prune_deploys(
     deploys: &mut HashMap<DeployHash, DeployHeader>,
     current_instant: Timestamp,
@@ -102,7 +104,7 @@ pub(super) fn prune_deploys(
 }
 
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
-/// hashes of pruned deploys.
+/// hashes of deploys pruned.
 pub(super) fn prune_pending_deploys(
     deploys: &mut HashMap<DeployHash, (DeployInfo, Timestamp)>,
     current_instant: Timestamp,

@@ -31,6 +31,7 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::BlockProposerAnnouncement,
         requests::{BlockPayloadRequest, BlockProposerRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -128,7 +129,7 @@ impl BlockProposer {
 
 impl<REv> Component<REv> for BlockProposer
 where
-    REv: From<Event> + From<StorageRequest> + Send + 'static,
+    REv: From<Event> + From<StorageRequest> + From<BlockProposerAnnouncement> + Send + 'static,
 {
     type Event = Event;
     type ConstructionError = Infallible;
@@ -231,7 +232,7 @@ impl BlockProposerReady {
         event: Event,
     ) -> Effects<Event>
     where
-        REv: Send,
+        REv: Send + From<BlockProposerAnnouncement>,
     {
         match event {
             Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
@@ -263,13 +264,20 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::Prune => {
-                let pruned = self.prune(Timestamp::now());
-                debug!(%pruned, "pruned deploys from buffer");
+                let pruned_hashes = self.prune(Timestamp::now());
+                let pruned_count = pruned_hashes.len();
+                debug!(%pruned_count, "pruned deploys from buffer");
 
-                // Re-trigger timer after `PRUNE_INTERVAL`.
-                effect_builder
+                let mut effects = effect_builder
                     .set_timeout(PRUNE_INTERVAL)
-                    .event(|_| Event::Prune)
+                    .event(|_| Event::Prune);
+
+                effects.extend(
+                    effect_builder
+                        .announce_expired_deploys(pruned_hashes)
+                        .ignore(),
+                );
+                effects
             }
             Event::Loaded { .. } => {
                 // This should never happen, but we can just ignore the event and carry on.
@@ -492,8 +500,8 @@ impl BlockProposerReady {
         Arc::new(appendable_block.into_block_payload(accusations, random_bit))
     }
 
-    /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.
-    fn prune(&mut self, current_instant: Timestamp) -> usize {
+    /// Prunes expired deploy information from the BlockProposer, returns the hashes of deploys pruned.
+    fn prune(&mut self, current_instant: Timestamp) -> Vec<DeployHash> {
         self.sets.prune(current_instant)
     }
 

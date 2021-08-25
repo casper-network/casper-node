@@ -56,9 +56,10 @@ pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 pub const QUERY_FIELD: &str = "start_from";
 
 /// The filter associated with `/events/main` path.
-const MAIN_FILTER: [EventFilter; 4] = [
+const MAIN_FILTER: [EventFilter; 5] = [
     EventFilter::BlockAdded,
     EventFilter::DeployProcessed,
+    EventFilter::DeployExpired,
     EventFilter::Fault,
     EventFilter::Step,
 ];
@@ -102,7 +103,7 @@ pub enum SseData {
         execution_result: Box<ExecutionResult>,
     },
     /// TODO[RC]
-    DeployExpired { deploy_hash: Box<DeployHash> },
+    DeployExpired { deploy_hash: DeployHash },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,

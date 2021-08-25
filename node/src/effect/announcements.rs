@@ -24,8 +24,20 @@ use crate::{
 };
 
 // TODO[RC]: add comments
+#[derive(Debug, Serialize)]
 pub(crate) enum BlockProposerAnnouncement {
     DeploysExpired(Vec<DeployHash>),
+}
+
+impl Display for BlockProposerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockProposerAnnouncement::DeploysExpired(hashes) => {
+                // TODO[RC]: Check how to Display pruned hashes,
+                write!(f, "{} pruned hashes", hashes.len())
+            }
+        }
+    }
 }
 
 /// Control announcements are special announcements handled directly by the runtime/runner.

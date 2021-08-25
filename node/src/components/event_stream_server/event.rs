@@ -8,6 +8,7 @@ use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature
 pub enum Event {
     BlockAdded(Box<Block>),
     DeployAccepted(DeployHash),
+    DeployExpired(DeployHash),
     DeployProcessed {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
@@ -32,6 +33,9 @@ impl Display for Event {
             Event::BlockAdded(block) => write!(formatter, "block added {}", block.hash()),
             Event::DeployAccepted(deploy_hash) => {
                 write!(formatter, "deploy accepted {}", deploy_hash)
+            }
+            Event::DeployExpired(deploy_hash) => {
+                write!(formatter, "deploy expired {}", deploy_hash)
             }
             Event::DeployProcessed { deploy_hash, .. } => {
                 write!(formatter, "deploy processed {}", deploy_hash)
