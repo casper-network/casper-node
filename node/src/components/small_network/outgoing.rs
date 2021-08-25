@@ -421,8 +421,7 @@ where
     }
 
     /// Iterates over all connected peer IDs.
-    #[allow(clippy::needless_lifetimes)]
-    pub(crate) fn connected_peers<'a>(&'a self) -> impl Iterator<Item = NodeId> + 'a {
+    pub(crate) fn connected_peers(&'_ self) -> impl Iterator<Item = NodeId> + '_ {
         self.routes.keys().cloned()
     }
 
