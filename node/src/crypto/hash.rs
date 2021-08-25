@@ -175,11 +175,11 @@ impl From<Blake2bHash> for Digest {
 }
 
 /// Sentinel hash to be used for hashing options in the case of [None].
-pub const SENTINEL0: Digest = Digest([0u8; 32]);
+pub const SENTINEL0: Digest = Digest([0u8; Digest::LENGTH]);
 /// Sentinel hash to be used by [hash_slice_rfold]. Terminates the fold.
-pub const SENTINEL1: Digest = Digest([1u8; 32]);
+pub const SENTINEL1: Digest = Digest([1u8; Digest::LENGTH]);
 /// Sentinel hash to be used by [hash_vec_merkle_tree] in the case of an empty list.
-pub const SENTINEL2: Digest = Digest([2u8; 32]);
+pub const SENTINEL2: Digest = Digest([2u8; Digest::LENGTH]);
 
 /// Hashes a pair of [`Digest`]s.
 pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
@@ -207,7 +207,7 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
 /// l
 /// ```
 ///
-/// Returns the empty [Digest] when the input is empty.
+/// Returns the [`SENTINEL2`] when the input is empty.
 ///
 /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
 /// [2]: https://en.wikipedia.org/wiki/Graph_reduction

@@ -687,7 +687,7 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
-    /// The [`HashingAlgorithmVersion`] used for the header (as well for as its corresponding block
+    /// The [`HashingAlgorithmVersion`] used for the header (as well as for its corresponding block
     /// body).
     pub fn hashing_algorithm_version(&self) -> HashingAlgorithmVersion {
         HashingAlgorithmVersion::from_protocol_version(&self.protocol_version)

@@ -924,12 +924,14 @@ impl Storage {
     }
 
     /// Retrieves a block by hash.
-    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
+    fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
     /// Writes a block to storage, updating indices as necessary
-    pub fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
+    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
+    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
+    fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
         let mut txn = self.env.begin_rw_txn()?;

@@ -544,7 +544,7 @@ impl ContractRuntime {
         )
     }
 
-    pub(crate) fn commit_upgrade(
+    fn commit_upgrade(
         &self,
         upgrade_config: UpgradeConfig,
     ) -> Result<UpgradeSuccess, engine_state::Error> {

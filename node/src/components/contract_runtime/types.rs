@@ -101,16 +101,3 @@ pub struct BlockAndExecutionEffects {
     /// The [`ExecutionEffect`] and the upcoming validator sets determined by the `step`
     pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
 }
-
-impl BlockAndExecutionEffects {
-    /// Gets the block.
-    pub fn block(&self) -> &Block {
-        &self.block
-    }
-}
-
-impl From<BlockAndExecutionEffects> for Block {
-    fn from(block_and_execution_effects: BlockAndExecutionEffects) -> Self {
-        block_and_execution_effects.block
-    }
-}
