@@ -23,6 +23,11 @@ use crate::{
     utils::Source,
 };
 
+// TODO[RC]: add comments
+pub(crate) enum BlockProposerAnnouncement {
+    DeploysExpired(Vec<DeployHash>),
+}
+
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
 /// Reactors are never passed control announcements back in and every reactor event must be able to
