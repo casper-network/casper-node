@@ -281,10 +281,10 @@ impl DeployExt for Deploy {
         } else {
             return Err(Error::InvalidArgument {
                 context: "target_account",
-                error: String::from(format!(
+                error: format!(
                     "Could not parse value as a PublicKey, AccountHash or URef: {}",
                     target_account
-                )),
+                ),
             });
         }
 
