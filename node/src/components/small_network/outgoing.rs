@@ -427,10 +427,7 @@ where
     }
 
     /// Iterates over all outgoing connections.
-    #[allow(clippy::needless_lifetimes)]
-    pub(crate) fn iter_outgoing<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = (&'a SocketAddr, &'a Outgoing<H, E>)> + 'a {
+    pub(crate) fn iter_outgoing(&self) -> impl Iterator<Item = (&SocketAddr, &Outgoing<H, E>)> {
         self.outgoing.iter()
     }
 
