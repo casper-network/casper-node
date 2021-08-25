@@ -5,7 +5,26 @@ use alloc::{format, string::String, vec::Vec};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-const MAX_STRING_LEN: usize = 100;
+const MAX_STRING_LEN: usize = 150;
+
+/// Represents the information about a substring found in a string.
+#[derive(Debug)]
+struct SubstringSpec {
+    /// Index of the first character.
+    start_index: usize,
+    /// Length of the substring.
+    length: usize,
+}
+
+impl SubstringSpec {
+    /// Constructs a new StringSpec with the given start index and length.
+    fn new(start_index: usize, length: usize) -> Self {
+        Self {
+            start_index,
+            length,
+        }
+    }
+}
 
 /// Serializes the given data structure as a pretty-printed `String` of JSON using
 /// `serde_json::to_string_pretty()`, but after first reducing any large hex-string values.
@@ -23,40 +42,53 @@ where
     serde_json::to_string_pretty(&json_value)
 }
 
+/// Searches the given string for all occurrences of hex substrings
+/// that are longer than the specified `max_len`.
+fn find_hex_strings_longer_than(string: &str, max_len: usize) -> Vec<SubstringSpec> {
+    let mut ranges_to_remove = Vec::new();
+    let mut start_index = 0;
+    let mut contiguous_hex_count = 0;
+
+    // Record all large hex-strings' start positions and lengths.
+    for (index, char) in string.char_indices() {
+        if char.is_ascii_hexdigit() {
+            if contiguous_hex_count == 0 {
+                // This is the start of a new hex-string.
+                start_index = index;
+            }
+            contiguous_hex_count += 1;
+        } else if contiguous_hex_count != 0 {
+            // This is the end of a hex-string: if it's too long, record it.
+            if contiguous_hex_count > max_len {
+                ranges_to_remove.push(SubstringSpec::new(start_index, contiguous_hex_count));
+            }
+            contiguous_hex_count = 0;
+        }
+    }
+    // If the string contains a large hex-string at the end, record it now.
+    if contiguous_hex_count > max_len {
+        ranges_to_remove.push(SubstringSpec::new(start_index, contiguous_hex_count));
+    }
+    ranges_to_remove
+}
+
 fn shorten_string_field(value: &mut Value) {
     match value {
         Value::String(string) => {
-            let mut ranges_to_remove = Vec::new();
-            let mut start_index = 0;
-            let mut contiguous_hex_count = 0;
-
-            // Record all large hex-strings' start positions and lengths.
-            for (index, char) in string.char_indices() {
-                if char.is_ascii_hexdigit() {
-                    if contiguous_hex_count == 0 {
-                        // This is the start of a new hex-string.
-                        start_index = index;
-                    }
-                    contiguous_hex_count += 1;
-                } else if contiguous_hex_count != 0 {
-                    // This is the end of a hex-string: if it's too long, record it.
-                    if contiguous_hex_count > MAX_STRING_LEN {
-                        ranges_to_remove.push((start_index, contiguous_hex_count));
-                    }
-                    contiguous_hex_count = 0;
-                }
-            }
-            // If the string contains a large hex-string at the end, record it now.
-            if contiguous_hex_count > MAX_STRING_LEN {
-                ranges_to_remove.push((start_index, contiguous_hex_count));
-            }
-
-            // Replace the recorded large hex-strings.  Iterate from last to first so each
+            // Iterate over the ranges to remove from last to first so each
             // replacement start index remains valid.
-            for (start_index, contiguous_hex_count) in ranges_to_remove.into_iter().rev() {
-                let range = start_index..(start_index + contiguous_hex_count);
-                string.replace_range(range, &format!("[{} hex chars]", contiguous_hex_count));
-            }
+            find_hex_strings_longer_than(string, MAX_STRING_LEN)
+                .into_iter()
+                .rev()
+                .for_each(
+                    |SubstringSpec {
+                         start_index,
+                         length,
+                     }| {
+                        let range = start_index..(start_index + length);
+                        string.replace_range(range, &format!("[{} hex chars]", length));
+                    },
+                )
         }
         Value::Array(values) => {
             for value in values {
@@ -74,28 +106,78 @@ fn shorten_string_field(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
-    use core::iter::{self, FromIterator};
-
     use super::*;
 
     fn hex_string(length: usize) -> String {
-        String::from_iter("0123456789abcdef".chars().cycle().take(length))
+        "0123456789abcdef".chars().cycle().take(length).collect()
+    }
+
+    impl PartialEq<(usize, usize)> for SubstringSpec {
+        fn eq(&self, other: &(usize, usize)) -> bool {
+            self.start_index == other.0 && self.length == other.1
+        }
+    }
+
+    #[test]
+    fn finds_hex_strings_longer_than() {
+        const TESTING_LEN: usize = 3;
+
+        let input = "01234";
+        let expected = vec![(0, 5)];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "01234-0123";
+        let expected = vec![(0, 5), (6, 4)];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "012-34-0123";
+        let expected = vec![(7, 4)];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "012-34-01-23";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "0";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+
+        let input = "";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, TESTING_LEN);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn respects_length() {
+        let input = "I like beef";
+        let expected = vec![(7, 4)];
+        let actual = find_hex_strings_longer_than(input, 3);
+        assert_eq!(actual, expected);
+
+        let input = "I like beef";
+        let expected: Vec<(usize, usize)> = vec![];
+        let actual = find_hex_strings_longer_than(input, 1000);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn should_shorten_long_strings() {
         let max_unshortened_hex_string = hex_string(MAX_STRING_LEN);
         let long_hex_string = hex_string(MAX_STRING_LEN + 1);
-        let long_non_hex_string = String::from_iter(iter::repeat('g').take(MAX_STRING_LEN + 1));
+        let long_non_hex_string: String = "g".repeat(MAX_STRING_LEN + 1);
         let long_hex_substring = format!("a-{}-b", hex_string(MAX_STRING_LEN + 1));
         let multiple_long_hex_substrings =
             format!("a: {0}, b: {0}, c: {0}", hex_string(MAX_STRING_LEN + 1));
 
-        let mut long_strings = vec![];
+        let mut long_strings: Vec<String> = vec![];
         for i in 1..=5 {
-            long_strings.push(String::from_iter(
-                iter::repeat('a').take(MAX_STRING_LEN + i),
-            ));
+            long_strings.push("a".repeat(MAX_STRING_LEN + i));
         }
         let value = json!({
             "field_1": Option::<usize>::None,
@@ -119,22 +201,22 @@ mod tests {
   "field_1": null,
   "field_2": true,
   "field_3": 123,
-  "field_4": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123",
+  "field_4": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345",
   "field_5": [
     "short string value",
-    "[101 hex chars]"
+    "[151 hex chars]"
   ],
   "field_6": {
     "f1": null,
     "f2": false,
     "f3": -123,
-    "f4": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+    "f4": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
     "f5": [
       "short string value",
-      "a-[101 hex chars]-b"
+      "a-[151 hex chars]-b"
     ],
     "f6": {
-      "final long string": "a: [101 hex chars], b: [101 hex chars], c: [101 hex chars]"
+      "final long string": "a: [151 hex chars], b: [151 hex chars], c: [151 hex chars]"
     }
   }
 }"#;
@@ -149,7 +231,7 @@ mod tests {
 
     #[test]
     fn should_not_modify_short_strings() {
-        let max_string = String::from_iter(iter::repeat('a').take(MAX_STRING_LEN));
+        let max_string: String = "a".repeat(MAX_STRING_LEN);
         let value = json!({
             "field_1": Option::<usize>::None,
             "field_2": true,

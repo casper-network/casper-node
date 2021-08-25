@@ -213,10 +213,9 @@ mod tests {
         motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        stored_value::StoredValue,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, ProtocolVersion, U512};
+    use casper_types::{EraId, ProtocolVersion, StoredValue, U512};
 
     use super::*;
     use crate::{
@@ -227,9 +226,9 @@ mod tests {
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
             read_value: HostFunction::new(127, [0, 1, 0]),
-            read_value_local: HostFunction::new(128, [0, 1, 0]),
+            dictionary_get: HostFunction::new(128, [0, 1, 0]),
             write: HostFunction::new(140, [0, 1, 0, 2]),
-            write_local: HostFunction::new(141, [0, 1, 2, 3]),
+            dictionary_put: HostFunction::new(141, [0, 1, 2, 3]),
             add: HostFunction::new(100, [0, 1, 2, 3]),
             new_uref: HostFunction::new(122, [0, 1, 2]),
             load_named_keys: HostFunction::new(121, [0, 1]),

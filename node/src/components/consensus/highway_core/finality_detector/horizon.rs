@@ -110,7 +110,7 @@ impl<'a, C: Context> Horizon<'a, C> {
         let find_first_lvl_n = |idx: &ValidatorIndex| {
             self.state
                 .swimlane(self.latest[*idx]?)
-                .take_while(|(_, unit)| self.seen_weight(unit, &committee) >= quorum)
+                .take_while(|(_, unit)| self.seen_weight(unit, committee) >= quorum)
                 .last()
                 .map(|(_, unit)| (*idx, unit.seq_number))
         };
@@ -141,7 +141,7 @@ impl<'a, C: Context> Horizon<'a, C> {
                 unit.seq_number >= self_sn
             } else {
                 let sees_self_sn = |vhash| self.state.unit(vhash).seq_number >= self_sn;
-                unit.panorama.get(idx).correct().map_or(false, sees_self_sn)
+                unit.panorama[idx].correct().map_or(false, sees_self_sn)
             }
         })
     }

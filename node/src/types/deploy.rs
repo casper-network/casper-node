@@ -139,6 +139,10 @@ pub enum DeployValidationFailure {
     #[error("the provided hash does not match the actual hash of the deploy")]
     InvalidDeployHash,
 
+    /// The deploy has no approvals.
+    #[error("the deploy has no approvals")]
+    EmptyApprovals,
+
     /// Invalid approval.
     #[error("the approval at index {index} is invalid: {error_msg}")]
     InvalidApproval {
@@ -558,11 +562,13 @@ impl Deploy {
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
         secret_key: &SecretKey,
+        account: Option<PublicKey>,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
 
-        let account = PublicKey::from(secret_key);
+        let account = account.unwrap_or_else(|| PublicKey::from(secret_key));
+
         // Remove duplicates.
         let dependencies = dependencies.into_iter().unique().collect();
         let header = DeployHeader {
@@ -663,8 +669,8 @@ impl Deploy {
         };
         Ok(DeployInfo {
             header,
-            size,
             payment_amount,
+            size,
         })
     }
 
@@ -683,6 +689,7 @@ impl Deploy {
     /// Returns true if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
+    ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
     pub fn is_valid(&mut self) -> Result<(), DeployValidationFailure> {
         match self.is_valid.as_ref() {
@@ -823,7 +830,13 @@ impl Deploy {
             payment,
             session,
             &secret_key,
+            None,
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn invalidate(&mut self) {
+        self.header.chain_name.clear();
     }
 }
 
@@ -854,6 +867,10 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 // Computationally expensive validity check for a given deploy instance, including
 // asymmetric_key signing verification.
 fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
+    if deploy.approvals.is_empty() {
+        warn!(?deploy, "deploy has no approvals");
+        return Err(DeployValidationFailure::EmptyApprovals);
+    }
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
     let body_hash = hash::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
@@ -868,9 +885,6 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
         return Err(DeployValidationFailure::InvalidDeployHash);
     }
 
-    // We don't need to check for an empty set here. EE checks that the correct number and weight of
-    // signatures are provided when executing the deploy, so all we need to do here is check that
-    // any provided signatures are valid.
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(&deploy.hash, &approval.signature, &approval.signer) {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
@@ -1049,6 +1063,7 @@ mod tests {
                 args: transfer_args,
             },
             &secret_key,
+            None,
         )
     }
 
@@ -1120,6 +1135,15 @@ mod tests {
     }
 
     #[test]
+    fn not_valid_due_to_empty_approvals() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+        deploy.approvals = vec![];
+        assert!(deploy.approvals.is_empty());
+        check_is_not_valid(deploy, DeployValidationFailure::EmptyApprovals)
+    }
+
+    #[test]
     fn not_valid_due_to_invalid_approval() {
         let mut rng = crate::new_rng();
         let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
@@ -1146,7 +1170,7 @@ mod tests {
             &mut rng,
             deploy_config.max_ttl,
             deploy_config.max_dependencies.into(),
-            &chain_name,
+            chain_name,
         );
         deploy
             .is_acceptable(chain_name, &deploy_config)
@@ -1194,7 +1218,7 @@ mod tests {
             &mut rng,
             deploy_config.max_ttl,
             dependency_count,
-            &chain_name,
+            chain_name,
         );
 
         let expected_error = DeployValidationFailure::ExcessiveDependencies {
@@ -1224,7 +1248,7 @@ mod tests {
             &mut rng,
             ttl,
             deploy_config.max_dependencies.into(),
-            &chain_name,
+            chain_name,
         );
 
         let expected_error = DeployValidationFailure::ExcessiveTimeToLive {

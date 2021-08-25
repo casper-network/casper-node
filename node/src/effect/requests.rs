@@ -21,35 +21,37 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        genesis::GenesisResult,
+        genesis::GenesisSuccess,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
-        step::{StepRequest, StepResult},
-        upgrade::{UpgradeConfig, UpgradeResult},
+        upgrade::{UpgradeConfig, UpgradeSuccess},
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::{protocol_data::ProtocolData, trie::Trie},
-};
-use casper_types::{
-    system::auction::{EraValidators, ValidatorWeights},
-    EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
+    shared::newtypes::Blake2bHash,
+    storage::trie::Trie,
 };
 
-use super::Responder;
+use casper_types::{
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, URef,
+};
+
 use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
         consensus::{BlockContext, ClContext, ValidatorChange},
-        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        contract_runtime::{
+            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+        },
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
     crypto::hash::Digest,
+    effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
-        Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
-        Item, NodeId, StatusFeed, TimeDiff,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, ChainspecInfo,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed,
+        TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -61,7 +63,7 @@ const_assert!(_STATE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
-pub enum MetricsRequest {
+pub(crate) enum MetricsRequest {
     /// Render current node metrics as prometheus-formatted string.
     RenderNodeMetricsText {
         /// Responder returning the rendered metrics or `None`, if an internal error occurred.
@@ -83,7 +85,7 @@ const_assert!(_NETWORK_EVENT_SIZE < 89);
 /// A networking request.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum NetworkRequest<I, P> {
+pub(crate) enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
         /// Message destination.
@@ -177,7 +179,7 @@ where
 /// A networking info request.
 #[derive(Debug)]
 #[must_use]
-pub enum NetworkInfoRequest<I> {
+pub(crate) enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
@@ -201,7 +203,7 @@ where
 /// A storage request.
 #[must_use]
 #[repr(u8)]
-pub enum StorageRequest {
+pub(crate) enum StorageRequest {
     /// Store given block.
     PutBlock {
         /// Block to be stored.
@@ -244,24 +246,12 @@ pub enum StorageRequest {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve switch block with given era ID.
-    GetSwitchBlockAtEraId {
-        /// Era ID of the switch block.
-        era_id: EraId,
-        /// Responder.
-        responder: Responder<Option<Block>>,
-    },
     /// Retrieve the header of the block containing the deploy.
     GetBlockHeaderForDeploy {
         /// Hash of the deploy.
         deploy_hash: DeployHash,
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
-    },
-    /// Retrieve highest switch block.
-    GetHighestSwitchBlock {
-        /// Responder.
-        responder: Responder<Option<Block>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
@@ -293,13 +283,6 @@ pub enum StorageRequest {
         deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
-    },
-    /// Retrieve deploy headers with given hashes.
-    GetDeployHeaders {
-        /// Hashes of deploy headers to be retrieved.
-        deploy_hashes: Vec<DeployHash>,
-        /// Responder to call with the results.
-        responder: Responder<Vec<Option<DeployHeader>>>,
     },
     /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
     GetFinalizedDeploys {
@@ -382,14 +365,8 @@ impl Display for StorageRequest {
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block header at era id {}", era_id)
             }
-            StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
-                write!(formatter, "get switch block at era id {}", era_id)
-            }
             StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
                 write!(formatter, "get block header for deploy {}", deploy_hash)
-            }
-            StorageRequest::GetHighestSwitchBlock { .. } => {
-                write!(formatter, "get highest switch block")
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
@@ -401,11 +378,6 @@ impl Display for StorageRequest {
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
                 write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
             }
-            StorageRequest::GetDeployHeaders { deploy_hashes, .. } => write!(
-                formatter,
-                "get headers {}",
-                DisplayIter::new(deploy_hashes.iter())
-            ),
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
@@ -449,7 +421,7 @@ impl Display for StorageRequest {
 /// State store request.
 #[derive(DataSize, Debug, Serialize)]
 #[repr(u8)]
-pub enum StateStoreRequest {
+pub(crate) enum StateStoreRequest {
     /// Stores a piece of state to storage.
     Save {
         /// Key to store under.
@@ -460,6 +432,7 @@ pub enum StateStoreRequest {
         /// Notification when storing is complete.
         responder: Responder<()>,
     },
+    #[cfg(test)]
     /// Loads a piece of state from storage.
     Load {
         /// Key to load from.
@@ -475,6 +448,7 @@ impl Display for StateStoreRequest {
             StateStoreRequest::Save { key, data, .. } => {
                 write!(f, "save data under {} ({} bytes)", HexFmt(key), data.len())
             }
+            #[cfg(test)]
             StateStoreRequest::Load { key, .. } => {
                 write!(f, "load data from key {}", HexFmt(key))
             }
@@ -484,7 +458,7 @@ impl Display for StateStoreRequest {
 
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
-pub struct BlockPayloadRequest {
+pub(crate) struct BlockPayloadRequest {
     /// The context in which the new block will be proposed.
     pub(crate) context: BlockContext<ClContext>,
     /// The height of the next block to be finalized at the point the request was made.
@@ -503,7 +477,7 @@ pub struct BlockPayloadRequest {
 /// A `BlockProposer` request.
 #[derive(DataSize, Debug)]
 #[must_use]
-pub enum BlockProposerRequest {
+pub(crate) enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
     RequestBlockPayload(BlockPayloadRequest),
 }
@@ -534,7 +508,7 @@ impl Display for BlockProposerRequest {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub enum RpcRequest<I> {
+pub(crate) enum RpcRequest<I> {
     /// Submit a deploy to be announced.
     SubmitDeploy {
         /// The deploy to be announced.
@@ -548,7 +522,7 @@ pub enum RpcRequest<I> {
         /// The identifier (can either be a hash or the height) of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
-        responder: Responder<Option<(LinearBlock, BlockSignatures)>>,
+        responder: Responder<Option<(Block, BlockSignatures)>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -584,13 +558,6 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-    /// Query the contract runtime for protocol version data.
-    QueryProtocolData {
-        /// The protocol version.
-        protocol_version: ProtocolVersion,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
-    },
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
@@ -617,11 +584,6 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<StatusFeed<I>>,
     },
-    /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
-    GetMetrics {
-        /// Responder to call with the result.
-        responder: Responder<Option<String>>,
-    },
 }
 
 impl<I> Display for RpcRequest<I> {
@@ -640,9 +602,7 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers {}", block_hash)
             }
-            RpcRequest::QueryProtocolData {
-                protocol_version, ..
-            } => write!(formatter, "protocol_version {}", protocol_version),
+
             RpcRequest::QueryGlobalState {
                 state_root_hash,
                 base_key,
@@ -673,7 +633,6 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RpcRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }
@@ -684,19 +643,19 @@ impl<I> Display for RpcRequest<I> {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub enum RestRequest<I> {
+pub(crate) enum RestRequest<I> {
     /// Return string formatted status or `None` if an error occurred.
-    GetStatus {
+    Status {
         /// Responder to call with the result.
         responder: Responder<StatusFeed<I>>,
     },
     /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
-    GetMetrics {
+    Metrics {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
     /// Returns schema of client-facing JSON-RPCs in OpenRPC format.
-    GetRpcSchema {
+    RpcSchema {
         /// Responder to call with the result
         responder: Responder<OpenRpcSchema>,
     },
@@ -705,9 +664,9 @@ pub enum RestRequest<I> {
 impl<I> Display for RestRequest<I> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RestRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RestRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
-            RestRequest::GetRpcSchema { .. } => write!(formatter, "get openrpc"),
+            RestRequest::Status { .. } => write!(formatter, "get status"),
+            RestRequest::Metrics { .. } => write!(formatter, "get metrics"),
+            RestRequest::RpcSchema { .. } => write!(formatter, "get openrpc"),
         }
     }
 }
@@ -715,23 +674,21 @@ impl<I> Display for RestRequest<I> {
 /// A contract runtime request.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum ContractRuntimeRequest {
-    /// A request to execute a block.
-    ExecuteBlock(FinalizedBlock),
-
-    /// Get `ProtocolData` by `ProtocolVersion`.
-    GetProtocolData {
-        /// The protocol version.
-        protocol_version: ProtocolVersion,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
+pub(crate) enum ContractRuntimeRequest {
+    /// A request to enqueue a `FinalizedBlock` for execution.
+    EnqueueBlockForExecution {
+        /// A `FinalizedBlock` to enqueue.
+        finalized_block: FinalizedBlock,
+        /// The deploys for that `FinalizedBlock`
+        deploys: Vec<Deploy>,
     },
+
     /// Commit genesis chainspec.
     CommitGenesis {
         /// The chainspec.
         chainspec: Arc<Chainspec>,
         /// Responder to call with the result.
-        responder: Responder<Result<GenesisResult, engine_state::Error>>,
+        responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
     },
     /// A request to run upgrade.
     Upgrade {
@@ -739,7 +696,7 @@ pub enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
-        responder: Responder<Result<UpgradeResult, engine_state::Error>>,
+        responder: Responder<Result<UpgradeSuccess, engine_state::Error>>,
     },
     /// A query request.
     Query {
@@ -765,14 +722,6 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
-    /// Returns validator weights for given era.
-    GetValidatorWeightsByEraId {
-        /// Get validators weights request.
-        #[serde(skip_serializing)]
-        request: ValidatorWeightsByEraIdRequest,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
-    },
     /// Return bids at a given state root hash
     GetBids {
         /// Get bids request.
@@ -780,15 +729,6 @@ pub enum ContractRuntimeRequest {
         get_bids_request: GetBidsRequest,
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
-    },
-    /// Performs a step consisting of calculating rewards, slashing and running the auction at the
-    /// end of an era.
-    Step {
-        /// The step request.
-        #[serde(skip_serializing)]
-        step_request: StepRequest,
-        /// Responder to call with the result.
-        responder: Responder<Result<StepResult, engine_state::Error>>,
     },
     /// Check if validator is bonded in the future era (identified by `era_id`).
     IsBonded {
@@ -817,20 +757,31 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
     },
-    /// Get the missing keys under a given trie key in global storage
-    MissingTrieKeys {
-        /// The ancestral hash to use when finding hashes that are missing from the `TrieStore`
-        trie_key: Blake2bHash,
+    /// Execute a provided protoblock
+    ExecuteBlock {
+        /// The protocol version of the block to execute.
+        protocol_version: ProtocolVersion,
+        /// The state of the storage and blockchain to use to make the new block.
+        execution_pre_state: ExecutionPreState,
+        /// The finalized block to execute; must have the same height as the child height specified
+        /// by the `execution_pre_state`.
+        finalized_block: FinalizedBlock,
+        /// The deploys for the block to execute; must correspond to the deploy and execution
+        /// hashes of the `finalized_block` in that order.
+        deploys: Vec<Deploy>,
         /// Responder to call with the result.
-        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
+        responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
 }
 
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
-                write!(formatter, "finalized_block {}", finalized_block)
+            ContractRuntimeRequest::EnqueueBlockForExecution {
+                finalized_block,
+                deploys: _,
+            } => {
+                write!(formatter, "finalized_block: {}", finalized_block)
             }
             ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
                 write!(
@@ -856,23 +807,11 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "get era validators: {:?}", request)
             }
 
-            ContractRuntimeRequest::GetValidatorWeightsByEraId { request, .. } => {
-                write!(formatter, "get validator weights: {:?}", request)
-            }
-
             ContractRuntimeRequest::GetBids {
                 get_bids_request, ..
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }
-
-            ContractRuntimeRequest::Step { step_request, .. } => {
-                write!(formatter, "step: {:?}", step_request)
-            }
-
-            ContractRuntimeRequest::GetProtocolData {
-                protocol_version, ..
-            } => write!(formatter, "protocol_version: {}", protocol_version),
 
             ContractRuntimeRequest::IsBonded {
                 public_key, era_id, ..
@@ -885,12 +824,10 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::PutTrie { trie, .. } => {
                 write!(formatter, "trie: {:?}", trie)
             }
-            ContractRuntimeRequest::MissingTrieKeys { trie_key, .. } => {
-                write!(
-                    formatter,
-                    "find missing descendants of trie_key: {}",
-                    trie_key
-                )
+            ContractRuntimeRequest::ExecuteBlock {
+                finalized_block, ..
+            } => {
+                write!(formatter, "Execute finalized block: {}", finalized_block)
             }
         }
     }
@@ -899,7 +836,7 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum FetcherRequest<I, T: Item> {
+pub(crate) enum FetcherRequest<I, T: Item> {
     /// Return the specified item if it exists, else `None`.
     Fetch {
         /// The ID of the item to be retrieved.
@@ -922,7 +859,7 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidationRequest<I> {
+pub(crate) struct BlockValidationRequest<I> {
     /// The block to be validated.
     pub(crate) block: ValidatingBlock,
     /// The sender of the block, which will be asked to provide all missing deploys.
@@ -944,14 +881,11 @@ type BlockHeight = u64;
 
 #[derive(Debug, Serialize)]
 /// Requests issued to the Linear Chain component.
-pub enum LinearChainRequest<I> {
+pub(crate) enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
-    /// Local request for a linear chain block at height.
-    // TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
-    BlockAtHeightLocal(BlockHeight, Responder<Option<Block>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -963,9 +897,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::BlockAtHeight(height, sender) => {
                 write!(f, "block request for {} from {}", height, sender)
             }
-            LinearChainRequest::BlockAtHeightLocal(height, _) => {
-                write!(f, "local request for block at height {}", height)
-            }
         }
     }
 }
@@ -973,7 +904,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[derive(DataSize, Debug)]
 #[must_use]
 /// Consensus component requests.
-pub enum ConsensusRequest {
+pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
     /// Request for a list of validator status changes, by public key.
@@ -982,7 +913,7 @@ pub enum ConsensusRequest {
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
-pub enum ChainspecLoaderRequest {
+pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
     /// Request for information about the current run.

@@ -1,5 +1,6 @@
 //! Contains implementation of a Handle Payment contract functionality.
 mod constants;
+mod entry_points;
 mod error;
 mod mint_provider;
 mod runtime_provider;
@@ -9,7 +10,8 @@ use core::marker::Sized;
 use crate::{account::AccountHash, AccessRights, URef, U512};
 
 pub use crate::system::handle_payment::{
-    constants::*, error::Error, mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+    constants::*, entry_points::handle_payment_entry_points, error::Error,
+    mint_provider::MintProvider, runtime_provider::RuntimeProvider,
 };
 
 // A simplified representation of a refund percentage which is currently hardcoded to 0%.
@@ -139,6 +141,15 @@ mod internal {
         debug_assert_eq!(validator_reward + refund_amount, total);
 
         let refund_purse = get_refund_purse(provider)?;
+
+        if let Some(refund_purse) = refund_purse {
+            if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
+                // Make sure we're not refunding into a payment purse to invalidate payment code
+                // postconditions.
+                return Err(Error::RefundPurseIsPaymentPurse);
+            }
+        }
+
         provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
 
         // pay target validator

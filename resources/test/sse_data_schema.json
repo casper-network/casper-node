@@ -1,0 +1,1826 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SseData",
+  "description": "The \"data\" field of the events sent on the event stream to clients.",
+  "anyOf": [
+    {
+      "description": "The version of this node's API server.  This event will always be the first sent to a new client, and will have no associated event ID provided.",
+      "type": "object",
+      "required": [
+        "ApiVersion"
+      ],
+      "properties": {
+        "ApiVersion": {
+          "$ref": "#/definitions/ProtocolVersion"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "The given block has been added to the linear chain and stored locally.",
+      "type": "object",
+      "required": [
+        "BlockAdded"
+      ],
+      "properties": {
+        "BlockAdded": {
+          "type": "object",
+          "required": [
+            "block",
+            "block_hash"
+          ],
+          "properties": {
+            "block_hash": {
+              "$ref": "#/definitions/BlockHash"
+            },
+            "block": {
+              "$ref": "#/definitions/JsonBlock"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "The given deploy has been newly-accepted by this node.",
+      "type": "object",
+      "required": [
+        "DeployAccepted"
+      ],
+      "properties": {
+        "DeployAccepted": {
+          "type": "object",
+          "required": [
+            "deploy"
+          ],
+          "properties": {
+            "deploy": {
+              "description": "a deploy",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Deploy"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "The given deploy has been executed, committed and forms part of the given block.",
+      "type": "object",
+      "required": [
+        "DeployProcessed"
+      ],
+      "properties": {
+        "DeployProcessed": {
+          "type": "object",
+          "required": [
+            "account",
+            "block_hash",
+            "dependencies",
+            "deploy_hash",
+            "execution_result",
+            "timestamp",
+            "ttl"
+          ],
+          "properties": {
+            "deploy_hash": {
+              "$ref": "#/definitions/DeployHash"
+            },
+            "account": {
+              "$ref": "#/definitions/PublicKey"
+            },
+            "timestamp": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "ttl": {
+              "$ref": "#/definitions/TimeDiff"
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/DeployHash"
+              }
+            },
+            "block_hash": {
+              "$ref": "#/definitions/BlockHash"
+            },
+            "execution_result": {
+              "$ref": "#/definitions/ExecutionResult"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Generic representation of validator's fault in an era.",
+      "type": "object",
+      "required": [
+        "Fault"
+      ],
+      "properties": {
+        "Fault": {
+          "type": "object",
+          "required": [
+            "era_id",
+            "public_key",
+            "timestamp"
+          ],
+          "properties": {
+            "era_id": {
+              "$ref": "#/definitions/EraId"
+            },
+            "public_key": {
+              "$ref": "#/definitions/PublicKey"
+            },
+            "timestamp": {
+              "$ref": "#/definitions/Timestamp"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "New finality signature received.",
+      "type": "object",
+      "required": [
+        "FinalitySignature"
+      ],
+      "properties": {
+        "FinalitySignature": {
+          "$ref": "#/definitions/FinalitySignature"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "Step"
+      ],
+      "properties": {
+        "Step": {
+          "type": "object",
+          "required": [
+            "era_id",
+            "execution_effect"
+          ],
+          "properties": {
+            "era_id": {
+              "$ref": "#/definitions/EraId"
+            },
+            "execution_effect": {
+              "$ref": "#/definitions/ExecutionEffect"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "ProtocolVersion": {
+      "description": "Casper Platform protocol version",
+      "type": "string"
+    },
+    "BlockHash": {
+      "description": "A cryptographic hash identifying a [`Block`](struct.Block.html).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
+      "type": "string"
+    },
+    "JsonBlock": {
+      "description": "A JSON-friendly representation of `Block`.",
+      "type": "object",
+      "required": [
+        "body",
+        "hash",
+        "header",
+        "proofs"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/definitions/BlockHash"
+        },
+        "header": {
+          "$ref": "#/definitions/JsonBlockHeader"
+        },
+        "body": {
+          "$ref": "#/definitions/JsonBlockBody"
+        },
+        "proofs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JsonProof"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "JsonBlockHeader": {
+      "description": "JSON representation of a block header.",
+      "type": "object",
+      "required": [
+        "accumulated_seed",
+        "body_hash",
+        "era_id",
+        "height",
+        "parent_hash",
+        "protocol_version",
+        "random_bit",
+        "state_root_hash",
+        "timestamp"
+      ],
+      "properties": {
+        "parent_hash": {
+          "$ref": "#/definitions/BlockHash"
+        },
+        "state_root_hash": {
+          "$ref": "#/definitions/Digest"
+        },
+        "body_hash": {
+          "$ref": "#/definitions/Digest"
+        },
+        "random_bit": {
+          "type": "boolean"
+        },
+        "accumulated_seed": {
+          "$ref": "#/definitions/Digest"
+        },
+        "era_end": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/JsonEraEnd"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "era_id": {
+          "$ref": "#/definitions/EraId"
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "protocol_version": {
+          "$ref": "#/definitions/ProtocolVersion"
+        }
+      },
+      "additionalProperties": false
+    },
+    "JsonEraEnd": {
+      "type": "object",
+      "required": [
+        "era_report",
+        "next_era_validator_weights"
+      ],
+      "properties": {
+        "era_report": {
+          "$ref": "#/definitions/JsonEraReport"
+        },
+        "next_era_validator_weights": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ValidatorWeight"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "JsonEraReport": {
+      "description": "Equivocation and reward information to be included in the terminal block.",
+      "type": "object",
+      "required": [
+        "equivocators",
+        "inactive_validators",
+        "rewards"
+      ],
+      "properties": {
+        "equivocators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PublicKey"
+          }
+        },
+        "rewards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Reward"
+          }
+        },
+        "inactive_validators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PublicKey"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PublicKey": {
+      "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+      "type": "string"
+    },
+    "Reward": {
+      "type": "object",
+      "required": [
+        "amount",
+        "validator"
+      ],
+      "properties": {
+        "validator": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "amount": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "ValidatorWeight": {
+      "type": "object",
+      "required": [
+        "validator",
+        "weight"
+      ],
+      "properties": {
+        "validator": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "weight": {
+          "$ref": "#/definitions/U512"
+        }
+      },
+      "additionalProperties": false
+    },
+    "U512": {
+      "description": "Decimal representation of a 512-bit integer.",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "Timestamp formatted as per RFC 3339",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "EraId": {
+      "description": "Era ID newtype.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "JsonBlockBody": {
+      "description": "A JSON-friendly representation of `Body`",
+      "type": "object",
+      "required": [
+        "deploy_hashes",
+        "proposer",
+        "transfer_hashes"
+      ],
+      "properties": {
+        "proposer": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "deploy_hashes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
+        },
+        "transfer_hashes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeployHash": {
+      "description": "Hex-encoded deploy hash.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "JsonProof": {
+      "description": "A JSON-friendly representation of a proof, i.e. a block's finality signature.",
+      "type": "object",
+      "required": [
+        "public_key",
+        "signature"
+      ],
+      "properties": {
+        "public_key": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "signature": {
+          "$ref": "#/definitions/Signature"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Signature": {
+      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
+      "type": "string"
+    },
+    "Deploy": {
+      "description": "A deploy; an item containing a smart contract along with the requester's signature(s).",
+      "type": "object",
+      "required": [
+        "approvals",
+        "hash",
+        "header",
+        "payment",
+        "session"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/definitions/DeployHash"
+        },
+        "header": {
+          "$ref": "#/definitions/DeployHeader"
+        },
+        "payment": {
+          "$ref": "#/definitions/ExecutableDeployItem"
+        },
+        "session": {
+          "$ref": "#/definitions/ExecutableDeployItem"
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Approval"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeployHeader": {
+      "description": "The header portion of a [`Deploy`](struct.Deploy.html).",
+      "type": "object",
+      "required": [
+        "account",
+        "body_hash",
+        "chain_name",
+        "dependencies",
+        "gas_price",
+        "timestamp",
+        "ttl"
+      ],
+      "properties": {
+        "account": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "ttl": {
+          "$ref": "#/definitions/TimeDiff"
+        },
+        "gas_price": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "body_hash": {
+          "$ref": "#/definitions/Digest"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
+        },
+        "chain_name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TimeDiff": {
+      "description": "Human-readable duration.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "ExecutableDeployItem": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "ModuleBytes"
+          ],
+          "properties": {
+            "ModuleBytes": {
+              "type": "object",
+              "required": [
+                "args",
+                "module_bytes"
+              ],
+              "properties": {
+                "module_bytes": {
+                  "description": "Hex-encoded raw Wasm bytes.",
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredContractByHash"
+          ],
+          "properties": {
+            "StoredContractByHash": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "hash"
+              ],
+              "properties": {
+                "hash": {
+                  "description": "Hex-encoded hash.",
+                  "type": "string"
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredContractByName"
+          ],
+          "properties": {
+            "StoredContractByName": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredVersionedContractByHash"
+          ],
+          "properties": {
+            "StoredVersionedContractByHash": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "hash"
+              ],
+              "properties": {
+                "hash": {
+                  "description": "Hex-encoded hash.",
+                  "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "StoredVersionedContractByName"
+          ],
+          "properties": {
+            "StoredVersionedContractByName": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "entry_point": {
+                  "type": "string"
+                },
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Transfer"
+          ],
+          "properties": {
+            "Transfer": {
+              "type": "object",
+              "required": [
+                "args"
+              ],
+              "properties": {
+                "args": {
+                  "$ref": "#/definitions/RuntimeArgs"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RuntimeArgs": {
+      "description": "Represents a collection of arguments passed to a smart contract.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NamedArg"
+      }
+    },
+    "NamedArg": {
+      "description": "Named arguments to a contract",
+      "type": "array",
+      "items": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/CLValue"
+        }
+      ],
+      "maxItems": 2,
+      "minItems": 2
+    },
+    "CLValue": {
+      "description": "A Casper value, i.e. a value which can be stored and manipulated by smart contracts.\n\nIt holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the CLType of the underlying data as a separate member.\n\nThe `parsed` field, representing the original value, is a convenience only available when a CLValue is encoded to JSON, and can always be set to null if preferred.",
+      "type": "object",
+      "required": [
+        "bytes",
+        "cl_type"
+      ],
+      "properties": {
+        "cl_type": {
+          "$ref": "#/definitions/CLType"
+        },
+        "bytes": {
+          "type": "string"
+        },
+        "parsed": true
+      },
+      "additionalProperties": false
+    },
+    "CLType": {
+      "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Bool",
+            "I32",
+            "I64",
+            "U8",
+            "U32",
+            "U64",
+            "U128",
+            "U256",
+            "U512",
+            "Unit",
+            "String",
+            "Key",
+            "URef",
+            "PublicKey",
+            "Any"
+          ]
+        },
+        {
+          "description": "`Option` of a `CLType`.",
+          "type": "object",
+          "required": [
+            "Option"
+          ],
+          "properties": {
+            "Option": {
+              "$ref": "#/definitions/CLType"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Variable-length list of a single `CLType` (comparable to a `Vec`).",
+          "type": "object",
+          "required": [
+            "List"
+          ],
+          "properties": {
+            "List": {
+              "$ref": "#/definitions/CLType"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Fixed-length list of a single `CLType` (comparable to a Rust array).",
+          "type": "object",
+          "required": [
+            "ByteArray"
+          ],
+          "properties": {
+            "ByteArray": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "`Result` with `Ok` and `Err` variants of `CLType`s.",
+          "type": "object",
+          "required": [
+            "Result"
+          ],
+          "properties": {
+            "Result": {
+              "type": "object",
+              "required": [
+                "err",
+                "ok"
+              ],
+              "properties": {
+                "ok": {
+                  "$ref": "#/definitions/CLType"
+                },
+                "err": {
+                  "$ref": "#/definitions/CLType"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Map with keys of a single `CLType` and values of a single `CLType`.",
+          "type": "object",
+          "required": [
+            "Map"
+          ],
+          "properties": {
+            "Map": {
+              "type": "object",
+              "required": [
+                "key",
+                "value"
+              ],
+              "properties": {
+                "key": {
+                  "$ref": "#/definitions/CLType"
+                },
+                "value": {
+                  "$ref": "#/definitions/CLType"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "1-ary tuple of a `CLType`.",
+          "type": "object",
+          "required": [
+            "Tuple1"
+          ],
+          "properties": {
+            "Tuple1": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CLType"
+              },
+              "maxItems": 1,
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "2-ary tuple of `CLType`s.",
+          "type": "object",
+          "required": [
+            "Tuple2"
+          ],
+          "properties": {
+            "Tuple2": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CLType"
+              },
+              "maxItems": 2,
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "3-ary tuple of `CLType`s.",
+          "type": "object",
+          "required": [
+            "Tuple3"
+          ],
+          "properties": {
+            "Tuple3": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CLType"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Approval": {
+      "description": "A struct containing a signature and the public key of the signer.",
+      "type": "object",
+      "required": [
+        "signature",
+        "signer"
+      ],
+      "properties": {
+        "signer": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "signature": {
+          "$ref": "#/definitions/Signature"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExecutionResult": {
+      "description": "The result of executing a single deploy.",
+      "anyOf": [
+        {
+          "description": "The result of a failed execution.",
+          "type": "object",
+          "required": [
+            "Failure"
+          ],
+          "properties": {
+            "Failure": {
+              "type": "object",
+              "required": [
+                "cost",
+                "effect",
+                "error_message",
+                "transfers"
+              ],
+              "properties": {
+                "effect": {
+                  "description": "The effect of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/ExecutionEffect"
+                    }
+                  ]
+                },
+                "transfers": {
+                  "description": "A record of Transfers performed while executing the deploy.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TransferAddr"
+                  }
+                },
+                "cost": {
+                  "description": "The cost of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                },
+                "error_message": {
+                  "description": "The error message associated with executing the deploy.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The result of a successful execution.",
+          "type": "object",
+          "required": [
+            "Success"
+          ],
+          "properties": {
+            "Success": {
+              "type": "object",
+              "required": [
+                "cost",
+                "effect",
+                "transfers"
+              ],
+              "properties": {
+                "effect": {
+                  "description": "The effect of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/ExecutionEffect"
+                    }
+                  ]
+                },
+                "transfers": {
+                  "description": "A record of Transfers performed while executing the deploy.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TransferAddr"
+                  }
+                },
+                "cost": {
+                  "description": "The cost of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExecutionEffect": {
+      "description": "The effect of executing a single deploy.",
+      "type": "object",
+      "required": [
+        "operations",
+        "transforms"
+      ],
+      "properties": {
+        "operations": {
+          "description": "The resulting operations.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Operation"
+          }
+        },
+        "transforms": {
+          "description": "The resulting transformations.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransformEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Operation": {
+      "description": "An operation performed while executing a deploy.",
+      "type": "object",
+      "required": [
+        "key",
+        "kind"
+      ],
+      "properties": {
+        "key": {
+          "description": "The formatted string of the `Key`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "The type of operation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/OpKind"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "OpKind": {
+      "description": "The type of operation performed while executing a deploy.",
+      "type": "string",
+      "enum": [
+        "Read",
+        "Write",
+        "Add",
+        "NoOp"
+      ]
+    },
+    "TransformEntry": {
+      "description": "A transformation performed while executing a deploy.",
+      "type": "object",
+      "required": [
+        "key",
+        "transform"
+      ],
+      "properties": {
+        "key": {
+          "description": "The formatted string of the `Key`.",
+          "type": "string"
+        },
+        "transform": {
+          "description": "The transformation.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Transform"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Transform": {
+      "description": "The actual transformation performed while executing a deploy.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Identity",
+            "WriteContractWasm",
+            "WriteContract",
+            "WriteContractPackage"
+          ]
+        },
+        {
+          "description": "Writes the given CLValue to global state.",
+          "type": "object",
+          "required": [
+            "WriteCLValue"
+          ],
+          "properties": {
+            "WriteCLValue": {
+              "$ref": "#/definitions/CLValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given Account to global state.",
+          "type": "object",
+          "required": [
+            "WriteAccount"
+          ],
+          "properties": {
+            "WriteAccount": {
+              "$ref": "#/definitions/AccountHash"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given DeployInfo to global state.",
+          "type": "object",
+          "required": [
+            "WriteDeployInfo"
+          ],
+          "properties": {
+            "WriteDeployInfo": {
+              "$ref": "#/definitions/DeployInfo"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given EraInfo to global state.",
+          "type": "object",
+          "required": [
+            "WriteEraInfo"
+          ],
+          "properties": {
+            "WriteEraInfo": {
+              "$ref": "#/definitions/EraInfo"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given Transfer to global state.",
+          "type": "object",
+          "required": [
+            "WriteTransfer"
+          ],
+          "properties": {
+            "WriteTransfer": {
+              "$ref": "#/definitions/Transfer"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given Bid to global state.",
+          "type": "object",
+          "required": [
+            "WriteBid"
+          ],
+          "properties": {
+            "WriteBid": {
+              "$ref": "#/definitions/Bid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given Withdraw to global state.",
+          "type": "object",
+          "required": [
+            "WriteWithdraw"
+          ],
+          "properties": {
+            "WriteWithdraw": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/UnbondingPurse"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Adds the given `i32`.",
+          "type": "object",
+          "required": [
+            "AddInt32"
+          ],
+          "properties": {
+            "AddInt32": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Adds the given `u64`.",
+          "type": "object",
+          "required": [
+            "AddUInt64"
+          ],
+          "properties": {
+            "AddUInt64": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Adds the given `U128`.",
+          "type": "object",
+          "required": [
+            "AddUInt128"
+          ],
+          "properties": {
+            "AddUInt128": {
+              "$ref": "#/definitions/U128"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Adds the given `U256`.",
+          "type": "object",
+          "required": [
+            "AddUInt256"
+          ],
+          "properties": {
+            "AddUInt256": {
+              "$ref": "#/definitions/U256"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Adds the given `U512`.",
+          "type": "object",
+          "required": [
+            "AddUInt512"
+          ],
+          "properties": {
+            "AddUInt512": {
+              "$ref": "#/definitions/U512"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Adds the given collection of named keys.",
+          "type": "object",
+          "required": [
+            "AddKeys"
+          ],
+          "properties": {
+            "AddKeys": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/NamedKey"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A failed transformation, containing an error message.",
+          "type": "object",
+          "required": [
+            "Failure"
+          ],
+          "properties": {
+            "Failure": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AccountHash": {
+      "description": "Hex-encoded account hash.",
+      "type": "string"
+    },
+    "DeployInfo": {
+      "description": "Information relating to the given Deploy.",
+      "type": "object",
+      "required": [
+        "deploy_hash",
+        "from",
+        "gas",
+        "source",
+        "transfers"
+      ],
+      "properties": {
+        "deploy_hash": {
+          "description": "The relevant Deploy.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeployHash"
+            }
+          ]
+        },
+        "transfers": {
+          "description": "Transfers performed by the Deploy.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransferAddr"
+          }
+        },
+        "from": {
+          "description": "Account identifier of the creator of the Deploy.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AccountHash"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source purse used for payment of the Deploy.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "gas": {
+          "description": "Gas cost of executing the Deploy.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransferAddr": {
+      "description": "Hex-encoded transfer address.",
+      "type": "string"
+    },
+    "URef": {
+      "description": "Hex-encoded, formatted URef.",
+      "type": "string"
+    },
+    "EraInfo": {
+      "description": "Auction metadata.  Intended to be recorded at each era.",
+      "type": "object",
+      "required": [
+        "seigniorage_allocations"
+      ],
+      "properties": {
+        "seigniorage_allocations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SeigniorageAllocation"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SeigniorageAllocation": {
+      "description": "Information about a seigniorage allocation",
+      "anyOf": [
+        {
+          "description": "Info about a seigniorage allocation for a validator",
+          "type": "object",
+          "required": [
+            "Validator"
+          ],
+          "properties": {
+            "Validator": {
+              "type": "object",
+              "required": [
+                "amount",
+                "validator_public_key"
+              ],
+              "properties": {
+                "validator_public_key": {
+                  "description": "Validator's public key",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/PublicKey"
+                    }
+                  ]
+                },
+                "amount": {
+                  "description": "Allocated amount",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Info about a seigniorage allocation for a delegator",
+          "type": "object",
+          "required": [
+            "Delegator"
+          ],
+          "properties": {
+            "Delegator": {
+              "type": "object",
+              "required": [
+                "amount",
+                "delegator_public_key",
+                "validator_public_key"
+              ],
+              "properties": {
+                "delegator_public_key": {
+                  "description": "Delegator's public key",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/PublicKey"
+                    }
+                  ]
+                },
+                "validator_public_key": {
+                  "description": "Validator's public key",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/PublicKey"
+                    }
+                  ]
+                },
+                "amount": {
+                  "description": "Allocated amount",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Transfer": {
+      "description": "Represents a transfer from one purse to another",
+      "type": "object",
+      "required": [
+        "amount",
+        "deploy_hash",
+        "from",
+        "gas",
+        "source",
+        "target"
+      ],
+      "properties": {
+        "deploy_hash": {
+          "description": "Deploy that created the transfer",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DeployHash"
+            }
+          ]
+        },
+        "from": {
+          "description": "Account from which transfer was executed",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AccountHash"
+            }
+          ]
+        },
+        "to": {
+          "description": "Account to which funds are transferred",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AccountHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source purse",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "target": {
+          "description": "Target purse",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "amount": {
+          "description": "Transfer amount",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "gas": {
+          "description": "Gas",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "id": {
+          "description": "User-defined id",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Bid": {
+      "description": "An entry in the validator map.",
+      "type": "object",
+      "required": [
+        "bonding_purse",
+        "delegation_rate",
+        "delegators",
+        "inactive",
+        "staked_amount",
+        "validator_public_key"
+      ],
+      "properties": {
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "bonding_purse": {
+          "description": "The purse that was used for bonding.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "staked_amount": {
+          "description": "The amount of tokens staked by a validator (not including delegators).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "delegation_rate": {
+          "description": "Delegation rate",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "vesting_schedule": {
+          "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VestingSchedule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delegators": {
+          "description": "This validator's delegators, indexed by their public keys",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Delegator"
+          }
+        },
+        "inactive": {
+          "description": "`true` if validator has been \"evicted\"",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "VestingSchedule": {
+      "type": "object",
+      "required": [
+        "initial_release_timestamp_millis"
+      ],
+      "properties": {
+        "initial_release_timestamp_millis": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "locked_amounts": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/U512"
+          },
+          "maxItems": 14,
+          "minItems": 14
+        }
+      },
+      "additionalProperties": false
+    },
+    "Delegator": {
+      "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
+      "type": "object",
+      "required": [
+        "bonding_purse",
+        "delegator_public_key",
+        "staked_amount",
+        "validator_public_key"
+      ],
+      "properties": {
+        "delegator_public_key": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "staked_amount": {
+          "$ref": "#/definitions/U512"
+        },
+        "bonding_purse": {
+          "$ref": "#/definitions/URef"
+        },
+        "validator_public_key": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "vesting_schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VestingSchedule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "UnbondingPurse": {
+      "description": "Unbonding purse.",
+      "type": "object",
+      "required": [
+        "amount",
+        "bonding_purse",
+        "era_of_creation",
+        "unbonder_public_key",
+        "validator_public_key"
+      ],
+      "properties": {
+        "bonding_purse": {
+          "description": "Bonding Purse",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "validator_public_key": {
+          "description": "Validators public key.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "unbonder_public_key": {
+          "description": "Unbonders public key.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_of_creation": {
+          "description": "Era in which this unbonding request was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "amount": {
+          "description": "Unbonding Amount.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "U128": {
+      "description": "Decimal representation of a 128-bit integer.",
+      "type": "string"
+    },
+    "U256": {
+      "description": "Decimal representation of a 256-bit integer.",
+      "type": "string"
+    },
+    "NamedKey": {
+      "description": "A named key.",
+      "type": "object",
+      "required": [
+        "key",
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "description": "The name of the entry.",
+          "type": "string"
+        },
+        "key": {
+          "description": "The value of the entry: a casper `Key` type.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "FinalitySignature": {
+      "description": "A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should wait until the signers' combined weight exceeds their fault tolerance threshold before accepting the block as finalized.",
+      "type": "object",
+      "required": [
+        "block_hash",
+        "era_id",
+        "public_key",
+        "signature"
+      ],
+      "properties": {
+        "block_hash": {
+          "description": "Hash of a block this signature is for.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "Era in which the block was created in.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "signature": {
+          "description": "Signature over the block hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Signature"
+            }
+          ]
+        },
+        "public_key": {
+          "description": "Public key of the signing validator.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -37,22 +37,24 @@
 //! The following chart illustrates the lifecycle of an outgoing connection.
 //!
 //! ```text
-//!                            learn
-//!                          ┌──────────────  unknown/forgotten
-//!                          │ ┌───────────►  (implicit state)
-//!                          │ │
-//!                          │ │ exceed fail  │
-//!                          │ │ limit        │ block
-//!                          │ │              │
-//!                          │ │              │
-//!                          │ │              ▼
-//!     ┌─────────┐ fail,    │ │        ┌─────────┐
-//!     │         │ sweep    │ │  block │         │
-//!     │ Waiting │◄───────┐ │ │ ┌─────►│ Blocked │◄──────────┐
-//! ┌───┤         │        │ │ │ │      │         │           │
-//! │   └────┬────┘        │ │ │ │      └────┬────┘           │
-//! │ block  │             │ │ │ │           │                │
-//! │        │ timeout     │ ▼ │ │           │ redeem,        │
+//!                   forget (after n tries)
+//!          ┌────────────────────────────────────┐
+//!          │                 learn              ▼
+//!          │               ┌──────────────  unknown/forgotten
+//!          │               │                (implicit state)
+//!          │               │
+//!          │               │                │
+//!          │               │                │ block
+//!          │               │                │
+//!          │               │                │
+//!          │               │                ▼
+//!     ┌────┴────┐          │          ┌─────────┐
+//!     │         │  fail    │    block │         │
+//!     │ Waiting │◄───────┐ │   ┌─────►│ Blocked │◄──────────┐
+//! ┌───┤         │        │ │   │      │         │           │
+//! │   └────┬────┘        │ │   │      └────┬────┘           │
+//! │ block  │             │ │   │           │                │
+//! │        │ timeout     │ ▼   │           │ redeem,        │
 //! │        │        ┌────┴─────┴───┐       │ block timeout  │
 //! │        │        │              │       │                │
 //! │        └───────►│  Connecting  │◄──────┘                │
@@ -69,6 +71,7 @@
 //! │       │                                                 │
 //! │       │ block                                           │
 //! └───────┴─────────────────────────────────────────────────┘
+//! ```
 //!
 //! # Timeouts/safety
 //!
@@ -85,7 +88,6 @@
 //! If a conflict (multiple successful dial results) occurs, the more recent connection takes
 //! precedence over the previous one. This prevents problems when a notification of a terminated
 //! connection is overtaken by the new connection announcement.
-//! ```
 
 // Clippy has a lot of false positives due to `span.clone()`-closures.
 #![allow(clippy::redundant_clone)]
@@ -500,6 +502,15 @@ where
             })
     }
 
+    /// Checks if an address is blocked.
+    #[cfg(test)]
+    pub(crate) fn is_blocked(&self, addr: SocketAddr) -> bool {
+        match self.outgoing.get(&addr) {
+            Some(outgoing) => matches!(outgoing.state, OutgoingState::Blocked { .. }),
+            None => false,
+        }
+    }
+
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
@@ -541,7 +552,7 @@ where
         let mut to_reconnect = Vec::new();
 
         for (&addr, outgoing) in self.outgoing.iter() {
-            let span = make_span(addr, Some(&outgoing));
+            let span = make_span(addr, Some(outgoing));
 
             span.in_scope(|| match outgoing.state {
                 // Decide whether to attempt reconnecting a failed-waiting address.
@@ -690,29 +701,42 @@ where
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
 
-                let failures_so_far = if let Some(outgoing) = self.outgoing.get(&addr) {
-                    if let OutgoingState::Connecting { failures_so_far,.. } = outgoing.state {
-                         failures_so_far + 1
-                    } else {
-                        warn!(
-                            "processing dial outcome on a connection that was not marked as connecting"
-                        );
-                        1
+                if let Some(outgoing) = self.outgoing.get(&addr) {
+                    match outgoing.state {
+                        OutgoingState::Connecting { failures_so_far,.. } => {
+                            self.change_outgoing_state(
+                                addr,
+                                OutgoingState::Waiting {
+                                    failures_so_far: failures_so_far + 1,
+                                    error: Some(error),
+                                    last_failure: when,
+                                },
+                            );
+                            None
+                        }
+                        OutgoingState::Blocked { .. } => {
+                            debug!("failed dial outcome after block ignored");
+
+                            // We do not set the connection to "waiting" if an out-of-order failed
+                            // connection arrives, but continue to honor the blocking.
+                            None
+                        }
+                        OutgoingState::Waiting { .. } |
+                        OutgoingState::Connected { .. } |
+                        OutgoingState::Loopback => {
+                            warn!(
+                                "processing dial outcome on a connection that was not marked as connecting or blocked"
+                            );
+
+                            None
+                        }
                     }
                 } else {
                     warn!("processing dial outcome non-existent connection");
-                    1
-                };
 
-                self.change_outgoing_state(
-                    addr,
-                    OutgoingState::Waiting {
-                        failures_so_far,
-                        error: Some(error),
-                        last_failure: when,
-                    },
-                );
-                None
+                    // If the connection does not exist, do not introduce it!
+                    None
+                }
             }
             DialOutcome::Loopback { addr } => {
                 info!("found loopback address");
@@ -840,7 +864,7 @@ mod tests {
         let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
-        let id_a = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1050,9 +1074,9 @@ mod tests {
         // We use `addr_b` as an unforgettable address, which does not mean it cannot be blocked!
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
         let addr_c: SocketAddr = "9.0.1.2:9012".parse().unwrap();
-        let id_a = NodeId::random_tls(&mut rng);
-        let id_b = NodeId::random_tls(&mut rng);
-        let id_c = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
+        let id_b = NodeId::random(&mut rng);
+        let id_c = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1190,8 +1214,8 @@ mod tests {
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
 
-        let id_a = NodeId::random_tls(&mut rng);
-        let id_b = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
+        let id_b = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1227,7 +1251,7 @@ mod tests {
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
 
-        let id_a = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1272,5 +1296,43 @@ mod tests {
 
         // We now expect to be connected through the first connection (see documentation).
         assert_eq!(manager.get_route(id_a), Some(&1));
+    }
+
+    #[test]
+    fn blocking_not_overridden_by_racing_failed_connections() {
+        init_logging();
+
+        let mut clock = TestClock::new();
+
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+
+        let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
+
+        assert!(!manager.is_blocked(addr_a));
+
+        // Block `addr_a` from the start.
+        assert!(manager.block_addr(addr_a, clock.now()).is_none());
+        assert!(manager.is_blocked(addr_a));
+
+        clock.advance_time(60);
+
+        // Receive an "illegal" dial outcome, even though we did not dial.
+        assert!(manager
+            .handle_dial_outcome(DialOutcome::Failed {
+                addr: addr_a,
+                error: TestDialerError { id: 12345 },
+
+                /// The moment the connection attempt failed.
+                when: clock.now(),
+            })
+            .is_none());
+
+        // The failed connection should _not_ have reset the block!
+        assert!(manager.is_blocked(addr_a));
+        clock.advance_time(60);
+        assert!(manager.is_blocked(addr_a));
+
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager.is_blocked(addr_a));
     }
 }

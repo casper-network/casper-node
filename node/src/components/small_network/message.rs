@@ -18,7 +18,7 @@ fn default_protocol_version() -> ProtocolVersion {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum Message<P> {
+pub(crate) enum Message<P> {
     Handshake {
         /// Network we are connected to.
         network_name: String,
@@ -41,6 +41,15 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => MessageKind::Protocol,
             Message::Payload(payload) => payload.classify(),
+        }
+    }
+
+    /// Returns the incoming resource estimate of the payload.
+    #[inline]
+    pub(super) fn payload_incoming_resource_estimate(&self) -> u32 {
+        match self {
+            Message::Handshake { .. } => 0,
+            Message::Payload(payload) => payload.incoming_resource_estimate(),
         }
     }
 }
@@ -68,7 +77,7 @@ impl ConsensusKeyPair {
 
 /// Certificate used to indicate that the peer is a validator using the specified public key.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ConsensusCertificate {
+pub(crate) struct ConsensusCertificate {
     public_key: PublicKey,
     signature: Signature,
 }
@@ -124,7 +133,7 @@ impl<P: Display> Display for Message<P> {
 
 /// A classification system for networking messages.
 #[derive(Copy, Clone, Debug)]
-pub enum MessageKind {
+pub(crate) enum MessageKind {
     /// Non-payload messages, like handshakes.
     Protocol,
     /// Messages directly related to consensus.
@@ -159,11 +168,16 @@ impl Display for MessageKind {
 ///
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
-pub trait Payload:
+pub(crate) trait Payload:
     Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + 'static
 {
     /// Classifies the payload based on its contents.
     fn classify(&self) -> MessageKind;
+
+    /// The penalty for resource usage of a message to be applied when processed as incoming.
+    fn incoming_resource_estimate(&self) -> u32 {
+        0
+    }
 }
 
 #[cfg(test)]
@@ -184,7 +198,7 @@ mod tests {
     /// Note that the message itself may go out of sync over time as `protocol::Message` changes.
     /// The test further below ensures that the handshake is accurate in the meantime.
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub enum V1_0_0_Message {
+    pub(crate) enum V1_0_0_Message {
         Handshake {
             /// Network we are connected to.
             network_name: String,
@@ -330,7 +344,7 @@ mod tests {
 
     #[test]
     fn current_handshake_decodes_from_historic_v1_0_0() {
-        let modern_handshake: Message<protocol::Message> = deserialize_message(&V1_0_0_HANDSHAKE);
+        let modern_handshake: Message<protocol::Message> = deserialize_message(V1_0_0_HANDSHAKE);
 
         match modern_handshake {
             Message::Handshake {

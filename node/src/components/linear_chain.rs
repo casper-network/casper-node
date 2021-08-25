@@ -32,7 +32,7 @@ use crate::{
 };
 use casper_types::ProtocolVersion;
 
-pub use event::Event;
+pub(crate) use event::Event;
 use state::LinearChain;
 
 #[derive(DataSize, Debug)]
@@ -151,15 +151,6 @@ where
                 }
             }
             .ignore(),
-            Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
-                async move {
-                    let block = effect_builder
-                        .get_block_at_height_from_storage(height)
-                        .await;
-                    responder.respond(block).await
-                }
-                .ignore()
-            }
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => async move {
                 let block_by_height = match effect_builder
                     .get_block_at_height_from_storage(height)
@@ -215,10 +206,6 @@ where
                     is_bonded,
                 );
                 outcomes_to_effects(effect_builder, outcomes)
-            }
-            Event::KnownLinearChainBlock(block) => {
-                self.linear_chain_state.set_latest_block(*block);
-                Effects::new()
             }
         }
     }

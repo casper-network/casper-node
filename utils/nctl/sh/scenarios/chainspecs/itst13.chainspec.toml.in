@@ -24,15 +24,15 @@ maximum_net_message_size = 23_068_672
 
 [core]
 # Era duration.
-era_duration = '41seconds'
+era_duration = '180seconds'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
-minimum_era_height = 10
+minimum_era_height = 30
 # Number of slots available in validator auction.
 validator_slots = 5
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,
 # you will be a validator in era N + auction_delay + 1.
-auction_delay = 3
+auction_delay = 1
 # The period after genesis during which a genesis validator's bid is locked.
 locked_funds_period = '90days'
 # Default number of eras that need to pass to be able to withdraw unbonded funds.
@@ -143,7 +143,7 @@ call_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 420, 0] }
 call_versioned_contract = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
 create_contract_package_at_hash = { cost = 200, arguments = [0, 0] }
 create_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
-create_purse = { cost = 170_000, arguments = [0, 0] }
+create_purse = { cost = 2_500_000_000, arguments = [0, 0] }
 disable_contract_version = { cost = 200, arguments = [0, 0, 0, 0] }
 get_balance = { cost = 3_800, arguments = [0, 0, 0] }
 get_blocktime = { cost = 330, arguments = [0] }
@@ -198,9 +198,9 @@ read_era_id = 10_000
 activate_bid = 10_000
 
 [system_costs.mint_costs]
-mint = 10_000
+mint = 2_500_000_000
 reduce_total_supply = 10_000
-create = 10_000
+create = 2_500_000_000
 balance = 10_000
 transfer = 10_000
 read_base_round_reward = 10_000

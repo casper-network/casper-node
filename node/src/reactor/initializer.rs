@@ -13,17 +13,14 @@ use tracing::info;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
         gossiper,
-        network::NetworkIdentity,
         small_network::{GossipedAddress, SmallNetworkIdentity, SmallNetworkIdentityError},
         storage::{self, Storage},
         Component,
     },
     effect::{
-        announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-        },
+        announcements::{ChainspecLoaderAnnouncement, ControlAnnouncement},
         requests::{
             ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
             RestRequest, StateStoreRequest, StorageRequest,
@@ -31,7 +28,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    reactor::{self, validator, EventQueueHandle, ReactorExit},
+    reactor::{self, participating, EventQueueHandle, ReactorExit},
     types::{chainspec, NodeId},
     utils::WithDir,
     NodeRng,
@@ -40,7 +37,7 @@ use crate::{
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
-pub enum Event {
+pub(crate) enum Event {
     /// Chainspec handler event.
     #[from]
     Chainspec(chainspec_loader::Event),
@@ -51,8 +48,7 @@ pub enum Event {
     Storage(#[serde(skip_serializing)] storage::Event),
 
     /// Contract runtime event.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
 
     /// Request for state storage.
     #[from]
@@ -61,6 +57,12 @@ pub enum Event {
     /// Control announcement
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(Box::new(contract_runtime_request))
+    }
 }
 
 impl ReactorEvent for Event {
@@ -76,12 +78,6 @@ impl ReactorEvent for Event {
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
         Event::Storage(storage::Event::StorageRequest(request))
-    }
-}
-
-impl From<ContractRuntimeRequest> for Event {
-    fn from(request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
     }
 }
 
@@ -143,11 +139,7 @@ impl Display for Event {
 
 /// Error type returned by the initializer reactor.
 #[derive(Debug, Error)]
-pub enum Error {
-    /// `Config` error.
-    #[error("config error: {0}")]
-    ConfigError(String),
-
+pub(crate) enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
@@ -166,19 +158,17 @@ pub enum Error {
 
     /// An error that occurred when creating a `SmallNetworkIdentity`.
     #[error(transparent)]
-    SmallNetworkIdentityError(#[from] SmallNetworkIdentityError),
+    SmallNetworkIdentity(#[from] SmallNetworkIdentityError),
 }
 
 /// Initializer node reactor.
 #[derive(DataSize, Debug)]
-pub struct Reactor {
-    pub(super) config: WithDir<validator::Config>,
+pub(crate) struct Reactor {
+    pub(super) config: WithDir<participating::Config>,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) small_network_identity: SmallNetworkIdentity,
-    #[data_size(skip)]
-    pub(super) network_identity: NetworkIdentity,
 }
 
 impl Reactor {
@@ -196,14 +186,15 @@ impl Reactor {
             hard_reset_to_start_of_era,
             chainspec_loader.chainspec().protocol_config.version,
             crashed,
+            &chainspec_loader.chainspec().network_config.name,
         )?;
 
         let contract_runtime = ContractRuntime::new(
-            chainspec_loader.initial_state_root_hash(),
-            chainspec_loader.initial_block_header(),
             chainspec_loader.chainspec().protocol_config.version,
-            storage_config,
+            storage.root_path(),
             &config.value().contract_runtime,
+            chainspec_loader.chainspec().wasm_config,
+            chainspec_loader.chainspec().system_costs_config,
             registry,
         )?;
 
@@ -232,15 +223,12 @@ impl Reactor {
 
         let small_network_identity = SmallNetworkIdentity::new()?;
 
-        let network_identity = NetworkIdentity::new();
-
         let reactor = Reactor {
             config,
             chainspec_loader,
             storage,
             contract_runtime,
             small_network_identity,
-            network_identity,
         };
         Ok((reactor, effects))
     }
@@ -249,14 +237,14 @@ impl Reactor {
 #[cfg(test)]
 impl Reactor {
     /// Inspect storage.
-    pub fn storage(&self) -> &Storage {
+    pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
 }
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = (bool, WithDir<validator::Config>);
+    type Config = (bool, WithDir<participating::Config>);
     type Error = Error;
 
     fn new(
@@ -290,9 +278,9 @@ impl reactor::Reactor for Reactor {
                 self.storage.handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
+                Event::from,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
             Event::StateStoreRequest(request) => {
                 self.dispatch_event(effect_builder, rng, Event::Storage(request.into()))
@@ -307,13 +295,10 @@ impl reactor::Reactor for Reactor {
 }
 
 #[cfg(test)]
-pub mod test {
+pub(crate) mod test {
     use super::*;
-    use crate::{
-        components::network::ENABLE_LIBP2P_NET_ENV_VAR, testing::network::NetworkedReactor,
-        types::Chainspec,
-    };
-    use std::{env, sync::Arc};
+    use crate::{testing::network::NetworkedReactor, types::Chainspec};
+    use std::sync::Arc;
 
     impl Reactor {
         pub(crate) fn new_with_chainspec(
@@ -332,11 +317,7 @@ pub mod test {
     impl NetworkedReactor for Reactor {
         type NodeId = NodeId;
         fn node_id(&self) -> Self::NodeId {
-            if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
-                NodeId::from(&self.small_network_identity)
-            } else {
-                NodeId::from(&self.network_identity)
-            }
+            NodeId::from(&self.small_network_identity)
         }
     }
 }

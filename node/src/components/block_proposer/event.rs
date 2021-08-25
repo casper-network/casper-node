@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{Deploy, DeployHash, DeployHeader, FinalizedBlock},
+    types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
 use casper_execution_engine::shared::motes::Motes;
 
@@ -22,7 +22,7 @@ pub struct DeployInfo {
 
 /// An event for when using the block proposer as a component.
 #[derive(DataSize, Debug, From)]
-pub enum Event {
+pub(crate) enum Event {
     /// Incoming `BlockProposerRequest`.
     #[from]
     Request(BlockProposerRequest),
@@ -33,11 +33,12 @@ pub enum Event {
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
     },
-    /// A new deploy has been received by this node and gossiped: it should be retrieved from
-    /// storage and buffered here.
-    BufferDeploy(DeployHash),
-    /// The given deploy has been gossiped and can now be included in a block.
-    GotFromStorage(Box<Deploy>),
+    /// A new deploy has been received by this node and stored: it should be retrieved from storage
+    /// and buffered here.
+    BufferDeploy {
+        hash: DeployOrTransferHash,
+        deploy_info: Box<DeployInfo>,
+    },
     /// The block proposer has been asked to prune stale deploys.
     Prune,
     /// A block has been finalized. We should never propose its deploys again.
@@ -56,10 +57,7 @@ impl Display for Event {
                 "loaded block-proposer finalized deploys; expected next finalized block: {}",
                 next_finalized_block
             ),
-            Event::BufferDeploy(hash) => write!(f, "block-proposer add {}", hash),
-            Event::GotFromStorage(deploy) => {
-                write!(f, "block-proposer got from storage {}", deploy.id())
-            }
+            Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
             Event::Prune => write!(f, "block-proposer prune"),
             Event::FinalizedBlock(block) => {
                 write!(f, "block-proposer finalized block {}", block)

@@ -1,3 +1,5 @@
+// Unrestricted event size is okay in tests.
+#![allow(clippy::large_enum_variant)]
 #![cfg(test)]
 use std::{
     collections::{BTreeSet, HashMap},
@@ -15,27 +17,28 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
+use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 use casper_types::ProtocolVersion;
 
 use super::*;
 use crate::{
     components::{
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
-    crypto::hash::Digest,
     effect::{
         announcements::{
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
         Responder,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
+    testing,
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
@@ -70,7 +73,7 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
+    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
 }
 
 impl ReactorEvent for Event {
@@ -86,12 +89,6 @@ impl ReactorEvent for Event {
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
         Event::Storage(storage::Event::from(request))
-    }
-}
-
-impl From<ContractRuntimeRequest> for Event {
-    fn from(request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
     }
 }
 
@@ -187,17 +184,18 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             false,
+            "test",
         )
         .unwrap();
 
         let contract_runtime_config = contract_runtime::Config::default();
         let contract_runtime = ContractRuntime::new(
-            Digest::random(rng),
-            None,
             ProtocolVersion::from_parts(1, 0, 0),
-            storage_withdir,
+            storage.root_path(),
             &contract_runtime_config,
-            &registry,
+            WasmConfig::default(),
+            SystemConfig::default(),
+            registry,
         )
         .unwrap();
 
@@ -277,27 +275,20 @@ impl reactor::Reactor for Reactor {
                                 return Effects::new();
                             }
                         };
+
                         match self
                             .storage
-                            .handle_legacy_direct_deploy_request(deploy_hash)
+                            .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
                         {
-                            // This functionality was moved out of the storage component and
-                            // should be refactored ASAP.
-                            Some(deploy) => {
-                                match NodeMessage::new_get_response(&deploy) {
-                                    Ok(message) => {
-                                        return effect_builder
-                                            .send_message(sender, message)
-                                            .ignore();
-                                    }
-                                    Err(error) => {
-                                        error!("failed to create get-response: {}", error);
-                                        return Effects::new();
-                                    }
-                                };
+                            Some(serialized_item) => {
+                                let message = NodeMessage::new_get_response_raw_unchecked::<Deploy>(
+                                    serialized_item,
+                                );
+                                return effect_builder.send_message(sender, message).ignore();
                             }
+
                             None => {
-                                debug!("failed to get {} for {}", deploy_hash, sender);
+                                debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
                                 return Effects::new();
                             }
                         }
@@ -473,7 +464,7 @@ async fn should_get_from_alternate_source() {
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
         network
-            .process_injected_effect_on(&node_id, announce_deploy_received(deploy.clone(), None))
+            .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone(), None))
             .await;
     }
 
@@ -509,11 +500,8 @@ async fn should_get_from_alternate_source() {
     network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
 
     // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
-    let secs_to_advance = Config::default().get_remainder_timeout_secs();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance)).await;
-    time::resume();
-    debug!("advanced time by {} secs", secs_to_advance);
+    let duration_to_advance = Config::default().get_remainder_timeout();
+    testing::advance_time(duration_to_advance.into()).await;
 
     // Check node 0 has the deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
@@ -581,11 +569,8 @@ async fn should_timeout_gossip_response() {
     }
 
     // Advance time to trigger node 0's timeout causing it to gossip to the new nodes.
-    let secs_to_advance = Config::default().gossip_request_timeout_secs();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance)).await;
-    time::resume();
-    debug!("advanced time by {} secs", secs_to_advance);
+    let duration_to_advance = Config::default().gossip_request_timeout();
+    testing::advance_time(duration_to_advance.into()).await;
 
     // Check every node has every deploy stored locally.
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {

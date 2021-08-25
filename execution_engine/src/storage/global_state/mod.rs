@@ -1,28 +1,34 @@
+//! Global state.
+
+/// In-memory implementation of global state.
 pub mod in_memory;
+
+/// Lmdb implementation of global state.
 pub mod lmdb;
 
-use std::{fmt, hash::BuildHasher};
+use std::hash::BuildHasher;
 
-use crate::shared::{
-    additive_map::AdditiveMap,
-    newtypes::{Blake2bHash, CorrelationId},
-    stored_value::StoredValue,
-    transform::{self, Transform},
-    TypeMismatch,
-};
-use casper_types::{bytesrepr, Key, ProtocolVersion};
+use tracing::error;
 
-use crate::storage::{
-    protocol_data::ProtocolData,
-    transaction_source::{Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, Trie},
-    trie_store::{
-        operations::{read, write, ReadResult, WriteResult},
-        TrieStore,
+use casper_types::{bytesrepr, Key, StoredValue};
+
+use crate::{
+    shared::{
+        additive_map::AdditiveMap,
+        newtypes::{Blake2bHash, CorrelationId},
+        transform::{self, Transform},
+    },
+    storage::{
+        transaction_source::{Transaction, TransactionSource},
+        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie_store::{
+            operations::{read, write, ReadResult, WriteResult},
+            TrieStore,
+        },
     },
 };
 
-/// A reader of state
+/// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
     /// An error which occurs when reading state
     type Error;
@@ -45,44 +51,32 @@ pub trait StateReader<K, V> {
     ) -> Result<Vec<K>, Self::Error>;
 }
 
-#[derive(Debug)]
-pub enum CommitResult {
-    RootNotFound,
-    Success { state_root: Blake2bHash },
+/// An error emitted by the execution engine on commit
+#[derive(Clone, Debug, thiserror::Error, Eq, PartialEq)]
+pub enum CommitError {
+    /// Root not found.
+    #[error("Root not found: {0:?}")]
+    RootNotFound(Blake2bHash),
+    /// Root not found while attempting to read.
+    #[error("Root not found while attempting to read: {0:?}")]
+    ReadRootNotFound(Blake2bHash),
+    /// Root not found while attempting to write.
+    #[error("Root not found while writing: {0:?}")]
+    WriteRootNotFound(Blake2bHash),
+    /// Key not found.
+    #[error("Key not found: {0}")]
     KeyNotFound(Key),
-    TypeMismatch(TypeMismatch),
-    Serialization(bytesrepr::Error),
+    /// Transform error.
+    #[error(transparent)]
+    TransformError(transform::Error),
 }
 
-impl fmt::Display for CommitResult {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            CommitResult::RootNotFound => write!(f, "Root not found"),
-            CommitResult::Success { state_root } => {
-                write!(f, "Success: state_root: {}", state_root,)
-            }
-            CommitResult::KeyNotFound(key) => write!(f, "Key not found: {}", key),
-            CommitResult::TypeMismatch(type_mismatch) => {
-                write!(f, "Type mismatch: {:?}", type_mismatch)
-            }
-            CommitResult::Serialization(error) => write!(f, "Serialization: {:?}", error),
-        }
-    }
-}
-
-impl From<transform::Error> for CommitResult {
-    fn from(error: transform::Error) -> Self {
-        match error {
-            transform::Error::TypeMismatch(type_mismatch) => {
-                CommitResult::TypeMismatch(type_mismatch)
-            }
-            transform::Error::Serialization(error) => CommitResult::Serialization(error),
-        }
-    }
-}
-
+/// A trait expressing operations over the trie.
 pub trait StateProvider {
+    /// Associated error type for `StateProvider`.
     type Error;
+
+    /// Associated reader type for `StateProvider`.
     type Reader: StateReader<Key, StoredValue, Error = Self::Error>;
 
     /// Checkouts to the post state of a specific block.
@@ -95,19 +89,9 @@ pub trait StateProvider {
         correlation_id: CorrelationId,
         state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, Self::Error>;
+    ) -> Result<Blake2bHash, Self::Error>;
 
-    fn put_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-        protocol_data: &ProtocolData,
-    ) -> Result<(), Self::Error>;
-
-    fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Self::Error>;
-
+    /// Returns an empty root hash.
     fn empty_root(&self) -> Blake2bHash;
 
     /// Reads a `Trie` from the state if it is present
@@ -132,18 +116,19 @@ pub trait StateProvider {
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 
+/// Commit `effects` to the store.
 pub fn commit<'a, R, S, H, E>(
     environment: &'a R,
     store: &S,
     correlation_id: CorrelationId,
     prestate_hash: Blake2bHash,
     effects: AdditiveMap<Key, Transform, H>,
-) -> Result<CommitResult, E>
+) -> Result<Blake2bHash, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
     H: BuildHasher,
 {
     let mut txn = environment.create_read_write_txn()?;
@@ -152,7 +137,7 @@ where
     let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
 
     if maybe_root.is_none() {
-        return Ok(CommitResult::RootNotFound);
+        return Err(CommitError::RootNotFound(prestate_hash).into());
     };
 
     for (key, transform) in effects.into_iter() {
@@ -160,14 +145,36 @@ where
 
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
-            (ReadResult::NotFound, _) => {
-                return Ok(CommitResult::KeyNotFound(key));
+            (ReadResult::NotFound, transform) => {
+                error!(
+                    ?state_root,
+                    ?key,
+                    ?transform,
+                    "Key not found while attempting to apply transform"
+                );
+                return Err(CommitError::KeyNotFound(key).into());
             }
             (ReadResult::Found(current_value), transform) => match transform.apply(current_value) {
                 Ok(updated_value) => updated_value,
-                Err(err) => return Ok(err.into()),
+                Err(err) => {
+                    error!(
+                        ?state_root,
+                        ?key,
+                        ?err,
+                        "Key found, but could not apply transform"
+                    );
+                    return Err(CommitError::TransformError(err).into());
+                }
             },
-            _x @ (ReadResult::RootNotFound, _) => panic!(stringify!(_x._1)),
+            (ReadResult::RootNotFound, transform) => {
+                error!(
+                    ?state_root,
+                    ?key,
+                    ?transform,
+                    "Failed to read state root while processing transform"
+                );
+                return Err(CommitError::ReadRootNotFound(state_root).into());
+            }
         };
 
         let write_result =
@@ -178,11 +185,14 @@ where
                 state_root = root_hash;
             }
             WriteResult::AlreadyExists => (),
-            _x @ WriteResult::RootNotFound => panic!(stringify!(_x)),
+            WriteResult::RootNotFound => {
+                error!(?state_root, ?key, ?value, "Error writing new value");
+                return Err(CommitError::WriteRootNotFound(state_root).into());
+            }
         }
     }
 
     txn.commit()?;
 
-    Ok(CommitResult::Success { state_root })
+    Ok(state_root)
 }

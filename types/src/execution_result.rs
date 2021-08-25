@@ -67,27 +67,31 @@ const TRANSFORM_FAILURE_TAG: u8 = 17;
 
 #[cfg(feature = "std")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
-    let mut operations = Vec::new();
-    operations.push(Operation {
-        key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
-            .to_string(),
-        kind: OpKind::Write,
-    });
-    operations.push(Operation {
-        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
-        kind: OpKind::Read,
-    });
+    let operations = vec![
+        Operation {
+            key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
+                .to_string(),
+            kind: OpKind::Write,
+        },
+        Operation {
+            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
+                .to_string(),
+            kind: OpKind::Read,
+        },
+    ];
 
-    let mut transforms = Vec::new();
-    transforms.push(TransformEntry {
-        key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
-            .to_string(),
-        transform: Transform::AddUInt64(8u64),
-    });
-    transforms.push(TransformEntry {
-        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
-        transform: Transform::Identity,
-    });
+    let transforms = vec![
+        TransformEntry {
+            key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
+                .to_string(),
+            transform: Transform::AddUInt64(8u64),
+        },
+        TransformEntry {
+            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
+                .to_string(),
+            transform: Transform::Identity,
+        },
+    ];
 
     let effect = ExecutionEffect {
         operations,
@@ -165,7 +169,7 @@ impl Distribution<ExecutionResult> for Standard {
             });
         }
 
-        let effect = ExecutionEffect {
+        let execution_effect = ExecutionEffect {
             operations,
             transforms,
         };
@@ -178,14 +182,14 @@ impl Distribution<ExecutionResult> for Standard {
 
         if rng.gen() {
             ExecutionResult::Failure {
-                effect,
+                effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
             ExecutionResult::Success {
-                effect,
+                effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
             }
@@ -227,22 +231,22 @@ impl ToBytes for ExecutionResult {
         U8_SERIALIZED_LENGTH
             + match self {
                 ExecutionResult::Failure {
-                    effect,
+                    effect: execution_effect,
                     transfers,
                     cost,
                     error_message,
                 } => {
-                    effect.serialized_length()
+                    execution_effect.serialized_length()
                         + transfers.serialized_length()
                         + cost.serialized_length()
                         + error_message.serialized_length()
                 }
                 ExecutionResult::Success {
-                    effect,
+                    effect: execution_effect,
                     transfers,
                     cost,
                 } => {
-                    effect.serialized_length()
+                    execution_effect.serialized_length()
                         + transfers.serialized_length()
                         + cost.serialized_length()
                 }
@@ -268,11 +272,11 @@ impl FromBytes for ExecutionResult {
                 Ok((execution_result, remainder))
             }
             EXECUTION_RESULT_SUCCESS_TAG => {
-                let (effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
+                let (execution_effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let execution_result = ExecutionResult::Success {
-                    effect,
+                    effect: execution_effect,
                     transfers,
                     cost,
                 };
@@ -555,7 +559,12 @@ impl ToBytes for Transform {
             Transform::AddUInt512(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddKeys(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::Failure(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            _ => U8_SERIALIZED_LENGTH,
+            Transform::Identity
+            | Transform::WriteContractWasm
+            | Transform::WriteContract
+            | Transform::WriteContractPackage => U8_SERIALIZED_LENGTH,
+            Transform::WriteBid(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::WriteWithdraw(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
         }
     }
 }

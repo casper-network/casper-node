@@ -1,14 +1,15 @@
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
-    CLTyped, CLValue, Key, URef, U512,
+    system::{
+        mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
+        CallStackElement,
+    },
+    CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;
-use crate::{
-    core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
-};
+use crate::{core::execution, storage::global_state::StateReader};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
@@ -29,6 +30,14 @@ where
 {
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
+    }
+
+    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+        Runtime::<'a, R>::get_immediate_caller(self)
+    }
+
+    fn get_phase(&self) -> Phase {
+        self.context.phase()
     }
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {

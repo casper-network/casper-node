@@ -1,4 +1,4 @@
-pub mod test_chain;
+pub(crate) mod test_chain;
 
 use std::{
     fmt::{self, Display, Formatter},
@@ -21,7 +21,7 @@ use crate::{
     reactor::{
         initializer::Reactor as InitializerReactor,
         joiner::Reactor as JoinerReactor,
-        validator::{Reactor as ValidatorReactor, ValidatorInitConfig},
+        participating::{ParticipatingInitConfig, Reactor as ParticipatingReactor},
         wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorEvent, ReactorExit, Scheduler,
     },
     testing::network::NetworkedReactor,
@@ -30,10 +30,10 @@ use crate::{
     NodeRng,
 };
 
-pub static CONFIG_DIR: Lazy<PathBuf> = Lazy::new(|| RESOURCES_PATH.join("local"));
+pub(crate) static CONFIG_DIR: Lazy<PathBuf> = Lazy::new(|| RESOURCES_PATH.join("local"));
 
 #[derive(Debug, Error)]
-pub enum MultiStageTestReactorError {
+pub(crate) enum MultiStageTestReactorError {
     #[error("Could not make initializer reactor: {0}")]
     CouldNotMakeInitializerReactor(<InitializerReactor as Reactor>::Error),
 
@@ -43,22 +43,22 @@ pub enum MultiStageTestReactorError {
 
 #[derive(Debug, From, Serialize)]
 #[allow(clippy::large_enum_variant)]
-pub enum MultiStageTestEvent {
+pub(crate) enum MultiStageTestEvent {
     // Events wrapping internal reactor events.
     #[from]
     InitializerEvent(<InitializerReactor as Reactor>::Event),
     #[from]
     JoinerEvent(<JoinerReactor as Reactor>::Event),
     #[from]
-    ValidatorEvent(<ValidatorReactor as Reactor>::Event),
+    ParticipatingEvent(<ParticipatingReactor as Reactor>::Event),
 
     // Events related to stage transitions.
-    JoinerFinalized(#[serde(skip_serializing)] Box<ValidatorInitConfig>),
+    JoinerFinalized(#[serde(skip_serializing)] Box<ParticipatingInitConfig>),
 
     // Control announcement.
     // These would only be used for fatal errors emitted by the multi-stage reactor itself, all
     // "real" control announcements will be inside `InitializerEvent`, `JoinerEvent` or
-    // `ValidatorEvent`.
+    // `ParticipatingEvent`.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
 }
@@ -82,8 +82,8 @@ impl Display for MultiStageTestEvent {
             MultiStageTestEvent::JoinerEvent(ev) => {
                 write!(f, "joiner event: {}", ev)
             }
-            MultiStageTestEvent::ValidatorEvent(ev) => {
-                write!(f, "validator event: {}", ev)
+            MultiStageTestEvent::ParticipatingEvent(ev) => {
+                write!(f, "participating event: {}", ev)
             }
             MultiStageTestEvent::JoinerFinalized(_) => {
                 write!(f, "joiner finalization complete")
@@ -108,30 +108,32 @@ pub(crate) enum MultiStageTestReactor {
         registry: Box<Registry>,
     },
     JoinerFinalizing {
-        maybe_validator_init_config: Option<Box<ValidatorInitConfig>>,
+        maybe_participating_init_config: Option<Box<ParticipatingInitConfig>>,
         node_id: NodeId,
         registry: Box<Registry>,
     },
-    Validator {
-        validator_reactor: Box<ValidatorReactor>,
-        validator_event_queue_handle: EventQueueHandle<<ValidatorReactor as Reactor>::Event>,
+    Participating {
+        participating_reactor: Box<ParticipatingReactor>,
+        participating_event_queue_handle:
+            EventQueueHandle<<ParticipatingReactor as Reactor>::Event>,
     },
 }
 
 impl MultiStageTestReactor {
-    pub fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
+    pub(crate) fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer { .. }
             | MultiStageTestReactor::Joiner { .. }
             | MultiStageTestReactor::JoinerFinalizing { .. } => None,
-            MultiStageTestReactor::Validator {
-                validator_reactor, ..
-            } => Some(validator_reactor.consensus()),
+            MultiStageTestReactor::Participating {
+                participating_reactor,
+                ..
+            } => Some(participating_reactor.consensus()),
         }
     }
 
-    pub fn storage(&self) -> Option<&Storage> {
+    pub(crate) fn storage(&self) -> Option<&Storage> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer {
@@ -140,16 +142,17 @@ impl MultiStageTestReactor {
             } => Some(initializer_reactor.storage()),
             MultiStageTestReactor::Joiner { joiner_reactor, .. } => Some(joiner_reactor.storage()),
             MultiStageTestReactor::JoinerFinalizing {
-                maybe_validator_init_config: None,
+                maybe_participating_init_config: None,
                 ..
             } => None,
             MultiStageTestReactor::JoinerFinalizing {
-                maybe_validator_init_config: Some(validator_init_config),
+                maybe_participating_init_config: Some(participating_init_config),
                 ..
-            } => Some(validator_init_config.storage()),
-            MultiStageTestReactor::Validator {
-                validator_reactor, ..
-            } => Some(validator_reactor.storage()),
+            } => Some(participating_init_config.storage()),
+            MultiStageTestReactor::Participating {
+                participating_reactor,
+                ..
+            } => Some(participating_reactor.storage()),
         }
     }
 }
@@ -161,7 +164,7 @@ where
 {
     // Note: This will keep waiting forever if the sending end disappears, which is fine for tests.
     loop {
-        let (event, queue_kind) = source.pop().await;
+        let ((_ancestor, event), queue_kind) = source.pop().await;
         target_queue.schedule(event, queue_kind).await;
     }
 }
@@ -193,7 +196,7 @@ impl Reactor for MultiStageTestReactor {
 
         let (initializer_reactor, initializer_effects) = InitializerReactor::new_with_chainspec(
             initializer_reactor_config_with_chainspec.config,
-            &registry,
+            registry,
             initializer_event_queue_handle,
             initializer_reactor_config_with_chainspec.chainspec,
         )
@@ -283,36 +286,36 @@ impl Reactor for MultiStageTestReactor {
                 effects
             }
             (
-                MultiStageTestEvent::JoinerFinalized(validator_config),
+                MultiStageTestEvent::JoinerFinalized(participating_config),
                 MultiStageTestReactor::JoinerFinalizing {
-                    ref mut maybe_validator_init_config,
+                    ref mut maybe_participating_init_config,
                     ..
                 },
             ) => {
                 should_transition = true;
 
-                *maybe_validator_init_config = Some(validator_config);
+                *maybe_participating_init_config = Some(participating_config);
 
                 // No effects, just transitioning.
                 Effects::new()
             }
             (
-                MultiStageTestEvent::ValidatorEvent(validator_event),
-                MultiStageTestReactor::Validator {
-                    ref mut validator_reactor,
-                    validator_event_queue_handle,
+                MultiStageTestEvent::ParticipatingEvent(participating_event),
+                MultiStageTestReactor::Participating {
+                    ref mut participating_reactor,
+                    participating_event_queue_handle,
                     ..
                 },
             ) => {
-                let effect_builder = EffectBuilder::new(*validator_event_queue_handle);
+                let effect_builder = EffectBuilder::new(*participating_event_queue_handle);
 
                 let effects = wrap_effects(
-                    MultiStageTestEvent::ValidatorEvent,
-                    validator_reactor.dispatch_event(effect_builder, rng, validator_event),
+                    MultiStageTestEvent::ParticipatingEvent,
+                    participating_reactor.dispatch_event(effect_builder, rng, participating_event),
                 );
 
-                if validator_reactor.maybe_exit().is_some() {
-                    panic!("validator reactor should never stop");
+                if participating_reactor.maybe_exit().is_some() {
+                    panic!("participating reactor should never stop");
                 }
 
                 effects
@@ -323,7 +326,7 @@ impl Reactor for MultiStageTestReactor {
                     MultiStageTestReactor::Initializer { .. } => "Initializing",
                     MultiStageTestReactor::Joiner { .. } => "Joining",
                     MultiStageTestReactor::JoinerFinalizing { .. } => "Finalizing joiner",
-                    MultiStageTestReactor::Validator { .. } => "Validating",
+                    MultiStageTestReactor::Participating { .. } => "Participating",
                 };
 
                 warn!(
@@ -396,7 +399,7 @@ impl Reactor for MultiStageTestReactor {
                 } => {
                     let dropped_events_count = effects.len();
                     if dropped_events_count != 0 {
-                        warn!("when transitioning from joiner to validator, left {} effects unhandled", dropped_events_count)
+                        warn!("when transitioning from joiner to participating, left {} effects unhandled", dropped_events_count)
                     }
 
                     assert_eq!(
@@ -405,65 +408,72 @@ impl Reactor for MultiStageTestReactor {
                             .values()
                             .sum::<usize>(),
                         0,
-                        "before transitioning from joiner to validator, \
+                        "before transitioning from joiner to participating, \
                          there should be no unprocessed events"
                     );
 
-                    // `into_validator_config` is just waiting for networking sockets to shut down
-                    // and will not stall on disabled event processing, so it is safe to block here.
-                    // Since shutting down the joiner is an `async` function, we offload it into an
-                    // effect and let runner do it.
+                    // `into_participating_config` is just waiting for networking sockets to shut
+                    // down and will not stall on disabled event processing, so
+                    // it is safe to block here. Since shutting down the joiner
+                    // is an `async` function, we offload it into an effect and
+                    // let runner do it.
 
                     let node_id = joiner_reactor.node_id();
-                    effects.extend(joiner_reactor.into_validator_config().boxed().event(
-                        |res_validator_init_config| {
-                            let validator_init_config = res_validator_init_config.unwrap();
-                            MultiStageTestEvent::JoinerFinalized(Box::new(validator_init_config))
+                    effects.extend(joiner_reactor.into_participating_config().boxed().event(
+                        |res_participating_init_config| {
+                            let participating_init_config = res_participating_init_config.unwrap();
+                            MultiStageTestEvent::JoinerFinalized(Box::new(
+                                participating_init_config,
+                            ))
                         },
                     ));
 
                     *self = MultiStageTestReactor::JoinerFinalizing {
-                        maybe_validator_init_config: None,
+                        maybe_participating_init_config: None,
                         node_id,
                         registry,
                     };
                 }
                 MultiStageTestReactor::JoinerFinalizing {
-                    maybe_validator_init_config: opt_validator_config,
+                    maybe_participating_init_config: opt_participating_config,
                     node_id: _,
                     registry,
                 } => {
-                    let validator_config = opt_validator_config.expect("trying to transition from joiner finalizing into validator, but there is no validator config?");
+                    let participating_config = opt_participating_config.expect("trying to transition from joiner finalizing into participating, but there is no participating config?");
 
-                    // JoinerFinalizing transitions into a validator.
-                    let validator_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-                    let validator_event_queue_handle = EventQueueHandle::new(validator_scheduler);
+                    // JoinerFinalizing transitions into a participating.
+                    let participating_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+                    let participating_event_queue_handle =
+                        EventQueueHandle::new(participating_scheduler);
 
                     tokio::spawn(forward_to_queue(
-                        validator_scheduler,
+                        participating_scheduler,
                         effect_builder.into_inner(),
                     ));
 
-                    let (validator_reactor, validator_effects) = ValidatorReactor::new(
-                        *validator_config,
+                    let (participating_reactor, participating_effects) = ParticipatingReactor::new(
+                        *participating_config,
                         &registry,
-                        validator_event_queue_handle,
+                        participating_event_queue_handle,
                         rng,
                     )
-                    .expect("validator initialization failed");
+                    .expect("participating initialization failed");
 
-                    *self = MultiStageTestReactor::Validator {
-                        validator_reactor: Box::new(validator_reactor),
-                        validator_event_queue_handle,
+                    *self = MultiStageTestReactor::Participating {
+                        participating_reactor: Box::new(participating_reactor),
+                        participating_event_queue_handle,
                     };
 
                     effects.extend(
-                        wrap_effects(MultiStageTestEvent::ValidatorEvent, validator_effects)
-                            .into_iter(),
+                        wrap_effects(
+                            MultiStageTestEvent::ParticipatingEvent,
+                            participating_effects,
+                        )
+                        .into_iter(),
                     )
                 }
-                MultiStageTestReactor::Validator { .. } => {
-                    // Validator reactors don't transition to anything
+                MultiStageTestReactor::Participating { .. } => {
+                    // Participating reactors don't transition to anything
                     unreachable!()
                 }
             }
@@ -491,9 +501,10 @@ impl Reactor for MultiStageTestReactor {
             } => initializer_reactor.maybe_exit(),
             MultiStageTestReactor::Joiner { joiner_reactor, .. } => joiner_reactor.maybe_exit(),
             MultiStageTestReactor::JoinerFinalizing { .. } => None,
-            MultiStageTestReactor::Validator {
-                validator_reactor, ..
-            } => validator_reactor.maybe_exit(),
+            MultiStageTestReactor::Participating {
+                participating_reactor,
+                ..
+            } => participating_reactor.maybe_exit(),
         }
     }
 }
@@ -509,9 +520,10 @@ impl NetworkedReactor for MultiStageTestReactor {
             } => initializer_reactor.node_id(),
             MultiStageTestReactor::Joiner { joiner_reactor, .. } => joiner_reactor.node_id(),
             MultiStageTestReactor::JoinerFinalizing { node_id, .. } => *node_id,
-            MultiStageTestReactor::Validator {
-                validator_reactor, ..
-            } => validator_reactor.node_id(),
+            MultiStageTestReactor::Participating {
+                participating_reactor,
+                ..
+            } => participating_reactor.node_id(),
         }
     }
 }

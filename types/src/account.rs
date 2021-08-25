@@ -1,323 +1,290 @@
 //! Contains types and constants associated with user accounts.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
+mod account_hash;
+pub mod action_thresholds;
+mod action_type;
+pub mod associated_keys;
+mod error;
+mod weight;
 
-use alloc::{format, string::String, vec::Vec};
-use core::{
-    array::TryFromSliceError,
-    convert::TryFrom,
-    fmt::{self, Debug, Display, Formatter},
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::NamedKeys,
+    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
 };
-
+use alloc::{collections::BTreeSet, vec::Vec};
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-use datasize::DataSize;
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
-#[cfg(feature = "std")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use core::{convert::TryFrom, fmt::Debug};
 #[cfg(feature = "std")]
 use thiserror::Error;
 
-use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+pub use self::{
+    account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
+    action_thresholds::ActionThresholds,
+    action_type::ActionType,
+    associated_keys::AssociatedKeys,
+    error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
+    weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-pub(super) const ACCOUNT_HASH_FORMATTED_STRING_PREFIX: &str = "account-hash-";
-
-// This error type is not intended to be used by third party crates.
-#[doc(hidden)]
-#[derive(Debug, Eq, PartialEq)]
-pub struct TryFromIntError(());
-
-/// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`].
-#[derive(Debug)]
-pub struct TryFromSliceForAccountHashError(());
-
-/// Error returned when decoding an `AccountHash` from a formatted string.
-#[derive(Debug)]
-pub enum FromStrError {
-    /// The prefix is invalid.
-    InvalidPrefix,
-    /// The hash is not valid hex.
-    Hex(base16::DecodeError),
-    /// The hash is the wrong length.
-    Hash(TryFromSliceError),
+/// Represents an Account in the global state.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct Account {
+    account_hash: AccountHash,
+    named_keys: NamedKeys,
+    main_purse: URef,
+    associated_keys: AssociatedKeys,
+    action_thresholds: ActionThresholds,
 }
 
-impl From<base16::DecodeError> for FromStrError {
-    fn from(error: base16::DecodeError) -> Self {
-        FromStrError::Hex(error)
-    }
-}
-
-impl From<TryFromSliceError> for FromStrError {
-    fn from(error: TryFromSliceError) -> Self {
-        FromStrError::Hash(error)
-    }
-}
-
-impl Display for FromStrError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            FromStrError::InvalidPrefix => write!(f, "prefix is not 'account-hash-'"),
-            FromStrError::Hex(error) => {
-                write!(f, "failed to decode address portion from hex: {}", error)
-            }
-            FromStrError::Hash(error) => write!(f, "address portion is wrong length: {}", error),
+impl Account {
+    /// Creates a new account.
+    pub fn new(
+        account_hash: AccountHash,
+        named_keys: NamedKeys,
+        main_purse: URef,
+        associated_keys: AssociatedKeys,
+        action_thresholds: ActionThresholds,
+    ) -> Self {
+        Account {
+            account_hash,
+            named_keys,
+            main_purse,
+            associated_keys,
+            action_thresholds,
         }
     }
-}
 
-/// The various types of action which can be performed in the context of a given account.
-#[repr(u32)]
-pub enum ActionType {
-    /// Represents performing a deploy.
-    Deployment = 0,
-    /// Represents changing the associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) or
-    /// action thresholds (i.e. the total [`Weight`]s of signing [`AccountHash`]s required to
-    /// perform various actions).
-    KeyManagement = 1,
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<u32> for ActionType {
-    type Error = TryFromIntError;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        // This doesn't use `num_derive` traits such as FromPrimitive and ToPrimitive
-        // that helps to automatically create `from_u32` and `to_u32`. This approach
-        // gives better control over generated code.
-        match value {
-            d if d == ActionType::Deployment as u32 => Ok(ActionType::Deployment),
-            d if d == ActionType::KeyManagement as u32 => Ok(ActionType::KeyManagement),
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
-
-/// Errors that can occur while changing action thresholds (i.e. the total [`Weight`]s of signing
-/// [`AccountHash`]s required to perform various actions) on an account.
-#[repr(i32)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
-pub enum SetThresholdFailure {
-    /// Setting the key-management threshold to a value lower than the deployment threshold is
-    /// disallowed.
-    #[cfg_attr(
-        feature = "std",
-        error("New threshold should be greater than or equal to deployment threshold")
-    )]
-    KeyManagementThreshold = 1,
-    /// Setting the deployment threshold to a value greater than any other threshold is disallowed.
-    #[cfg_attr(
-        feature = "std",
-        error("New threshold should be lower than or equal to key management threshold")
-    )]
-    DeploymentThreshold = 2,
-    /// Caller doesn't have sufficient permissions to set new thresholds.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to set action threshold due to insufficient permissions")
-    )]
-    PermissionDeniedError = 3,
-    /// Setting a threshold to a value greater than the total weight of associated keys is
-    /// disallowed.
-    #[cfg_attr(
-        feature = "std",
-        error("New threshold should be lower or equal than total weight of associated keys")
-    )]
-    InsufficientTotalWeight = 4,
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<i32> for SetThresholdFailure {
-    type Error = TryFromIntError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            d if d == SetThresholdFailure::KeyManagementThreshold as i32 => {
-                Ok(SetThresholdFailure::KeyManagementThreshold)
-            }
-            d if d == SetThresholdFailure::DeploymentThreshold as i32 => {
-                Ok(SetThresholdFailure::DeploymentThreshold)
-            }
-            d if d == SetThresholdFailure::PermissionDeniedError as i32 => {
-                Ok(SetThresholdFailure::PermissionDeniedError)
-            }
-            d if d == SetThresholdFailure::InsufficientTotalWeight as i32 => {
-                Ok(SetThresholdFailure::InsufficientTotalWeight)
-            }
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
-
-/// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
-/// account.
-pub const MAX_ASSOCIATED_KEYS: usize = 10;
-
-/// The number of bytes in a serialized [`Weight`].
-pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
-
-/// The weight attributed to a given [`AccountHash`] in an account's associated keys.
-#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct Weight(u8);
-
-impl Weight {
-    /// Constructs a new `Weight`.
-    pub fn new(weight: u8) -> Weight {
-        Weight(weight)
-    }
-
-    /// Returns the value of `self` as a `u8`.
-    pub fn value(self) -> u8 {
-        self.0
-    }
-}
-
-impl ToBytes for Weight {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        WEIGHT_SERIALIZED_LENGTH
-    }
-}
-
-impl FromBytes for Weight {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (byte, rem) = u8::from_bytes(bytes)?;
-        Ok((Weight::new(byte), rem))
-    }
-}
-
-impl CLTyped for Weight {
-    fn cl_type() -> CLType {
-        CLType::U8
-    }
-}
-
-/// The length in bytes of a [`AccountHash`].
-pub const ACCOUNT_HASH_LENGTH: usize = 32;
-
-/// A type alias for the raw bytes of an Account Hash.
-pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
-
-/// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
-/// the AccountHash, a hash of Public Key and Algorithm
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct AccountHash(AccountHashBytes);
-
-impl AccountHash {
-    /// Constructs a new `AccountHash` instance from the raw bytes of an Public Key Account Hash.
-    pub const fn new(value: AccountHashBytes) -> AccountHash {
-        AccountHash(value)
-    }
-
-    /// Returns the raw bytes of the account hash as an array.
-    pub fn value(&self) -> AccountHashBytes {
-        self.0
-    }
-
-    /// Returns the raw bytes of the account hash as a `slice`.
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Formats the `AccountHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
-        format!(
-            "{}{}",
-            ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
-            base16::encode_lower(&self.0),
+    /// An Account constructor with presets for associated_keys and action_thresholds.
+    ///
+    /// An account created with this method is valid and can be used as the target of a transaction.
+    /// It will be created with an [`AssociatedKeys`] with a [`Weight`] of 1, and a default
+    /// [`ActionThresholds`].
+    pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
+        let associated_keys = AssociatedKeys::new(account, Weight::new(1));
+        let action_thresholds: ActionThresholds = Default::default();
+        Account::new(
+            account,
+            named_keys,
+            main_purse,
+            associated_keys,
+            action_thresholds,
         )
     }
 
-    /// Parses a string formatted as per `Self::to_formatted_string()` into an `AccountHash`.
-    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        let remainder = input
-            .strip_prefix(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
-            .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
-        Ok(AccountHash(bytes))
+    /// Appends named keys to an account's named_keys field.
+    pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
+        self.named_keys.append(keys);
     }
 
-    #[doc(hidden)]
-    pub fn from_public_key(
-        public_key: &PublicKey,
-        blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
-    ) -> Self {
-        const SYSTEM_LOWERCASE: &str = "system";
-        const ED25519_LOWERCASE: &str = "ed25519";
-        const SECP256K1_LOWERCASE: &str = "secp256k1";
-
-        let algorithm_name = match public_key {
-            PublicKey::System => SYSTEM_LOWERCASE,
-            PublicKey::Ed25519(_) => ED25519_LOWERCASE,
-            PublicKey::Secp256k1(_) => SECP256K1_LOWERCASE,
-        };
-        let public_key_bytes: Vec<u8> = public_key.into();
-
-        // Prepare preimage based on the public key parameters.
-        let preimage = {
-            let mut data = Vec::with_capacity(algorithm_name.len() + public_key_bytes.len() + 1);
-            data.extend(algorithm_name.as_bytes());
-            data.push(0);
-            data.extend(public_key_bytes);
-            data
-        };
-        // Hash the preimage data using blake2b256 and return it.
-        let digest = blake2b_hash_fn(preimage);
-        Self::new(digest)
-    }
-}
-
-#[cfg(feature = "std")]
-impl JsonSchema for AccountHash {
-    fn schema_name() -> String {
-        String::from("AccountHash")
+    /// Returns named keys.
+    pub fn named_keys(&self) -> &NamedKeys {
+        &self.named_keys
     }
 
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
-        schema_object.into()
+    /// Returns a mutable reference to named keys.
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
     }
-}
 
-impl Serialize for AccountHash {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            self.to_formatted_string().serialize(serializer)
-        } else {
-            self.0.serialize(serializer)
+    /// Returns account hash.
+    pub fn account_hash(&self) -> AccountHash {
+        self.account_hash
+    }
+
+    /// Returns main purse.
+    pub fn main_purse(&self) -> URef {
+        self.main_purse
+    }
+
+    /// Returns an [`AccessRights::ADD`]-only version of the main purse's [`URef`].
+    pub fn main_purse_add_only(&self) -> URef {
+        URef::new(self.main_purse.addr(), AccessRights::ADD)
+    }
+
+    /// Returns associated keys.
+    pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
+        self.associated_keys.iter()
+    }
+
+    /// Returns action thresholds.
+    pub fn action_thresholds(&self) -> &ActionThresholds {
+        &self.action_thresholds
+    }
+
+    /// Adds an associated key to an account.
+    pub fn add_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), AddKeyFailure> {
+        self.associated_keys.add_key(account_hash, weight)
+    }
+
+    /// Checks if removing given key would properly satisfy thresholds.
+    fn can_remove_key(&self, account_hash: AccountHash) -> bool {
+        let total_weight_without = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Returns true if the total weight calculated without given public key would be greater or
+        // equal to all of the thresholds.
+        total_weight_without >= *self.action_thresholds().deployment()
+            && total_weight_without >= *self.action_thresholds().key_management()
+    }
+
+    /// Checks if adding a weight to a sum of all weights excluding the given key would make the
+    /// resulting value to fall below any of the thresholds on account.
+    fn can_update_key(&self, account_hash: AccountHash, weight: Weight) -> bool {
+        // Calculates total weight of all keys excluding the given key
+        let total_weight = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Safely calculate new weight by adding the updated weight
+        let new_weight = total_weight.value().saturating_add(weight.value());
+
+        // Returns true if the new weight would be greater or equal to all of
+        // the thresholds.
+        new_weight >= self.action_thresholds().deployment().value()
+            && new_weight >= self.action_thresholds().key_management().value()
+    }
+
+    /// Removes an associated key from an account.
+    ///
+    /// Verifies that removing the key will not cause the remaining weight to fall below any action
+    /// thresholds.
+    pub fn remove_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<(), RemoveKeyFailure> {
+        if self.associated_keys.contains_key(&account_hash) {
+            // Check if removing this weight would fall below thresholds
+            if !self.can_remove_key(account_hash) {
+                return Err(RemoveKeyFailure::ThresholdViolation);
+            }
         }
+        self.associated_keys.remove_key(&account_hash)
+    }
+
+    /// Updates an associated key.
+    ///
+    /// Returns an error if the update would result in a violation of the key management thresholds.
+    pub fn update_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), UpdateKeyFailure> {
+        if let Some(current_weight) = self.associated_keys.get(&account_hash) {
+            if weight < *current_weight {
+                // New weight is smaller than current weight
+                if !self.can_update_key(account_hash, weight) {
+                    return Err(UpdateKeyFailure::ThresholdViolation);
+                }
+            }
+        }
+        self.associated_keys.update_key(account_hash, weight)
+    }
+
+    /// Sets new action threshold for a given action type for the account.
+    ///
+    /// Returns an error if the new action threshold weight is greater than the total weight of the
+    /// account's associated keys.
+    pub fn set_action_threshold(
+        &mut self,
+        action_type: ActionType,
+        weight: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        // Verify if new threshold weight exceeds total weight of all associated
+        // keys.
+        self.can_set_threshold(weight)?;
+        // Set new weight for given action
+        self.action_thresholds.set_threshold(action_type, weight)
+    }
+
+    /// Verifies if user can set action threshold.
+    pub fn can_set_threshold(&self, new_threshold: Weight) -> Result<(), SetThresholdFailure> {
+        let total_weight = self.associated_keys.total_keys_weight();
+        if new_threshold > total_weight {
+            return Err(SetThresholdFailure::InsufficientTotalWeight);
+        }
+        Ok(())
+    }
+
+    /// Checks whether all authorization keys are associated with this account.
+    pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        !authorization_keys.is_empty()
+            && authorization_keys
+                .iter()
+                .all(|e| self.associated_keys.contains_key(e))
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to deploy threshold.
+    pub fn can_deploy_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().deployment()
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to key management threshold.
+    pub fn can_manage_keys_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().key_management()
     }
 }
 
-impl<'de> Deserialize<'de> for AccountHash {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if deserializer.is_human_readable() {
-            let formatted_string = String::deserialize(deserializer)?;
-            AccountHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
-        } else {
-            let bytes = AccountHashBytes::deserialize(deserializer)?;
-            Ok(AccountHash(bytes))
-        }
+impl ToBytes for Account {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        result.append(&mut self.account_hash.to_bytes()?);
+        result.append(&mut self.named_keys.to_bytes()?);
+        result.append(&mut self.main_purse.to_bytes()?);
+        result.append(&mut self.associated_keys.to_bytes()?);
+        result.append(&mut self.action_thresholds.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.account_hash.serialized_length()
+            + self.named_keys.serialized_length()
+            + self.main_purse.serialized_length()
+            + self.associated_keys.serialized_length()
+            + self.action_thresholds.serialized_length()
     }
 }
+
+impl FromBytes for Account {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (account_hash, rem) = AccountHash::from_bytes(bytes)?;
+        let (named_keys, rem) = NamedKeys::from_bytes(rem)?;
+        let (main_purse, rem) = URef::from_bytes(rem)?;
+        let (associated_keys, rem) = AssociatedKeys::from_bytes(rem)?;
+        let (action_thresholds, rem) = ActionThresholds::from_bytes(rem)?;
+        Ok((
+            Account {
+                account_hash,
+                named_keys,
+                main_purse,
+                associated_keys,
+                action_thresholds,
+            },
+            rem,
+        ))
+    }
+}
+/// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
+/// account.
+pub const MAX_ASSOCIATED_KEYS: usize = 10;
 
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
@@ -330,81 +297,6 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         result.copy_from_slice(slice);
     });
     result
-}
-
-impl TryFrom<&[u8]> for AccountHash {
-    type Error = TryFromSliceForAccountHashError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForAccountHashError> {
-        AccountHashBytes::try_from(bytes)
-            .map(AccountHash::new)
-            .map_err(|_| TryFromSliceForAccountHashError(()))
-    }
-}
-
-impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
-    type Error = TryFromSliceForAccountHashError;
-
-    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        AccountHashBytes::try_from(bytes as &[u8])
-            .map(AccountHash::new)
-            .map_err(|_| TryFromSliceForAccountHashError(()))
-    }
-}
-
-impl From<&PublicKey> for AccountHash {
-    fn from(public_key: &PublicKey) -> Self {
-        AccountHash::from_public_key(public_key, blake2b)
-    }
-}
-
-impl Display for AccountHash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", base16::encode_lower(&self.0))
-    }
-}
-
-impl Debug for AccountHash {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "AccountHash({})", base16::encode_lower(&self.0))
-    }
-}
-
-impl CLTyped for AccountHash {
-    fn cl_type() -> CLType {
-        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
-    }
-}
-
-impl ToBytes for AccountHash {
-    #[inline(always)]
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.0.to_bytes()
-    }
-
-    #[inline(always)]
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for AccountHash {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((AccountHash::new(bytes), rem))
-    }
-}
-
-impl AsRef<[u8]> for AccountHash {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl Distribution<AccountHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountHash {
-        AccountHash::new(rng.gen())
-    }
 }
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
@@ -540,9 +432,50 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
+#[doc(hidden)]
+#[cfg(any(feature = "gens", test))]
+pub mod gens {
+    use proptest::prelude::*;
+
+    use crate::{
+        account::{
+            action_thresholds::gens::action_thresholds_arb,
+            associated_keys::gens::associated_keys_arb, Account, Weight,
+        },
+        gens::{account_hash_arb, named_keys_arb, uref_arb},
+    };
+
+    prop_compose! {
+        pub fn account_arb()(
+            account_hash in account_hash_arb(),
+            urefs in named_keys_arb(3),
+            purse in uref_arb(),
+            thresholds in action_thresholds_arb(),
+            mut associated_keys in associated_keys_arb(),
+        ) -> Account {
+                associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
+                Account::new(
+                    account_hash,
+                    urefs,
+                    purse,
+                    associated_keys,
+                    thresholds,
+                )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryFrom, vec::Vec};
+    use crate::{
+        account::{
+            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
+            SetThresholdFailure, UpdateKeyFailure, Weight,
+        },
+        contracts::NamedKeys,
+        AccessRights, URef,
+    };
+    use std::{collections::BTreeSet, convert::TryFrom, iter::FromIterator, vec::Vec};
 
     use super::*;
 
@@ -651,5 +584,363 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&account_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(account_hash, decoded);
+    }
+
+    #[test]
+    fn associated_keys_can_authorize_keys() {
+        let key_1 = AccountHash::new([0; 32]);
+        let key_2 = AccountHash::new([1; 32]);
+        let key_3 = AccountHash::new([2; 32]);
+        let mut keys = AssociatedKeys::default();
+
+        keys.add_key(key_2, Weight::new(2))
+            .expect("should add key_1");
+        keys.add_key(key_1, Weight::new(1))
+            .expect("should add key_1");
+        keys.add_key(key_3, Weight::new(3))
+            .expect("should add key_1");
+
+        let account = Account::new(
+            AccountHash::new([0u8; 32]),
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            keys,
+            // deploy: 33 (3*11)
+            ActionThresholds::new(Weight::new(33), Weight::new(48))
+                .expect("should create thresholds"),
+        );
+
+        assert!(account.can_authorize(&BTreeSet::from_iter(vec![key_3, key_2, key_1])));
+        assert!(account.can_authorize(&BTreeSet::from_iter(vec![key_1, key_3, key_2])));
+
+        assert!(account.can_authorize(&BTreeSet::from_iter(vec![key_1, key_2])));
+        assert!(account.can_authorize(&BTreeSet::from_iter(vec![key_1])));
+
+        assert!(!account.can_authorize(&BTreeSet::from_iter(vec![
+            key_1,
+            key_2,
+            AccountHash::new([42; 32])
+        ])));
+        assert!(!account.can_authorize(&BTreeSet::from_iter(vec![
+            AccountHash::new([42; 32]),
+            key_1,
+            key_2
+        ])));
+        assert!(!account.can_authorize(&BTreeSet::from_iter(vec![
+            AccountHash::new([43; 32]),
+            AccountHash::new([44; 32]),
+            AccountHash::new([42; 32])
+        ])));
+        assert!(!account.can_authorize(&BTreeSet::new()));
+    }
+
+    #[test]
+    fn account_can_deploy_with() {
+        let associated_keys = {
+            let mut res = AssociatedKeys::new(AccountHash::new([1u8; 32]), Weight::new(1));
+            res.add_key(AccountHash::new([2u8; 32]), Weight::new(11))
+                .expect("should add key 1");
+            res.add_key(AccountHash::new([3u8; 32]), Weight::new(11))
+                .expect("should add key 2");
+            res.add_key(AccountHash::new([4u8; 32]), Weight::new(11))
+                .expect("should add key 3");
+            res
+        };
+        let account = Account::new(
+            AccountHash::new([0u8; 32]),
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            // deploy: 33 (3*11)
+            ActionThresholds::new(Weight::new(33), Weight::new(48))
+                .expect("should create thresholds"),
+        );
+
+        // sum: 22, required 33 - can't deploy
+        assert!(!account.can_deploy_with(&BTreeSet::from_iter(vec![
+            AccountHash::new([3u8; 32]),
+            AccountHash::new([2u8; 32]),
+        ])));
+
+        // sum: 33, required 33 - can deploy
+        assert!(account.can_deploy_with(&BTreeSet::from_iter(vec![
+            AccountHash::new([4u8; 32]),
+            AccountHash::new([3u8; 32]),
+            AccountHash::new([2u8; 32]),
+        ])));
+
+        // sum: 34, required 33 - can deploy
+        assert!(account.can_deploy_with(&BTreeSet::from_iter(vec![
+            AccountHash::new([2u8; 32]),
+            AccountHash::new([1u8; 32]),
+            AccountHash::new([4u8; 32]),
+            AccountHash::new([3u8; 32]),
+        ])));
+    }
+
+    #[test]
+    fn account_can_manage_keys_with() {
+        let associated_keys = {
+            let mut res = AssociatedKeys::new(AccountHash::new([1u8; 32]), Weight::new(1));
+            res.add_key(AccountHash::new([2u8; 32]), Weight::new(11))
+                .expect("should add key 1");
+            res.add_key(AccountHash::new([3u8; 32]), Weight::new(11))
+                .expect("should add key 2");
+            res.add_key(AccountHash::new([4u8; 32]), Weight::new(11))
+                .expect("should add key 3");
+            res
+        };
+        let account = Account::new(
+            AccountHash::new([0u8; 32]),
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            // deploy: 33 (3*11)
+            ActionThresholds::new(Weight::new(11), Weight::new(33))
+                .expect("should create thresholds"),
+        );
+
+        // sum: 22, required 33 - can't manage
+        assert!(!account.can_manage_keys_with(&BTreeSet::from_iter(vec![
+            AccountHash::new([3u8; 32]),
+            AccountHash::new([2u8; 32]),
+        ])));
+
+        // sum: 33, required 33 - can manage
+        assert!(account.can_manage_keys_with(&BTreeSet::from_iter(vec![
+            AccountHash::new([4u8; 32]),
+            AccountHash::new([3u8; 32]),
+            AccountHash::new([2u8; 32]),
+        ])));
+
+        // sum: 34, required 33 - can manage
+        assert!(account.can_manage_keys_with(&BTreeSet::from_iter(vec![
+            AccountHash::new([2u8; 32]),
+            AccountHash::new([1u8; 32]),
+            AccountHash::new([4u8; 32]),
+            AccountHash::new([3u8; 32]),
+        ])));
+    }
+
+    #[test]
+    fn set_action_threshold_higher_than_total_weight() {
+        let identity_key = AccountHash::new([1u8; 32]);
+        let key_1 = AccountHash::new([2u8; 32]);
+        let key_2 = AccountHash::new([3u8; 32]);
+        let key_3 = AccountHash::new([4u8; 32]);
+        let associated_keys = {
+            let mut res = AssociatedKeys::new(identity_key, Weight::new(1));
+            res.add_key(key_1, Weight::new(2))
+                .expect("should add key 1");
+            res.add_key(key_2, Weight::new(3))
+                .expect("should add key 2");
+            res.add_key(key_3, Weight::new(4))
+                .expect("should add key 3");
+            res
+        };
+        let mut account = Account::new(
+            AccountHash::new([0u8; 32]),
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            // deploy: 33 (3*11)
+            ActionThresholds::new(Weight::new(33), Weight::new(48))
+                .expect("should create thresholds"),
+        );
+
+        assert_eq!(
+            account
+                .set_action_threshold(ActionType::Deployment, Weight::new(1 + 2 + 3 + 4 + 1))
+                .unwrap_err(),
+            SetThresholdFailure::InsufficientTotalWeight,
+        );
+        assert_eq!(
+            account
+                .set_action_threshold(ActionType::Deployment, Weight::new(1 + 2 + 3 + 4 + 245))
+                .unwrap_err(),
+            SetThresholdFailure::InsufficientTotalWeight,
+        )
+    }
+
+    #[test]
+    fn remove_key_would_violate_action_thresholds() {
+        let identity_key = AccountHash::new([1u8; 32]);
+        let key_1 = AccountHash::new([2u8; 32]);
+        let key_2 = AccountHash::new([3u8; 32]);
+        let key_3 = AccountHash::new([4u8; 32]);
+        let associated_keys = {
+            let mut res = AssociatedKeys::new(identity_key, Weight::new(1));
+            res.add_key(key_1, Weight::new(2))
+                .expect("should add key 1");
+            res.add_key(key_2, Weight::new(3))
+                .expect("should add key 2");
+            res.add_key(key_3, Weight::new(4))
+                .expect("should add key 3");
+            res
+        };
+        let mut account = Account::new(
+            AccountHash::new([0u8; 32]),
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            // deploy: 33 (3*11)
+            ActionThresholds::new(Weight::new(1 + 2 + 3 + 4), Weight::new(1 + 2 + 3 + 4 + 5))
+                .expect("should create thresholds"),
+        );
+
+        assert_eq!(
+            account.remove_associated_key(key_3).unwrap_err(),
+            RemoveKeyFailure::ThresholdViolation,
+        )
+    }
+
+    #[test]
+    fn updating_key_would_violate_action_thresholds() {
+        let identity_key = AccountHash::new([1u8; 32]);
+        let identity_key_weight = Weight::new(1);
+        let key_1 = AccountHash::new([2u8; 32]);
+        let key_1_weight = Weight::new(2);
+        let key_2 = AccountHash::new([3u8; 32]);
+        let key_2_weight = Weight::new(3);
+        let key_3 = AccountHash::new([4u8; 32]);
+        let key_3_weight = Weight::new(4);
+        let associated_keys = {
+            let mut res = AssociatedKeys::new(identity_key, identity_key_weight);
+            res.add_key(key_1, key_1_weight).expect("should add key 1");
+            res.add_key(key_2, key_2_weight).expect("should add key 2");
+            res.add_key(key_3, key_3_weight).expect("should add key 3");
+            // 1 + 2 + 3 + 4
+            res
+        };
+
+        let deployment_threshold = Weight::new(
+            identity_key_weight.value()
+                + key_1_weight.value()
+                + key_2_weight.value()
+                + key_3_weight.value(),
+        );
+        let key_management_threshold = Weight::new(deployment_threshold.value() + 1);
+        let mut account = Account::new(
+            identity_key,
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            // deploy: 33 (3*11)
+            ActionThresholds::new(deployment_threshold, key_management_threshold)
+                .expect("should create thresholds"),
+        );
+
+        // Decreases by 3
+        assert_eq!(
+            account
+                .clone()
+                .update_associated_key(key_3, Weight::new(1))
+                .unwrap_err(),
+            UpdateKeyFailure::ThresholdViolation,
+        );
+
+        // increase total weight (12)
+        account
+            .update_associated_key(identity_key, Weight::new(3))
+            .unwrap();
+
+        // variant a) decrease total weight by 1 (total 11)
+        account
+            .clone()
+            .update_associated_key(key_3, Weight::new(3))
+            .unwrap();
+        // variant b) decrease total weight by 3 (total 9) - fail
+        assert_eq!(
+            account
+                .update_associated_key(key_3, Weight::new(1))
+                .unwrap_err(),
+            UpdateKeyFailure::ThresholdViolation
+        );
+    }
+
+    #[test]
+    fn overflowing_should_allow_removal() {
+        let identity_key = AccountHash::new([42; 32]);
+        let key_1 = AccountHash::new([2u8; 32]);
+        let key_2 = AccountHash::new([3u8; 32]);
+
+        let associated_keys = {
+            // Identity
+            let mut res = AssociatedKeys::new(identity_key, Weight::new(1));
+
+            // Spare key
+            res.add_key(key_1, Weight::new(2))
+                .expect("should add key 1");
+            // Big key
+            res.add_key(key_2, Weight::new(255))
+                .expect("should add key 2");
+
+            res
+        };
+
+        let mut account = Account::new(
+            identity_key,
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            ActionThresholds::new(Weight::new(1), Weight::new(254))
+                .expect("should create thresholds"),
+        );
+
+        account.remove_associated_key(key_1).expect("should work")
+    }
+
+    #[test]
+    fn overflowing_should_allow_updating() {
+        let identity_key = AccountHash::new([1; 32]);
+        let identity_key_weight = Weight::new(1);
+        let key_1 = AccountHash::new([2u8; 32]);
+        let key_1_weight = Weight::new(3);
+        let key_2 = AccountHash::new([3u8; 32]);
+        let key_2_weight = Weight::new(255);
+        let deployment_threshold = Weight::new(1);
+        let key_management_threshold = Weight::new(254);
+
+        let associated_keys = {
+            // Identity
+            let mut res = AssociatedKeys::new(identity_key, identity_key_weight);
+
+            // Spare key
+            res.add_key(key_1, key_1_weight).expect("should add key 1");
+            // Big key
+            res.add_key(key_2, key_2_weight).expect("should add key 2");
+
+            res
+        };
+
+        let mut account = Account::new(
+            identity_key,
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            ActionThresholds::new(deployment_threshold, key_management_threshold)
+                .expect("should create thresholds"),
+        );
+
+        // decrease so total weight would be changed from 1 + 3 + 255 to 1 + 1 + 255
+        account
+            .update_associated_key(key_1, Weight::new(1))
+            .expect("should work");
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use proptest::prelude::*;
+
+    use crate::bytesrepr;
+
+    use super::*;
+
+    proptest! {
+        #[test]
+        fn test_value_account(acct in gens::account_arb()) {
+            bytesrepr::test_serialization_roundtrip(&acct);
+        }
     }
 }

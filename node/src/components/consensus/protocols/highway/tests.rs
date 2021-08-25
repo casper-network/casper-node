@@ -58,7 +58,7 @@ const STANDSTILL_TIMEOUT: &str = "1min";
 
 pub(crate) fn new_test_highway_protocol<I1, I2, T>(
     weights: I1,
-    init_slashed: I2,
+    init_faulty: I2,
 ) -> Box<dyn ConsensusProtocol<NodeId, ClContext>>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
@@ -75,6 +75,7 @@ where
         highway: HighwayConfig {
             pending_vertex_timeout: "1min".parse().unwrap(),
             standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
+            shutdown_on_standstill: true,
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
             ..HighwayConfig::default()
@@ -85,7 +86,7 @@ where
     let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
-        &init_slashed.into_iter().collect(),
+        &init_faulty.into_iter().collect(),
         &None.into_iter().collect(),
         &(&chainspec).into(),
         &config,
@@ -277,7 +278,7 @@ fn detect_doppelganger() {
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
-    assert_eq!(highway_protocol.is_active(), true);
+    assert!(highway_protocol.is_active());
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.

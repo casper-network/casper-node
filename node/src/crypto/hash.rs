@@ -56,12 +56,12 @@ impl Digest {
     pub const LENGTH: usize = 32;
 
     /// Returns a copy of the wrapped `u8` array.
-    pub fn to_array(&self) -> [u8; Digest::LENGTH] {
+    pub fn to_array(self) -> [u8; Digest::LENGTH] {
         self.0
     }
 
     /// Returns a copy of the wrapped `u8` array as a `Vec`
-    pub fn to_vec(&self) -> Vec<u8> {
+    pub fn into_vec(self) -> Vec<u8> {
         self.0.to_vec()
     }
 
@@ -174,7 +174,7 @@ impl From<Blake2bHash> for Digest {
 
 #[cfg(test)]
 mod test {
-    use std::iter::{self, FromIterator};
+    use std::iter;
 
     use super::*;
 
@@ -203,7 +203,7 @@ mod test {
     #[test]
     fn from_valid_hex_should_succeed() {
         for char in "abcdefABCDEF0123456789".chars() {
-            let input = String::from_iter(iter::repeat(char).take(64));
+            let input: String = iter::repeat(char).take(64).collect();
             assert!(Digest::from_hex(input).is_ok());
         }
     }
@@ -211,7 +211,7 @@ mod test {
     #[test]
     fn from_hex_invalid_length_should_fail() {
         for len in &[2_usize, 62, 63, 65, 66] {
-            let input = String::from_iter(iter::repeat('f').take(*len));
+            let input: String = "f".repeat(*len);
             assert!(Digest::from_hex(input).is_err());
         }
     }
@@ -219,7 +219,7 @@ mod test {
     #[test]
     fn from_hex_invalid_char_should_fail() {
         for char in "g %-".chars() {
-            let input = String::from_iter(iter::repeat('f').take(63).chain(iter::once(char)));
+            let input: String = iter::repeat('f').take(63).chain(iter::once(char)).collect();
             assert!(Digest::from_hex(input).is_err());
         }
     }

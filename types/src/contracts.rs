@@ -281,7 +281,7 @@ impl ContractHash {
     }
 
     /// Formats the `ContractHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         format!(
             "{}{}",
             CONTRACT_STRING_PREFIX,
@@ -427,7 +427,7 @@ impl ContractPackageHash {
     }
 
     /// Formats the `ContractPackageHash` for users getting and putting.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
@@ -764,18 +764,12 @@ impl ContractPackage {
 
     /// Return the contract version key for the newest enabled contract version.
     pub fn current_contract_version(&self) -> Option<ContractVersionKey> {
-        match self.enabled_versions().keys().next_back() {
-            Some(contract_version_key) => Some(*contract_version_key),
-            None => None,
-        }
+        self.enabled_versions().keys().next_back().copied()
     }
 
     /// Return the contract hash for the newest enabled contract version.
     pub fn current_contract_hash(&self) -> Option<ContractHash> {
-        match self.enabled_versions().values().next_back() {
-            Some(contract_hash) => Some(*contract_hash),
-            None => None,
-        }
+        self.enabled_versions().values().next_back().copied()
     }
 
     /// Return the lock status of the contract package.
@@ -1340,6 +1334,11 @@ impl Parameter {
     /// Get the type of this argument.
     pub fn cl_type(&self) -> &CLType {
         &self.cl_type
+    }
+
+    /// Get a reference to the parameter's name.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 

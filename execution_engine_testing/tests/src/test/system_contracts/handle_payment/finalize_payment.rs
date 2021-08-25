@@ -7,15 +7,20 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::shared::account::Account;
 use casper_types::{
-    account::AccountHash, runtime_args, system::handle_payment, Key, RuntimeArgs, URef, U512,
+    account::{Account, AccountHash},
+    runtime_args,
+    system::handle_payment,
+    Key, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_FINALIZE_PAYMENT: &str = "finalize_payment.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const FINALIZE_PAYMENT: &str = "finalize_payment.wasm";
 const LOCAL_REFUND_PURSE: &str = "local_refund_purse";
+
+const CREATE_PURSE_01: &str = "create_purse_01.wasm";
+const ARG_PURSE_NAME: &str = "purse_name";
 
 const ACCOUNT_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 pub const ARG_AMOUNT: &str = "amount";
@@ -94,11 +99,26 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_REFUND_FLAG => refund_purse_flag,
         ARG_AMOUNT_SPENT => Option::<U512>::None,
         ARG_ACCOUNT_KEY => Option::<AccountHash>::None,
+        ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
     };
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let create_purse_request = {
+        ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CREATE_PURSE_01,
+            runtime_args! {
+                ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
+            },
+        )
+        .build()
+    };
+
+    builder.exec(create_purse_request).expect_success().commit();
+
     let rewards_pre_balance = builder.get_proposer_purse_balance();
+
     let payment_pre_balance = get_handle_payment_payment_purse_balance(&builder);
     let refund_pre_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)

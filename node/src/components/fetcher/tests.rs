@@ -7,7 +7,6 @@ use casper_node_macros::reactor;
 use futures::FutureExt;
 use tempfile::TempDir;
 use thiserror::Error;
-use tokio::time;
 
 use casper_types::ProtocolVersion;
 
@@ -20,6 +19,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
+    testing,
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
@@ -77,6 +77,7 @@ reactor!(Reactor {
             chainspec_loader.hard_reset_to_start_of_era(),
             ProtocolVersion::from_parts(1, 0, 0),
             false,
+            "test"
         );
         deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
@@ -135,19 +136,16 @@ impl Reactor {
 
                     match self
                         .storage
-                        .handle_legacy_direct_deploy_request(deploy_hash)
+                        .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
                     {
-                        // This functionality was moved out of the storage component and
-                        // should be refactored ASAP.
-                        Some(deploy) => match Message::new_get_response(&deploy) {
-                            Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                            Err(error) => {
-                                error!("failed to create get-response: {}", error);
-                                Effects::new()
-                            }
-                        },
+                        Some(serialized_item) => {
+                            let message =
+                                Message::new_get_response_raw_unchecked::<Deploy>(serialized_item);
+                            effect_builder.send_message(sender, message).ignore()
+                        }
+
                         None => {
-                            debug!("failed to get {} for {}", deploy_hash, sender);
+                            debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
                             Effects::new()
                         }
                     }
@@ -438,10 +436,9 @@ async fn should_timeout_fetch_from_peer() {
         .await;
 
     // Advance time.
-    let secs_to_advance = Config::default().get_from_peer_timeout();
-    time::pause();
-    time::advance(Duration::from_secs(secs_to_advance + 10)).await;
-    time::resume();
+    let duration_to_advance: Duration = Config::default().get_from_peer_timeout().into();
+    let duration_to_advance = duration_to_advance + Duration::from_secs(10);
+    testing::advance_time(duration_to_advance).await;
 
     // Settle the network, allowing timeout to avoid panic.
     let expected_result = None;

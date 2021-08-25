@@ -5,8 +5,6 @@
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod chainspec_loader;
-#[cfg(test)]
-pub(crate) mod collector;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
@@ -16,12 +14,11 @@ pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
 pub(crate) mod linear_chain_sync;
 pub(crate) mod rest_server;
-pub(crate) mod rpc_server;
+pub mod rpc_server;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
 pub(crate) mod metrics;
-pub(crate) mod network;
 pub(crate) mod networking_metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
@@ -52,7 +49,7 @@ use crate::{
 ///
 /// Components place restrictions on reactor events (`REv`s), indicating what kind of effects they
 /// need to be able to produce to operate.
-pub trait Component<REv> {
+pub(crate) trait Component<REv> {
     /// Event associated with `Component`.
     ///
     /// The event type that is handled by the component.

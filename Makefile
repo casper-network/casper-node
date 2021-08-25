@@ -3,28 +3,17 @@ CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
-RUST_TOOLCHAIN := $(shell cat rust-toolchain)
+PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 
 CARGO_OPTS := --locked
-CARGO := $(CARGO) $(CARGO_TOOLCHAIN) $(CARGO_OPTS)
+CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
+CARGO := $(CARGO) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
 # Rust Contracts
-# Directory names should match crate names
-BENCH       = $(shell find ./smart_contracts/contracts/bench     -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-CLIENT      = $(shell find ./smart_contracts/contracts/client    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-EXPLORER    = $(shell find ./smart_contracts/contracts/explorer  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-PROFILING   = $(shell find ./smart_contracts/contracts/profiling -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SRE         = $(shell find ./smart_contracts/contracts/SRE       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-TEST        = $(shell find ./smart_contracts/contracts/test        -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-
-BENCH_CONTRACTS     := $(patsubst %, build-contract-rs/%, $(BENCH))
-CLIENT_CONTRACTS    := $(patsubst %, build-contract-rs/%, $(CLIENT))
-EXPLORER_CONTRACTS  := $(patsubst %, build-contract-rs/%, $(EXPLORER))
-PROFILING_CONTRACTS := $(patsubst %, build-contract-rs/%, $(PROFILING))
-SRE_CONTRACTS       := $(patsubst %, build-contract-rs/%, $(SRE))
-TEST_CONTRACTS      := $(patsubst %, build-contract-rs/%, $(TEST))
+ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
 # AssemblyScript Contracts
 CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client -mindepth 1 -maxdepth 1 -type d)
@@ -36,38 +25,34 @@ TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 
-CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
-	execution_engine_testing/test_support \
-	node \
-	smart_contracts/contract \
-	types
-
-CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
-
-.PHONY: all
-all: build build-contracts
-
-.PHONY: build
-build:
-	$(CARGO) build $(CARGO_FLAGS)
-
 build-contract-rs/%:
-	$(CARGO) build \
-	        --release $(filter-out --release, $(CARGO_FLAGS)) \
-	        --package $* \
-	        --target wasm32-unknown-unknown
-	wasm-strip target/wasm32-unknown-unknown/release/$(subst -,_,$*).wasm 2>/dev/null | true
+	cd smart_contracts/contracts && $(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
+	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
 
-build-contracts-rs: \
-	$(BENCH_CONTRACTS) \
-	$(CLIENT_CONTRACTS) \
-	$(EXPLORER_CONTRACTS) \
-	$(PROFILING_CONTRACTS) \
-	$(SRE_CONTRACTS) \
-	$(TEST_CONTRACTS)
+.PHONY: build-all-contracts-rs
+build-all-contracts-rs:
+	cd smart_contracts/contracts && \
+	$(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(ALL_CONTRACTS))
+
+.PHONY: build-client-contracts-rs
+build-client-contracts-rs:
+	cd smart_contracts/contracts && \
+	$(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(CLIENT_CONTRACTS))
+
+strip-contract/%:
+	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
+
+.PHONY: strip-all-contracts
+strip-all-contracts: $(patsubst %, strip-contract/%, $(ALL_CONTRACTS))
+
+.PHONY: strip-client-contracts
+strip-client-contracts: $(patsubst %, strip-contract/%, $(CLIENT_CONTRACTS))
+
+.PHONY: build-contracts-rs
+build-contracts-rs: build-all-contracts-rs strip-all-contracts
 
 .PHONY: build-client-contracts
-build-client-contracts: $(CLIENT_CONTRACTS)
+build-client-contracts: build-client-contracts-rs strip-client-contracts
 
 build-contract-as/%:
 	cd $* && $(NPM) run asbuild
@@ -86,9 +71,11 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 
 .PHONY: test-rs
 test-rs: resources/local/chainspec.toml
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=types/Cargo.toml
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=smart_contracts/contract/Cargo.toml
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS)
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-types
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-types --no-default-features --features=std
+	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS)
+	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=std
 
 .PHONY: test-as
 test-as: setup-as
@@ -111,32 +98,37 @@ test-contracts: test-contracts-rs test-contracts-as
 
 .PHONY: check-format
 check-format:
-	$(CARGO) fmt --all -- --check
+	$(CARGO_PINNED_NIGHTLY) fmt --all -- --check
 
 .PHONY: format
 format:
-	$(CARGO) fmt --all
+	$(CARGO_PINNED_NIGHTLY) fmt --all
+
+lint-contracts-rs:
+	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: lint
-lint:
-	$(CARGO) clippy --all-targets --all-features --workspace -- -D warnings -A renamed_and_removed_lints
+lint: lint-contracts-rs
+	$(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --no-default-features --features=no-std --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
+	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --no-default-features --features=std --all-targets --manifest-path=smart_contracts/contract/Cargo.toml -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: audit
 audit:
 	$(CARGO) audit
 
-.PHONY: build-docs-stable-rs
-build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
-
-doc-stable/%: CARGO_TOOLCHAIN += +stable
-doc-stable/%:
-	$(CARGO) doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --no-deps
+.PHONY: doc
+doc:
+	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps
+	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-types
+	cd smart_contracts/contract && RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-contract
 
 .PHONY: check-rs
 check-rs: \
-	build-docs-stable-rs \
-	build \
 	check-format \
+	doc \
 	lint \
 	audit \
 	test-rs \
@@ -144,9 +136,8 @@ check-rs: \
 
 .PHONY: check
 check: \
-	build-docs-stable-rs \
-	build \
 	check-format \
+	doc \
 	lint \
 	audit \
 	test \
@@ -185,25 +176,24 @@ setup-cargo-packagers:
 
 .PHONY: setup-audit
 setup-audit:
-	$(CARGO) install cargo-audit
+	cargo install cargo-audit
 
 .PHONY: setup-rs
-setup-rs: rust-toolchain
+setup-rs: smart_contracts/rust-toolchain
 	$(RUSTUP) update --no-self-update
-	$(RUSTUP) toolchain install --no-self-update $(RUST_TOOLCHAIN)
-	$(RUSTUP) target add --toolchain $(RUST_TOOLCHAIN) wasm32-unknown-unknown
-
-.PHONY: setup-stable-rs
-setup-stable-rs: RUST_TOOLCHAIN := stable
-setup-stable-rs: setup-rs
+	$(RUSTUP) toolchain install --no-self-update stable $(PINNED_NIGHTLY)
+	$(RUSTUP) target add --toolchain stable wasm32-unknown-unknown
+	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 
 .PHONY: setup-nightly-rs
-setup-nightly-rs: RUST_TOOLCHAIN := nightly
-setup-nightly-rs: setup-rs
+setup-nightly-rs:
+	$(RUSTUP) update --no-self-update
+	$(RUSTUP) toolchain install --no-self-update nightly
+	$(RUSTUP) target add --toolchain nightly wasm32-unknown-unknown
 
 .PHONY: setup-as
 setup-as: smart_contracts/contract_as/package.json
 	cd smart_contracts/contract_as && $(NPM) ci
 
 .PHONY: setup
-setup: setup-rs setup-as
+setup: setup-rs setup-audit setup-as

@@ -580,6 +580,7 @@ impl LmdbTestContext {
             &_temp_dir.path().to_path_buf(),
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
+            true,
         )?;
         let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
         put_tries::<_, _, _, _, error::Error>(&environment, &store, tries)?;
@@ -966,7 +967,7 @@ where
         environment,
         store,
         states.last().unwrap(),
-        &test_leaves,
+        test_leaves,
     )?
     .into_iter()
     .map(|result| match result {

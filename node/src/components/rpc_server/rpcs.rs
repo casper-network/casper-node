@@ -46,6 +46,8 @@ enum ErrorCode {
     GetBalanceFailed = -32006,
     GetBalanceFailedToExecute = -32007,
     InvalidDeploy = -32008,
+    NoSuchAccount = -32009,
+    FailedToGetDictionaryURef = -32010,
 }
 
 #[derive(Debug)]

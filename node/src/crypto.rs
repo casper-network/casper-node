@@ -5,6 +5,9 @@ mod asymmetric_key_ext;
 mod error;
 pub mod hash;
 
-pub use asymmetric_key::{generate_ed25519_keypair, sign, verify};
+#[cfg(test)]
+pub(crate) use asymmetric_key::generate_ed25519_keypair;
+pub(crate) use asymmetric_key::{sign, verify};
 pub use asymmetric_key_ext::AsymmetricKeyExt;
-pub use error::{Error, Result};
+pub use error::Error;
+pub(crate) use error::Result;

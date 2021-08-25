@@ -3,6 +3,7 @@ use casper_types::PublicKey;
 use super::era_supervisor::Era;
 
 /// A change to a validator's status between two eras.
+#[derive(Debug)]
 pub enum ValidatorChange {
     /// The validator got newly added to the validator set.
     Added,
@@ -34,7 +35,7 @@ impl ValidatorChange {
             if !era0.validators().contains_key(pub_key) {
                 changes.push((pub_key.clone(), ValidatorChange::Added));
             }
-            if era1.slashed.contains(pub_key) && !era0.slashed.contains(pub_key) {
+            if era1.faulty.contains(pub_key) && !era0.faulty.contains(pub_key) {
                 changes.push((pub_key.clone(), ValidatorChange::Banned));
             }
             if era1.cannot_propose.contains(pub_key) && !era0.cannot_propose.contains(pub_key) {

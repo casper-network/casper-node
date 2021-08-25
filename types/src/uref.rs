@@ -132,10 +132,26 @@ impl URef {
         URef(self.0, AccessRights::READ)
     }
 
+    /// Returns a new [`URef`] with the same address and [`AccessRights::WRITE`] permission.
+    pub fn into_write(self) -> URef {
+        URef(self.0, AccessRights::WRITE)
+    }
+
+    /// Returns a new [`URef`] with the same address and [`AccessRights::ADD`] permission.
+    pub fn into_add(self) -> URef {
+        URef(self.0, AccessRights::ADD)
+    }
+
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_ADD_WRITE`]
     /// permission.
     pub fn into_read_add_write(self) -> URef {
         URef(self.0, AccessRights::READ_ADD_WRITE)
+    }
+
+    /// Returns a new [`URef`] with the same address and [`AccessRights::READ_WRITE`]
+    /// permission.
+    pub fn into_read_write(self) -> URef {
+        URef(self.0, AccessRights::READ_WRITE)
     }
 
     /// Returns `true` if the access rights are `Some` and
@@ -152,7 +168,7 @@ impl URef {
 
     /// Formats the address and access rights of the [`URef`] in a unique way that could be used as
     /// a name when storing the given `URef` in a global state.
-    pub fn to_formatted_string(&self) -> String {
+    pub fn to_formatted_string(self) -> String {
         // Extract bits as numerical value, with no flags marked as 0.
         let access_rights_bits = self.access_rights().bits();
         // Access rights is represented as octal, which means that max value of u8 can

@@ -1,4 +1,5 @@
 mod config;
+#[cfg(test)]
 mod error;
 mod event;
 mod gossip_table;
@@ -29,16 +30,15 @@ use crate::{
     utils::Source,
     NodeRng,
 };
-pub use config::Config;
-pub use error::Error;
-pub use event::Event;
+pub(crate) use config::Config;
+pub(crate) use event::Event;
 use gossip_table::{GossipAction, GossipTable};
-pub use message::Message;
+pub(crate) use message::Message;
 use metrics::GossiperMetrics;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
 /// work with.
-pub trait ReactorEventT<T>:
+pub(crate) trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message<T>>>
     + From<NetworkRequest<NodeId, NodeMessage>>
@@ -137,8 +137,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Ok(Gossiper {
             table: GossipTable::new(config),
-            gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            gossip_timeout: config.gossip_request_timeout().into(),
+            get_from_peer_timeout: config.get_remainder_timeout().into(),
             get_from_holder: Box::new(get_from_holder),
             metrics: GossiperMetrics::new(name, registry)?,
         })
@@ -160,8 +160,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Ok(Gossiper {
             table: GossipTable::new(config),
-            gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            gossip_timeout: config.gossip_request_timeout().into(),
+            get_from_peer_timeout: config.get_remainder_timeout().into(),
             get_from_holder: Box::new(|_, item, _| {
                 panic!("gossiper should never try to get {}", item)
             }),

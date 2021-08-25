@@ -1,4 +1,4 @@
-//! Home of the Auction contract's [`Error`] type.
+//! Home of the Auction contract's [`enum@Error`] type.
 use alloc::vec::Vec;
 use core::{
     convert::{TryFrom, TryInto},
@@ -14,8 +14,9 @@ use crate::{
 };
 
 /// Errors which can occur while executing the Auction contract.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "std", derive(Error))]
+#[cfg_attr(test, derive(strum::EnumIter))]
 #[repr(u8)]
 pub enum Error {
     /// Unable to find named key in the contract's named keys.
@@ -70,10 +71,13 @@ pub enum Error {
     /// Raised when caller is not the system account.
     #[cfg_attr(feature = "std", error("Function must be called by system account"))]
     InvalidCaller = 16,
-    /// Raised when function is supplied a public key that does match the caller's.
+    /// Raised when function is supplied a public key that does match the caller's or does not have
+    /// an associated account.
     #[cfg_attr(
         feature = "std",
-        error("Supplied public key does not match caller's public key")
+        error(
+            "Supplied public key does not match caller's public key or has no associated account"
+        )
     )]
     InvalidPublicKey = 17,
     /// Validator is not not bonded.
@@ -149,22 +153,12 @@ pub enum Error {
     /// An arithmetic overflow has occurred.
     #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
     ArithmeticOverflow = 39,
-
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
     #[cfg_attr(feature = "std", error("GasLimit"))]
     GasLimit,
-
-    #[cfg(test)]
-    #[doc(hidden)]
-    #[cfg_attr(feature = "std", error("Sentinel error"))]
-    Sentinel,
 }
-
-/// Used for testing; this should be guaranteed to be the maximum valid value of [`Error`] enum.
-#[cfg(test)]
-const MAX_ERROR_VALUE: u8 = Error::Sentinel as u8;
 
 impl CLTyped for Error {
     fn cl_type() -> CLType {
@@ -174,6 +168,7 @@ impl CLTyped for Error {
 
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TryFromU8ForError(());
 
 // This conversion is not intended to be used by third party crates.
@@ -284,22 +279,29 @@ impl From<PurseLookupError> for Error {
 mod tests {
     use std::convert::TryFrom;
 
-    use super::{Error, TryFromU8ForError, MAX_ERROR_VALUE};
+    use strum::IntoEnumIterator;
+
+    use super::Error;
 
     #[test]
-    fn error_round_trips() {
-        for i in 0..=u8::max_value() {
-            match Error::try_from(i) {
-                Ok(error) if i < MAX_ERROR_VALUE => assert_eq!(error as u8, i),
-                Ok(error) => panic!(
-                    "value of variant {:?} ({}) exceeds MAX_ERROR_VALUE ({})",
-                    error, i, MAX_ERROR_VALUE
-                ),
-                Err(TryFromU8ForError(())) if i >= MAX_ERROR_VALUE => (),
-                Err(TryFromU8ForError(())) => {
-                    panic!("missing conversion from u8 to error value: {}", i)
+    fn error_forward_trips() {
+        for expected_error_variant in Error::iter() {
+            assert_eq!(
+                Error::try_from(expected_error_variant as u8),
+                Ok(expected_error_variant)
+            )
+        }
+    }
+
+    #[test]
+    fn error_backward_trips() {
+        for u8 in 0..=u8::max_value() {
+            match Error::try_from(u8) {
+                Ok(error_variant) => {
+                    assert_eq!(u8, error_variant as u8, "Error code mismatch")
                 }
-            }
+                Err(_) => continue,
+            };
         }
     }
 }

@@ -11,12 +11,13 @@
 //! The following example contains session code which persists an integer value under an unforgeable
 //! reference.  It then stores the unforgeable reference under a name in context-local storage.
 //!
-//! ```rust,no_run
-//! #![no_std]
+//! # Writing Smart Contracts
 //!
-//! use casper_contract::{
-//!     contract_api::{runtime, storage},
-//! };
+//! ```no_run
+//! #![no_std]
+//! #![no_main]
+//!
+//! use casper_contract::contract_api::{runtime, storage};
 //! use casper_types::{Key, URef};
 //!
 //! const KEY: &str = "special_value";
@@ -40,17 +41,14 @@
 //!     let value: i32 = runtime::get_named_arg(ARG_VALUE);
 //!     store(value);
 //! }
-//! # fn main() {}
 //! ```
-//!
-//! # Writing Smart Contracts
 //!
 //! Support for writing smart contracts are contained in the [`contract_api`] module and its
 //! submodules.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "no-std", no_std)]
 #![cfg_attr(
-    not(feature = "std"),
+    all(feature = "provide-allocator", not(any(test, doc))),
     feature(alloc_error_handler, core_intrinsics, lang_items)
 )]
 #![doc(html_root_url = "https://docs.rs/casper-contract/1.0.0")]
@@ -61,18 +59,28 @@
 )]
 #![warn(missing_docs)]
 
+#[cfg(feature = "no-std")]
 extern crate alloc;
-#[cfg(any(feature = "std", test))]
-extern crate std;
-
-/// An instance of [`WeeAlloc`](https://docs.rs/wee_alloc) which allows contracts built as `no_std`
-/// to avoid having to provide a global allocator themselves.
-#[cfg(not(any(feature = "std", test)))]
-#[global_allocator]
-pub static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 pub mod contract_api;
 pub mod ext_ffi;
-#[cfg(not(any(feature = "std", test, doc)))]
-pub mod handlers;
+#[cfg(all(feature = "provide-allocator", not(any(test, doc))))]
+mod no_std_handlers;
 pub mod unwrap_or_revert;
+
+#[cfg(not(any(feature = "std", feature = "no-std")))]
+compile_error!(
+    "casper-contract requires one of 'no-std' (enabled by default) or 'std' features to be enabled"
+);
+#[cfg(all(feature = "std", feature = "no-std"))]
+compile_error!(
+    "casper-contract features 'no-std' (enabled by default) and 'std' should not both be enabled"
+);
+#[cfg(all(feature = "provide-allocator", not(feature = "no-std")))]
+compile_error!("casper-contract 'provide-allocator' feature requires `no-std` to also be enabled");
+
+/// An instance of [`WeeAlloc`](https://docs.rs/wee_alloc) which allows contracts built as `no_std`
+/// to avoid having to provide a global allocator themselves.
+#[cfg(feature = "provide-allocator")]
+#[global_allocator]
+pub static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;

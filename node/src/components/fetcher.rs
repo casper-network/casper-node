@@ -10,11 +10,8 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::{
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::trie::Trie,
-};
-use casper_types::Key;
+use casper_execution_engine::{shared::newtypes::Blake2bHash, storage::trie::Trie};
+use casper_types::{Key, StoredValue};
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -28,12 +25,12 @@ use crate::{
     NodeRng,
 };
 
-pub use config::Config;
-pub use event::{Event, FetchResult};
+pub(crate) use config::Config;
+pub(crate) use event::{Event, FetchResult};
 use metrics::FetcherMetrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
-pub trait ReactorEventT<T>:
+pub(crate) trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message>>
     + From<StorageRequest>
@@ -62,7 +59,7 @@ where
 {
 }
 
-pub trait ItemFetcher<T: Item + 'static> {
+pub(crate) trait ItemFetcher<T: Item + 'static> {
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
     fn peer_timeout(&self) -> Duration;
@@ -171,7 +168,7 @@ pub trait ItemFetcher<T: Item + 'static> {
 
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
 #[derive(DataSize, Debug)]
-pub struct Fetcher<T>
+pub(crate) struct Fetcher<T>
 where
     T: Item + 'static,
 {
@@ -188,7 +185,7 @@ impl<T: Item> Fetcher<T> {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
-            get_from_peer_timeout: Duration::from_secs(config.get_from_peer_timeout()),
+            get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
             metrics: FetcherMetrics::new(name, registry)?,
         })

@@ -12,12 +12,12 @@ use crate::{
         consensus, gossiper,
         small_network::{GossipedAddress, MessageKind, Payload},
     },
-    types::{Deploy, FinalitySignature, Item, Tag},
+    types::{Deploy, FinalitySignature, Item, SharedObject, Tag},
 };
 
 /// Reactor message.
 #[derive(Clone, From, Serialize, Deserialize)]
-pub enum Message {
+pub(crate) enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
@@ -39,7 +39,7 @@ pub enum Message {
         /// The type tag of the contained item.
         tag: Tag,
         /// The serialized item.
-        serialized_item: Vec<u8>,
+        serialized_item: SharedObject<Vec<u8>>,
     },
     /// Finality signature.
     #[from]
@@ -67,6 +67,24 @@ impl Payload for Message {
             Message::FinalitySignature(_) => MessageKind::Consensus,
         }
     }
+
+    #[inline]
+    fn incoming_resource_estimate(&self) -> u32 {
+        match self {
+            Message::Consensus(_) => 0,
+            Message::DeployGossiper(_) => 0,
+            Message::AddressGossiper(_) => 0,
+            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
+                Tag::Deploy => 1,
+                Tag::Block => 0,
+                Tag::GossipedAddress => 0,
+                Tag::BlockByHeight => 0,
+                Tag::BlockHeaderByHash => 0,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => 0,
+            },
+            Message::FinalitySignature(_) => 0,
+        }
+    }
 }
 
 impl Message {
@@ -80,8 +98,17 @@ impl Message {
     pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: bincode::serialize(item)?,
+            serialized_item: SharedObject::owned(bincode::serialize(item)?),
         })
+    }
+
+    pub(crate) fn new_get_response_raw_unchecked<T: Item>(
+        serialized_item: SharedObject<Vec<u8>>,
+    ) -> Self {
+        Message::GetResponse {
+            tag: T::TAG,
+            serialized_item,
+        }
     }
 }
 

@@ -6,31 +6,36 @@ use std::{
     rc::Rc,
 };
 
+use tracing::error;
+
 use casper_types::{
     account::{
-        AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
+        Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
     bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::auction::EraInfo,
-    AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
+    AccessRights, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH,
 };
 
 use crate::{
     core::{
-        engine_state::execution_effect::ExecutionEffect,
+        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
         execution::{AddressGenerator, Error},
-        tracking_copy::{AddResult, TrackingCopy},
+        runtime_context::dictionary::DictionaryValue,
+        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
-    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
-    storage::{global_state::StateReader, protocol_data::ProtocolData},
+    shared::{gas::Gas, newtypes::CorrelationId},
+    storage::global_state::StateReader,
 };
 
+pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
 
@@ -102,7 +107,7 @@ pub struct RuntimeContext<'a, R> {
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
     phase: Phase,
-    protocol_data: ProtocolData,
+    engine_config: EngineConfig,
     entry_point_type: EntryPointType,
     transfers: Vec<TransferAddr>,
 }
@@ -132,7 +137,7 @@ where
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         phase: Phase,
-        protocol_data: ProtocolData,
+        engine_config: EngineConfig,
         transfers: Vec<TransferAddr>,
     ) -> Self {
         RuntimeContext {
@@ -154,7 +159,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            engine_config,
             transfers,
         }
     }
@@ -168,7 +173,7 @@ where
     }
 
     pub fn named_keys(&self) -> &NamedKeys {
-        &self.named_keys
+        self.named_keys
     }
 
     pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
@@ -260,6 +265,14 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Dictionary(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
+            Key::SystemContractRegistry => {
+                error!("should not remove the system contract registry key");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
         }
     }
 
@@ -284,7 +297,7 @@ where
     }
 
     pub fn account(&self) -> &'a Account {
-        &self.account
+        self.account
     }
 
     pub fn args(&self) -> &RuntimeArgs {
@@ -417,7 +430,7 @@ where
         T: TryFrom<StoredValue>,
         T::Error: Debug,
     {
-        let value = match self.read_gs(&key)? {
+        let value = match self.read_gs(key)? {
             None => return Err(Error::KeyNotFound(*key)),
             Some(value) => value,
         };
@@ -494,7 +507,7 @@ where
     ) -> Result<[u8; KEY_HASH_LENGTH], Error> {
         let new_hash = self.new_hash_address()?;
         self.validate_value(&contract)?;
-        self.metered_write_gs_unsafe(new_hash, contract)?;
+        self.metered_write_gs_unsafe(Key::Hash(new_hash), contract)?;
         Ok(new_hash)
     }
 
@@ -526,44 +539,48 @@ where
         &mut self.transfers
     }
 
+    fn validate_cl_value(&self, cl_value: &CLValue) -> Result<(), Error> {
+        match cl_value.cl_type() {
+            CLType::Bool
+            | CLType::I32
+            | CLType::I64
+            | CLType::U8
+            | CLType::U32
+            | CLType::U64
+            | CLType::U128
+            | CLType::U256
+            | CLType::U512
+            | CLType::Unit
+            | CLType::String
+            | CLType::Option(_)
+            | CLType::List(_)
+            | CLType::ByteArray(..)
+            | CLType::Result { .. }
+            | CLType::Map { .. }
+            | CLType::Tuple1(_)
+            | CLType::Tuple3(_)
+            | CLType::Any
+            | CLType::PublicKey => Ok(()),
+            CLType::Key => {
+                let key: Key = cl_value.to_owned().into_t()?; // TODO: optimize?
+                self.validate_key(&key)
+            }
+            CLType::URef => {
+                let uref: URef = cl_value.to_owned().into_t()?; // TODO: optimize?
+                self.validate_uref(&uref)
+            }
+            tuple @ CLType::Tuple2(_) if *tuple == casper_types::named_key_type() => {
+                let (_name, key): (String, Key) = cl_value.to_owned().into_t()?; // TODO: optimize?
+                self.validate_key(&key)
+            }
+            CLType::Tuple2(_) => Ok(()),
+        }
+    }
+
     /// Validates whether keys used in the `value` are not forged.
     fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
         match value {
-            StoredValue::CLValue(cl_value) => match cl_value.cl_type() {
-                CLType::Bool
-                | CLType::I32
-                | CLType::I64
-                | CLType::U8
-                | CLType::U32
-                | CLType::U64
-                | CLType::U128
-                | CLType::U256
-                | CLType::U512
-                | CLType::Unit
-                | CLType::String
-                | CLType::Option(_)
-                | CLType::List(_)
-                | CLType::ByteArray(..)
-                | CLType::Result { .. }
-                | CLType::Map { .. }
-                | CLType::Tuple1(_)
-                | CLType::Tuple3(_)
-                | CLType::Any
-                | CLType::PublicKey => Ok(()),
-                CLType::Key => {
-                    let key: Key = cl_value.to_owned().into_t()?; // TODO: optimize?
-                    self.validate_key(&key)
-                }
-                CLType::URef => {
-                    let uref: URef = cl_value.to_owned().into_t()?; // TODO: optimize?
-                    self.validate_uref(&uref)
-                }
-                tuple @ CLType::Tuple2(_) if *tuple == casper_types::named_key_type() => {
-                    let (_name, key): (String, Key) = cl_value.to_owned().into_t()?; // TODO: optimize?
-                    self.validate_key(&key)
-                }
-                CLType::Tuple2(_) => Ok(()),
-            },
+            StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::Account(account) => {
                 // This should never happen as accounts can't be created by contracts.
                 // I am putting this here for the sake of completeness.
@@ -632,7 +649,7 @@ where
     }
 
     fn validate_readable(&self, key: &Key) -> Result<(), Error> {
-        if self.is_readable(&key) {
+        if self.is_readable(key) {
             Ok(())
         } else {
             Err(Error::InvalidAccess {
@@ -642,7 +659,7 @@ where
     }
 
     fn validate_addable(&self, key: &Key) -> Result<(), Error> {
-        if self.is_addable(&key) {
+        if self.is_addable(key) {
             Ok(())
         } else {
             Err(Error::InvalidAccess {
@@ -652,7 +669,7 @@ where
     }
 
     fn validate_writeable(&self, key: &Key) -> Result<(), Error> {
-        if self.is_writeable(&key) {
+        if self.is_writeable(key) {
             Ok(())
         } else {
             Err(Error::InvalidAccess {
@@ -673,6 +690,12 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
+            Key::Dictionary(_) => {
+                // Dictionary is a special case that will not be readable by default, but the access
+                // bits are verified from within API call.
+                false
+            }
+            Key::SystemContractRegistry => false,
         }
     }
 
@@ -687,6 +710,12 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
+            Key::Dictionary(_) => {
+                // Dictionary is a special case that will not be readable by default, but the access
+                // bits are verified from within API call.
+                false
+            }
+            Key::SystemContractRegistry => false,
         }
     }
 
@@ -701,6 +730,12 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
+            Key::Dictionary(_) => {
+                // Dictionary is a special case that will not be readable by default, but the access
+                // bits are verified from within API call.
+                false
+            }
+            Key::SystemContractRegistry => false,
         }
     }
 
@@ -730,24 +765,25 @@ where
     }
 
     /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(&self) -> bool {
+    pub(crate) fn is_system_contract(&self) -> Result<bool, Error> {
         if let Some(hash) = self.base_key().into_hash() {
-            let system_contracts = self.protocol_data().system_contracts();
-            if system_contracts.contains(&hash.into()) {
-                return true;
-            }
+            let contract_hash = ContractHash::new(hash);
+            return Ok(self
+                .system_contract_registry()?
+                .values()
+                .any(|&system_hash| system_hash == contract_hash));
         }
-        false
+        Ok(false)
     }
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if self.is_system_contract() {
+        if self.is_system_contract()? {
             // Don't charge storage used while executing a system contract.
             return Ok(());
         }
 
-        let storage_costs = self.protocol_data().wasm_config().storage_costs();
+        let storage_costs = self.engine_config().wasm_config().storage_costs();
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 
@@ -988,8 +1024,8 @@ where
         Ok(())
     }
 
-    pub fn protocol_data(&self) -> &ProtocolData {
-        &self.protocol_data
+    pub fn engine_config(&self) -> &EngineConfig {
+        &self.engine_config
     }
 
     /// Creates validated instance of `StoredValue` from `account`.
@@ -1027,5 +1063,88 @@ where
         let contract_package: ContractPackage = self.read_gs_typed(&Key::from(package_hash))?;
         self.validate_uref(&contract_package.access_key())?;
         Ok(contract_package)
+    }
+
+    pub(crate) fn dictionary_get(
+        &mut self,
+        uref: URef,
+        dictionary_item_key: &str,
+    ) -> Result<Option<CLValue>, Error> {
+        self.validate_readable(&uref.into())?;
+        self.validate_key(&uref.into())?;
+        let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
+
+        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+            return Err(Error::DictionaryItemKeyExceedsLength);
+        }
+
+        let dictionary_key = Key::dictionary(uref, dictionary_item_key_bytes);
+
+        let maybe_stored_value = self
+            .tracking_copy
+            .borrow_mut()
+            .read(self.correlation_id, &dictionary_key)
+            .map_err(Into::into)?;
+
+        if let Some(stored_value) = maybe_stored_value {
+            let cl_value_indirect: CLValue =
+                stored_value.try_into().map_err(Error::TypeMismatch)?;
+            let dictionary_value: DictionaryValue =
+                cl_value_indirect.into_t().map_err(Error::from)?;
+            let cl_value = dictionary_value.into_cl_value();
+            Ok(Some(cl_value))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn dictionary_put(
+        &mut self,
+        seed_uref: URef,
+        dictionary_item_key: &str,
+        cl_value: CLValue,
+    ) -> Result<(), Error> {
+        let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
+
+        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+            return Err(Error::DictionaryItemKeyExceedsLength);
+        }
+
+        self.validate_writeable(&seed_uref.into())?;
+        self.validate_uref(&seed_uref)?;
+
+        self.validate_cl_value(&cl_value)?;
+
+        let wrapped_cl_value = {
+            let dictionary_value = DictionaryValue::new(
+                cl_value,
+                seed_uref.addr().to_vec(),
+                dictionary_item_key_bytes.to_vec(),
+            );
+            CLValue::from_t(dictionary_value).map_err(Error::from)?
+        };
+
+        let dictionary_key = Key::dictionary(seed_uref, dictionary_item_key_bytes);
+        self.metered_write_gs_unsafe(dictionary_key, wrapped_cl_value)?;
+        Ok(())
+    }
+
+    pub fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
+        let registry = self.system_contract_registry()?;
+        let hash = registry.get(name).ok_or_else(|| {
+            error!("Missing system contract hash: {}", name);
+            Error::MissingSystemContractHash(name.to_string())
+        })?;
+        Ok(*hash)
+    }
+
+    pub fn system_contract_registry(&self) -> Result<SystemContractRegistry, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_system_contracts(self.correlation_id)
+            .map_err(|_| {
+                error!("Missing system contract registry");
+                Error::MissingSystemContractRegistry
+            })
     }
 }

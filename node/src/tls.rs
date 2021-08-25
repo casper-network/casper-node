@@ -55,7 +55,7 @@ use rand::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
-use crate::utils::{read_file, write_file};
+use crate::utils::read_file;
 
 // This is inside a private module so that the generated `BigArray` does not form part of this
 // crate's public API, and hence also doesn't appear in the rustdocs.
@@ -534,7 +534,7 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
 pub(crate) fn load_cert<P: AsRef<Path>>(src: P) -> anyhow::Result<X509> {
     let pem = read_file(src.as_ref()).with_context(|| "failed to load certificate")?;
 
-    Ok(X509::from_pem(&pem).context("parsing certificate")?)
+    X509::from_pem(&pem).context("parsing certificate")
 }
 
 /// Loads a private key from a file.
@@ -542,25 +542,7 @@ pub(crate) fn load_private_key<P: AsRef<Path>>(src: P) -> anyhow::Result<PKey<Pr
     let pem = read_file(src.as_ref()).with_context(|| "failed to load private key")?;
 
     // TODO: It might be that we need to call `PKey::private_key_from_pkcs8` instead.
-    Ok(PKey::private_key_from_pem(&pem).context("parsing private key")?)
-}
-
-/// Saves a certificate to a file.
-pub fn save_cert<P: AsRef<Path>>(cert: &X509Ref, dest: P) -> anyhow::Result<()> {
-    let pem = cert.to_pem().context("converting certificate to PEM")?;
-
-    write_file(dest, pem).with_context(|| "failed to write certificate")?;
-    Ok(())
-}
-
-/// Saves a private key to a file.
-pub fn save_private_key<P: AsRef<Path>>(key: &PKeyRef<Private>, dest: P) -> anyhow::Result<()> {
-    let pem = key
-        .private_key_to_pem_pkcs8()
-        .context("converting private key to PEM")?;
-
-    write_file(dest, pem).with_context(|| "failed to write private key")?;
-    Ok(())
+    PKey::private_key_from_pem(&pem).context("parsing private key")
 }
 
 /// Returns an OpenSSL compatible timestamp.
@@ -626,7 +608,7 @@ fn num_eq(num: &Asn1IntegerRef, other: u32) -> SslResult<bool> {
     let r = BigNum::from_u32(other)?;
 
     // The `BigNum` API seems to be really lacking here.
-    Ok(l.is_negative() == r.is_negative() && l.ucmp(&r.as_ref()) == Ordering::Equal)
+    Ok(l.is_negative() == r.is_negative() && l.ucmp(r.as_ref()) == Ordering::Equal)
 }
 
 /// Generates a secret key suitable for TLS encryption.

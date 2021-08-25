@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
+use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
     account::AccountHash, runtime_args, AccessRights, DeployHash, PublicKey, RuntimeArgs,
     SecretKey, Transfer, TransferAddr, U512,
@@ -525,6 +525,6 @@ fn should_record_wasm_transfers_with_subcall() {
 
     const EXPECTED_COUNT: Option<usize> = Some(2);
     for expected in &[expected_alice, expected_bob, expected_carol] {
-        assert_eq!(transfer_counts.get(&expected).cloned(), EXPECTED_COUNT);
+        assert_eq!(transfer_counts.get(expected).cloned(), EXPECTED_COUNT);
     }
 }

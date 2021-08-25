@@ -10,16 +10,16 @@ export NCTL_ACCOUNT_TYPE_NODE="node"
 export NCTL_ACCOUNT_TYPE_USER="user"
 
 # Base RPC server port number.
-export NCTL_BASE_PORT_RPC=40000
+export NCTL_BASE_PORT_RPC=11000
 
 # Base JSON server port number.
-export NCTL_BASE_PORT_REST=50000
+export NCTL_BASE_PORT_REST=14000
 
 # Base event server port number.
-export NCTL_BASE_PORT_SSE=60000
+export NCTL_BASE_PORT_SSE=18000
 
 # Base network server port number.
-export NCTL_BASE_PORT_NETWORK=34452
+export NCTL_BASE_PORT_NETWORK=22000
 
 # Set of client side auction contracts.
 export NCTL_CONTRACTS_CLIENT_AUCTION=(
@@ -47,7 +47,7 @@ export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
 export NCTL_DEFAULT_ERA_ACTIVATION_OFFSET=2
 
 # Default motes to pay for consumed gas.
-export NCTL_DEFAULT_GAS_PAYMENT=10000000000   # (1e10)
+export NCTL_DEFAULT_GAS_PAYMENT=100000000000   # (1e11)
 
 # Default gas price multiplier.
 export NCTL_DEFAULT_GAS_PRICE=10

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     fmt::{self, Debug, Display, Formatter},
     io, mem,
     net::SocketAddr,
@@ -15,8 +14,9 @@ use tracing::Span;
 
 use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
 use crate::{
+    components::contract_runtime::ContractRuntimeAnnouncement,
     effect::{
-        announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
+        announcements::BlocklistAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -27,7 +27,7 @@ const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
 /// A small network event.
 #[derive(Debug, From, Serialize)]
-pub enum Event<P> {
+pub(crate) enum Event<P> {
     /// The TLS handshake completed on the incoming connection.
     IncomingConnection {
         incoming: Box<IncomingConnection<P>>,
@@ -82,27 +82,16 @@ pub enum Event<P> {
     /// We received a peer's public listening address via gossip.
     PeerAddressReceived(GossipedAddress),
 
-    /// We are due for a sweep of the connection symmetries.
-    SweepSymmetries,
     /// Housekeeping for the outgoing manager.
     SweepOutgoing,
 
-    /// Blocklist announcement
+    /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
 
-    /// Announcement from the linear chain.
-    ///
-    /// Used to track validator sets.
+    /// Contract runtime announcement.
     #[from]
-    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
-    /// The set of active and upcoming validators changed.
-    ValidatorsChanged {
-        /// Active validators (current and upcoming era).
-        active_validators: Box<HashSet<PublicKey>>,
-        /// Upcoming validators (for era + 2).
-        upcoming_validators: Box<HashSet<PublicKey>>,
-    },
+    ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 }
 
 impl From<NetworkRequest<NodeId, ProtocolMessage>> for Event<ProtocolMessage> {
@@ -146,25 +135,11 @@ impl<P: Display> Display for Event<P> {
             Event::BlocklistAnnouncement(ann) => {
                 write!(f, "handling blocklist announcement: {}", ann)
             }
+            Event::ContractRuntimeAnnouncement(ann) => {
+                write!(f, "handling contract runtime announcement: {}", ann)
+            }
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
-            }
-            Event::SweepSymmetries => {
-                write!(f, "sweep connection symmetries")
-            }
-            Event::LinearChainAnnouncement(ann) => {
-                write!(f, "linear chain announcement: {}", ann)
-            }
-            Event::ValidatorsChanged {
-                active_validators,
-                upcoming_validators,
-            } => {
-                write!(
-                    f,
-                    "validators changed (active {}, upcoming {})",
-                    active_validators.len(),
-                    upcoming_validators.len()
-                )
             }
         }
     }
@@ -172,7 +147,7 @@ impl<P: Display> Display for Event<P> {
 
 /// Outcome of an incoming connection negotiation.
 #[derive(Debug, Serialize)]
-pub enum IncomingConnection<P> {
+pub(crate) enum IncomingConnection<P> {
     /// The connection failed early on, before even a peer's [`NodeId`] could be determined.
     FailedEarly {
         /// Remote port the peer dialed us from.
@@ -244,7 +219,7 @@ impl<P> Display for IncomingConnection<P> {
 
 /// Outcome of an outgoing connection attempt.
 #[derive(Debug, Serialize)]
-pub enum OutgoingConnection<P> {
+pub(crate) enum OutgoingConnection<P> {
     /// The outgoing connection failed early on, before a peer's [`NodeId`] could be determined.
     FailedEarly {
         /// Address that was dialed.

@@ -24,24 +24,54 @@ pub enum Error {
     FailedToParseKey,
 
     /// Failed to parse a `URef` from a formatted string.
-    #[error("Failed to parse '{0}' as a uref: {1:?}")]
-    FailedToParseURef(&'static str, URefFromStrError),
+    #[error("Failed to parse '{context}' as a uref: {error}")]
+    FailedToParseURef {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// The actual error raised.
+        error: URefFromStrError,
+    },
 
     /// Failed to parse an integer from a string.
-    #[error("Failed to parse '{0}' as an integer: {1:?}")]
-    FailedToParseInt(&'static str, ParseIntError),
+    #[error("Failed to parse '{context}' as an integer: {error}")]
+    FailedToParseInt {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// The actual error raised.
+        error: ParseIntError,
+    },
 
     /// Failed to parse a `TimeDiff` from a formatted string.
-    #[error("Failed to parse '{0}' as a time diff: {1}")]
-    FailedToParseTimeDiff(&'static str, DurationError),
+    #[error("Failed to parse '{context}' as a time diff: {error}")]
+    FailedToParseTimeDiff {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// The actual error raised.
+        error: DurationError,
+    },
 
     /// Failed to parse a `Timestamp` from a formatted string.
-    #[error("Failed to parse '{0}' as a timestamp: {1}")]
-    FailedToParseTimestamp(&'static str, TimestampError),
+    #[error("Failed to parse '{context}' as a timestamp: {error}")]
+    FailedToParseTimestamp {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// The actual error raised.
+        error: TimestampError,
+    },
 
     /// Failed to parse a `U128`, `U256` or `U512` from a string.
-    #[error("Failed to parse '{0}' as U128, U256, or U512: {1:?}")]
-    FailedToParseUint(&'static str, UIntParseError),
+    #[error("Failed to parse '{context}' as U128, U256, or U512: {error:?}")]
+    FailedToParseUint {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// The actual error raised.
+        error: UIntParseError,
+    },
 
     /// Deploy size too large.
     #[error("Deploy size too large: {0}")]
@@ -55,7 +85,7 @@ pub enum Error {
     #[error("Failed to parse as JSON-RPC response: {0}")]
     FailedToParseResponse(reqwest::Error),
 
-    /// Failed to create new key file because it already exists.
+    /// Failed to create new file because it already exists.
     #[error("File at {} already exists", .0.display())]
     FileAlreadyExists(PathBuf),
 
@@ -96,7 +126,8 @@ pub enum Error {
     /// Cryptographic error.
     #[error("Cryptographic error: {context}: {error}")]
     CryptoError {
-        /// Contextual text, such as call site.
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
         context: &'static str,
         /// Underlying crypto error.
         error: CryptoError,
@@ -107,13 +138,20 @@ pub enum Error {
     InvalidCLValue(String),
 
     /// Invalid argument.
-    #[error("Invalid argument '{0}': {1}")]
-    InvalidArgument(&'static str, String),
+    #[error("Invalid argument '{context}': {error}")]
+    InvalidArgument {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// An error message.
+        error: String,
+    },
 
     /// Conflicting arguments.
     #[error("Conflicting arguments passed '{context}' {args:?}")]
     ConflictingArguments {
-        /// Contextual text, such as call site.
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
         context: &'static str,
         /// Arguments passed, with their values.
         args: Vec<String>,
@@ -122,6 +160,14 @@ pub enum Error {
     /// Failed to validate response.
     #[error("Invalid response: {0}")]
     InvalidResponse(#[from] ValidateResponseError),
+
+    /// Failed to create a DictionaryIdentifier
+    #[error("Failed to parse the dictionary identifier")]
+    FailedToParseDictionaryIdentifier,
+
+    /// Failed to identify the hash as either block hash or state root hash.
+    #[error("Failed to parse state identifier")]
+    FailedToParseStateIdentifier,
 
     /// Must call FFI's setup function prior to making FFI calls.
     #[cfg(feature = "ffi")]

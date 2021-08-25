@@ -3,16 +3,13 @@ use std::{ops::Deref, sync::Arc};
 use crate::shared::{
     additive_map::AdditiveMap,
     newtypes::{Blake2bHash, CorrelationId},
-    stored_value::StoredValue,
     transform::Transform,
 };
-use casper_types::{Key, ProtocolVersion};
+use casper_types::{Key, StoredValue};
 
 use crate::storage::{
     error,
-    global_state::{commit, CommitResult, StateProvider, StateReader},
-    protocol_data::ProtocolData,
-    protocol_data_store::lmdb::LmdbProtocolDataStore,
+    global_state::{commit, StateProvider, StateReader},
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
     trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
@@ -24,18 +21,25 @@ use crate::storage::{
     },
 };
 
+/// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
-    pub environment: Arc<LmdbEnvironment>,
-    pub trie_store: Arc<LmdbTrieStore>,
-    pub protocol_data_store: Arc<LmdbProtocolDataStore>,
-    pub empty_root_hash: Blake2bHash,
+    /// Environment for LMDB.
+    pub(crate) environment: Arc<LmdbEnvironment>,
+    /// Trie store held within LMDB.
+    pub(crate) trie_store: Arc<LmdbTrieStore>,
+    // TODO: make this a lazy-static
+    /// Empty root hash used for a new trie.
+    pub(crate) empty_root_hash: Blake2bHash,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct LmdbGlobalStateView {
-    pub environment: Arc<LmdbEnvironment>,
-    pub store: Arc<LmdbTrieStore>,
-    pub root_hash: Blake2bHash,
+    /// Environment for LMDB.
+    pub(crate) environment: Arc<LmdbEnvironment>,
+    /// Trie store held within LMDB.
+    pub(crate) store: Arc<LmdbTrieStore>,
+    /// Root hash of this "view".
+    pub(crate) root_hash: Blake2bHash,
 }
 
 impl LmdbGlobalState {
@@ -43,7 +47,6 @@ impl LmdbGlobalState {
     pub fn empty(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
-        protocol_data_store: Arc<LmdbProtocolDataStore>,
     ) -> Result<Self, error::Error> {
         let root_hash: Blake2bHash = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
@@ -52,12 +55,7 @@ impl LmdbGlobalState {
             txn.commit()?;
             root_hash
         };
-        Ok(LmdbGlobalState::new(
-            environment,
-            trie_store,
-            protocol_data_store,
-            root_hash,
-        ))
+        Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
     }
 
     /// Creates a state from an existing environment, store, and root_hash.
@@ -65,13 +63,11 @@ impl LmdbGlobalState {
     pub(crate) fn new(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
-        protocol_data_store: Arc<LmdbProtocolDataStore>,
         empty_root_hash: Blake2bHash,
     ) -> Self {
         LmdbGlobalState {
             environment,
             trie_store,
-            protocol_data_store,
             empty_root_hash,
         }
     }
@@ -175,36 +171,15 @@ impl StateProvider for LmdbGlobalState {
         correlation_id: CorrelationId,
         prestate_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, Self::Error> {
-        let commit_result = commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
+    ) -> Result<Blake2bHash, Self::Error> {
+        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
             &self.environment,
             &self.trie_store,
             correlation_id,
             prestate_hash,
             effects,
-        )?;
-        Ok(commit_result)
-    }
-
-    fn put_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-        protocol_data: &ProtocolData,
-    ) -> Result<(), Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        self.protocol_data_store
-            .put(&mut txn, &protocol_version, protocol_data)?;
-        txn.commit().map_err(Into::into)
-    }
-
-    fn get_protocol_data(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<ProtocolData>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let result = self.protocol_data_store.get(&txn, &protocol_version)?;
-        txn.commit()?;
-        Ok(result)
+        )
+        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Blake2bHash {
@@ -316,15 +291,14 @@ mod tests {
                 &temp_dir.path().to_path_buf(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
+                true,
             )
             .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
-        let protocol_data_store = Arc::new(
-            LmdbProtocolDataStore::new(&environment, None, DatabaseFlags::empty()).unwrap(),
-        );
-        let ret = LmdbGlobalState::empty(environment, trie_store, protocol_data_store).unwrap();
+
+        let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
         let mut current_root = ret.empty_root_hash;
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
@@ -386,10 +360,7 @@ mod tests {
             tmp
         };
 
-        let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success { state_root, .. } => state_root,
-            _ => panic!("commit failed"),
-        };
+        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
@@ -416,10 +387,7 @@ mod tests {
             tmp
         };
 
-        let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success { state_root, .. } => state_root,
-            _ => panic!("commit failed"),
-        };
+        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {

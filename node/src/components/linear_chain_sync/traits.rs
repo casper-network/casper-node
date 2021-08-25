@@ -1,4 +1,5 @@
 use crate::{
+    components::contract_runtime::ContractRuntimeAnnouncement,
     effect::{
         announcements::ControlAnnouncement,
         requests::{
@@ -8,7 +9,8 @@ use crate::{
     },
     types::{Block, BlockByHeight},
 };
-pub trait ReactorEventT<I>:
+
+pub(crate) trait ReactorEventT<I>:
     From<StorageRequest>
     + From<FetcherRequest<I, Block>>
     + From<FetcherRequest<I, BlockByHeight>>
@@ -16,6 +18,7 @@ pub trait ReactorEventT<I>:
     + From<ContractRuntimeRequest>
     + From<StateStoreRequest>
     + From<ControlAnnouncement>
+    + From<ContractRuntimeAnnouncement>
     + Send
 {
 }
@@ -28,6 +31,7 @@ impl<I, REv> ReactorEventT<I> for REv where
         + From<ContractRuntimeRequest>
         + From<StateStoreRequest>
         + From<ControlAnnouncement>
+        + From<ContractRuntimeAnnouncement>
         + Send
 {
 }

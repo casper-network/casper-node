@@ -4,11 +4,11 @@ use assert_matches::assert_matches;
 use proptest::prelude::*;
 
 use casper_types::{
-    account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
+    account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, URef,
-    U256, U512,
+    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
+    StoredValue, URef, U256, U512,
 };
 
 use super::{
@@ -17,12 +17,11 @@ use super::{
 use crate::{
     core::{
         engine_state::{op::Op, EngineConfig},
+        runtime_context::dictionary,
         ValidationError,
     },
     shared::{
-        account::{Account, AssociatedKeys},
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::{gens::stored_value_arb, StoredValue},
         transform::Transform,
     },
     storage::{
@@ -91,8 +90,8 @@ fn tracking_copy_new() {
     let db = CountingDb::new(counter);
     let tc = TrackingCopy::new(db);
 
-    assert_eq!(tc.ops.is_empty(), true);
-    assert_eq!(tc.fns.is_empty(), true);
+    assert!(tc.ops.is_empty());
+    assert!(tc.fns.is_empty());
 }
 
 #[test]
@@ -231,8 +230,8 @@ fn tracking_copy_add_named_key() {
         StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
     );
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
-    assert_eq!(tc.ops.is_empty(), true);
-    assert_eq!(tc.fns.is_empty(), true);
+    assert!(tc.ops.is_empty());
+    assert!(tc.fns.is_empty());
 
     // adding correct type works
     let add = tc.add(correlation_id, k, named_key);
@@ -314,7 +313,10 @@ proptest! {
     #[test]
     fn query_empty_path(k in key_arb(), missing_key in key_arb(), v in stored_value_arb()) {
         let correlation_id = CorrelationId::new();
-        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, v.to_owned())]).unwrap();
+
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
+
+        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, value)]).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let empty_path = Vec::new();
@@ -351,9 +353,11 @@ proptest! {
         ));
         let contract_key = Key::Hash(hash);
 
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
+
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
-            &[(k, v.to_owned()), (contract_key, contract)]
+            &[(k, value), (contract_key, contract)]
         ).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
@@ -369,7 +373,6 @@ proptest! {
             assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
         }
     }
-
 
     #[test]
     fn query_account_state(
@@ -393,9 +396,11 @@ proptest! {
         );
         let account_key = Key::Account(address);
 
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
+
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
-            &[(k, v.to_owned()), (account_key, StoredValue::Account(account))],
+            &[(k, value), (account_key, StoredValue::Account(account))],
         ).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
@@ -450,8 +455,10 @@ proptest! {
         );
         let account_key = Key::Account(address);
 
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
+
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[
-            (k, v.to_owned()),
+            (k, value),
             (contract_key, contract),
             (account_key, StoredValue::Account(account)),
         ]).unwrap();

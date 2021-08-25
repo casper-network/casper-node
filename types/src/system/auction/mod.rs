@@ -3,6 +3,7 @@ mod bid;
 mod constants;
 mod delegator;
 mod detail;
+mod entry_points;
 mod era_info;
 mod error;
 mod providers;
@@ -14,16 +15,15 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
-use crate::{account::AccountHash, EraId, PublicKey, U512};
+use crate::{account::AccountHash, system::CallStackElement, EraId, PublicKey, U512};
 
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
+pub use entry_points::auction_entry_points;
 pub use era_info::*;
 pub use error::Error;
-pub use providers::{
-    AccountProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
-};
+pub use providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use unbonding_purse::UnbondingPurse;
 
@@ -50,12 +50,10 @@ pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
 
 /// Bonding auction contract interface
 pub trait Auction:
-    StorageProvider + SystemProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
+    StorageProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
 {
-    /// Returns era_validators.
-    ///
-    /// Publicly accessible, but intended for periodic use by the Handle Payment contract to update
-    /// its own internal data structures recording current and past winners.
+    /// Returns active validators and auction winners for a number of future eras determined by the
+    /// configured auction_delay.
     fn get_era_validators(&mut self) -> Result<EraValidators, Error> {
         let snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
         let era_validators = snapshot
@@ -88,19 +86,39 @@ pub trait Auction:
         Ok(seigniorage_recipients)
     }
 
-    /// For a non-founder validator, this adds, or modifies, an entry in the `bids` collection and
-    /// calls `bond` in the Mint contract to create (or top off) a bid purse. It also adjusts the
-    /// delegation rate.
+    /// This entry point adds or modifies an entry in the `Key::Bid` section of the global state and
+    /// creates (or tops off) a bid purse. Post genesis, any new call on this entry point causes a
+    /// non-founding validator in the system to exist.
+    ///
+    /// The logic works for both founding and non-founding validators, making it possible to adjust
+    /// their delegation rate and increase their stakes.
+    ///
+    /// A validator with its bid inactive due to slashing can activate its bid again by increasing
+    /// its stake.
+    ///
+    /// Validators cannot create a bid with 0 amount, and the delegation rate can't exceed
+    /// [`DELEGATION_RATE_DENOMINATOR`].
+    ///
+    /// Returns a [`U512`] value indicating total amount of tokens staked for given `public_key`.
     fn add_bid(
         &mut self,
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
@@ -120,8 +138,15 @@ pub trait Auction:
                 if bid.inactive() {
                     bid.activate();
                 }
-                self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)
-                    .map_err(|_| Error::TransferToBidPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    *bid.bonding_purse(),
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToBidPurse)?
+                .map_err(|_| Error::TransferToBidPurse)?;
                 let updated_amount = bid
                     .with_delegation_rate(delegation_rate)
                     .increase_stake(amount)?;
@@ -130,8 +155,15 @@ pub trait Auction:
             }
             None => {
                 let bonding_purse = self.create_purse()?;
-                self.transfer_purse_to_purse(source, bonding_purse, amount)
-                    .map_err(|_| Error::TransferToBidPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    bonding_purse,
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToBidPurse)?
+                .map_err(|_| Error::TransferToBidPurse)?;
                 let bid = Bid::unlocked(public_key, bonding_purse, amount, delegation_rate);
                 self.write_bid(account_hash, bid)?;
                 amount
@@ -141,22 +173,37 @@ pub trait Auction:
         Ok(updated_amount)
     }
 
-    /// For a non-founder validator, implements essentially the same logic as add_bid, but reducing
-    /// the number of tokens and calling unbond in lieu of bond.
+    /// For a non-founder validator, this method simply decreases a stake.
     ///
-    /// For a founding validator, this function first checks whether they are released, and fails
-    /// if they are not.
+    /// For a founding validator, this function first checks whether they are released and fails if
+    /// they are not.
     ///
-    /// The function returns a the new amount of motes remaining in the bid. If the target bid
-    /// does not exist, the function call returns an error.
+    /// When a validator's stake reaches 0 all the delegators that bid their tokens to it are
+    /// automatically unbonded with their total staked amount and the bid is deactivated. A bid can
+    /// be activated again by staking tokens.
+    ///
+    /// You can't withdraw higher amount than its currently staked. Withdrawing zero is allowed,
+    /// although it does not change the state of the auction.
+    ///
+    /// The function returns the new amount of motes remaining in the bid. If the target bid does
+    /// not exist, the function call returns an error.
     fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         let mut bid = self
-            .read_bid(&account_hash)?
+            .read_bid(&provided_account_hash)?
             .ok_or(Error::ValidatorNotFound)?;
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
@@ -190,26 +237,37 @@ pub trait Auction:
             bid.deactivate();
         }
 
-        self.write_bid(account_hash, bid)?;
+        self.write_bid(provided_account_hash, bid)?;
 
         Ok(updated_stake)
     }
 
-    /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
-    /// not in founders, the function call returns an error and does nothing.
+    /// Adds a new delegator to delegators or increases its current stake. If the target validator
+    /// is missing, the function call returns an error and does nothing.
     ///
-    /// The function calls bond in the Mint contract to transfer motes to the validator's purse and
-    /// returns a tuple of that purse and the amount of motes contained in it after the transfer.
+    /// The function transfers motes from the source purse to the delegator's bonding purse.
+    ///    
+    /// This entry point returns the number of tokens currently delegated to a given validator.
     fn delegate(
         &mut self,
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash =
+            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
@@ -231,15 +289,29 @@ pub trait Auction:
 
         let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
-                self.transfer_purse_to_purse(source, *delegator.bonding_purse(), amount)
-                    .map_err(|_| Error::TransferToDelegatorPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    *delegator.bonding_purse(),
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
                 delegator.increase_stake(amount)?;
                 *delegator.staked_amount()
             }
             None => {
                 let bonding_purse = self.create_purse()?;
-                self.transfer_purse_to_purse(source, bonding_purse, amount)
-                    .map_err(|_| Error::TransferToDelegatorPurse)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    bonding_purse,
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::unlocked(
                     delegator_public_key.clone(),
                     amount,
@@ -256,22 +328,33 @@ pub trait Auction:
         Ok(new_delegation_amount)
     }
 
-    /// Removes an amount of motes (or the entry altogether, if the remaining amount is 0) from
-    /// the entry in delegators and calls unbond in the Mint contract to create a new unbonding
-    /// purse.
+    /// Removes specified amount of motes (or the value from the collection altogether, if the
+    /// remaining amount is 0) from the entry in delegators map for given validator and creates a
+    /// new unbonding request to the queue.
     ///
-    /// The arguments are the delegator’s key, the validator key and quantity of motes and
-    /// returns a tuple of the unbonding purse along with the remaining bid amount.
+    /// The arguments are the delegator's key, the validator's key, and the amount.
+    ///
+    /// Returns the remaining bid amount after the stake was decreased.
     fn undelegate(
         &mut self,
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash =
+            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
         let validator_account_hash = AccountHash::from(&validator_public_key);
         let mut bid = match self.read_bid(&validator_account_hash)? {
@@ -405,6 +488,11 @@ pub trait Auction:
 
             non_founder_weights.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
+            // This assumes that amount of founding validators does not exceed configured validator
+            // slots. For a case where there are exactly N validators and the limit is N, only
+            // founding validators will be the in the winning set. It is advised to set
+            // `validator_slots` larger than amount of founding validators in accounts.toml to
+            // accomodate non-genesis validators.
             let remaining_auction_slots = validator_slots.saturating_sub(founder_weights.len());
 
             founder_weights
@@ -529,7 +617,7 @@ pub trait Auction:
             )?;
             let total_delegator_payout = delegator_payouts
                 .iter()
-                .map(|(amount, _bonding_purse)| *amount)
+                .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
                 .sum();
 
             let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
@@ -543,23 +631,30 @@ pub trait Auction:
             // TODO: add "mint into existing purse" facility
             let tmp_validator_reward_purse =
                 self.mint(validator_reward).map_err(|_| Error::MintReward)?;
-            self.transfer_purse_to_purse(
+
+            self.mint_transfer_direct(
+                Some(public_key.to_account_hash()),
                 tmp_validator_reward_purse,
                 validator_bonding_purse,
                 validator_reward,
+                None,
             )
+            .map_err(|_| Error::ValidatorRewardTransfer)?
             .map_err(|_| Error::ValidatorRewardTransfer)?;
 
             // TODO: add "mint into existing purse" facility
             let tmp_delegator_reward_purse = self
                 .mint(total_delegator_payout)
                 .map_err(|_| Error::MintReward)?;
-            for (delegator_payout, bonding_purse) in delegator_payouts {
-                self.transfer_purse_to_purse(
+            for (delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
+                self.mint_transfer_direct(
+                    Some(delegator_account_hash),
                     tmp_delegator_reward_purse,
                     bonding_purse,
                     delegator_payout,
+                    None,
                 )
+                .map_err(|_| Error::DelegatorRewardTransfer)?
                 .map_err(|_| Error::DelegatorRewardTransfer)?;
             }
         }
@@ -577,19 +672,29 @@ pub trait Auction:
     /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
     /// by consensus (aka "evicted").
     fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<(), Error> {
-        let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        let provided_account_hash =
+            AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+        match self.get_immediate_caller() {
+            Some(&CallStackElement::Session { account_hash })
+                if account_hash != provided_account_hash =>
+            {
+                return Err(Error::InvalidContext)
+            }
+            Some(&CallStackElement::StoredSession { .. }) => {
+                // stored session code is not allowed to call this method
+                return Err(Error::InvalidContext);
+            }
+            _ => {}
+        };
 
-        let mut bid = match self.read_bid(&account_hash)? {
+        let mut bid = match self.read_bid(&provided_account_hash)? {
             Some(bid) => bid,
             None => return Err(Error::ValidatorNotFound),
         };
 
         bid.activate();
 
-        self.write_bid(account_hash, bid)?;
+        self.write_bid(provided_account_hash, bid)?;
 
         Ok(())
     }

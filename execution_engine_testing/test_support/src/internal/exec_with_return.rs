@@ -12,16 +12,14 @@ use casper_execution_engine::{
         runtime_context::RuntimeContext,
     },
     shared::{gas::Gas, newtypes::CorrelationId, wasm_prep::Preprocessor},
-    storage::{global_state::StateProvider, protocol_data::ProtocolData},
+    storage::global_state::StateProvider,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, DeployHash, EntryPointType,
-    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, system::CallStackElement, BlockTime, CLTyped,
+    DeployHash, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
-
-use super::DEFAULT_SYSTEM_CONFIG;
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
@@ -38,6 +36,7 @@ pub fn exec<S, T>(
     entry_point_name: &str,
     args: RuntimeArgs,
     extra_urefs: Vec<URef>,
+    call_stack: Vec<CallStackElement>,
 ) -> Option<(T, Vec<URef>, ExecutionEffect)>
 where
     S: StateProvider,
@@ -85,21 +84,6 @@ where
         ret
     };
 
-    let protocol_data = {
-        let mint = builder.get_mint_contract_hash();
-        let handle_payment = builder.get_mint_contract_hash();
-        let standard_payment = builder.get_standard_payment_contract_hash();
-        let auction = builder.get_auction_contract_hash();
-        ProtocolData::new(
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-            mint,
-            handle_payment,
-            standard_payment,
-            auction,
-        )
-    };
-
     let transfers = Vec::default();
 
     let context = RuntimeContext::new(
@@ -121,7 +105,7 @@ where
         protocol_version,
         correlation_id,
         phase,
-        protocol_data,
+        config,
         transfers,
     );
 
@@ -134,6 +118,11 @@ where
     let wasm_config = *DEFAULT_WASM_CONFIG;
 
     let preprocessor = Preprocessor::new(wasm_config);
+
+    let system_contract_registry = context
+        .system_contract_registry()
+        .expect("must have contract registry");
+
     let parity_module = deploy_item
         .get_deploy_metadata(
             tracking_copy,
@@ -141,18 +130,25 @@ where
             correlation_id,
             &preprocessor,
             &protocol_version,
-            &protocol_data,
+            system_contract_registry,
             phase,
         )
         .expect("should get wasm module");
 
-    let module = parity_module.take_module().expect("should have module");
+    let module = parity_module.take_module();
 
     let (instance, memory) =
         runtime::instance_and_memory(module.clone(), protocol_version, &wasm_config)
             .expect("should be able to make wasm instance from module");
 
-    let mut runtime = Runtime::new(config, Default::default(), memory, module, context);
+    let mut runtime = Runtime::new(
+        config,
+        Default::default(),
+        memory,
+        module,
+        context,
+        call_stack,
+    );
 
     match instance.invoke_export(entry_point_name, &[], &mut runtime) {
         Ok(_) => None,

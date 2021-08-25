@@ -1,12 +1,14 @@
 use std::collections::VecDeque;
 
-use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, TransferAddr};
+use casper_types::{
+    bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, StoredValue, TransferAddr,
+};
 
 use super::{error, execution_effect::ExecutionEffect, op::Op};
 use crate::{
     shared::{
         additive_map::AdditiveMap, gas::Gas, motes::Motes, newtypes::CorrelationId,
-        stored_value::StoredValue, transform::Transform,
+        transform::Transform,
     },
     storage::global_state::StateReader,
 };
@@ -48,13 +50,13 @@ pub enum ExecutionResult {
     /// An error condition that happened during execution
     Failure {
         error: error::Error,
-        effect: ExecutionEffect,
+        execution_effect: ExecutionEffect,
         transfers: Vec<TransferAddr>,
         cost: Gas,
     },
     /// Execution was finished successfully
     Success {
-        effect: ExecutionEffect,
+        execution_effect: ExecutionEffect,
         transfers: Vec<TransferAddr>,
         cost: Gas,
     },
@@ -63,7 +65,7 @@ pub enum ExecutionResult {
 impl Default for ExecutionResult {
     fn default() -> Self {
         ExecutionResult::Success {
-            effect: ExecutionEffect::default(),
+            execution_effect: ExecutionEffect::default(),
             transfers: Vec::default(),
             cost: Gas::default(),
         }
@@ -89,7 +91,7 @@ impl ExecutionResult {
     pub fn precondition_failure(error: error::Error) -> ExecutionResult {
         ExecutionResult::Failure {
             error,
-            effect: Default::default(),
+            execution_effect: Default::default(),
             transfers: Vec::default(),
             cost: Gas::default(),
         }
@@ -111,9 +113,11 @@ impl ExecutionResult {
 
     pub fn has_precondition_failure(&self) -> bool {
         match self {
-            ExecutionResult::Failure { cost, effect, .. } => {
-                cost.value() == 0.into() && *effect == Default::default()
-            }
+            ExecutionResult::Failure {
+                cost,
+                execution_effect,
+                ..
+            } => cost.value() == 0.into() && *execution_effect == Default::default(),
             ExecutionResult::Success { .. } => false,
         }
     }
@@ -127,8 +131,12 @@ impl ExecutionResult {
 
     pub fn effect(&self) -> &ExecutionEffect {
         match self {
-            ExecutionResult::Failure { effect, .. } => effect,
-            ExecutionResult::Success { effect, .. } => effect,
+            ExecutionResult::Failure {
+                execution_effect, ..
+            } => execution_effect,
+            ExecutionResult::Success {
+                execution_effect, ..
+            } => execution_effect,
         }
     }
 
@@ -143,26 +151,28 @@ impl ExecutionResult {
         match self {
             ExecutionResult::Failure {
                 error,
-                effect,
+                execution_effect,
                 transfers,
                 ..
             } => ExecutionResult::Failure {
                 error,
-                effect,
+                execution_effect,
                 transfers,
                 cost,
             },
             ExecutionResult::Success {
-                effect, transfers, ..
+                execution_effect,
+                transfers,
+                ..
             } => ExecutionResult::Success {
-                effect,
+                execution_effect,
                 transfers,
                 cost,
             },
         }
     }
 
-    pub fn with_effect(self, effect: ExecutionEffect) -> Self {
+    pub fn with_effect(self, execution_effect: ExecutionEffect) -> Self {
         match self {
             ExecutionResult::Failure {
                 error,
@@ -171,14 +181,14 @@ impl ExecutionResult {
                 ..
             } => ExecutionResult::Failure {
                 error,
-                effect,
+                execution_effect,
                 transfers,
                 cost,
             },
             ExecutionResult::Success {
                 cost, transfers, ..
             } => ExecutionResult::Success {
-                effect,
+                execution_effect,
                 transfers,
                 cost,
             },
@@ -189,17 +199,21 @@ impl ExecutionResult {
         match self {
             ExecutionResult::Failure {
                 error,
-                effect,
+                execution_effect,
                 cost,
                 ..
             } => ExecutionResult::Failure {
                 error,
-                effect,
+                execution_effect,
                 transfers,
                 cost,
             },
-            ExecutionResult::Success { cost, effect, .. } => ExecutionResult::Success {
-                effect,
+            ExecutionResult::Success {
+                cost,
+                execution_effect,
+                ..
+            } => ExecutionResult::Success {
+                execution_effect,
                 transfers,
                 cost,
             },
@@ -259,7 +273,7 @@ impl ExecutionResult {
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
     ) -> Result<ExecutionResult, CLValueError> {
-        let effect = make_payment_error_effects(
+        let execution_effect = make_payment_error_effects(
             max_payment_cost,
             account_main_purse_balance,
             account_main_purse_balance_key,
@@ -268,7 +282,7 @@ impl ExecutionResult {
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
             error,
-            effect,
+            execution_effect,
             transfers,
             cost: gas_cost,
         })
@@ -287,21 +301,21 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
     fn from(ee_execution_result: &ExecutionResult) -> Self {
         match ee_execution_result {
             ExecutionResult::Success {
-                effect,
+                execution_effect,
                 transfers,
                 cost,
             } => casper_types::ExecutionResult::Success {
-                effect: effect.into(),
+                effect: execution_effect.into(),
                 transfers: transfers.clone(),
                 cost: cost.value(),
             },
             ExecutionResult::Failure {
                 error,
-                effect,
+                execution_effect,
                 transfers,
                 cost,
             } => casper_types::ExecutionResult::Failure {
-                effect: effect.into(),
+                effect: execution_effect.into(),
                 transfers: transfers.clone(),
                 cost: cost.value(),
                 error_message: error.to_string(),
@@ -392,7 +406,7 @@ impl ExecutionResultBuilder {
         let mut transforms = AdditiveMap::new();
 
         let mut ret: ExecutionResult = ExecutionResult::Success {
-            effect: Default::default(),
+            execution_effect: Default::default(),
             transfers,
             cost,
         };

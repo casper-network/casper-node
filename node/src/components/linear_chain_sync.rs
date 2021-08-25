@@ -23,20 +23,21 @@
 //! execute (as we do in the first, SynchronizeTrustedHash, phase) it would have taken more time and
 //! we might miss more eras.
 
+mod config;
 mod event;
 mod metrics;
 mod peers;
 mod state;
 mod traits;
 
-use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem, str::FromStr};
+use std::{convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
 use self::event::{BlockByHashResult, DeploysResult};
-use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
+use casper_types::{EraId, ProtocolVersion};
 
 use super::{
     fetcher::FetchResult,
@@ -44,20 +45,29 @@ use super::{
     Component,
 };
 use crate::{
-    effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
+    components::contract_runtime::{
+        BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState,
+    },
+    effect::{
+        announcements::ControlAnnouncement,
+        requests::{ContractRuntimeRequest, StorageRequest},
+        EffectBuilder, EffectExt, EffectOptionExt, Effects,
+    },
     fatal,
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
-        TimeDiff,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, Deploy,
+        DeployHash, FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
+pub(crate) use config::Config;
 use event::BlockByHeightResult;
-pub use event::Event;
-pub use metrics::LinearChainSyncMetrics;
-pub use peers::PeersState;
-pub use state::State;
-pub use traits::ReactorEventT;
+pub(crate) use event::Event;
+pub(crate) use metrics::LinearChainSyncMetrics;
+pub(crate) use peers::PeersState;
+use smallvec::SmallVec;
+pub(crate) use state::State;
+pub(crate) use traits::ReactorEventT;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainSync<I> {
@@ -80,29 +90,30 @@ pub(crate) struct LinearChainSync<I> {
     started_syncing: bool,
     /// The protocol version the node is currently running with.
     protocol_version: ProtocolVersion,
+    initial_execution_pre_state: ExecutionPreState,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     // TODO: fix this
     #[allow(clippy::too_many_arguments)]
-    pub fn new<REv, Err>(
+    pub(crate) fn new<REv, Err>(
         registry: &Registry,
         effect_builder: EffectBuilder<REv>,
         chainspec: &Chainspec,
         storage: &Storage,
-        init_hash: Option<BlockHash>,
+        trusted_hash: Option<BlockHash>,
         highest_block: Option<Block>,
-        _genesis_validator_weights: BTreeMap<PublicKey, U512>,
+        after_upgrade: bool,
         next_upgrade_activation_point: Option<ActivationPoint>,
+        initial_execution_pre_state: ExecutionPreState,
+        config: Config,
     ) -> Result<(Self, Effects<Event<I>>), Err>
     where
         REv: From<Event<I>> + Send,
         Err: From<prometheus::Error> + From<storage::Error>,
     {
-        // set timeout to 5 minutes after now.
-        let five_minutes = TimeDiff::from_str("5minutes").unwrap();
         let timeout_event = effect_builder
-            .set_timeout(five_minutes.into())
+            .set_timeout(config.get_sync_timeout().into())
             .event(|_| Event::InitializeTimeout);
         let protocol_version = chainspec.protocol_config.version;
         if let Some(state) = read_init_state(storage, chainspec)? {
@@ -112,6 +123,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 state,
                 next_upgrade_activation_point,
                 protocol_version,
+                initial_execution_pre_state,
             )?;
             Ok((linear_chain_sync, timeout_event))
         } else {
@@ -121,14 +133,36 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     * chainspec.core_config.minimum_era_height,
                 chainspec.core_config.era_duration,
             );
-            let state = match init_hash {
-                Some(init_hash) => State::sync_trusted_hash(
-                    init_hash,
-                    highest_block.map(|block| block.take_header()),
-                ),
-                None => State::Done(highest_block.map(Box::new)),
+
+            let state = match trusted_hash {
+                Some(hash) => {
+                    State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
+                }
+                None if after_upgrade => {
+                    info!(
+                        "No synchronization of the linear chain will be done because the node \
+                        was started right after an upgrade without a trusted hash."
+                    );
+                    // Right after upgrade, no linear chain to synchronize.
+                    State::Done(highest_block.map(Box::new))
+                }
+                None => {
+                    if let Some(highest_block) = highest_block {
+                        // No trusted hash, not immediately after upgrade.
+                        // We will synchronize starting from the highest block we have.
+                        // NOTE: This is unsafe and should only use the highest block if it can
+                        // still be trusted – i.e. it's within the unbonding period.
+                        State::sync_descendants(*highest_block.hash(), highest_block, None)
+                    } else {
+                        info!(
+                            "No synchronization of the linear chain will be done because there \
+                            is neither a trusted hash nor a highest block present."
+                        );
+                        State::Done(None)
+                    }
+                }
             };
-            let state_key = create_state_key(&chainspec);
+            let state_key = create_state_key(chainspec);
             let linear_chain_sync = LinearChainSync {
                 peers: PeersState::new(),
                 state,
@@ -140,6 +174,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 min_round_length: chainspec.highway_config.min_round_length(),
                 started_syncing: false,
                 protocol_version,
+                initial_execution_pre_state,
             };
             Ok((linear_chain_sync, timeout_event))
         }
@@ -152,6 +187,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         state: State,
         next_upgrade_activation_point: Option<ActivationPoint>,
         protocol_version: ProtocolVersion,
+        initial_execution_pre_state: ExecutionPreState,
     ) -> Result<Self, prometheus::Error> {
         let state_key = create_state_key(chainspec);
         info!(?state, "reusing previous state");
@@ -160,6 +196,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
             chainspec.core_config.era_duration,
         );
+        if matches!(state, State::None | State::Done(_)) {
+            info!(
+                "No synchronization of the linear chain will be done because the component is \
+                already in State::Done or in State::None."
+            );
+        }
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
@@ -171,6 +213,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             min_round_length: chainspec.highway_config.min_round_length(),
             started_syncing: false,
             protocol_version,
+            initial_execution_pre_state,
         })
     }
 
@@ -185,12 +228,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     /// Returns `true` if we have finished syncing linear chain.
-    pub fn is_synced(&self) -> bool {
+    pub(crate) fn is_synced(&self) -> bool {
         matches!(self.state, State::Done(_))
     }
 
     /// Returns `true` if we should stop for upgrade.
-    pub fn stopped_for_upgrade(&self) -> bool {
+    pub(crate) fn stopped_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
     }
 
@@ -498,7 +541,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    pub fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
+    pub(crate) fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
         match self.state {
             State::SyncingTrustedHash { latest_block, .. } => latest_block.map(Block::take_header),
             State::SyncingDescendants { latest_block, .. } => Some(latest_block.take_header()),
@@ -585,7 +628,7 @@ where
                                 // trusted hash.
                                 info!(
                                     "finished synchronizing descendants of the trusted hash. \
-                                    cleaning state."
+                                     cleaning state."
                                 );
                                 self.mark_done(self.latest_block().cloned());
                                 Effects::new()
@@ -736,14 +779,18 @@ where
             Event::GetDeploysResult(fetch_result) => {
                 self.metrics.observe_get_deploys();
                 match fetch_result {
-                    event::DeploysResult::Found(block) => {
-                        let block_hash = block.hash();
+                    event::DeploysResult::Found(block_to_execute) => {
+                        let block_hash = block_to_execute.hash();
                         trace!(%block_hash, "deploys for linear chain block found");
                         // Reset used peers so we can download next block with the full set.
                         self.peers.reset(rng);
                         // Execute block
-                        let finalized_block: FinalizedBlock = (*block).into();
-                        effect_builder.execute_block(finalized_block).ignore()
+                        execute_block(
+                            effect_builder,
+                            *block_to_execute,
+                            self.initial_execution_pre_state.clone(),
+                        )
+                        .ignore()
                     }
                     event::DeploysResult::NotFound(block, peer) => {
                         let block_hash = block.hash();
@@ -919,7 +966,7 @@ fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
 /// Deserialized vector of bytes into `LinearChainSync::State`.
 /// Panics on deserialization errors.
 fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
-    bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+    bincode::deserialize(serialized_state).unwrap_or_else(|error| {
         // Panicking here should not corrupt the state of any component as it's done in the
         // constructor.
         panic!(
@@ -935,7 +982,7 @@ pub(crate) fn read_init_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<Option<State>, storage::Error> {
-    let key = create_state_key(&chainspec);
+    let key = create_state_key(chainspec);
     if let Some(bytes) = storage.read_state_store(&key)? {
         Ok(deserialize_state(&bytes))
     } else {
@@ -949,6 +996,84 @@ pub(crate) fn clean_linear_chain_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<bool, storage::Error> {
-    let key = create_state_key(&chainspec);
+    let key = create_state_key(chainspec);
     storage.del_state_store(key)
+}
+
+async fn execute_block<REv>(
+    effect_builder: EffectBuilder<REv>,
+    block_to_execute: Block,
+    initial_execution_pre_state: ExecutionPreState,
+) where
+    REv: From<StorageRequest>
+        + From<ControlAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<ContractRuntimeAnnouncement>,
+{
+    let protocol_version = block_to_execute.protocol_version();
+    let execution_pre_state =
+        if block_to_execute.height() == initial_execution_pre_state.next_block_height() {
+            initial_execution_pre_state
+        } else {
+            match effect_builder
+                .get_block_at_height_from_storage(block_to_execute.height() - 1)
+                .await
+            {
+                None => {
+                    fatal!(
+                        effect_builder,
+                        "Could not get block at height {}",
+                        block_to_execute.height() - 1
+                    )
+                    .await;
+                    return;
+                }
+                Some(parent_block) => ExecutionPreState::from(parent_block.header()),
+            }
+        };
+    let finalized_block = FinalizedBlock::from(block_to_execute);
+
+    // Get the deploy hashes for the block.
+    let deploy_hashes = finalized_block
+        .deploys_and_transfers_iter()
+        .map(DeployHash::from)
+        .collect::<SmallVec<_>>();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
+    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
+        if let Some(deploy) = maybe_deploy {
+            deploys.push(deploy)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
+    let BlockAndExecutionEffects {
+        block,
+        execution_results,
+        ..
+    } = match effect_builder
+        .execute_finalized_block(
+            protocol_version,
+            execution_pre_state,
+            finalized_block,
+            deploys,
+        )
+        .await
+    {
+        Ok(child_block) => child_block,
+        Err(error) => {
+            fatal!(effect_builder, "Fatal error: {}", error).await;
+            return;
+        }
+    };
+    effect_builder
+        .announce_linear_chain_block(block, execution_results)
+        .await;
 }

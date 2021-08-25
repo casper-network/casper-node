@@ -9,42 +9,31 @@ use rand::{
     Rng,
 };
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::{
-        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
-    },
+    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     runtime_args,
     system::{
         auction::{
-            Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-            SeigniorageRecipientsSnapshot, ValidatorWeights, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR,
-            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS,
-            INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
-            METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
-            METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+            self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
+            SeigniorageRecipients, SeigniorageRecipientsSnapshot, AUCTION_DELAY_KEY,
+            DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+            INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::{
-            self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
-            METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
-        },
+        handle_payment::{self},
         mint::{
-            self, ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE,
-            ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
-            METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY,
+            self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        standard_payment::METHOD_PAY,
+        standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Key, Parameter, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, SecretKey, URef, U512,
+    AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -52,69 +41,36 @@ use crate::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig},
         execution,
         execution::{AddressGenerator, Executor},
-        tracking_copy::TrackingCopy,
+        tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::Account,
         gas::Gas,
         motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
-        TypeMismatch,
     },
-    storage::{
-        global_state::{CommitResult, StateProvider},
-        protocol_data::ProtocolData,
-    },
+    storage::global_state::StateProvider,
 };
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
+const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
+pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
-#[derive(Debug, Serialize)]
-pub enum GenesisResult {
-    RootNotFound,
-    KeyNotFound(Key),
-    TypeMismatch(TypeMismatch),
-    Serialization(bytesrepr::Error),
-    Success {
-        post_state_hash: Blake2bHash,
-        #[serde(skip_serializing)]
-        effect: ExecutionEffect,
-    },
+#[derive(Debug)]
+pub struct GenesisSuccess {
+    pub post_state_hash: Blake2bHash,
+    pub execution_effect: ExecutionEffect,
 }
 
-impl fmt::Display for GenesisResult {
+impl fmt::Display for GenesisSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            GenesisResult::RootNotFound => write!(f, "Root not found"),
-            GenesisResult::KeyNotFound(key) => write!(f, "Key not found: {}", key),
-            GenesisResult::TypeMismatch(type_mismatch) => {
-                write!(f, "Type mismatch: {:?}", type_mismatch)
-            }
-            GenesisResult::Serialization(error) => write!(f, "Serialization error: {:?}", error),
-            GenesisResult::Success {
-                post_state_hash,
-                effect,
-            } => write!(f, "Success: {} {:?}", post_state_hash, effect),
-        }
-    }
-}
-
-impl GenesisResult {
-    pub fn from_commit_result(commit_result: CommitResult, effect: ExecutionEffect) -> Self {
-        match commit_result {
-            CommitResult::RootNotFound => GenesisResult::RootNotFound,
-            CommitResult::KeyNotFound(key) => GenesisResult::KeyNotFound(key),
-            CommitResult::TypeMismatch(type_mismatch) => GenesisResult::TypeMismatch(type_mismatch),
-            CommitResult::Serialization(error) => GenesisResult::Serialization(error),
-            CommitResult::Success { state_root, .. } => GenesisResult::Success {
-                post_state_hash: state_root,
-                effect,
-            },
-        }
+        write!(
+            f,
+            "Success: {} {:?}",
+            self.post_state_hash, self.execution_effect
+        )
     }
 }
 
@@ -537,7 +493,7 @@ impl Distribution<GenesisConfig> for Standard {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecConfig {
     accounts: Vec<GenesisAccount>,
     wasm_config: WasmConfig,
@@ -698,6 +654,12 @@ pub enum GenesisError {
     InvalidDelegatedAmount {
         public_key: PublicKey,
     },
+    FailedToCreateSystemRegistry,
+    MissingSystemContractHash(String),
+    InvalidValidatorSlots {
+        validators: usize,
+        validator_slots: u32,
+    },
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -715,7 +677,6 @@ where
     transfer_address_generator: Rc<RefCell<AddressGenerator>>,
     executor: Executor,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    protocol_data: ProtocolData,
     system_module: Module,
 }
 
@@ -750,8 +711,6 @@ where
             Rc::new(RefCell::new(generator))
         };
 
-        let protocol_data = ProtocolData::default();
-
         let system_account_addr = PublicKey::System.to_account_hash();
 
         let virtual_system_account = {
@@ -776,7 +735,6 @@ where
             transfer_address_generator,
             executor,
             tracking_copy,
-            protocol_data,
             system_module,
         }
     }
@@ -835,7 +793,7 @@ where
             named_keys
         };
 
-        let entry_points = self.mint_entry_points();
+        let entry_points = mint::mint_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -844,7 +802,20 @@ where
 
         let (_, mint_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        self.protocol_data = ProtocolData::partial_with_mint(mint_hash);
+        {
+            // Insert a partial registry into global state.
+            // This allows for default values to be accessible when the remaining system contracts
+            // call the `call_host_mint` function during their creation.
+            let mut partial_registry = BTreeMap::<String, ContractHash>::new();
+            partial_registry.insert(MINT.to_string(), mint_hash);
+            partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
+            let cl_registry = CLValue::from_t(partial_registry)
+                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+            self.tracking_copy.borrow_mut().write(
+                Key::SystemContractRegistry,
+                StoredValue::CLValue(cl_registry),
+            );
+        }
 
         Ok(mint_hash)
     }
@@ -862,7 +833,7 @@ where
             named_keys
         };
 
-        let entry_points = self.handle_payment_entry_points();
+        let entry_points = handle_payment::handle_payment_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -870,6 +841,8 @@ where
             .new_uref(AccessRights::READ_ADD_WRITE);
 
         let (_, handle_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
+
+        self.store_system_contract(HANDLE_PAYMENT, handle_payment_hash)?;
 
         Ok(handle_payment_hash)
     }
@@ -882,6 +855,12 @@ where
         let mut named_keys = NamedKeys::new();
 
         let genesis_validators: Vec<_> = self.exec_config.get_bonded_validators().collect();
+        if (self.exec_config.validator_slots() as usize) < genesis_validators.len() {
+            return Err(GenesisError::InvalidValidatorSlots {
+                validators: genesis_validators.len(),
+                validator_slots: self.exec_config.validator_slots(),
+            });
+        }
 
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
@@ -1097,7 +1076,7 @@ where
         );
         named_keys.insert(UNBONDING_DELAY_KEY.into(), unbonding_delay_uref.into());
 
-        let entry_points = self.auction_entry_points();
+        let entry_points = auction::auction_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -1106,13 +1085,15 @@ where
 
         let (_, auction_hash) = self.store_contract(access_key, named_keys, entry_points);
 
+        self.store_system_contract(AUCTION, auction_hash)?;
+
         Ok(auction_hash)
     }
 
-    pub(crate) fn create_standard_payment(&self) -> ContractHash {
+    pub(crate) fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
         let named_keys = NamedKeys::new();
 
-        let entry_points = self.standard_payment_entry_points();
+        let entry_points = standard_payment::standard_payment_entry_points();
 
         let access_key = self
             .uref_address_generator
@@ -1121,7 +1102,9 @@ where
 
         let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        standard_payment_hash
+        self.store_system_contract(STANDARD_PAYMENT, standard_payment_hash)?;
+
+        Ok(standard_payment_hash)
     }
 
     pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
@@ -1180,7 +1163,19 @@ where
             ARG_AMOUNT => amount,
         };
 
-        let base_key = Key::Hash(self.protocol_data.mint().value());
+        let registry = self
+            .tracking_copy
+            .borrow_mut()
+            .get_system_contracts(self.correlation_id)
+            .map_err(execution::Error::from)
+            .map_err(GenesisError::ExecutionError)?;
+
+        let mint_hash = registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            GenesisError::MissingSystemContractHash(MINT.to_string())
+        })?;
+
+        let base_key = Key::Hash(mint_hash.value());
         let mint = {
             if let StoredValue::Contract(contract) = self
                 .tracking_copy
@@ -1196,6 +1191,8 @@ where
         };
 
         let mut named_keys = mint.named_keys().clone();
+
+        let call_stack = Vec::new();
 
         let (_instance, mut runtime) = self
             .executor
@@ -1218,13 +1215,13 @@ where
                 self.correlation_id,
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
-                self.protocol_data,
                 Default::default(),
+                call_stack,
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
 
         let purse_uref = runtime
-            .call_contract(self.protocol_data.mint(), METHOD_MINT, args)
+            .call_contract(*mint_hash, METHOD_MINT, args)
             .map_err(GenesisError::ExecutionError)?
             .into_t::<Result<URef, mint::Error>>()
             .map_err(|cl_value_error| GenesisError::CLValue(cl_value_error.to_string()))?
@@ -1283,258 +1280,32 @@ where
         (contract_package_hash, contract_hash)
     }
 
-    fn mint_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let entry_point = EntryPoint::new(
-            METHOD_MINT,
-            vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
-            CLType::Result {
-                ok: Box::new(CLType::URef),
-                err: Box::new(CLType::U8),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
+    fn store_system_contract(
+        &self,
+        contract_name: &str,
+        contract_hash: ContractHash,
+    ) -> Result<(), GenesisError> {
+        let partial_cl_registry = self
+            .tracking_copy
+            .borrow_mut()
+            .read(self.correlation_id, &Key::SystemContractRegistry)
+            .map_err(|_| GenesisError::FailedToCreateSystemRegistry)?
+            .ok_or_else(|| {
+                GenesisError::CLValue("failed to convert registry as stored value".to_string())
+            })?
+            .as_cl_value()
+            .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?
+            .to_owned();
+        let mut partial_registry = CLValue::into_t::<SystemContractRegistry>(partial_cl_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+        partial_registry.insert(contract_name.to_string(), contract_hash);
+        let cl_registry = CLValue::from_t(partial_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+        self.tracking_copy.borrow_mut().write(
+            Key::SystemContractRegistry,
+            StoredValue::CLValue(cl_registry),
         );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_REDUCE_TOTAL_SUPPLY,
-            vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
-            CLType::Result {
-                ok: Box::new(CLType::Unit),
-                err: Box::new(CLType::U8),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_CREATE,
-            Parameters::new(),
-            CLType::URef,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_BALANCE,
-            vec![Parameter::new(ARG_PURSE, CLType::URef)],
-            CLType::Option(Box::new(CLType::U512)),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_TRANSFER,
-            vec![
-                Parameter::new(ARG_SOURCE, CLType::URef),
-                Parameter::new(ARG_TARGET, CLType::URef),
-                Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ID, CLType::Option(Box::new(CLType::U64))),
-            ],
-            CLType::Result {
-                ok: Box::new(CLType::Unit),
-                err: Box::new(CLType::U8),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_READ_BASE_ROUND_REWARD,
-            Parameters::new(),
-            CLType::U512,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        entry_points
-    }
-
-    fn handle_payment_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let get_payment_purse = EntryPoint::new(
-            METHOD_GET_PAYMENT_PURSE,
-            vec![],
-            CLType::URef,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(get_payment_purse);
-
-        let set_refund_purse = EntryPoint::new(
-            METHOD_SET_REFUND_PURSE,
-            vec![Parameter::new(ARG_PURSE, CLType::URef)],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(set_refund_purse);
-
-        let get_refund_purse = EntryPoint::new(
-            METHOD_GET_REFUND_PURSE,
-            vec![],
-            CLType::Option(Box::new(CLType::URef)),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(get_refund_purse);
-
-        let finalize_payment = EntryPoint::new(
-            METHOD_FINALIZE_PAYMENT,
-            vec![
-                Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ACCOUNT, CLType::ByteArray(32)),
-            ],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(finalize_payment);
-
-        entry_points
-    }
-
-    fn auction_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let entry_point = EntryPoint::new(
-            METHOD_GET_ERA_VALIDATORS,
-            vec![],
-            Option::<ValidatorWeights>::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_ADD_BID,
-            vec![
-                Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
-                Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_WITHDRAW_BID,
-            vec![
-                Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_DELEGATE,
-            vec![
-                Parameter::new(ARG_DELEGATOR, PublicKey::cl_type()),
-                Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_UNDELEGATE,
-            vec![
-                Parameter::new(ARG_DELEGATOR, AccountHash::cl_type()),
-                Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
-                Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            ],
-            U512::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_RUN_AUCTION,
-            vec![Parameter::new(ARG_ERA_END_TIMESTAMP_MILLIS, u64::cl_type())],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_SLASH,
-            vec![],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_DISTRIBUTE,
-            vec![Parameter::new(
-                ARG_REWARD_FACTORS,
-                CLType::Map {
-                    key: Box::new(CLType::PublicKey),
-                    value: Box::new(CLType::U64),
-                },
-            )],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_READ_ERA_ID,
-            vec![],
-            CLType::U64,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_ACTIVATE_BID,
-            vec![Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey)],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        entry_points
-    }
-
-    fn standard_payment_entry_points(&self) -> EntryPoints {
-        let mut entry_points = EntryPoints::new();
-
-        let entry_point = EntryPoint::new(
-            METHOD_PAY.to_string(),
-            vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
-            CLType::Result {
-                ok: Box::new(CLType::Unit),
-                err: Box::new(CLType::U32),
-            },
-            EntryPointAccess::Public,
-            EntryPointType::Session,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        entry_points
+        Ok(())
     }
 }
 

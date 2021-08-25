@@ -46,7 +46,10 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
+    types::{
+        error::BlockCreationError, Deploy, DeployHash, DeployOrTransferHash, JsonBlock,
+        JsonBlockHeader,
+    },
     utils::DisplayIter,
 };
 
@@ -149,6 +152,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         next_era_validator_weights,
         protocol_version,
     )
+    .expect("could not construct block")
 });
 static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let block = Block::doc_example().clone();
@@ -157,10 +161,14 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key);
+    let signature = crypto::sign(block.hash.inner(), secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, Some(block_signature))
+});
+static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
+    let block_header = Block::doc_example().header().clone();
+    JsonBlockHeader::from(block_header)
 });
 
 /// Error returned from constructing or validating a `Block`.
@@ -733,7 +741,7 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
+        let serialized_header = Self::serialize(self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(hash::hash(&serialized_header))
     }
@@ -1034,7 +1042,7 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
-    ) -> Self {
+    ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
             finalized_block.proposer.clone(),
             finalized_block.deploy_hashes,
@@ -1042,14 +1050,22 @@ impl Block {
         );
         let body_hash = body.hash();
 
-        let era_end = match finalized_block.era_report {
-            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
-            None => None,
+        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
+            (None, None) => None,
+            (Some(era_report), Some(next_era_validator_weights)) => {
+                Some(EraEnd::new(era_report, next_era_validator_weights))
+            }
+            (maybe_era_report, maybe_next_era_validator_weights) => {
+                return Err(BlockCreationError::CouldNotCreateEraEnd {
+                    maybe_era_report,
+                    maybe_next_era_validator_weights,
+                })
+            }
         };
 
         let mut accumulated_seed = [0; Digest::LENGTH];
 
-        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
+        let mut hasher = VarBlake2b::new(Digest::LENGTH)?;
         hasher.update(parent_seed);
         hasher.update([finalized_block.random_bit as u8]);
         hasher.finalize_variable(|slice| {
@@ -1069,7 +1085,7 @@ impl Block {
             protocol_version,
         };
 
-        Self::new_from_header_and_body(header, body)
+        Ok(Self::new_from_header_and_body(header, body))
     }
 
     pub(crate) fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
@@ -1168,26 +1184,32 @@ impl Block {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        Block::random_with_specifics(rng, EraId::from(era), height, is_switch)
+        Block::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+        )
     }
 
-    /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
+    /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(test)]
     pub fn random_with_specifics(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
+        protocol_version: ProtocolVersion,
         is_switch: bool,
     ) -> Self {
         let parent_hash = BlockHash::new(Digest::random(rng));
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = Digest::random(rng);
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let next_era_validator_weights = match finalized_block.era_report {
-            Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
-            None => None,
-        };
+        let next_era_validator_weights = finalized_block
+            .era_report
+            .as_ref()
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
             parent_hash,
@@ -1197,6 +1219,7 @@ impl Block {
             next_era_validator_weights,
             protocol_version,
         )
+        .expect("Could not create random block with specifics")
     }
 }
 
@@ -1211,7 +1234,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, \
-             random bit {}, timestamp {}, era_id {}, height {}",
+             random bit {}, timestamp {}, era_id {}, height {}, protocol version: {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
@@ -1220,6 +1243,7 @@ impl Display for Block {
             self.header.timestamp,
             self.header.era_id.value(),
             self.header.height,
+            self.header.protocol_version
         )?;
         if let Some(ee) = &self.header.era_end {
             write!(formatter, ", era_end: {}", ee)?;
@@ -1411,9 +1435,10 @@ pub(crate) mod json_compatibility {
         }
     }
 
+    /// JSON representation of a block header.
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, PartialEq, Eq, DataSize)]
     #[serde(deny_unknown_fields)]
-    struct JsonBlockHeader {
+    pub struct JsonBlockHeader {
         parent_hash: BlockHash,
         state_root_hash: Digest,
         body_hash: Digest,
@@ -1457,6 +1482,12 @@ pub(crate) mod json_compatibility {
                 height: block_header.height,
                 protocol_version: block_header.protocol_version,
             }
+        }
+    }
+
+    impl DocExample for JsonBlockHeader {
+        fn doc_example() -> &'static Self {
+            &*JSON_BLOCK_HEADER
         }
     }
 
@@ -1581,7 +1612,7 @@ pub(crate) mod json_compatibility {
 /// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
 /// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
 /// the block as finalized.
-#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq, JsonSchema)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,
@@ -1601,9 +1632,9 @@ impl FinalitySignature {
         secret_key: &SecretKey,
         public_key: PublicKey,
     ) -> Self {
-        let mut bytes = block_hash.inner().to_vec();
+        let mut bytes = block_hash.inner().into_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
-        let signature = crypto::sign(bytes, &secret_key, &public_key);
+        let signature = crypto::sign(bytes, secret_key, &public_key);
         FinalitySignature {
             block_hash,
             era_id,
@@ -1615,7 +1646,7 @@ impl FinalitySignature {
     /// Verifies whether the signature is correct.
     pub fn verify(&self) -> crypto::Result<()> {
         // NOTE: This needs to be in sync with the `new` constructor.
-        let mut bytes = self.block_hash.inner().to_vec();
+        let mut bytes = self.block_hash.inner().into_vec();
         bytes.extend_from_slice(&self.era_id.to_le_bytes());
         crypto::verify(bytes, &self.signature, &self.public_key)
     }
