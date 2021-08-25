@@ -1128,14 +1128,23 @@ impl reactor::Reactor for Reactor {
                     hashes.len()
                 );
 
-                if !hashes.is_empty() {
+                let mut effects = Effects::new();
+                for hash in hashes {
                     let reactor_event = ParticipatingEvent::EventStreamServer(
-                        event_stream_server::Event::DeployExpired(*hashes.first().unwrap()),
+                        event_stream_server::Event::DeployExpired(hash),
                     );
-                    self.dispatch_event(effect_builder, rng, reactor_event)
-                } else {
-                    Effects::new()
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 }
+                effects
+
+                // if !hashes.is_empty() {
+                //     let reactor_event = ParticipatingEvent::EventStreamServer(
+                //         event_stream_server::Event::DeployExpired(*hashes.first().unwrap()),
+                //     );
+                //     self.dispatch_event(effect_builder, rng, reactor_event)
+                // } else {
+                //     Effects::new()
+                // }
             }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
