@@ -929,11 +929,11 @@ impl Storage {
             StorageRequest::GetFinalizedDeploys { ttl, responder } => {
                 responder.respond(self.get_finalized_deploys(ttl)?).ignore()
             }
-            StorageRequest::GetBlockHeaderAndMetadataByHeight {
+            StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
                 responder,
             } => {
-                let result = self.get_block_header_and_metadata_by_height(
+                let result = self.get_block_header_and_sufficient_finality_signatures_by_height(
                     &mut self.env.begin_ro_txn()?,
                     block_height,
                 )?;
@@ -963,30 +963,6 @@ impl Storage {
                 responder.respond(true).ignore()
             }
         })
-    }
-
-    /// Retrieves single block header by height by looking it up in the index and returning it.
-    fn get_block_header_and_metadata_by_height<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        height: u64,
-    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
-        let block_hash = match self.block_height_index.get(&height) {
-            None => return Ok(None),
-            Some(block_hash) => block_hash,
-        };
-        let block_header = match self.get_single_block_header(tx, block_hash)? {
-            None => return Ok(None),
-            Some(block_header) => block_header,
-        };
-        let block_signatures = match self.get_finality_signatures(tx, block_hash)? {
-            None => BlockSignatures::new(*block_hash, block_header.era_id()),
-            Some(signatures) => signatures,
-        };
-        Ok(Some(BlockHeaderWithMetadata {
-            block_header,
-            block_signatures,
-        }))
     }
 
     /// Retrieves a block by hash.

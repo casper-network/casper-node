@@ -265,8 +265,8 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve block header with metadata by height.
-    GetBlockHeaderAndMetadataByHeight {
+    /// Retrieve block header with sufficient finality signatures by height.
+    GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
         /// Height of block to get header of.
         block_height: u64,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
@@ -439,7 +439,10 @@ impl Display for StorageRequest {
             StorageRequest::GetFinalizedDeploys { ttl, .. } => {
                 write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
             }
-            StorageRequest::GetBlockHeaderAndMetadataByHeight { block_height, .. } => {
+            StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                ..
+            } => {
                 write!(
                     formatter,
                     "get block and metadata for block by height: {}",

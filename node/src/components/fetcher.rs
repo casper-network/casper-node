@@ -384,7 +384,7 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         peer: NodeId,
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
         effect_builder
-            .get_block_header_at_height_with_metadata_from_storage(id)
+            .get_block_header_and_sufficient_finality_signatures_by_height_from_storage(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
