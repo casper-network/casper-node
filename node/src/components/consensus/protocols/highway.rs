@@ -481,9 +481,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             instance_id = ?self.highway.instance_id(),
             "requesting latest state from random peer",
         );
-        // We haven't made any progress. Request latest panorama from peers and schedule
-        // standstill alert. If we still won't progress by the time
-        // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
+        // Request latest state from a peer and schedule the next request.
         let mut outcomes = self.latest_state_request();
         if let Some(interval) = self.config.request_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
