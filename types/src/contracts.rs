@@ -1267,8 +1267,8 @@ pub enum EntryPointAccess {
 #[derive(FromPrimitive, ToPrimitive)]
 #[repr(u8)]
 enum EntryPointAccessTag {
-    Public,
-    Groups,
+    Public = 1,
+    Groups = 2,
 }
 
 impl From<EntryPointAccessTag> for u8 {
