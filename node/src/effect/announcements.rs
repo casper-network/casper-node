@@ -159,6 +159,7 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 // A block proposer announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockProposerAnnouncement {
+    /// Hashes of the deploys that expired.
     DeploysExpired(Vec<DeployHash>),
 }
 

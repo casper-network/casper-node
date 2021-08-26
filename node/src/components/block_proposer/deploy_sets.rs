@@ -58,7 +58,7 @@ impl Display for BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
-    /// Prunes expired deploy information from the BlockProposerState,  returns the
+    /// Prunes expired deploy information from the BlockProposerState, returns the
     /// hashes of deploys pruned.
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> Vec<DeployHash> {
         let pending_deploys = prune_pending_deploys(&mut self.pending_deploys, current_instant);
@@ -90,7 +90,7 @@ where
 
 /// Prunes expired deploy information from an individual deploy collection, returns the
 /// hashes of deploys pruned.
-pub(super) fn prune_deploys(
+fn prune_deploys(
     deploys: &mut HashMap<DeployHash, DeployHeader>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {

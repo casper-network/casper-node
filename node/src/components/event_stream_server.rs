@@ -180,9 +180,6 @@ where
                 block: Box::new(JsonBlock::new(*block, None)),
             }),
             Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
-            Event::DeployExpired(deploy_hash) => {
-                self.broadcast(SseData::DeployExpired { deploy_hash })
-            }
             Event::DeployProcessed {
                 deploy_hash,
                 deploy_header,
@@ -197,6 +194,9 @@ where
                 block_hash: Box::new(block_hash),
                 execution_result,
             }),
+            Event::DeployExpired(deploy_hash) => {
+                self.broadcast(SseData::DeployExpired { deploy_hash })
+            }
             Event::Fault {
                 era_id,
                 public_key,

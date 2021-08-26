@@ -32,7 +32,7 @@ use sse_server::{
 
 /// The total number of random events each `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.
-const EVENT_COUNT: u32 = 10;
+const EVENT_COUNT: u32 = 100;
 /// The maximum number of random events each `EventStreamServer` will emit, excluding the initial
 /// `ApiVersion` event.
 const MAX_EVENT_COUNT: u32 = 100_000_000;

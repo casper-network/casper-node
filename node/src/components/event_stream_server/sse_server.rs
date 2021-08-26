@@ -643,6 +643,10 @@ mod tests {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
         };
+        let deploy_expired = ServerSentEvent {
+            id: Some(rng.gen()),
+            data: SseData::random_deploy_expired(&mut rng),
+        };
         let fault = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_fault(&mut rng),
@@ -660,6 +664,7 @@ mod tests {
         should_not_filter_out(&api_version, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&block_added, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&deploy_processed, &MAIN_FILTER[..], getter.clone()).await;
+        should_not_filter_out(&deploy_expired, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&fault, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&step, &MAIN_FILTER[..], getter.clone()).await;
 
@@ -673,6 +678,7 @@ mod tests {
 
         should_filter_out(&block_added, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_processed, &DEPLOYS_FILTER[..], getter.clone()).await;
+        should_filter_out(&deploy_expired, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&fault, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&finality_signature, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&step, &DEPLOYS_FILTER[..], getter.clone()).await;
@@ -685,6 +691,7 @@ mod tests {
         should_filter_out(&block_added, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_accepted, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_processed, &SIGNATURES_FILTER[..], getter.clone()).await;
+        should_filter_out(&deploy_expired, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&fault, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&step, &SIGNATURES_FILTER[..], getter).await;
     }
@@ -716,6 +723,10 @@ mod tests {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
         };
+        let malformed_deploy_expired = ServerSentEvent {
+            id: None,
+            data: SseData::random_deploy_expired(&mut rng),
+        };
         let malformed_fault = ServerSentEvent {
             id: None,
             data: SseData::random_fault(&mut rng),
@@ -738,6 +749,7 @@ mod tests {
             should_filter_out(&malformed_block_added, filter, getter.clone()).await;
             should_filter_out(&malformed_deploy_accepted, filter, getter.clone()).await;
             should_filter_out(&malformed_deploy_processed, filter, getter.clone()).await;
+            should_filter_out(&malformed_deploy_expired, filter, getter.clone()).await;
             should_filter_out(&malformed_fault, filter, getter.clone()).await;
             should_filter_out(&malformed_finality_signature, filter, getter.clone()).await;
             should_filter_out(&malformed_step, filter, getter.clone()).await;

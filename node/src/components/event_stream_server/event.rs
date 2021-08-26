@@ -8,13 +8,13 @@ use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature
 pub enum Event {
     BlockAdded(Box<Block>),
     DeployAccepted(DeployHash),
-    DeployExpired(DeployHash),
     DeployProcessed {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
         block_hash: BlockHash,
         execution_result: Box<ExecutionResult>,
     },
+    DeployExpired(DeployHash),
     Fault {
         era_id: EraId,
         public_key: PublicKey,
