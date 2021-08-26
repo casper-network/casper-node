@@ -856,7 +856,6 @@ impl Deploy {
         ];
         let chain_name = String::from("casper-example");
 
-        //let payment = rng.gen();
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: casper_types::bytesrepr::Bytes::new(),
             args: runtime_args! {
