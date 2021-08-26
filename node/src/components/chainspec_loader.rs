@@ -64,7 +64,7 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Initialize => {
-                write!(formatter, "initialize",)
+                write!(formatter, "initialize")
             }
             Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
             Event::CheckForNextUpgrade => {
