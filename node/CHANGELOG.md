@@ -38,7 +38,7 @@ All notable changes to this project will be documented in this file.  The format
 * Experimental, nix-based kubernetes testing support has been removed.
 * Removed dead code revealed by making modules `pub(crate)`.
 * Removed undocumented exit codes corresponding to `SIGINT`, `SIGTERM`, etc.
-* Removed legacy `LinearChainSync`
+* Removed legacy synchronization from genesis in favor of fast sync.
 
 
 
