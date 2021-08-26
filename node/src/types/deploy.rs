@@ -21,6 +21,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
+#[cfg(test)]
+use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_execution_engine::{
     core::engine_state::{executable_deploy_item::ExecutableDeployItem, DeployItem},
     shared::motes::Motes,
@@ -49,7 +51,7 @@ use crate::{
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment_args = runtime_args! {
-        "quantity" => 1000
+        "amount" => 1000
     };
     let payment = ExecutableDeployItem::StoredContractByName {
         name: String::from("casper-example"),
@@ -854,7 +856,13 @@ impl Deploy {
         ];
         let chain_name = String::from("casper-example");
 
-        let payment = rng.gen();
+        //let payment = rng.gen();
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: casper_types::bytesrepr::Bytes::new(),
+            args: runtime_args! {
+                "amount" => *MAX_PAYMENT
+            },
+        };
         let session = rng.gen();
 
         let secret_key = SecretKey::random(rng);
