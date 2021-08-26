@@ -28,15 +28,17 @@ static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + 
 static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::max_value()));
 static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
 
-static ACCOUNT_1_SK: Lazy<SecretKey> =
+static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
-static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SK));
-static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PK.to_account_hash());
+static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SECRET_KEY));
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PUBLIC_KEY.to_account_hash());
 
-static ACCOUNT_2_SK: Lazy<SecretKey> =
+static ACCOUNT_2_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes(&[210u8; 32]).unwrap());
-static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SK));
-static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PK.to_account_hash());
+static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
 
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
@@ -119,7 +121,7 @@ fn should_transfer_to_public_key() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_PUBLIC_KEY,
-        runtime_args! { ARG_TARGET => ACCOUNT_1_PK.clone(), ARG_AMOUNT => *TRANSFER_1_AMOUNT },
+        runtime_args! { ARG_TARGET => ACCOUNT_1_PUBLIC_KEY.clone(), ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
     .build();
 
@@ -174,7 +176,7 @@ fn should_transfer_from_purse_to_public_key() {
         CONTRACT_TRANSFER_PURSE_TO_PUBLIC_KEY,
         runtime_args! {
             ARG_SOURCE_PURSE => default_account_purse,
-            ARG_TARGET => ACCOUNT_1_PK.clone(),
+            ARG_TARGET => ACCOUNT_1_PUBLIC_KEY.clone(),
             ARG_AMOUNT => *TRANSFER_1_AMOUNT,
         },
     )

@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
@@ -31,7 +33,6 @@ use casper_types::{
     AccessRights, ApiError, EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef,
     U512,
 };
-use once_cell::sync::Lazy;
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
