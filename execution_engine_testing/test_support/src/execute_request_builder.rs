@@ -10,55 +10,63 @@ use casper_types::{
     ProtocolVersion, RuntimeArgs,
 };
 
-use crate::internal::{
-    DeployItemBuilder, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-};
+use crate::{DeployItemBuilder, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY};
 
 const ARG_AMOUNT: &str = "amount";
 
+/// TODO: doc comment.
 #[derive(Debug)]
 pub struct ExecuteRequestBuilder {
     execute_request: ExecuteRequest,
 }
 
 impl ExecuteRequestBuilder {
+    /// TODO: doc comment.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// TODO: doc comment.
     pub fn from_deploy_item(deploy_item: DeployItem) -> Self {
         ExecuteRequestBuilder::new().push_deploy(deploy_item)
     }
 
+    /// TODO: doc comment.
     pub fn push_deploy(mut self, deploy: DeployItem) -> Self {
         self.execute_request.deploys.push(deploy);
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_pre_state_hash(mut self, pre_state_hash: &[u8]) -> Self {
         self.execute_request.parent_state_hash = pre_state_hash.try_into().unwrap();
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_block_time(mut self, block_time: u64) -> Self {
         self.execute_request.block_time = block_time;
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.execute_request.protocol_version = protocol_version;
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_proposer(mut self, proposer: casper_types::PublicKey) -> Self {
         self.execute_request.proposer = proposer;
         self
     }
 
+    /// TODO: doc comment.
     pub fn build(self) -> ExecuteRequest {
         self.execute_request
     }
 
+    /// TODO: doc comment.
     pub fn standard(
         account_hash: AccountHash,
         session_file: &str,
@@ -80,6 +88,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
+    /// TODO: doc comment.
     pub fn contract_call_by_hash(
         sender: AccountHash,
         contract_hash: ContractHash,
@@ -100,6 +109,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
+    /// TODO: doc comment.
     pub fn contract_call_by_name(
         sender: AccountHash,
         contract_name: &str,
@@ -120,6 +130,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
+    /// TODO: doc comment.
     pub fn versioned_contract_call_by_hash(
         sender: AccountHash,
         contract_package_hash: ContractPackageHash,
@@ -168,6 +179,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
+    /// TODO: doc comment.
     pub fn transfer(sender: AccountHash, transfer_args: RuntimeArgs) -> Self {
         let mut rng = rand::thread_rng();
         let deploy_hash = rng.gen();

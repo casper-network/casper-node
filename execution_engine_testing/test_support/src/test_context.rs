@@ -5,8 +5,8 @@ use casper_execution_engine::core::engine_state::{
 use casper_types::{AccessRights, Key, Motes, PublicKey, StoredValue, URef, U512};
 
 use crate::{
-    internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},
-    Account, AccountHash, Error, Result, Session, URefAddr, Value,
+    Account, AccountHash, Error, InMemoryWasmTestBuilder, Result, Session, URefAddr, Value,
+    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
 };
 
 /// Context in which to run a test of a Wasm smart contract.

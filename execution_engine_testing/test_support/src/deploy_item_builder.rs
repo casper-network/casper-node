@@ -9,7 +9,7 @@ use casper_types::{
     RuntimeArgs,
 };
 
-use crate::internal::{utils, DEFAULT_GAS_PRICE};
+use crate::{utils, DEFAULT_GAS_PRICE};
 
 #[derive(Default)]
 struct DeployItemData {
@@ -21,20 +21,24 @@ struct DeployItemData {
     pub deploy_hash: DeployHash,
 }
 
+/// TODO: doc comment.
 pub struct DeployItemBuilder {
     deploy_item: DeployItemData,
 }
 
 impl DeployItemBuilder {
+    /// TODO: doc comment.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// TODO: doc comment.
     pub fn with_address(mut self, address: AccountHash) -> Self {
         self.deploy_item.address = Some(address);
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_payment_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::ModuleBytes {
             module_bytes: module_bytes.into(),
@@ -43,15 +47,18 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_empty_payment_bytes(self, args: RuntimeArgs) -> Self {
         self.with_payment_bytes(vec![], args)
     }
 
+    /// TODO: doc comment.
     pub fn with_payment_code<T: AsRef<Path>>(self, file_name: T, args: RuntimeArgs) -> Self {
         let module_bytes = utils::read_wasm_file_bytes(file_name);
         self.with_payment_bytes(module_bytes, args)
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_payment_hash(
         mut self,
         hash: ContractHash,
@@ -66,6 +73,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_payment_named_key(
         mut self,
         uref_name: &str,
@@ -80,6 +88,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_versioned_payment_hash(
         mut self,
         package_hash: ContractPackageHash,
@@ -95,6 +104,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_versioned_payment_named_key(
         mut self,
         uref_name: &str,
@@ -110,6 +120,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_session_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
         self.deploy_item.session_code = Some(ExecutableDeployItem::ModuleBytes {
             module_bytes: module_bytes.into(),
@@ -118,16 +129,19 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_session_code<T: AsRef<Path>>(self, file_name: T, args: RuntimeArgs) -> Self {
         let module_bytes = utils::read_wasm_file_bytes(file_name);
         self.with_session_bytes(module_bytes, args)
     }
 
+    /// TODO: doc comment.
     pub fn with_transfer_args(mut self, args: RuntimeArgs) -> Self {
         self.deploy_item.session_code = Some(ExecutableDeployItem::Transfer { args });
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_session_hash(
         mut self,
         hash: ContractHash,
@@ -142,6 +156,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_session_named_key(
         mut self,
         name: &str,
@@ -156,6 +171,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_versioned_contract_by_name(
         mut self,
         name: &str,
@@ -172,6 +188,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_versioned_contract_by_hash(
         mut self,
         hash: HashAddr,
@@ -188,6 +205,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_versioned_payment_contract_by_name(
         mut self,
         key_name: &str,
@@ -204,6 +222,7 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_stored_versioned_payment_contract_by_hash(
         mut self,
         hash: HashAddr,
@@ -220,22 +239,26 @@ impl DeployItemBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_authorization_keys(mut self, authorization_keys: &[AccountHash]) -> Self {
         self.deploy_item.authorization_keys = authorization_keys.iter().copied().collect();
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_gas_price(mut self, gas_price: u64) -> Self {
         self.deploy_item.gas_price = gas_price;
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_deploy_hash(mut self, hash: [u8; 32]) -> Self {
         let digest: Blake2bHash = hash.into();
         self.deploy_item.deploy_hash = DeployHash::new(digest.value());
         self
     }
 
+    /// TODO: doc comment.
     pub fn build(self) -> DeployItem {
         DeployItem {
             address: self

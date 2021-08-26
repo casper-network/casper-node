@@ -3,10 +3,7 @@ use rand::Rng;
 use casper_execution_engine::core::engine_state::execute_request::ExecuteRequest;
 use casper_types::{runtime_args, ProtocolVersion, RuntimeArgs, URef, U512};
 
-use crate::{
-    internal::{DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT},
-    AccountHash, Code,
-};
+use crate::{AccountHash, Code, DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT};
 
 const ARG_AMOUNT: &str = "amount";
 

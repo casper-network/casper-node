@@ -5,6 +5,7 @@ use num_rational::Ratio;
 use casper_execution_engine::{core::engine_state::UpgradeConfig, shared::newtypes::Blake2bHash};
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
+/// TODO: doc comment.
 #[derive(Default)]
 pub struct UpgradeRequestBuilder {
     pre_state_hash: Blake2bHash,
@@ -20,35 +21,42 @@ pub struct UpgradeRequestBuilder {
 }
 
 impl UpgradeRequestBuilder {
+    /// TODO: doc comment.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// TODO: doc comment.
     pub fn with_pre_state_hash(mut self, pre_state_hash: Blake2bHash) -> Self {
         self.pre_state_hash = pre_state_hash;
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_current_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.current_protocol_version = protocol_version;
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_new_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.new_protocol_version = protocol_version;
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_new_validator_slots(mut self, new_validator_slots: u32) -> Self {
         self.new_validator_slots = Some(new_validator_slots);
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_new_auction_delay(mut self, new_auction_delay: u64) -> Self {
         self.new_auction_delay = Some(new_auction_delay);
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_new_locked_funds_period_millis(
         mut self,
         new_locked_funds_period_millis: u64,
@@ -57,16 +65,19 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_new_round_seigniorage_rate(mut self, rate: Ratio<u64>) -> Self {
         self.new_round_seigniorage_rate = Some(rate);
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_new_unbonding_delay(mut self, unbonding_delay: u64) -> Self {
         self.new_unbonding_delay = Some(unbonding_delay);
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_global_state_update(
         mut self,
         global_state_update: BTreeMap<Key, StoredValue>,
@@ -75,11 +86,13 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// TODO: doc comment.
     pub fn with_activation_point(mut self, activation_point: EraId) -> Self {
         self.activation_point = Some(activation_point);
         self
     }
 
+    /// TODO: doc comment.
     pub fn build(self) -> UpgradeConfig {
         UpgradeConfig::new(
             self.pre_state_hash,
