@@ -143,8 +143,8 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
     TransferredTo::result_from(transferred_to_value)
 }
 
-/// Transfers `amount` of motes from the default purse of the account to `target` public key. If
-/// account referenced by a `target` public key does not exist it will be created.
+/// Transfers `amount` of motes from the main purse of the caller's account to the main purse of
+/// `target`.  If the account referenced by `target` does not exist, it will be created.
 pub fn transfer_to_public_key(target: PublicKey, amount: U512, id: Option<u64>) -> TransferResult {
     let target = AccountHash::from(&target);
     transfer_to_account(target, amount, id)
@@ -187,8 +187,8 @@ pub fn transfer_from_purse_to_account(
     TransferredTo::result_from(transferred_to_value)
 }
 
-/// Transfers `amount` of motes from `source` purse to a `target` public key. If an account
-/// referenced by a `target` public key does not exist it will be created.
+/// Transfers `amount` of motes from `source` to the main purse of `target`.  If the account
+/// referenced by `target` does not exist, it will be created.
 pub fn transfer_from_purse_to_public_key(
     source: URef,
     target: PublicKey,

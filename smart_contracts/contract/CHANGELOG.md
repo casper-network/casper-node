@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Add explicit `no-std` feature, enabled by default and which causes a compiler error if enabled along with `std`.
-* Added new APIs for transferring tokens into public keys: `transfer_to_public_key` and `transfer_from_purse_to_purse`.
+* Add new APIs for transferring tokens to the main purse associated with a public key: `transfer_to_public_key` and `transfer_from_purse_to_public_key`.
 
 ### Changed
 * Feature-gate the convenience functionality of providing a global allocator for use in `no_std` smart-contracts.
