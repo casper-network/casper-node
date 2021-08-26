@@ -708,7 +708,7 @@ where
                     }
                 }
                 signal_code => {
-                    error!("Received signal code {}, shutting done", signal_code);
+                    error!("Received signal code {}, shutting down", signal_code);
                     break ReactorExit::ProcessShouldExit(ExitStatus::Abort);
                 }
             }
