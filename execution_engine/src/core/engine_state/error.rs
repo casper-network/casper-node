@@ -64,8 +64,8 @@ pub enum Error {
 }
 
 impl Error {
-    /// Creates an [`Error`] instance of an [`Error::Exec`] variant with an API error-compatible
-    /// object.
+    /// Creates an [`enum@Error`] instance of an [`Error::Exec`] variant with an API
+    /// error-compatible object.
     ///
     /// This method should be used only by native code that has to mimic logic of a WASM executed
     /// code.
