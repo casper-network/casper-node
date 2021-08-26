@@ -47,7 +47,6 @@ jemalloc-ctl = "0.3.3"
 jemallocator = "0.3.2"
 k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
 libc = "0.2.66"
-libp2p = { version = "0.35.1", default-features = false, features = ["deflate", "dns", "floodsub", "gossipsub", "identify", "kad", "mdns", "mplex", "noise", "ping", "request-response", "tcp-tokio", "uds", "yamux"] }
 linked-hash-map = "0.5.3"
 lmdb = "0.8.0"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
@@ -104,7 +103,6 @@ vergen = "3"
 
 [dev-dependencies]
 fake_instant = "0.4.0"
-multihash = "0.13.2"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
 rand_core = "0.6.2"

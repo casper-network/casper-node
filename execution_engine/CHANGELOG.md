@@ -16,6 +16,9 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Added genesis validation step to ensure there are more genesis validators than validator slots.
 * Added a support for passing a public key as a `target` argument in native transfers.
+* Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
+
+
 
 ### Changed
 * Documented `storage` module and children.
@@ -23,6 +26,7 @@ All notable changes to this project will be documented in this file.  The format
 * Support building and testing using stable Rust.
 * Increase price of `create_purse` to 2.5CSPR.
 * Improve doc comments to clarify behavior of the bidding functionality.
+* Changed parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
 
 ### Fixed
 * Fix a case where user could potentially supply a refund purse as a payment purse.

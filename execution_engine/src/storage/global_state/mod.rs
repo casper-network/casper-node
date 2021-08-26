@@ -10,13 +10,12 @@ use std::hash::BuildHasher;
 
 use tracing::error;
 
-use casper_types::{bytesrepr, Key};
+use casper_types::{bytesrepr, Key, StoredValue};
 
 use crate::{
     shared::{
         additive_map::AdditiveMap,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::{self, Transform},
     },
     storage::{

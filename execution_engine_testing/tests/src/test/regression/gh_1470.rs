@@ -12,13 +12,13 @@ use casper_execution_engine::{
         engine_state::{Error, SystemContractRegistry},
         execution,
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue, TypeMismatch},
+    shared::newtypes::Blake2bHash,
 };
 use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,
-    RuntimeArgs, URef, U512,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::lmdb_fixture;
@@ -506,7 +506,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     let found = gh_1470_regression::Arg3Type::cl_type();
 
     let expected_type_mismatch =
-        TypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
+        StoredValueTypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
@@ -613,7 +613,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     let found = gh_1470_regression::Arg4Type::cl_type();
 
     let expected_type_mismatch =
-        TypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
+        StoredValueTypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (

@@ -19,7 +19,7 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH,
 };
 
@@ -31,7 +31,7 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
-    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{gas::Gas, newtypes::CorrelationId},
     storage::global_state::StateReader,
 };
 
@@ -900,6 +900,13 @@ where
         // Take an account out of the global state
         let account = {
             let mut account: Account = self.read_gs_typed(&key)?;
+
+            if account.associated_keys().len()
+                >= (self.engine_config.max_associated_keys() as usize)
+            {
+                return Err(Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
+            }
+
             // Exit early in case of error without updating global state
             account
                 .add_associated_key(account_hash, weight)
