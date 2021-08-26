@@ -24,22 +24,6 @@ use crate::{
     utils::Source,
 };
 
-// TODO[RC]: add comments
-#[derive(Debug, Serialize)]
-pub(crate) enum BlockProposerAnnouncement {
-    DeploysExpired(Vec<DeployHash>),
-}
-
-impl Display for BlockProposerAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockProposerAnnouncement::DeploysExpired(hashes) => {
-                write!(f, "pruned hashes: {}", hashes.iter().join(", "))
-            }
-        }
-    }
-}
-
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
 /// Reactors are never passed control announcements back in and every reactor event must be able to
@@ -167,6 +151,22 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
             ),
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
                 write!(formatter, "invalid deploy {} from {}", deploy.id(), source)
+            }
+        }
+    }
+}
+
+// A block proposer announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockProposerAnnouncement {
+    DeploysExpired(Vec<DeployHash>),
+}
+
+impl Display for BlockProposerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockProposerAnnouncement::DeploysExpired(hashes) => {
+                write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
         }
     }

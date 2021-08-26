@@ -500,7 +500,8 @@ impl BlockProposerReady {
         Arc::new(appendable_block.into_block_payload(accusations, random_bit))
     }
 
-    /// Prunes expired deploy information from the BlockProposer, returns the hashes of deploys pruned.
+    /// Prunes expired deploy information from the BlockProposer, returns the hashes of deploys
+    /// pruned.
     fn prune(&mut self, current_instant: Timestamp) -> Vec<DeployHash> {
         self.sets.prune(current_instant)
     }

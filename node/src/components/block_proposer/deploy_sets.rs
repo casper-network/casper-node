@@ -67,8 +67,8 @@ impl BlockProposerDeploySets {
     }
 }
 
-/// Retains items that satisfy the given predicate in the hash map and drains the rest,
-/// returning keys of the removed elements.
+/// Drains items that satisfy the given predicate from the hash map and retains the rest.
+/// Returns keys of the drained elements.
 ///
 /// To be replaced with `HashMap::drain_filter` when stabilized.
 /// [https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain_filter]
@@ -80,15 +80,9 @@ where
     let mut drained = vec![];
     let retained: HashMap<_, _> = hash_map
         .drain()
-        .filter(|(k, v)| {
-            if pred(v) {
-                true
-            } else {
-                drained.push(*k);
-                false
-            }
-        })
+        .filter_map(|(k, v)| pred(&v).then(|| drained.push(k)).is_none().then(|| (k, v)))
         .collect();
+
     hash_map.extend(retained);
     drained
 }
@@ -99,7 +93,7 @@ pub(super) fn prune_deploys(
     deploys: &mut HashMap<DeployHash, DeployHeader>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hash_map_drain_filter_in_place(deploys, |header| !header.expired(current_instant))
+    hash_map_drain_filter_in_place(deploys, |header| header.expired(current_instant))
 }
 
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
@@ -109,7 +103,7 @@ pub(super) fn prune_pending_deploys(
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
     hash_map_drain_filter_in_place(deploys, |(deploy_info, _)| {
-        !deploy_info.header.expired(current_instant)
+        deploy_info.header.expired(current_instant)
     })
 }
 
@@ -122,7 +116,7 @@ mod tests {
 
     use super::*;
 
-    /// TODO[RC]
+    /// Creates a test deploy created at given instant and with given ttl.
     fn create_test_deploy(
         created_ago: TimeDiff,
         ttl: TimeDiff,
@@ -132,8 +126,7 @@ mod tests {
         Deploy::random_with_timestamp_and_ttl(&mut test_rng, now - created_ago, ttl)
     }
 
-    /// Creates a random deploy that was created 20 seconds
-    /// in the past and was valid for 10 seconds only.
+    /// Creates a random deploy that is considered expired.
     fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
         create_test_deploy(
             TimeDiff::from_seconds(20),
@@ -143,8 +136,7 @@ mod tests {
         )
     }
 
-    /// Creates a random deploy that was created 20 seconds
-    /// in the past but is valid for a minute.
+    /// Creates a random deploy that is considered not expired.
     fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
         create_test_deploy(
             TimeDiff::from_seconds(20),
@@ -202,7 +194,7 @@ mod tests {
             hash_map.insert("C", 1);
             hash_map.insert("D", 0);
 
-            let mut drained = hash_map_drain_filter_in_place(&mut hash_map, |value| *value == 0);
+            let mut drained = hash_map_drain_filter_in_place(&mut hash_map, |value| *value == 1);
             drained.sort_unstable();
 
             let expected_drained = vec!["A", "C"];

@@ -326,7 +326,7 @@ fn should_successfully_prune() {
 
     // test for retained values
     let pruned = proposer.prune(test_time);
-    assert_eq!(pruned, 0);
+    assert_eq!(pruned.len(), 0);
 
     assert_eq!(proposer.sets.pending_deploys.len(), 3);
     assert_eq!(proposer.sets.finalized_deploys.len(), 1);
@@ -334,7 +334,7 @@ fn should_successfully_prune() {
 
     // now move the clock to make some things expire
     let pruned = proposer.prune(expired_time);
-    assert_eq!(pruned, 3);
+    assert_eq!(pruned.len(), 3);
 
     assert_eq!(proposer.sets.pending_deploys.len(), 1); // deploy4 is still valid
     assert_eq!(proposer.sets.finalized_deploys.len(), 0);

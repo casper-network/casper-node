@@ -102,7 +102,7 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
-    /// TODO[RC]
+    /// The given deploy has expired.
     DeployExpired { deploy_hash: DeployHash },
     /// Generic representation of validator's fault in an era.
     Fault {
@@ -178,11 +178,11 @@ impl SseData {
         }
     }
 
-    /// TODO[RC]
+    /// Returns a random `SseData::DeployExpired`
     pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
         let deploy = Deploy::random(rng);
         SseData::DeployExpired {
-            deploy_hash: Box::new(*deploy.id()),
+            deploy_hash: *deploy.id(),
         }
     }
 
