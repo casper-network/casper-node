@@ -223,8 +223,8 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(20), ApiError::OutOfMemory);
     /// ```
     OutOfMemory,
-    /// There are already [`MAX_ASSOCIATED_KEYS`](crate::account::MAX_ASSOCIATED_KEYS)
-    /// [`AccountHash`](crate::account::AccountHash)s associated with the given account.
+    /// There are already maximum [`AccountHash`](crate::account::AccountHash)s associated with the
+    /// given account.
     /// ```
     /// # use casper_types::ApiError;
     /// assert_eq!(ApiError::from(21), ApiError::MaxKeysLimit);

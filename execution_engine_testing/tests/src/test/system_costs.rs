@@ -4,8 +4,9 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
@@ -173,6 +174,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
         add_bid: NEW_ADD_BID_COST,
@@ -193,6 +195,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
         WasmConfig::default(),
         new_system_config,
     );
@@ -409,6 +412,7 @@ fn delegate_and_undelegate_have_expected_costs() {
 #[test]
 fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
         delegate: NEW_DELEGATE_COST,
@@ -429,6 +433,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
         WasmConfig::default(),
         new_system_config,
     );
@@ -851,6 +856,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     );
 
     let new_wasmless_transfer_cost = 0;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
@@ -864,8 +870,12 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config =
-        EngineConfig::new(DEFAULT_MAX_QUERY_DEPTH, new_wasm_config, new_system_config);
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
+        new_wasm_config,
+        new_system_config,
+    );
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
