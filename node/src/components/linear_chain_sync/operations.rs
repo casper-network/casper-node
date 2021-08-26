@@ -363,36 +363,14 @@ async fn fetch_trie_and_insert_into_trie_store(
     Ok(outstanding_tries)
 }
 
-/// Downloads and stores the block. Returns the block's header.
+/// Downloads and stores a block.
 async fn fetch_and_store_block_by_hash(
     effect_builder: EffectBuilder<JoinerEvent>,
     block_hash: BlockHash,
-) -> Result<Option<BlockHeader>, FetcherError<Block, NodeId>> {
-    for peer in effect_builder.get_peers_in_random_order().await {
-        match effect_builder
-            .fetch::<Block, NodeId>(block_hash, peer)
-            .await
-        {
-            Ok(FetchedData::FromStorage { item: block }) => {
-                return Ok(Some(block.take_header()));
-            }
-            Ok(FetchedData::FromPeer { item: block, .. }) => {
-                let header = block.header().clone();
-                effect_builder.put_block_to_storage(block).await;
-                return Ok(Some(header));
-            }
-            Err(FetcherError::Absent { .. }) => warn!(
-                ?block_hash, tag = ?Block::TAG, ?peer,
-                "Block by hash absent from peer, trying next peer",
-            ),
-            Err(FetcherError::TimedOut { .. }) => warn!(
-                ?block_hash, tag = ?Block::TAG, ?peer,
-                "Peer timed out, trying next peer",
-            ),
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(None)
+) -> Result<Box<Block>, FetcherError<Block, NodeId>> {
+    let block = fetch_retry_forever::<Block>(effect_builder, block_hash).await?;
+    effect_builder.put_block_to_storage(block.clone()).await;
+    Ok(block)
 }
 
 /// Runs the fast synchronization task.
@@ -478,18 +456,10 @@ pub(crate) async fn run_fast_sync_task(
     while current_header.timestamp().elapsed() < chainspec.deploy_config.max_ttl
         && !current_header.is_genesis_child()
     {
-        let block_hash = *current_header.parent_hash();
-        if let Some(fetched_header) =
-            fetch_and_store_block_by_hash(effect_builder, block_hash).await?
-        {
-            current_header = fetched_header;
-        } else {
-            warn!(
-                ?block_hash,
-                "failed to fetch block; retrying after {:?}", TIMEOUT_DURATION
-            );
-            tokio::time::sleep(TIMEOUT_DURATION).await;
-        }
+        current_header =
+            fetch_and_store_block_by_hash(effect_builder, *current_header.parent_hash())
+                .await?
+                .take_header();
     }
 
     // The era supervisor needs validator information from previous eras.
