@@ -772,7 +772,6 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::ContractRuntimeAnnouncement(_) => {
-                // Not used
                 Effects::new()
             }
             JoinerEvent::AddressGossiper(event) => reactor::wrap_effects(
