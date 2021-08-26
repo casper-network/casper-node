@@ -1,13 +1,13 @@
 use tracing::warn;
 
-use casper_types::{Key, U512};
+use casper_types::{Gas, Key, U512};
 
 use super::Error;
 use crate::{
     core::engine_state::{
         execution_effect::ExecutionEffect, execution_result::ExecutionResult, op::Op,
     },
-    shared::{gas::Gas, transform::Transform},
+    shared::transform::Transform,
 };
 
 fn on_fail_charge_test_helper<T>(

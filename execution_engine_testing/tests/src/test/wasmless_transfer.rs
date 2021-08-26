@@ -15,8 +15,6 @@ use casper_execution_engine::{
         execution::Error as ExecError,
     },
     shared::{
-        gas::Gas,
-        motes::Motes,
         system_config::{
             auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
             mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
@@ -29,7 +27,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, ApiError, EraId, Key, ProtocolVersion, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, EraId, Gas, Key, Motes, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

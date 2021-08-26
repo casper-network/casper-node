@@ -17,14 +17,14 @@ use casper_execution_engine::{
         },
         execution,
     },
-    shared::{motes::Motes, wasm::do_nothing_bytes, wasm_prep::PreprocessingError},
+    shared::{wasm::do_nothing_bytes, wasm_prep::PreprocessingError},
 };
 use casper_types::{
     account::AccountHash,
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";

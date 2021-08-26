@@ -15,9 +15,7 @@ use casper_execution_engine::{
         genesis::GenesisValidator, EngineConfig, GenesisAccount, DEFAULT_MAX_QUERY_DEPTH,
     },
     shared::{
-        gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         system_config::{
@@ -46,7 +44,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         handle_payment, mint, AUCTION,
     },
-    EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, Gas, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";

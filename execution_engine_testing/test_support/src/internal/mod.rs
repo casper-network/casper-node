@@ -15,11 +15,9 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{
-        motes::Motes, newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig,
-    },
+    shared::{newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
