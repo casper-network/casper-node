@@ -1,9 +1,12 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use casper_types::PublicKey;
 
 use super::era_supervisor::Era;
 
 /// A change to a validator's status between two eras.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub enum ValidatorChange {
     /// The validator got newly added to the validator set.
     Added,

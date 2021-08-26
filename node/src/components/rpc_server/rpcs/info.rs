@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -22,6 +22,7 @@ use super::{
     RpcWithoutParamsExt,
 };
 use crate::{
+    components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
@@ -42,6 +43,11 @@ static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     peers: GetStatusResult::doc_example().peers.clone(),
 });
+static GET_VALIDATOR_INFO_RESULT: Lazy<GetValidatorInfoResult> =
+    Lazy::new(|| GetValidatorInfoResult {
+        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        validator_info: vec![],
+    });
 
 /// Params for "info_get_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -221,6 +227,87 @@ impl RpcWithoutParamsExt for GetStatus {
             // Convert to `ResponseResult` and send.
             let body = Self::ResponseResult::new(status_feed, api_version);
             Ok(response_builder.success(body)?)
+        }
+        .boxed()
+    }
+}
+
+/// A change to a validator's status between two eras.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JsonEraChanges {
+    /// The era in which the change occurred.
+    era_id: EraId,
+    /// The change in status.
+    validator_change: ValidatorChange,
+}
+
+/// The information for a validator across eras.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JsonValidatorInfo {
+    /// The public key of the given validator.
+    public_key: PublicKey,
+    /// The set of changes to the validator's status.
+    era_changes: Vec<JsonEraChanges>,
+}
+
+/// Result for the "info_get_validator_info" RPC.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetValidatorInfoResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The validator information.
+    pub validator_info: Vec<JsonValidatorInfo>,
+}
+
+impl DocExample for GetValidatorInfoResult {
+    fn doc_example() -> &'static Self {
+        &*GET_VALIDATOR_INFO_RESULT
+    }
+}
+
+/// "info_get_validator_info" RPC.
+pub struct GetValidatorInfo {}
+
+impl RpcWithoutParams for GetValidatorInfo {
+    const METHOD: &'static str = "info_get_validator_info";
+    type ResponseResult = GetValidatorInfoResult;
+}
+
+impl RpcWithoutParamsExt for GetValidatorInfo {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            // Get the validator info.
+            let validator_info = effect_builder
+                .get_consensus_validator_info()
+                .await
+                .into_iter()
+                .map(|(public_key, era_changes)| {
+                    let era_changes = era_changes
+                        .into_iter()
+                        .map(|(era_id, validator_change)| JsonEraChanges {
+                            era_id,
+                            validator_change,
+                        })
+                        .collect();
+                    JsonValidatorInfo {
+                        public_key,
+                        era_changes,
+                    }
+                })
+                .collect();
+            let result = Self::ResponseResult {
+                api_version,
+                validator_info,
+            };
+            Ok(response_builder.success(result)?)
         }
         .boxed()
     }

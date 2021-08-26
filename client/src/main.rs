@@ -11,6 +11,7 @@ mod get_balance;
 mod get_dictionary_item;
 mod get_era_info_by_switch_block;
 mod get_state_hash;
+mod get_validator_info;
 mod keygen;
 mod query_global_state;
 
@@ -28,6 +29,7 @@ use casper_node::rpcs::{
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
+use casper_node::rpcs::info::GetValidatorInfo;
 use command::{ClientCommand, Success};
 use deploy::{ListDeploys, MakeDeploy, MakeTransfer, SendDeploy, SignDeploy, Transfer};
 use generate_completion::GenerateCompletion;
@@ -54,6 +56,7 @@ enum DisplayOrder {
     GetAccountInfo,
     GetEraInfo,
     GetAuctionInfo,
+    GetValidatorInfo,
     Keygen,
     GenerateCompletion,
     GetRpcs,
@@ -85,6 +88,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
             DisplayOrder::GetEraInfo as usize,
         ))
         .subcommand(GetAuctionInfo::build(DisplayOrder::GetAuctionInfo as usize))
+        .subcommand(GetValidatorInfo::build(
+            DisplayOrder::GetValidatorInfo as usize,
+        ))
         .subcommand(Keygen::build(DisplayOrder::Keygen as usize))
         .subcommand(GenerateCompletion::build(
             DisplayOrder::GenerateCompletion as usize,
@@ -122,6 +128,7 @@ async fn main() {
             (GetEraInfoBySwitchBlock::run(matches).await, matches)
         }
         (GetAuctionInfo::NAME, Some(matches)) => (GetAuctionInfo::run(matches).await, matches),
+        (GetValidatorInfo::NAME, Some(matches)) => (GetValidatorInfo::run(matches).await, matches),
         (Keygen::NAME, Some(matches)) => (Keygen::run(matches).await, matches),
         (GenerateCompletion::NAME, Some(matches)) => {
             (GenerateCompletion::run(matches).await, matches)

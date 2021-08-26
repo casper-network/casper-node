@@ -34,6 +34,7 @@ use crate::{
     error::{Error, Result},
     validation, DictionaryItemStrParams, GlobalStateStrParams,
 };
+use casper_node::rpcs::info::GetValidatorInfo;
 
 /// Struct representing a single JSON-RPC call to the casper node.
 #[derive(Debug)]
@@ -205,6 +206,10 @@ impl RpcCall {
             }
         }?;
         Ok(response)
+    }
+
+    pub(crate) async fn get_validator_info(self) -> Result<JsonRpc> {
+        GetValidatorInfo::request(self).await
     }
 
     pub(crate) async fn list_rpcs(self) -> Result<JsonRpc> {
@@ -464,6 +469,10 @@ impl RpcClient for GetDictionaryItem {
 }
 
 impl RpcClient for QueryGlobalState {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
+impl RpcClient for GetValidatorInfo {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
