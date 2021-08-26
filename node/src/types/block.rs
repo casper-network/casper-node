@@ -2043,12 +2043,21 @@ mod tests {
         let mut rng = TestRng::from_seed([2u8; 16]);
         let mut block = Block::random(&mut rng);
 
-        let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
-        block.header.body_hash = bogus_block_hash;
+        let bogus_block_body_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
+        block.header.body_hash = bogus_block_body_hash;
+        block.hash = block.header.hash();
+        let bogus_block_hash = block.hash;
 
         // No Eq trait for BlockValidationError, so pattern match
-        if block.verify().is_ok() {
-            panic!("Block has bogus body hash: {:?}", block)
+        match block.verify() {
+            Err(BlockValidationError::UnexpectedBodyHash {
+                block,
+                actual_block_body_hash,
+            }) if block.hash == bogus_block_hash
+                && block.header.body_hash == bogus_block_body_hash
+                && block.body.hash(block.header.hashing_algorithm_version())
+                    == actual_block_body_hash => {}
+            unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }
 
