@@ -74,7 +74,7 @@ impl BlockProposerDeploySets {
 ///
 /// To be replaced with `HashMap::drain_filter` when stabilized.
 /// [https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain_filter]
-fn hash_map_drain_filter_in_place<K, V, F>(hash_map: &mut HashMap<K, V>, pred: F) -> Vec<K>
+fn hashmap_drain_filter_in_place<K, V, F>(hash_map: &mut HashMap<K, V>, pred: F) -> Vec<K>
 where
     K: Eq + Hash + Copy,
     F: Fn(&V) -> bool,
@@ -94,7 +94,7 @@ fn prune_deploys(
     deploys: &mut HashMap<DeployHash, DeployHeader>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hash_map_drain_filter_in_place(deploys, |header| header.expired(current_instant))
+    hashmap_drain_filter_in_place(deploys, |header| header.expired(current_instant))
 }
 
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
@@ -103,7 +103,7 @@ pub(super) fn prune_pending_deploys(
     deploys: &mut HashMap<DeployHash, (DeployInfo, Timestamp)>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hash_map_drain_filter_in_place(deploys, |(deploy_info, _)| {
+    hashmap_drain_filter_in_place(deploys, |(deploy_info, _)| {
         deploy_info.header.expired(current_instant)
     })
 }
@@ -184,7 +184,7 @@ mod tests {
     }
 
     mod hash_map_drain_filter_in_place {
-        use crate::components::block_proposer::deploy_sets::hash_map_drain_filter_in_place;
+        use super::*;
 
         #[test]
         fn returns_drained() {
@@ -195,7 +195,7 @@ mod tests {
             hash_map.insert("C", 1);
             hash_map.insert("D", 0);
 
-            let mut drained = hash_map_drain_filter_in_place(&mut hash_map, |value| *value == 1);
+            let mut drained = hashmap_drain_filter_in_place(&mut hash_map, |value| *value == 1);
             drained.sort_unstable();
 
             let expected_drained = vec!["A", "C"];
