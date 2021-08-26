@@ -4,6 +4,8 @@ use std::{
     hash::Hash,
 };
 
+use itertools::{Either, Itertools};
+
 use datasize::DataSize;
 
 use super::{event::DeployInfo, BlockHeight, FinalizationQueue};
@@ -77,12 +79,11 @@ where
     K: Eq + Hash + Copy,
     F: Fn(&V) -> bool,
 {
-    let mut drained = vec![];
-    let retained: HashMap<_, _> = hash_map
-        .drain()
-        .filter_map(|(k, v)| pred(&v).then(|| drained.push(k)).is_none().then(|| (k, v)))
-        .collect();
-
+    let (drained, retained): (Vec<_>, HashMap<_, _>) =
+        hash_map.drain().partition_map(|(k, v)| match pred(&v) {
+            true => Either::Left(k),
+            false => Either::Right((k, v)),
+        });
     hash_map.extend(retained);
     drained
 }
