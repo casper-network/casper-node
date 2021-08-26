@@ -310,28 +310,39 @@ async fn run_equivocator_network() {
     keys.push(alice_sk);
 
     // We configure the era to take five rounds, and delay all messages to and from one of Alice's
-    // nodes until two rounds after genesis. That should guarantee that the two nodes equivocate.
+    // nodes until three rounds after the first message. That should guarantee that the two nodes
+    // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 10;
-    let protocol_config = consensus::ProtocolConfig::from(&*chain.chainspec);
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    let genesis_time = protocol_config.genesis_timestamp.unwrap();
     let min_round_len = chain.chainspec.highway_config.min_round_length();
+    let mut maybe_first_message = None;
     net.reactors_mut()
         .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
         .unwrap()
-        .set_filter(move |event| match event {
-            ParticipatingEvent::NetworkRequest(_)
-            | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. })
-                if Timestamp::now() < genesis_time + min_round_len * 2 =>
-            {
-                Either::Left(time::sleep(min_round_len.into()).event(move |_| event))
+        .set_filter(move |event| {
+            if !matches!(
+                event,
+                ParticipatingEvent::NetworkRequest(_)
+                    | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
+            ) {
+                return Either::Right(event);
             }
-            _ => Either::Right(event),
+            let now = Timestamp::now();
+            let first_message = if let Some(first_message) = maybe_first_message {
+                first_message
+            } else {
+                maybe_first_message = Some(now);
+                now
+            };
+            if now < first_message + min_round_len * 3 {
+                return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
+            }
+            Either::Right(event)
         });
 
     let era_count = 3;
