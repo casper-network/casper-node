@@ -154,8 +154,12 @@ build-for-packaging: build-client-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
-deb: setup build-for-packaging
+deb: setup-rs build-for-packaging
 	cd client && $(CARGO) deb -p casper-client --no-build
+
+.PHONY: rpm
+rpm: setup-rs
+	cd client && $(CARGO) rpm build
 
 .PHONY: package
 package:
