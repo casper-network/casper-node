@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use casper_engine_test_support::internal::LmdbWasmTestBuilder;
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::ProtocolVersion;
 use fs_extra::dir;
 use serde::{Deserialize, Serialize};

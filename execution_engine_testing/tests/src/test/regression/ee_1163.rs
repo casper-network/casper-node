@@ -1,9 +1,6 @@
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_GAS_PRICE,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    AccountHash, DEFAULT_ACCOUNT_ADDR,
+    AccountHash, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_GAS_PRICE, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{

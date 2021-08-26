@@ -1,4 +1,4 @@
-use casper_engine_test_support::internal::{
+use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::Error;
