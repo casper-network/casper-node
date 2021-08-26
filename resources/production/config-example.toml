@@ -44,13 +44,16 @@ unit_hashes_folder = "/var/lib/casper/casper-node"
 pending_vertex_timeout = '30min'
 
 # If the current era's protocol state has not progressed for this long, shut down.
-standstill_timeout = '30min'
+# standstill_timeout = '30min'
 
-# If after another `standstill_timeout` there still was no progress, shut down.
-shutdown_on_standstill = false
+# Request the latest protocol state from a random peer periodically, with this interval.
+request_state_interval = '20sec'
 
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
+
+# Log the synchronizer state periodically, with this interval.
+log_synchronizer_interval = '5sec'
 
 # Log the size of every incoming and outgoing serialized unit.
 log_unit_sizes = false
@@ -110,16 +113,12 @@ bind_address = '0.0.0.0:35000'
 # one connection.
 known_addresses = ['168.119.137.143:35000','47.251.14.254:35000','47.242.53.164:35000','46.101.61.107:35000','47.88.87.63:35000','35.152.42.229:35000','206.189.47.102:35000','134.209.243.124:35000','148.251.190.103:35000','167.172.32.44:35000','165.22.252.48:35000','18.219.70.138:35000','3.225.191.9:35000','3.221.194.62:35000','101.36.120.117:35000','54.151.24.120:35000','148.251.135.60:35000','18.188.103.230:35000','54.215.53.35:35000','88.99.95.7:35000','99.81.225.72:35000','52.207.122.179:35000','3.135.134.105:35000','62.171.135.101:35000','139.162.132.144:35000','63.33.251.206:35000','135.181.165.110:35000','135.181.134.57:35000','94.130.107.198:35000','54.180.220.20:35000','188.40.83.254:35000','157.90.131.121:35000','134.209.110.11:35000','168.119.69.6:35000','45.76.251.225:35000','168.119.209.31:35000','31.7.207.16:35000','209.145.60.74:35000','54.252.66.23:35000','134.209.16.172:35000','178.238.235.196:35000','18.217.20.213:35000','3.14.161.135:35000','3.12.207.193:35000','3.12.207.193:35000']
 
-# The interval (in milliseconds) between each fresh round of gossiping the node's public address.
-gossip_interval = 120_000
-
-# Minimum amount of time that has to pass before attempting to reconnect after losing all
-# connections to established nodes.
-isolation_reconnect_delay = '2s'
+# The interval between each fresh round of gossiping the node's public address.
+gossip_interval = '120sec'
 
 # Initial delay for starting address gossipping after the network starts. This should be slightly
 # more than the expected time required for initial connections to complete.
-initial_gossip_delay = '5s'
+initial_gossip_delay = '5sec'
 
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
@@ -257,20 +256,20 @@ infection_target = 3
 # excluding us since 80% saturation would imply 3 new infections in 15 peers.
 saturation_limit_percent = 80
 
-# The maximum duration in seconds for which to keep finished entries.
+# The maximum duration for which to keep finished entries.
 #
 # The longer they are retained, the lower the likelihood of re-gossiping a piece of data.  However,
 # the longer they are retained, the larger the list of finished entries can grow.
-finished_entry_duration_secs = 60
+finished_entry_duration = '60sec'
 
-# The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
+# The timeout duration for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-gossip_request_timeout_secs = 30
+gossip_request_timeout = '30sec'
 
-# The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
+# The timeout duration for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
-get_remainder_timeout_secs = 5
+get_remainder_timeout = '5sec'
 
 
 # =================================
@@ -278,10 +277,10 @@ get_remainder_timeout_secs = 5
 # =================================
 [fetcher]
 
-# The timeout duration in seconds for a single fetcher request, i.e. for a single fetcher message
+# The timeout duration for a single fetcher request, i.e. for a single fetcher message
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-get_from_peer_timeout = 3
+get_from_peer_timeout = '3sec'
 
 
 # ===================================================
@@ -312,6 +311,11 @@ verify_accounts = true
 #
 # If unset, defaults to 5.
 #max_query_depth = 5
+
+# Enable manual synchronizing to disk.
+#
+# If unset, defaults to true.
+#enable_manual_sync = true
 
 
 # ========================================================

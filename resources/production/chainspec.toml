@@ -26,7 +26,7 @@ maximum_net_message_size = 23_068_672
 
 [core]
 # Era duration.
-era_duration = '120minutes'
+era_duration = '120min'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
 minimum_era_height = 20
@@ -50,6 +50,8 @@ unbonding_delay = 7
 # from fractions import Fraction
 # Fraction((1 + 0.08)**((2**16)/31536000000) - 1).limit_denominator(1000000000)
 round_seigniorage_rate = [147, 919121747]
+# Maximum number of associated keys for a single account.
+max_associated_keys = 100
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

@@ -45,9 +45,11 @@ use super::{
     Component,
 };
 use crate::{
-    components::contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
+    components::contract_runtime::{
+        BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState,
+    },
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::ControlAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
@@ -137,7 +139,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
                 }
                 None if after_upgrade => {
-                    info!("No synchronization of the linear chain will be done.");
+                    info!(
+                        "No synchronization of the linear chain will be done because the node \
+                        was started right after an upgrade without a trusted hash."
+                    );
                     // Right after upgrade, no linear chain to synchronize.
                     State::Done(highest_block.map(Box::new))
                 }
@@ -149,7 +154,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         // still be trusted – i.e. it's within the unbonding period.
                         State::sync_descendants(*highest_block.hash(), highest_block, None)
                     } else {
-                        info!("No synchronization of the linear chain will be done.");
+                        info!(
+                            "No synchronization of the linear chain will be done because there \
+                            is neither a trusted hash nor a highest block present."
+                        );
                         State::Done(None)
                     }
                 }
@@ -189,7 +197,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             chainspec.core_config.era_duration,
         );
         if matches!(state, State::None | State::Done(_)) {
-            info!("No synchronization of the linear chain will be done.");
+            info!(
+                "No synchronization of the linear chain will be done because the component is \
+                already in State::Done or in State::None."
+            );
         }
         Ok(LinearChainSync {
             peers: PeersState::new(),
@@ -1046,7 +1057,7 @@ async fn execute_block<REv>(
     let BlockAndExecutionEffects {
         block,
         execution_results,
-        maybe_step_execution_effect: _,
+        ..
     } = match effect_builder
         .execute_finalized_block(
             protocol_version,

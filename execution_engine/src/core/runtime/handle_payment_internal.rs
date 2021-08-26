@@ -1,12 +1,11 @@
 use casper_types::{
     account::AccountHash,
     system::handle_payment::{Error, HandlePayment, MintProvider, RuntimeProvider},
-    BlockTime, Key, Phase, TransferredTo, URef, U512,
+    BlockTime, Key, Phase, StoredValue, TransferredTo, URef, U512,
 };
 
 use crate::{
     core::{execution, runtime::Runtime},
-    shared::stored_value::StoredValue,
     storage::global_state::StateReader,
 };
 

@@ -4,6 +4,7 @@
 //! `casper-node` library.
 
 mod condition_check_reactor;
+pub(crate) mod filter_reactor;
 mod multi_stage_test_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
@@ -316,6 +317,14 @@ impl ReactorEvent for UnitTestEvent {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
         }
     }
+}
+
+/// Helper function to simulate the passage of time.
+pub(crate) async fn advance_time(duration: time::Duration) {
+    tokio::time::pause();
+    tokio::time::advance(duration).await;
+    tokio::time::resume();
+    debug!("advanced time by {} secs", duration.as_secs());
 }
 
 #[cfg(test)]

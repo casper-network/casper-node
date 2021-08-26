@@ -36,7 +36,8 @@ use crate::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
+            ContractRuntimeRequest, LinearChainRequest, NetworkInfoRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -53,9 +54,6 @@ pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
-
-#[cfg(test)]
-pub(crate) use era_supervisor::oldest_bonded_era;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) enum ConsensusMessage {
@@ -246,6 +244,7 @@ pub(crate) trait ReactorEventT<I>:
     + From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
+    + From<NetworkInfoRequest<I>>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockValidationRequest<I>>
@@ -262,6 +261,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
+        + From<NetworkInfoRequest<I>>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockValidationRequest<I>>

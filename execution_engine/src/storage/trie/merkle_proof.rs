@@ -15,11 +15,16 @@ const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
 pub enum TrieMerkleProofStep {
     /// Corresponds to [`Trie::Node`]
     Node {
+        /// Hole index.
         hole_index: u8,
+        /// Indexed pointers with hole.
         indexed_pointers_with_hole: Vec<(u8, Pointer)>,
     },
     /// Corresponds to [`Trie::Extension`]
-    Extension { affix: Bytes },
+    Extension {
+        /// Affix bytes.
+        affix: Bytes,
+    },
 }
 
 impl TrieMerkleProofStep {
@@ -234,15 +239,15 @@ where
 mod gens {
     use proptest::{collection::vec, prelude::*};
 
-    use casper_types::{gens::key_arb, Key};
+    use casper_types::{
+        gens::{key_arb, stored_value_arb},
+        Key, StoredValue,
+    };
 
-    use crate::{
-        shared::stored_value::{gens::stored_value_arb, StoredValue},
-        storage::trie::{
-            gens::trie_pointer_arb,
-            merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-            RADIX,
-        },
+    use crate::storage::trie::{
+        gens::trie_pointer_arb,
+        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
+        RADIX,
     };
 
     const POINTERS_SIZE: usize = RADIX / 8;

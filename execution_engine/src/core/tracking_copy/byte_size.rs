@@ -1,8 +1,6 @@
 use std::{collections::BTreeMap, mem};
 
-use casper_types::{bytesrepr::ToBytes, ContractWasm, Key};
-
-use crate::shared::{account::Account, stored_value::StoredValue};
+use casper_types::{account::Account, bytesrepr::ToBytes, ContractWasm, Key, StoredValue};
 
 /// Returns byte size of the element - both heap size and stack size.
 pub trait ByteSize {

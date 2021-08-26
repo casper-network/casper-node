@@ -43,6 +43,7 @@ mod phase;
 mod protocol_version;
 pub mod runtime_args;
 mod semver;
+mod stored_value;
 pub mod system;
 mod tagged;
 mod transfer;
@@ -80,6 +81,7 @@ pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 #[doc(inline)]
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
+pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
 pub use transfer::{
     DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
@@ -97,6 +99,7 @@ pub use crate::{
 compile_error!(
     "casper-types requires one of 'std' (enabled by default) or 'no-std' features to be enabled"
 );
+
 #[cfg(all(feature = "std", feature = "no-std"))]
 compile_error!(
     "casper-types features 'std' (enabled by default) and 'no-std' should not both be enabled"

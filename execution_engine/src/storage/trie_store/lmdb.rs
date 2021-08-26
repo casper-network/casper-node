@@ -39,7 +39,7 @@
 //! let tmp_dir = tempdir().unwrap();
 //! let map_size = 4096 * 2560;  // map size should be a multiple of OS page size
 //! let max_readers = 512;
-//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers).unwrap();
+//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers, true).unwrap();
 //! let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 //!
 //! // First let's create a read-write transaction, persist the values, but
@@ -125,6 +125,7 @@ pub struct LmdbTrieStore {
 }
 
 impl LmdbTrieStore {
+    /// Constructor for new `LmdbTrieStore`.
     pub fn new(
         env: &LmdbEnvironment,
         maybe_name: Option<&str>,
@@ -135,6 +136,7 @@ impl LmdbTrieStore {
         Ok(LmdbTrieStore { db })
     }
 
+    /// Constructor for `LmdbTrieStore` which opens an existing lmdb store file.
     pub fn open(env: &LmdbEnvironment, maybe_name: Option<&str>) -> Result<Self, error::Error> {
         let name = Self::name(maybe_name);
         let db = env.env().open_db(Some(&name))?;

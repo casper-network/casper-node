@@ -117,7 +117,7 @@ lint: lint-contracts-rs
 
 .PHONY: audit
 audit:
-	$(CARGO) audit --ignore RUSTSEC-2021-0073 --ignore RUSTSEC-2021-0076
+	$(CARGO) audit
 
 .PHONY: doc
 doc:

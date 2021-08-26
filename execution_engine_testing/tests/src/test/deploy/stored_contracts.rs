@@ -5,11 +5,9 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casper_execution_engine::{
-    shared::account::Account, storage::global_state::in_memory::InMemoryGlobalState,
-};
+use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION, DEFAULT_ENTRY_POINT_NAME},
     runtime_args, ContractHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
 };

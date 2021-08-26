@@ -39,7 +39,7 @@ SUBCOMMANDS:
     get-block-transfers    Retrieves all transfers for a block from the network
     list-deploys           Retrieves the list of all deploy hashes in a given block
     get-state-root-hash    Retrieves a state root hash at a given block
-    query-state            Retrieves a stored value from the network
+    query-global-state     Retrieves a stored value from the network
     get-balance            Retrieves a purse's balance from the network
     get-auction-info       Retrieves the bids and validators as of the most recently added block
     keygen                 Generates account key files in the given directory
@@ -342,11 +342,11 @@ cargo run --release -- get-block-transfers \
 
 ### Query the global state
 
-To view data stored to global state after executing a deploy, you can use `query-state`. For example, to see the value
+To view data stored to global state after executing a deploy, you can use `query-global-state`. For example, to see the value
 stored under our new account's public key:
 
 ```
-cargo run --release -- query-state \
+cargo run --release -- query-global-state \
     --node-address=http://localhost:50101 \
     --state-root-hash=242666f5959e6a51b7a75c23264f3cb326eecd6bec6dbab147f5801ec23daed6 \
     --key=$PUBLIC_KEY
@@ -411,7 +411,7 @@ cargo run --release -- get-balance \
 </details>
 
 Note that the system mint contract is required to retrieve the balance of any given purse. If you execute a
-`query-state` specifying a purse `URef` as the `--key` argument, you'll find that the actual value stored there is a
+`query-global-state` specifying a purse `URef` as the `--key` argument, you'll find that the actual value stored there is a
 unit value `()`. This makes the `get-balance` subcommand particularly useful. 
 
 ---

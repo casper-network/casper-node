@@ -28,12 +28,10 @@ use casper_execution_engine::{
         execution,
     },
     shared::{
-        account::Account,
         additive_map::AdditiveMap,
         gas::Gas,
         logging::{self, Settings, Style},
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::Transform,
         utils::OS_PAGE_SIZE,
     },
@@ -47,7 +45,7 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self},
     runtime_args,
     system::{
@@ -59,8 +57,8 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr,
-    URef, U512,
+    DeployHash, DeployInfo, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, U512,
 };
 
 use crate::internal::{
@@ -68,9 +66,7 @@ use crate::internal::{
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
-///
-/// This default value should give 50MiB initial map size by default.
-const DEFAULT_LMDB_PAGES: usize = 128_000;
+const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 
 /// LMDB max readers
 ///
@@ -204,6 +200,7 @@ impl LmdbWasmTestBuilder {
                 &global_state_dir,
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
+                true,
             )
             .expect("should create LmdbEnvironment"),
         );
@@ -229,6 +226,12 @@ impl LmdbWasmTestBuilder {
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
+    }
+
+    /// Flushes the LMDB environment to disk.
+    pub fn flush_environment(&self) {
+        let engine_state = &*self.engine_state;
+        engine_state.flush_environment().unwrap();
     }
 
     pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
@@ -279,6 +282,7 @@ impl LmdbWasmTestBuilder {
                 &global_state_dir,
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
+                true,
             )
             .expect("should create LmdbEnvironment"),
         );

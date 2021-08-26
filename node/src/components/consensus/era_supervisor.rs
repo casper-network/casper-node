@@ -590,6 +590,11 @@ where
             .consensus
             .validators_with_evidence()
     }
+
+    /// Returns this node's validator key.
+    pub(crate) fn public_key(&self) -> &PublicKey {
+        &self.public_signing_key
+    }
 }
 
 /// Returns an era ID in which the booking block for `era_id` lives, if we can use it.
@@ -1024,6 +1029,17 @@ where
                 self.effect_builder
                     .send_message(to, message.into())
                     .ignore()
+            }
+            ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
+                let message = ConsensusMessage::Protocol { era_id, payload };
+                let effect_builder = self.effect_builder;
+                async move {
+                    let peers = effect_builder.get_peers_in_random_order().await;
+                    if let Some(to) = peers.into_iter().next() {
+                        effect_builder.send_message(to, message.into()).await;
+                    }
+                }
+                .ignore()
             }
             ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
                 let timediff = timestamp.saturating_diff(Timestamp::now());
