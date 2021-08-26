@@ -1,7 +1,8 @@
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -908,6 +909,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
     let new_wasmless_transfer_cost = Motes::from_gas(
@@ -917,6 +919,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     .expect("gas overflow");
 
     let transfer_amount = U512::one();
+
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
     let new_auction_costs = AuctionCosts::default();
@@ -934,6 +937,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
         WasmConfig::default(),
         new_system_config,
     );

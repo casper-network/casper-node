@@ -900,6 +900,13 @@ where
         // Take an account out of the global state
         let account = {
             let mut account: Account = self.read_gs_typed(&key)?;
+
+            if account.associated_keys().len()
+                >= (self.engine_config.max_associated_keys() as usize)
+            {
+                return Err(Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
+            }
+
             // Exit early in case of error without updating global state
             account
                 .add_associated_key(account_hash, weight)
