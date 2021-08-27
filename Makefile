@@ -105,6 +105,7 @@ check-format:
 format:
 	$(CARGO_PINNED_NIGHTLY) fmt --all
 
+.PHONY: lint-contracts-rs
 lint-contracts-rs:
 	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
 

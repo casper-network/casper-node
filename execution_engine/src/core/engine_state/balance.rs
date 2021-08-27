@@ -1,6 +1,6 @@
-use casper_types::{Key, StoredValue, URef, U512};
+use casper_types::{Digest, Key, StoredValue, URef, U512};
 
-use crate::{shared::newtypes::Blake2bHash, storage::trie::merkle_proof::TrieMerkleProof};
+use crate::storage::trie::merkle_proof::TrieMerkleProof;
 
 #[derive(Debug)]
 pub enum BalanceResult {
@@ -29,19 +29,19 @@ impl BalanceResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     purse_uref: URef,
 }
 
 impl BalanceRequest {
-    pub fn new(state_hash: Blake2bHash, purse_uref: URef) -> Self {
+    pub fn new(state_hash: Digest, purse_uref: URef) -> Self {
         BalanceRequest {
             state_hash,
             purse_uref,
         }
     }
 
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 

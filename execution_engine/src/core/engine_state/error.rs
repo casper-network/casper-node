@@ -1,14 +1,14 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, system::mint, ApiError, ProtocolVersion};
+use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
 
 use crate::{
     core::{
         engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
         execution,
     },
-    shared::{newtypes::Blake2bHash, wasm_prep},
+    shared::wasm_prep,
     storage,
     storage::global_state::CommitError,
 };
@@ -16,7 +16,7 @@ use crate::{
 #[derive(Clone, Error, Debug)]
 pub enum Error {
     #[error("Root not found: {0}")]
-    RootNotFound(Blake2bHash),
+    RootNotFound(Digest),
     #[error("Invalid hash length: expected {expected}, actual {actual}")]
     InvalidHashLength { expected: usize, actual: usize },
     #[error("Invalid account hash length: expected {expected}, actual {actual}")]

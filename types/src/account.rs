@@ -13,13 +13,11 @@ use crate::{
     AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
 };
 use alloc::{collections::BTreeSet, vec::Vec};
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
 use core::{convert::TryFrom, fmt::Debug};
 #[cfg(feature = "std")]
 use thiserror::Error;
+
+use hashing::Digest;
 
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
@@ -285,15 +283,7 @@ impl FromBytes for Account {
 
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-    let mut result = [0; BLAKE2B_DIGEST_LENGTH];
-    // NOTE: Assumed safe as `BLAKE2B_DIGEST_LENGTH` is a valid value for a hasher
-    let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
-
-    hasher.update(data);
-    hasher.finalize_variable(|slice| {
-        result.copy_from_slice(slice);
-    });
-    result
+    Digest::hash(data).into()
 }
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.

@@ -3,13 +3,13 @@ use std::{
     convert::TryInto,
 };
 
-use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{
-    bytesrepr::ToBytes, system::auction::SeigniorageRecipientsSnapshot, Key, PublicKey, StoredValue,
+    bytesrepr::ToBytes, system::auction::SeigniorageRecipientsSnapshot, Digest, Key, PublicKey,
+    StoredValue,
 };
 
 /// Parses a Blake2bHash from a string. Panics if parsing fails.
-pub fn hash_from_str(hex_str: &str) -> Blake2bHash {
+pub fn hash_from_str(hex_str: &str) -> Digest {
     (&base16::decode(hex_str).unwrap()[..]).try_into().unwrap()
 }
 

@@ -2,9 +2,9 @@ use thiserror::Error;
 
 use datasize::DataSize;
 
-use casper_types::ProtocolVersion;
+use casper_types::{Digest, ProtocolVersion};
 
-use crate::{core::engine_state::error::Error, shared::newtypes::Blake2bHash};
+use crate::core::engine_state::error::Error;
 
 #[derive(Debug, Error, DataSize)]
 pub enum GetEraValidatorsError {
@@ -27,19 +27,19 @@ impl GetEraValidatorsError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetEraValidatorsRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     protocol_version: ProtocolVersion,
 }
 
 impl GetEraValidatorsRequest {
-    pub fn new(state_hash: Blake2bHash, protocol_version: ProtocolVersion) -> Self {
+    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
         GetEraValidatorsRequest {
             state_hash,
             protocol_version,
         }
     }
 
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 

@@ -16,7 +16,7 @@ use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey,
+    bytesrepr::ToBytes, CLValue, Digest, Key, ProtocolVersion, PublicKey, SecretKey,
     StoredValue as DomainStoredValue, URef, U512,
 };
 
@@ -26,7 +26,6 @@ use super::{
 };
 use crate::{
     components::rpc_server::rpcs::RpcWithOptionalParams,
-    crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::{

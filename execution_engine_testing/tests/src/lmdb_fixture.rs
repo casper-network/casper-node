@@ -5,13 +5,12 @@ use std::{
 };
 
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
-use casper_types::ProtocolVersion;
+use casper_types::{Digest, ProtocolVersion};
 use fs_extra::dir;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::{
-    core::engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig},
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::engine_state::{
+    run_genesis_request::RunGenesisRequest, EngineConfig,
 };
 use tempfile::TempDir;
 
@@ -35,7 +34,7 @@ pub struct LmdbFixtureState {
         serialize_with = "hex::serialize",
         deserialize_with = "hex::deserialize"
     )]
-    pub post_state_hash: Blake2bHash,
+    pub post_state_hash: Digest,
 }
 
 impl LmdbFixtureState {

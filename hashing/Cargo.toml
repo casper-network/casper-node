@@ -1,0 +1,25 @@
+[package]
+name = "hashing"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+base16 = { version = "0.2.1", default-features = false, optional = true}
+blake2 = { version = "0.9.2", default-features = false }
+hex = { version = "0.4.2", default-features = false, optional = true}
+hex-buffer-serde = { version = "0.2.1", optional = true }
+serde = { version = "1", default-features = false, features = ["derive"], optional = true}
+datasize = { version = "0.2.9", default-features = false, optional = true}
+schemars = { version  = "0.8.3", optional = true }
+
+[features]
+default = ["std"]
+std = [
+    "base16/std",
+    "hex/std",
+    "hex-buffer-serde",
+    "schemars",
+    "serde",
+    "datasize",
+]
+alloc = []

@@ -8,11 +8,11 @@ pub(crate) mod operations;
 #[cfg(test)]
 mod tests;
 
-use crate::shared::newtypes::Blake2bHash;
+use casper_types::Digest;
 
 use crate::storage::{store::Store, trie::Trie};
 
 const NAME: &str = "TRIE_STORE";
 
 /// An entity which persists [`Trie`] values at their hashes.
-pub trait TrieStore<K, V>: Store<Blake2bHash, Trie<K, V>> {}
+pub trait TrieStore<K, V>: Store<Digest, Trie<K, V>> {}

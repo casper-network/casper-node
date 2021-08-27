@@ -53,6 +53,8 @@ mod transfer_result;
 mod uint;
 mod uref;
 
+pub use hashing::Digest;
+
 pub use access_rights::{AccessRights, ACCESS_RIGHTS_SERIALIZED_LENGTH};
 #[doc(inline)]
 pub use api_error::ApiError;

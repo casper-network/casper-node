@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     system::auction::{Bid, Bids, DelegationRate, Delegator, EraValidators},
-    AccessRights, EraId, PublicKey, SecretKey, URef, U512,
+    AccessRights, Digest, EraId, PublicKey, SecretKey, URef, U512,
 };
 
-use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
+use crate::rpcs::docs::DocExample;
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();

@@ -4,11 +4,8 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::{debug, warn};
 
-use crate::{
-    crypto::hash::Digest,
-    types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
-};
-use casper_types::{ExecutionResult, ProtocolVersion};
+use crate::types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature};
+use casper_types::{Digest, ExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,

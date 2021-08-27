@@ -2,17 +2,17 @@ mod concurrent;
 mod proptests;
 mod simple;
 
-use casper_types::bytesrepr::{Bytes, ToBytes};
-
-use crate::{
-    shared::newtypes::Blake2bHash,
-    storage::trie::{Pointer, PointerBlock, Trie},
+use casper_types::{
+    bytesrepr::{Bytes, ToBytes},
+    Digest,
 };
 
-#[derive(Clone)]
-struct TestData<K, V>(Blake2bHash, Trie<K, V>);
+use crate::storage::trie::{Pointer, PointerBlock, Trie};
 
-impl<'a, K, V> From<&'a TestData<K, V>> for (&'a Blake2bHash, &'a Trie<K, V>) {
+#[derive(Clone)]
+struct TestData<K, V>(Digest, Trie<K, V>);
+
+impl<'a, K, V> From<&'a TestData<K, V>> for (&'a Digest, &'a Trie<K, V>) {
     fn from(test_data: &'a TestData<K, V>) -> Self {
         (&test_data.0, &test_data.1)
     }
@@ -32,9 +32,9 @@ fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         value: Bytes::from(b"val_3".to_vec()),
     };
 
-    let leaf_1_hash = Blake2bHash::new(&leaf_1.to_bytes().unwrap());
-    let leaf_2_hash = Blake2bHash::new(&leaf_2.to_bytes().unwrap());
-    let leaf_3_hash = Blake2bHash::new(&leaf_3.to_bytes().unwrap());
+    let leaf_1_hash = Digest::hash(&leaf_1.to_bytes().unwrap());
+    let leaf_2_hash = Digest::hash(&leaf_2.to_bytes().unwrap());
+    let leaf_3_hash = Digest::hash(&leaf_3.to_bytes().unwrap());
 
     let node_2: Trie<Bytes, Bytes> = {
         let mut pointer_block = PointerBlock::new();
@@ -44,7 +44,7 @@ fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         Trie::Node { pointer_block }
     };
 
-    let node_2_hash = Blake2bHash::new(&node_2.to_bytes().unwrap());
+    let node_2_hash = Digest::hash(&node_2.to_bytes().unwrap());
 
     let ext_node: Trie<Bytes, Bytes> = {
         let affix = vec![1u8, 0];
@@ -55,7 +55,7 @@ fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         }
     };
 
-    let ext_node_hash = Blake2bHash::new(&ext_node.to_bytes().unwrap());
+    let ext_node_hash = Digest::hash(&ext_node.to_bytes().unwrap());
 
     let node_1: Trie<Bytes, Bytes> = {
         let mut pointer_block = PointerBlock::new();
@@ -65,7 +65,7 @@ fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         Trie::Node { pointer_block }
     };
 
-    let node_1_hash = Blake2bHash::new(&node_1.to_bytes().unwrap());
+    let node_1_hash = Digest::hash(&node_1.to_bytes().unwrap());
 
     vec![
         TestData(leaf_1_hash, leaf_1),

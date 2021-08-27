@@ -31,13 +31,12 @@ use casper_execution_engine::core::engine_state::{
     genesis::GenesisSuccess,
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
-use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion, StoredValue};
+use casper_types::{bytesrepr::FromBytes, Digest, EraId, ProtocolVersion, StoredValue};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
     components::{contract_runtime::ExecutionPreState, Component},
-    crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
         requests::{
@@ -165,6 +164,7 @@ pub(crate) struct ChainspecLoader {
     /// If `Some`, we're finished loading and committing the chainspec.
     reactor_exit: Option<ReactorExit>,
     /// The initial state root hash for this session.
+    #[data_size(skip)]
     initial_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
     initial_block: Option<Block>,
@@ -529,7 +529,7 @@ impl ChainspecLoader {
             })
             .unwrap_or_default();
         Box::new(UpgradeConfig::new(
-            (*block.state_root_hash()).into(),
+            *block.state_root_hash(),
             previous_version,
             new_version,
             Some(self.chainspec.protocol_config.activation_point.era_id()),
@@ -555,7 +555,7 @@ impl ChainspecLoader {
                 info!("genesis state root hash {}", post_state_hash);
                 trace!(%post_state_hash, ?execution_effect);
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                self.initial_state_root_hash = post_state_hash.into();
+                self.initial_state_root_hash = post_state_hash;
             }
             Err(error) => {
                 error!("failed to commit genesis: {}", error);
@@ -574,7 +574,7 @@ impl ChainspecLoader {
                 info!("state root hash {}", post_state_hash);
                 trace!(%post_state_hash, ?execution_effect);
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                self.initial_state_root_hash = post_state_hash.into();
+                self.initial_state_root_hash = post_state_hash;
             }
             Err(error) => {
                 error!("failed to upgrade contract runtime: {}", error);
@@ -811,12 +811,14 @@ mod tests {
     use rand::Rng;
 
     use super::*;
+
     use crate::{
         logging,
         reactor::{participating::ParticipatingEvent, EventQueueHandle, QueueKind, Scheduler},
         testing::TestRng,
         types::chainspec::CHAINSPEC_NAME,
     };
+    use casper_types::Digest;
 
     #[test]
     fn should_get_next_installed_version() {

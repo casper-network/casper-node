@@ -10,10 +10,6 @@ use core::{
     str::FromStr,
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use rand::{
@@ -21,6 +17,8 @@ use rand::{
     Rng,
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+
+use hashing::Digest;
 
 use crate::{
     account::{self, AccountHash, ACCOUNT_HASH_LENGTH},
@@ -403,14 +401,8 @@ impl Key {
     /// Creates a new [`Key::Dictionary`] variant based on a `seed_uref` and a `dictionary_item_key`
     /// bytes.
     pub fn dictionary(seed_uref: URef, dictionary_item_key: &[u8]) -> Key {
-        // NOTE: Expect below is safe because the length passed is supported.
-        let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
-        hasher.update(seed_uref.addr().as_ref());
-        hasher.update(dictionary_item_key);
         // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
-        let mut addr = HashAddr::default();
-        hasher.finalize_variable(|hash| addr.clone_from_slice(hash));
-        Key::Dictionary(addr)
+        Key::Dictionary(Digest::hash_pair(seed_uref.addr(), dictionary_item_key).value())
     }
 }
 

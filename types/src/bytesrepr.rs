@@ -23,6 +23,8 @@ use thiserror::Error;
 
 pub use bytes::Bytes;
 
+use crate::Digest;
+
 /// The number of bytes in a serialized `()`.
 pub const UNIT_SERIALIZED_LENGTH: usize = 0;
 /// The number of bytes in a serialized `bool`.
@@ -78,6 +80,23 @@ pub trait FromBytes: Sized {
     /// Deserializes the `Vec<u8>` into `Self`.
     fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
         Self::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))
+    }
+}
+
+impl ToBytes for Digest {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        self.inner().to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.inner().serialized_length()
+    }
+}
+
+impl FromBytes for Digest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        FromBytes::from_bytes(bytes)
+            .map(|(inner, remainder): ([u8; Digest::LENGTH], _)| (Digest::from(inner), remainder))
     }
 }
 
@@ -1151,6 +1170,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bytesrepr_digest_roundtrip() {
+        let mut rng = crate::new_rng();
+        let hash = Digest::random(&mut rng);
+        test_serialization_roundtrip(&hash);
+    }
 
     #[test]
     fn should_not_serialize_zero_denominator() {

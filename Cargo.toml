@@ -13,6 +13,7 @@ members = [
     "types",
     "utils/validation",
     "utils/global-state-update-gen",
+    "hashing",
 ]
 
 default-members = [
@@ -24,7 +25,8 @@ default-members = [
     "execution_engine_testing/tests",
     "node",
     "utils/global-state-update-gen",
-    "utils/validation"
+    "utils/validation",
+    "hashing"
 ]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful

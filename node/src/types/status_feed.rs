@@ -12,14 +12,14 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{EraId, ProtocolVersion, PublicKey};
+use casper_types::{Digest, EraId, ProtocolVersion, PublicKey};
 
 use crate::{
     components::{
         chainspec_loader::NextUpgrade,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, TimeDiff, Timestamp},
 };
 

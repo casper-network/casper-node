@@ -90,12 +90,11 @@ use casper_execution_engine::{
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
-    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, U512,
+    system::auction::EraValidators, Digest, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, StoredValue, Transfer, U512,
 };
 
 use crate::{
@@ -108,7 +107,6 @@ use crate::{
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
-    crypto::hash::Digest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
@@ -933,7 +931,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Read a trie by its hash key
-    pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> Option<Trie<Key, StoredValue>>
+    pub(crate) async fn read_trie(self, trie_key: Digest) -> Option<Trie<Key, StoredValue>>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -952,7 +950,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
         trie: Box<Trie<Key, StoredValue>>,
-    ) -> Result<Vec<Blake2bHash>, engine_state::Error>
+    ) -> Result<Vec<Digest>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1458,7 +1456,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<StorageRequest>,
     {
         if let Some(block) = self.get_highest_block_from_storage().await {
-            let state_hash = (*block.state_root_hash()).into();
+            let state_hash = *block.state_root_hash();
             let query_request = QueryRequest::new(state_hash, account_key, vec![]);
             if let Ok(QueryResult::Success { value, .. }) =
                 self.query_global_state(query_request).await
@@ -1574,7 +1572,7 @@ impl<REv> EffectBuilder<REv> {
                 // above the key block for the era
                 .map_or(initial_state_root_hash, |hdr| *hdr.state_root_hash())
             };
-            let req = EraValidatorsRequest::new(root_hash.into(), protocol_version);
+            let req = EraValidatorsRequest::new(root_hash, protocol_version);
             self.get_era_validators_from_contract_runtime(req)
                 .await
                 .ok()
@@ -1594,7 +1592,7 @@ impl<REv> EffectBuilder<REv> {
                 // runtime
                 let highest_block = self.get_highest_block_from_storage().await?;
                 let req = EraValidatorsRequest::new(
-                    (*highest_block.header().state_root_hash()).into(),
+                    *highest_block.header().state_root_hash(),
                     protocol_version,
                 );
                 self.get_era_validators_from_contract_runtime(req)

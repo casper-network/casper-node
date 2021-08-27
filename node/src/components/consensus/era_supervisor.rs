@@ -18,10 +18,6 @@ use std::{
 };
 
 use anyhow::Error;
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
 use datasize::DataSize;
 use futures::FutureExt;
 use itertools::Itertools;
@@ -29,7 +25,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
+use casper_types::{AsymmetricType, Digest, EraId, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
@@ -44,7 +40,6 @@ use crate::{
         ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
         TimerId,
     },
-    crypto::hash::Digest,
     effect::{
         announcements::ControlAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
@@ -238,16 +233,7 @@ where
     }
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
-        let mut result = [0; Digest::LENGTH];
-        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-
-        hasher.update(booking_block_hash);
-        hasher.update(key_block_seed);
-
-        hasher.finalize_variable(|slice| {
-            result.copy_from_slice(slice);
-        });
-
+        let result = Digest::hash_pair(booking_block_hash, key_block_seed).value();
         u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
     }
 
@@ -1348,16 +1334,9 @@ async fn execute_finalized_block<REv>(
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.
 fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
-    let mut result = [0; Digest::LENGTH];
-    let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-
-    hasher.update(protocol_config.chainspec_hash.as_ref());
-    hasher.update(era_id.to_le_bytes());
-
-    hasher.finalize_variable(|slice| {
-        result.copy_from_slice(slice);
-    });
-    result.into()
+    Digest::hash_pair(protocol_config.chainspec_hash, era_id.to_le_bytes())
+        .value()
+        .into()
 }
 
 /// The number of past eras whose validators are still bonded. After this many eras, a former

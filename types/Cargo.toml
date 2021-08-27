@@ -11,10 +11,12 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/types"
 license-file = "../LICENSE"
 
 [dependencies]
+# hashing should only be re-exported from casper-types
+hashing = { path = "../hashing", default-features = false }
+
 base16 = { version = "0.2.1", default-features = false }
 base64 = { version = "0.13.0", default-features = false }
 bitflags = "1"
-blake2 = { version = "0.9.0", default-features = false }
 datasize = { version = "0.2.4", default-features = false }
 displaydoc = { version = "0.1", default-features = false, optional = true }
 ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
@@ -30,7 +32,7 @@ once_cell = { version = "1.5.2", default-features = false }
 proptest = { version = "1.0.0", optional = true }
 rand = { version = "0.8.3", default-features = false, features = ["small_rng"] }
 schemars = { version = "0.8.0", features = ["preserve_order"], optional = true }
-serde = { version = "1", default-features = false, features = ["derive"] }
+serde = { version = "1", default-features = false, features = ["derive"], optional=true}
 serde_json = { version = "1.0.59", default-features = false }
 serde_bytes = { version = "0.11.5", default-features = false }
 thiserror = { version = "1.0.20", default-features = false, optional = true }
@@ -62,8 +64,17 @@ std = [
     "schemars",
     "thiserror",
     "num/std",
+    "hashing/std",
 ]
-no-std = ["base16/alloc", "hex/alloc", "serde/alloc", "serde_json/alloc", "serde_bytes/alloc", "displaydoc", "num/alloc"]
+no-std = [
+    "base16/alloc",
+    "hex/alloc",
+    "serde/alloc",
+    "serde_json/alloc",
+    "serde_bytes/alloc",
+    "displaydoc",
+    "hashing/alloc"
+]
 gens = ["std", "proptest/std"]
 
 [[bench]]

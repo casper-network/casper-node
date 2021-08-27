@@ -1,8 +1,7 @@
-use casper_types::{system::auction::Bids, Key, StoredValue};
+use casper_types::{system::auction::Bids, Digest, Key, StoredValue};
 
 use crate::{
-    core::tracking_copy::TrackingCopyQueryResult, shared::newtypes::Blake2bHash,
-    storage::trie::merkle_proof::TrieMerkleProof,
+    core::tracking_copy::TrackingCopyQueryResult, storage::trie::merkle_proof::TrieMerkleProof,
 };
 
 #[derive(Debug)]
@@ -21,13 +20,13 @@ pub enum QueryResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     key: Key,
     path: Vec<String>,
 }
 
 impl QueryRequest {
-    pub fn new(state_hash: Blake2bHash, key: Key, path: Vec<String>) -> Self {
+    pub fn new(state_hash: Digest, key: Key, path: Vec<String>) -> Self {
         QueryRequest {
             state_hash,
             key,
@@ -35,7 +34,7 @@ impl QueryRequest {
         }
     }
 
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
@@ -66,15 +65,15 @@ impl From<TrackingCopyQueryResult> for QueryResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetBidsRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
 }
 
 impl GetBidsRequest {
-    pub fn new(state_hash: Blake2bHash) -> Self {
+    pub fn new(state_hash: Digest) -> Self {
         GetBidsRequest { state_hash }
     }
 
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 }

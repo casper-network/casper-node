@@ -7,18 +7,15 @@ use casper_engine_test_support::{
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{Error, SystemContractRegistry},
-        execution,
-    },
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::{
+    engine_state::{Error, SystemContractRegistry},
+    execution,
 };
 use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
-    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::lmdb_fixture;
@@ -57,7 +54,7 @@ fn setup() -> InMemoryWasmTestBuilder {
 
 fn apply_global_state_update(
     builder: &LmdbWasmTestBuilder,
-    post_state_hash: Blake2bHash,
+    post_state_hash: Digest,
 ) -> BTreeMap<Key, StoredValue> {
     let key = URef::new([0u8; 32], AccessRights::all()).into();
 

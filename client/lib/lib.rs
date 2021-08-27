@@ -29,11 +29,11 @@ use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
-    crypto::hash::Digest,
+    crypto,
     rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
     types::{BlockHash, Deploy},
 };
-use casper_types::Key;
+use casper_types::{Digest, Key};
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;
@@ -1162,9 +1162,8 @@ impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
     fn try_into(self) -> Result<GlobalStateIdentifier> {
         let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
             context: "global_state_identifier",
-            error,
+            error: crypto::Error::FromHex(error),
         })?;
-
         if self.is_block_hash {
             Ok(GlobalStateIdentifier::BlockHash(BlockHash::new(hash)))
         } else {

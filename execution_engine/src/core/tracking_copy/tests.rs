@@ -7,7 +7,7 @@ use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
+    AccessRights, CLValue, Contract, Digest, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
     StoredValue, URef, U256, U512,
 };
 
@@ -20,10 +20,7 @@ use crate::{
         runtime_context::dictionary,
         ValidationError,
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        transform::Transform,
-    },
+    shared::{newtypes::CorrelationId, transform::Transform},
     storage::{
         global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
         trie::merkle_proof::TrieMerkleProof,
@@ -703,7 +700,7 @@ fn validate_query_proof_should_work() {
     // Bad proof hash
     assert_eq!(
         crate::core::validate_query_proof(
-            &Blake2bHash::new(&[]),
+            &Digest::hash(&[]),
             &proofs,
             &main_account_key,
             path,

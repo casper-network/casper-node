@@ -4,8 +4,7 @@ use lmdb::DatabaseFlags;
 use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
-use crate::shared::newtypes::Blake2bHash;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, Digest, Key, StoredValue};
 
 use crate::storage::{
     store::tests as store_tests,
@@ -35,9 +34,9 @@ fn in_memory_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     let env = InMemoryEnvironment::new();
     let store = InMemoryTrieStore::new(&env, None);
 
-    let inputs: BTreeMap<Blake2bHash, Trie<Key, StoredValue>> = inputs
+    let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()
-        .map(|trie| (Blake2bHash::new(&trie.to_bytes().unwrap()), trie))
+        .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
         .collect();
 
     store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap()
@@ -58,9 +57,9 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
-    let inputs: BTreeMap<Blake2bHash, Trie<Key, StoredValue>> = inputs
+    let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()
-        .map(|trie| (Blake2bHash::new(&trie.to_bytes().unwrap()), trie))
+        .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
         .collect();
 
     let ret = store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap();

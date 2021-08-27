@@ -16,14 +16,13 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::{Key, ProtocolVersion, Transfer};
+use casper_types::{Digest, Key, ProtocolVersion, Transfer};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
 };
 use crate::{
-    crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::common::{self},

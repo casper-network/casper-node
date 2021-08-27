@@ -7,7 +7,6 @@ use casper_execution_engine::{
     core, core::ValidationError, storage::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_node::{
-    crypto::hash::Digest,
     rpcs::{
         chain::{BlockIdentifier, EraSummary, GetEraInfoResult},
         state::GlobalStateIdentifier,
@@ -16,7 +15,7 @@ use casper_node::{
         json_compatibility, Block, BlockHeader, BlockValidationError, JsonBlock, JsonBlockHeader,
     },
 };
-use casper_types::{bytesrepr, Key, StoredValue, U512};
+use casper_types::{bytesrepr, Digest, Key, StoredValue, U512};
 
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
@@ -110,14 +109,8 @@ pub(crate) fn validate_get_era_info_response(
                 _ => return Err(ValidateResponseError::ValidateResponseFailedToParse),
             };
 
-            core::validate_query_proof(
-                &state_root_hash.to_owned().into(),
-                &proofs,
-                &key,
-                path,
-                &proof_value,
-            )
-            .map_err(Into::into)
+            core::validate_query_proof(&state_root_hash, &proofs, &key, path, &proof_value)
+                .map_err(Into::into)
         }
         None => Ok(()),
     }
@@ -173,14 +166,7 @@ pub(crate) fn validate_query_response(
         }
     }
 
-    core::validate_query_proof(
-        &state_root_hash.to_owned().into(),
-        &proofs,
-        key,
-        path,
-        proof_value,
-    )
-    .map_err(Into::into)
+    core::validate_query_proof(state_root_hash, &proofs, key, path, proof_value).map_err(Into::into)
 }
 
 pub(crate) fn validate_query_global_state(
@@ -234,14 +220,8 @@ pub(crate) fn validate_query_global_state(
         (GlobalStateIdentifier::StateRootHash(hash), None) => hash,
     };
 
-    core::validate_query_proof(
-        &state_root_hash.to_owned().into(),
-        &proofs,
-        key,
-        path,
-        proof_value,
-    )
-    .map_err(Into::into)
+    core::validate_query_proof(&state_root_hash, &proofs, key, path, proof_value)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_get_balance_response(
@@ -280,13 +260,8 @@ pub(crate) fn validate_get_balance_response(
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?
     };
 
-    core::validate_balance_proof(
-        &state_root_hash.to_owned().into(),
-        &balance_proof,
-        *key,
-        &balance,
-    )
-    .map_err(Into::into)
+    core::validate_balance_proof(state_root_hash, &balance_proof, *key, &balance)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_get_block_response(

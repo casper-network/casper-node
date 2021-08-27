@@ -4,11 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     system::auction::{EraInfo, SeigniorageAllocation},
-    AsymmetricType, EraId, PublicKey, U512,
+    AsymmetricType, Digest, EraId, PublicKey, U512,
 };
 
 use crate::{
-    crypto::hash::Digest,
     rpcs::{common::MERKLE_PROOF, docs::DocExample},
     types::{json_compatibility::StoredValue, Block, BlockHash, Item},
 };

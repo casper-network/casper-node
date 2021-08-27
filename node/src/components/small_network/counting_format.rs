@@ -22,15 +22,12 @@ use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
 
+use casper_types::Digest;
+
 use super::{tls::KeyFingerprint, Message, Payload};
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{
-    components::networking_metrics::NetworkingMetrics,
-    crypto::hash::{self, Digest},
-    types::NodeId,
-    utils,
-};
+use crate::{components::networking_metrics::NetworkingMetrics, types::NodeId, utils};
 
 /// Lazily-evaluated network message ID generator.
 ///
@@ -228,7 +225,7 @@ impl ConnectionId {
     /// node IDs.
     fn create(random_data: TlsRandomData, our_id: NodeId, their_id: NodeId) -> ConnectionId {
         // Hash the resulting random values.
-        let mut id = hash::hash(random_data.combined_random).to_array();
+        let mut id: [u8; Digest::LENGTH] = Digest::hash(&random_data.combined_random).into();
 
         // We XOR in a hashes of server and client fingerprint, to ensure that in the case of an
         // accidental collision (e.g. when `server_random` and `client_random` turn out to be all
@@ -254,11 +251,10 @@ impl ConnectionId {
         utils::xor(&mut buffer[4..12], &count.to_ne_bytes());
 
         // Hash again and truncate.
-        let full_hash = hash::hash(&buffer);
+        let full_hash = Digest::hash(&buffer);
 
         // Safe to expect here, as we assert earlier that `Digest` is at least 12 bytes.
-        let truncated =
-            TryFrom::try_from(&full_hash.to_array()[0..8]).expect("buffer size mismatch");
+        let truncated = TryFrom::try_from(&full_hash.inner()[0..8]).expect("buffer size mismatch");
 
         TraceId(truncated)
     }

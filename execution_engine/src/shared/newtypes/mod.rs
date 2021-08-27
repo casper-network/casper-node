@@ -1,9 +1,7 @@
 //! Some newtypes.
-mod blake2b256;
 mod macros;
 use std::fmt::{self, Display, Formatter};
 
-pub use blake2b256::Blake2bHash;
 use serde::Serialize;
 use uuid::Uuid;
 

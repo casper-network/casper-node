@@ -1,9 +1,12 @@
 use num_traits::{One, Zero};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 use crate::{
-    shared::newtypes::{Blake2bHash, CorrelationId},
+    shared::newtypes::CorrelationId,
     storage::{
         error,
         error::in_memory,
@@ -25,7 +28,7 @@ fn copy_state<'a, K, V, R, S, E>(
     source_store: &S,
     target_environment: &'a R,
     target_store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
 ) -> Result<(), E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy + Clone + Ord,
@@ -179,7 +182,7 @@ fn missing_trie_keys_should_find_key_of_corrupt_value<'a, K, V, R, S, E>(
     source_store: &S,
     target_environment: &'a R,
     target_store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
 ) -> Result<(), E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy + Clone + Ord,
@@ -206,7 +209,7 @@ where
         let txn: R::ReadTransaction = target_environment.create_read_txn()?;
         let bad_trie = target_store.get(&txn, &bad_key)?.expect("should have trie");
         txn.commit()?;
-        Blake2bHash::new(&bad_trie.to_bytes()?)
+        Digest::hash(&bad_trie.to_bytes()?)
     };
 
     assert_ne!(bad_key, bad_value_hash);

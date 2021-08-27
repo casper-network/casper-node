@@ -9,18 +9,18 @@ use casper_types::{
         auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
+    Contract, ContractHash, Digest, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
-    shared::newtypes::{Blake2bHash, CorrelationId},
+    shared::newtypes::CorrelationId,
     storage::global_state::StateProvider,
 };
 
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
-    pub post_state_hash: Blake2bHash,
+    pub post_state_hash: Digest,
     pub execution_effect: ExecutionEffect,
 }
 
@@ -36,7 +36,7 @@ impl fmt::Display for UpgradeSuccess {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpgradeConfig {
-    pre_state_hash: Blake2bHash,
+    pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
@@ -51,7 +51,7 @@ pub struct UpgradeConfig {
 impl UpgradeConfig {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
         activation_point: Option<EraId>,
@@ -76,7 +76,7 @@ impl UpgradeConfig {
         }
     }
 
-    pub fn pre_state_hash(&self) -> Blake2bHash {
+    pub fn pre_state_hash(&self) -> Digest {
         self.pre_state_hash
     }
 
@@ -116,7 +116,7 @@ impl UpgradeConfig {
         &self.global_state_update
     }
 
-    pub fn with_pre_state_hash(&mut self, pre_state_hash: Blake2bHash) {
+    pub fn with_pre_state_hash(&mut self, pre_state_hash: Digest) {
         self.pre_state_hash = pre_state_hash;
     }
 }

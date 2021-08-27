@@ -1,11 +1,7 @@
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 
-use casper_types::{AccessRights, Phase, URef};
+use casper_types::{AccessRights, Digest, Phase, URef};
 
 use crate::core::{Address, ADDRESS_LENGTH};
 
@@ -30,14 +26,7 @@ impl AddressGenerator {
     }
 
     pub fn new_hash_address(&mut self) -> Address {
-        // TODO: this appears to duplicate the logic of AddressGeneratorBuilder::build()
-        let pre_hash_bytes = self.create_address();
-        // NOTE: Unwrap below is assumed safe as output size of `ADDRESS_LENGTH` is a valid value.
-        let mut hasher = VarBlake2b::new(ADDRESS_LENGTH).unwrap();
-        hasher.update(&pre_hash_bytes);
-        let mut hash_bytes = [0; ADDRESS_LENGTH];
-        hasher.finalize_variable(|hash| hash_bytes.clone_from_slice(hash));
-        hash_bytes
+        Digest::hash(self.create_address()).value()
     }
 
     pub fn new_uref(&mut self, access_rights: AccessRights) -> URef {
@@ -63,11 +52,7 @@ impl AddressGeneratorBuilder {
     }
 
     pub fn build(self) -> AddressGenerator {
-        let mut seed: [u8; SEED_LENGTH] = [0u8; SEED_LENGTH];
-        // NOTE: Unwrap below is assumed safe as output size of `SEED_LENGTH` is a valid value.
-        let mut hasher = VarBlake2b::new(SEED_LENGTH).unwrap();
-        hasher.update(self.data);
-        hasher.finalize_variable(|hash| seed.clone_from_slice(hash));
+        let seed: [u8; SEED_LENGTH] = Digest::hash(self.data).value();
         AddressGenerator(ChaChaRng::from_seed(seed))
     }
 }

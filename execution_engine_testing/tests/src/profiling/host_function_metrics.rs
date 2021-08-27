@@ -29,7 +29,7 @@ use casper_execution_engine::{
 use casper_types::{runtime_args, ApiError, RuntimeArgs};
 
 use casper_engine_tests::profiling;
-use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_types::Digest;
 
 const ABOUT: &str =
     "Executes a contract which logs metrics for all host functions.  Note that the \
@@ -148,7 +148,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
     let engine_config = EngineConfig::default();
 
     let mut test_builder =
-        LmdbWasmTestBuilder::open(data_dir, engine_config, Blake2bHash::new(&root_hash));
+        LmdbWasmTestBuilder::open(data_dir, engine_config, Digest::hash(&root_hash));
 
     let mut rng = rand::thread_rng();
 

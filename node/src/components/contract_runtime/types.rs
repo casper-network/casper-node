@@ -1,24 +1,23 @@
 use std::collections::{BTreeMap, HashMap};
 
-use casper_execution_engine::{
-    core::engine_state::{execution_effect::ExecutionEffect, GetEraValidatorsRequest},
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::engine_state::{
+    execution_effect::ExecutionEffect, GetEraValidatorsRequest,
 };
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
+use casper_types::{Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::types::{Block, DeployHash, DeployHeader};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatorWeightsByEraIdRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     era_id: EraId,
     protocol_version: ProtocolVersion,
 }
 
 impl ValidatorWeightsByEraIdRequest {
     /// Constructs a new ValidatorWeightsByEraIdRequest.
-    pub fn new(state_hash: Blake2bHash, era_id: EraId, protocol_version: ProtocolVersion) -> Self {
+    pub fn new(state_hash: Digest, era_id: EraId, protocol_version: ProtocolVersion) -> Self {
         ValidatorWeightsByEraIdRequest {
             state_hash,
             era_id,
@@ -27,7 +26,7 @@ impl ValidatorWeightsByEraIdRequest {
     }
 
     /// Get the state hash.
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
@@ -51,13 +50,13 @@ impl From<ValidatorWeightsByEraIdRequest> for GetEraValidatorsRequest {
 /// Request for era validators.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EraValidatorsRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     protocol_version: ProtocolVersion,
 }
 
 impl EraValidatorsRequest {
     /// Constructs a new EraValidatorsRequest.
-    pub fn new(state_hash: Blake2bHash, protocol_version: ProtocolVersion) -> Self {
+    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
         EraValidatorsRequest {
             state_hash,
             protocol_version,
@@ -65,7 +64,7 @@ impl EraValidatorsRequest {
     }
 
     /// Get the state hash.
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 

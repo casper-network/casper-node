@@ -3,14 +3,11 @@ use std::sync::Arc;
 use datasize::DataSize;
 use tracing::info;
 
-use casper_types::{PublicKey, SecretKey, Signature};
+use casper_types::{Digest, PublicKey, SecretKey, Signature};
 
 use crate::{
     components::consensus::traits::{ConsensusValueT, Context, ValidatorSecret},
-    crypto::{
-        self,
-        hash::{self, Digest},
-    },
+    crypto::{self},
     types::BlockPayload,
 };
 
@@ -64,7 +61,7 @@ impl Context for ClContext {
     type InstanceId = Digest;
 
     fn hash(data: &[u8]) -> Digest {
-        hash::hash(data)
+        Digest::hash(data)
     }
 
     fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {

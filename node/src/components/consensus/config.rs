@@ -3,11 +3,10 @@ use std::{path::Path, sync::Arc};
 use datasize::DataSize;
 use serde::Deserialize;
 
-use casper_types::{ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{Digest, ProtocolVersion, PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
-    crypto::hash::Digest,
     types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
     utils::{External, LoadError, Loadable},
 };
@@ -66,6 +65,7 @@ pub(crate) struct ProtocolConfig {
     /// Genesis timestamp, if available.
     pub(crate) genesis_timestamp: Option<Timestamp>,
     /// The chainspec hash: All nodes in the network agree on it, and it's unique to this network.
+    #[data_size(skip)]
     pub(crate) chainspec_hash: Digest,
 }
 

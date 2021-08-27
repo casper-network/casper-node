@@ -15,9 +15,11 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{
+    account::AccountHash, Digest, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
@@ -59,7 +61,7 @@ pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30000; // 30 seconds
 
 // NOTE: Those values could be constants but are kept as once_cell::sync::Lazy to avoid changes of
 // `*FOO` into `FOO` back and forth.
-pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Blake2bHash> = Lazy::new(|| [42; 32].into());
+pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
 pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)

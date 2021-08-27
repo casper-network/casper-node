@@ -350,6 +350,7 @@ async fn run_two_node_network_five_times() {
 /// Sanity check that we can bind to a real network.
 ///
 /// Very unlikely to ever fail on a real machine.
+#[cfg(not(target_os = "macos"))]
 #[tokio::test]
 async fn bind_to_real_network_interface() {
     init_logging();
