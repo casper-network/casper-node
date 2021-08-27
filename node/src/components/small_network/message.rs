@@ -146,6 +146,8 @@ pub(crate) enum MessageKind {
     DeployTransfer,
     /// Blocks for finality signatures being transferred directly (via requests and other means).
     BlockTransfer,
+    /// Tries transferred, usually as part of fast syncing.
+    TrieTransfer,
     /// Any other kind of payload (or missing classification).
     Other,
 }
@@ -159,6 +161,7 @@ impl Display for MessageKind {
             MessageKind::AddressGossip => f.write_str("address_gossip"),
             MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
             MessageKind::BlockTransfer => f.write_str("block_transfer"),
+            MessageKind::TrieTransfer => f.write_str("trie_transfer"),
             MessageKind::Other => f.write_str("other"),
         }
     }

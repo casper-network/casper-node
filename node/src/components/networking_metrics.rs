@@ -32,6 +32,8 @@ pub(super) struct NetworkingMetrics {
     pub(super) out_count_deploy_transfer: IntCounter,
     /// Count of outgoing messages with block request/response payload.
     pub(super) out_count_block_transfer: IntCounter,
+    /// Count of outgoing messages with block request/response payload.
+    pub(super) out_count_trie_transfer: IntCounter,
     /// Count of outgoing messages with other payload.
     pub(super) out_count_other: IntCounter,
 
@@ -47,6 +49,8 @@ pub(super) struct NetworkingMetrics {
     pub(super) out_bytes_deploy_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with block request/response payload.
     pub(super) out_bytes_block_transfer: IntCounter,
+    /// Volume in bytes of outgoing messages with block request/response payload.
+    pub(super) out_bytes_trie_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with other payload.
     pub(super) out_bytes_other: IntCounter,
 
@@ -105,6 +109,10 @@ impl NetworkingMetrics {
             "net_out_count_block_transfer",
             "count of outgoing messages with block request/response payload",
         )?;
+        let out_count_trie_transfer = IntCounter::new(
+            "net_out_count_block_transfer",
+            "count of outgoing messages with trie payloads",
+        )?;
         let out_count_other = IntCounter::new(
             "net_out_count_other",
             "count of outgoing messages with other payload",
@@ -133,6 +141,10 @@ impl NetworkingMetrics {
         let out_bytes_block_transfer = IntCounter::new(
             "net_out_bytes_block_transfer",
             "volume in bytes of outgoing messages with block request/response payload",
+        )?;
+        let out_bytes_trie_transfer = IntCounter::new(
+            "net_out_bytes_block_transfer",
+            "volume in bytes of outgoing messages with trie payloads",
         )?;
         let out_bytes_other = IntCounter::new(
             "net_out_bytes_other",
@@ -195,6 +207,7 @@ impl NetworkingMetrics {
             out_count_address_gossip,
             out_count_deploy_transfer,
             out_count_block_transfer,
+            out_count_trie_transfer,
             out_count_other,
             out_bytes_protocol,
             out_bytes_consensus,
@@ -202,6 +215,7 @@ impl NetworkingMetrics {
             out_bytes_address_gossip,
             out_bytes_deploy_transfer,
             out_bytes_block_transfer,
+            out_bytes_trie_transfer,
             out_bytes_other,
             read_futures_in_flight,
             read_futures_total,
@@ -239,6 +253,10 @@ impl NetworkingMetrics {
                     metrics.out_bytes_block_transfer.inc_by(size);
                     metrics.out_count_block_transfer.inc();
                 }
+                MessageKind::TrieTransfer => {
+                    metrics.out_bytes_trie_transfer.inc_by(size);
+                    metrics.out_count_trie_transfer.inc();
+                }
                 MessageKind::Other => {
                     metrics.out_bytes_other.inc_by(size);
                     metrics.out_count_other.inc();
@@ -264,6 +282,7 @@ impl Drop for NetworkingMetrics {
         unregister_metric!(self.registry, self.out_count_address_gossip);
         unregister_metric!(self.registry, self.out_count_deploy_transfer);
         unregister_metric!(self.registry, self.out_count_block_transfer);
+        unregister_metric!(self.registry, self.out_count_trie_transfer);
         unregister_metric!(self.registry, self.out_count_other);
         unregister_metric!(self.registry, self.out_bytes_protocol);
         unregister_metric!(self.registry, self.out_bytes_consensus);
@@ -271,6 +290,7 @@ impl Drop for NetworkingMetrics {
         unregister_metric!(self.registry, self.out_bytes_address_gossip);
         unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
         unregister_metric!(self.registry, self.out_bytes_block_transfer);
+        unregister_metric!(self.registry, self.out_bytes_trie_transfer);
         unregister_metric!(self.registry, self.out_bytes_other);
 
         unregister_metric!(self.registry, self.read_futures_in_flight);
