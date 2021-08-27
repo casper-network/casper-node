@@ -173,8 +173,12 @@ pub enum DeployValidationFailure {
     },
 
     /// Missing payment amount.
-    #[error("missing payment amount")]
+    #[error("missing payment argument amount")]
     MissingPaymentAmount,
+
+    /// Failed to parse payment amount
+    #[error("failed to parse payment amount as U512")]
+    FailedToParsePaymentAmount,
 
     /// The payment amount associated with the deploy exceeds the block gas limit.
     #[error("payment amount of {got} exceeds the block gas limit of {block_gas_limit}")]
@@ -782,7 +786,7 @@ impl Deploy {
             let payment_amount = value
                 .clone()
                 .into_t::<U512>()
-                .map_err(|_| DeployValidationFailure::MissingPaymentAmount)?;
+                .map_err(|_| DeployValidationFailure::FailedToParsePaymentAmount)?;
             if payment_amount > U512::from(config.block_gas_limit) {
                 info!(
                     amount = %payment_amount,
