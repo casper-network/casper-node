@@ -43,7 +43,8 @@ use casper_types::{
         CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef,
+    U512,
 };
 
 pub use self::{
@@ -76,8 +77,6 @@ use crate::{
     },
     shared::{
         additive_map::AdditiveMap,
-        gas::Gas,
-        motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
         transform::Transform,
         wasm_prep::Preprocessor,

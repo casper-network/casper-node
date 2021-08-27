@@ -314,7 +314,7 @@ name = "cargo-casper"
 version = "1.0.0"
 dependencies = [
  "assert_cmd",
- "clap",
+ "clap 2.33.3",
  "colour",
  "once_cell",
  "tempfile",
@@ -332,7 +332,7 @@ dependencies = [
  "casper-node",
  "casper-types",
  "cbindgen",
- "clap",
+ "clap 2.33.3",
  "futures",
  "hex",
  "humantime",
@@ -389,7 +389,7 @@ dependencies = [
  "casper-engine-test-support",
  "casper-execution-engine",
  "casper-types",
- "clap",
+ "clap 2.33.3",
  "criterion",
  "crossbeam-channel 0.5.1",
  "dictionary",
@@ -581,6 +581,7 @@ dependencies = [
  "hex",
  "hex_fmt",
  "k256",
+ "num",
  "num-derive",
  "num-integer",
  "num-rational 0.4.0",
@@ -604,9 +605,25 @@ name = "casper-updater"
 version = "0.3.0"
 dependencies = [
  "casper-types",
- "clap",
+ "clap 2.33.3",
  "once_cell",
  "regex",
+]
+
+[[package]]
+name = "casper-validation"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base16",
+ "casper-execution-engine",
+ "casper-types",
+ "clap 3.0.0-beta.4",
+ "derive_more",
+ "hex",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -624,7 +641,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97449daf9b8c245bcad10bbc7c9f4a37c06172c18dd5f9fac340deefc309b957"
 dependencies = [
- "clap",
+ "clap 2.33.3",
  "heck",
  "indexmap",
  "log",
@@ -677,10 +694,41 @@ dependencies = [
  "ansi_term 0.11.0",
  "atty",
  "bitflags",
- "strsim",
- "textwrap",
+ "strsim 0.8.0",
+ "textwrap 0.11.0",
  "unicode-width",
  "vec_map",
+]
+
+[[package]]
+name = "clap"
+version = "3.0.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcd70aa5597dbc42f7217a543f9ef2768b2ef823ba29036072d30e1d88e98406"
+dependencies = [
+ "atty",
+ "bitflags",
+ "clap_derive",
+ "indexmap",
+ "lazy_static",
+ "os_str_bytes",
+ "strsim 0.10.0",
+ "termcolor",
+ "textwrap 0.14.2",
+ "vec_map",
+]
+
+[[package]]
+name = "clap_derive"
+version = "3.0.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5bb0d655624a0b8770d1c178fb8ffcb1f91cc722cb08f451e3dc72465421ac"
+dependencies = [
+ "heck",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -807,7 +855,7 @@ checksum = "1604dafd25fba2fe2d5895a9da139f8dc9b319a5fe5354ca137cbbce4e178d10"
 dependencies = [
  "atty",
  "cast",
- "clap",
+ "clap 2.33.3",
  "criterion-plot",
  "csv",
  "itertools",
@@ -1896,7 +1944,7 @@ dependencies = [
  "casper-engine-test-support",
  "casper-execution-engine",
  "casper-types",
- "clap",
+ "clap 2.33.3",
  "lmdb",
 ]
 
@@ -2752,6 +2800,12 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "os_str_bytes"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6acbef58a60fe69ab50510a55bc8cdd4d6cf2283d27ad338f54cb52747a9cf2d"
 
 [[package]]
 name = "output_vt100"
@@ -3891,12 +3945,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 
 [[package]]
+name = "strsim"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
 name = "structopt"
 version = "0.3.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69b041cdcb67226aca307e6e7be44c8806423d83e018bd662360a93dabce4d71"
 dependencies = [
- "clap",
+ "clap 2.33.3",
  "lazy_static",
  "structopt-derive",
 ]
@@ -4018,6 +4078,15 @@ name = "textwrap"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
+dependencies = [
+ "unicode-width",
+]
+
+[[package]]
+name = "textwrap"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0066c8d12af8b5acd21e00547c3797fde4e8677254a7ee429176ccebbe93dd80"
 dependencies = [
  "unicode-width",
 ]
@@ -4379,6 +4448,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer-purse-to-public-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "transfer-purse-to-purse"
 version = "0.1.0"
 dependencies = [
@@ -4404,6 +4481,14 @@ dependencies = [
 
 [[package]]
 name = "transfer-to-existing-account"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "transfer-to-public-key"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

@@ -2,9 +2,13 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use casper_engine_test_support::internal::{
-    InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
-    DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
+use casper_engine_test_support::{
+    internal::{
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+        DEFAULT_WASM_CONFIG,
+    },
+    AccountHash, DEFAULT_ACCOUNT_ADDR,
 };
 
 use casper_execution_engine::{
@@ -20,22 +24,29 @@ use casper_execution_engine::{
             DEFAULT_UNREACHABLE_COST,
         },
         storage_costs::StorageCosts,
-        system_config::SystemConfig,
+        system_config::{
+            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
+            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
+            DEFAULT_WASMLESS_TRANSFER_COST,
+        },
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{
+    account::ACCOUNT_HASH_LENGTH,
+    runtime_args,
     system::{
         auction::{
             AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    CLValue, EraId, ProtocolVersion, StoredValue, U512,
+    CLValue, EraId, ProtocolVersion, RuntimeArgs, StoredValue, U256, U512,
 };
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
+const ARG_ACCOUNT: &str = "account";
 
 fn get_upgraded_wasm_config() -> WasmConfig {
     let opcode_cost = OpcodeCosts {
@@ -123,6 +134,7 @@ fn should_allow_only_wasm_costs_patch_version() {
 
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -163,6 +175,7 @@ fn should_allow_only_wasm_costs_minor_version() {
 
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -631,5 +644,74 @@ fn should_apply_global_state_upgrade() {
     assert_eq!(
         new_unbonding_delay, after_unbonding_delay,
         "Should have modified locked funds period"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_increase_max_associated_keys_after_upgrade() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let new_system_config = SystemConfig::new(
+        DEFAULT_WASMLESS_TRANSFER_COST,
+        AuctionCosts::default(),
+        MintCosts::default(),
+        HandlePaymentCosts::default(),
+        StandardPaymentCosts::default(),
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS + 1,
+        *DEFAULT_WASM_CONFIG,
+        new_system_config,
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request)
+        .expect_upgrade_success();
+
+    for n in (0..DEFAULT_MAX_ASSOCIATED_KEYS).map(U256::from) {
+        let account_hash = {
+            let mut addr = [0; ACCOUNT_HASH_LENGTH];
+            n.to_big_endian(&mut addr);
+            AccountHash::new(addr)
+        };
+
+        let add_request = ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            "add_update_associated_key.wasm",
+            runtime_args! {
+                ARG_ACCOUNT => account_hash,
+            },
+        )
+        .with_protocol_version(new_protocol_version)
+        .build();
+
+        builder.exec(add_request).expect_success().commit();
+    }
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should get account");
+
+    assert!(account.associated_keys().len() > DEFAULT_MAX_ASSOCIATED_KEYS as usize);
+    assert_eq!(
+        account.associated_keys().len(),
+        new_engine_config.max_associated_keys() as usize
     );
 }

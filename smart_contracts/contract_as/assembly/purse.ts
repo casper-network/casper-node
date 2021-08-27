@@ -9,6 +9,8 @@ import {Option} from "./option";
 import {Ref} from "./ref";
 import {getMainPurse} from "./account";
 import {arrayToTyped} from "./utils";
+import {PublicKey} from "./public_key";
+import {AccountHash} from "./key";
 
 /**
  * The result of a successful transfer between purses.
@@ -221,6 +223,25 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
 }
 
 /**
+ * Transfers `amount` of motes from `source` purse to an account referenced by a `targetPublicKey` public key.
+ * If `target` does not exist it will be created.
+ *
+ * @param amount Amount is denominated in motes
+ * @returns This function will return a [[TransferredTo.TransferError]] in
+ * case of transfer error, in case of any other variant the transfer itself
+ * can be considered successful.
+ * @hidden
+ */
+ export function transferFromPurseToPublicKey(sourcePurse: URef, targetPublicKey: PublicKey, amount: U512, id: Ref<u64> | null = null): TransferResult {
+    const accountHash = AccountHash.fromPublicKey(targetPublicKey);
+    const accountHashBytes = accountHash.toBytes();
+
+    const targetAccount = arrayToTyped(accountHashBytes);
+
+    return transferFromPurseToAccount(sourcePurse, targetAccount, amount, id);
+ }
+
+/**
  * Transfers `amount` of motes from main purse purse to `target` account.
  * If `target` does not exist it will be created.
  *
@@ -267,4 +288,21 @@ export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: R
         return TransferResult.makeOk(transferredTo);
     }
     return TransferResult.makeErr(Error.fromErrorCode(ErrorCode.Transfer));
+}
+
+/**
+ * Transfers `amount` of motes from main purse to `target` public key.
+ * If account referenced by a `target` public key does not exist it will be created.
+ *
+ * @param amount Amount is denominated in motes
+ * @returns This function will return a [[TransferredTo.TransferError]] in
+ * case of transfer error, in case of any other variant the transfer itself
+ * can be considered successful.
+ */
+ export function transferToPublicKey(targetPublicKey: PublicKey, amount: U512, id: Ref<u64> | null = null): TransferResult {
+    const accountHash = AccountHash.fromPublicKey(targetPublicKey);
+    const accountHashBytes = accountHash.toBytes();
+
+    const targetAccount = arrayToTyped(accountHashBytes);
+    return transferToAccount(targetAccount, amount, id);
 }

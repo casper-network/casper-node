@@ -29,7 +29,6 @@ use casper_execution_engine::{
     },
     shared::{
         additive_map::AdditiveMap,
-        gas::Gas,
         logging::{self, Settings, Style},
         newtypes::{Blake2bHash, CorrelationId},
         transform::Transform,
@@ -57,7 +56,7 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
     TransferAddr, URef, U512,
 };
 
