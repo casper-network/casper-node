@@ -9,10 +9,10 @@ use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
 
-use casper_execution_engine::{core::engine_state::query::GetBidsRequest, shared::motes::Motes};
+use casper_execution_engine::core::engine_state::query::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
-    EraId, PublicKey, SecretKey, U512,
+    EraId, Motes, PublicKey, SecretKey, U512,
 };
 
 use crate::{
