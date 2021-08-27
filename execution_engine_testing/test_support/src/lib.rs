@@ -67,11 +67,18 @@
 #![warn(missing_docs)]
 
 mod account;
+mod additive_map_diff;
 mod code;
+mod deploy_item_builder;
 mod error;
+mod execute_request_builder;
 mod session;
+mod step_request_builder;
 mod test_context;
+mod upgrade_request_builder;
+pub mod utils;
 mod value;
+mod wasm_test_builder;
 
 /// TODO: doc comment.
 pub use account::Account;
@@ -99,14 +106,6 @@ pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
 
 /// Minimal amount for a transfer that creates new accounts.
 pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000u64;
-
-mod additive_map_diff;
-mod deploy_item_builder;
-mod execute_request_builder;
-mod step_request_builder;
-mod upgrade_request_builder;
-pub mod utils;
-mod wasm_test_builder;
 
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
