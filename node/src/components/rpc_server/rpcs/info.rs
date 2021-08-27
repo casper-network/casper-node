@@ -238,8 +238,17 @@ impl RpcWithoutParamsExt for GetStatus {
 pub struct JsonEraChanges {
     /// The era in which the change occurred.
     era_id: EraId,
-    /// The change in status.
+    /// The change in validator status.
     validator_change: ValidatorChange,
+}
+
+impl JsonEraChanges {
+    pub(crate) fn new(era_id: EraId, validator_change: ValidatorChange) -> Self {
+        JsonEraChanges {
+            era_id,
+            validator_change,
+        }
+    }
 }
 
 /// The information for a validator across eras.
@@ -250,6 +259,15 @@ pub struct JsonValidatorInfo {
     public_key: PublicKey,
     /// The set of changes to the validator's status.
     era_changes: Vec<JsonEraChanges>,
+}
+
+impl JsonValidatorInfo {
+    pub(crate) fn new(public_key: PublicKey, era_changes: Vec<JsonEraChanges>) -> Self {
+        JsonValidatorInfo {
+            public_key,
+            era_changes,
+        }
+    }
 }
 
 /// Result for the "info_get_validator_info" RPC.

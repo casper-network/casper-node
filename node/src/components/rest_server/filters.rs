@@ -13,6 +13,7 @@ use warp::{
 use casper_types::ProtocolVersion;
 
 use super::ReactorEventT;
+use crate::rpcs::info::{GetValidatorInfoResult, JsonEraChanges, JsonValidatorInfo};
 use crate::{
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
@@ -27,6 +28,9 @@ pub const METRICS_API_PATH: &str = "metrics";
 
 /// The OpenRPC scehma URL path.
 pub const JSON_RPC_SCHEMA_API_PATH: &str = "rpc-schema";
+
+/// The validator information URL path.
+pub const VALIDATOR_INFO_API_PATH: &str = "validator-info";
 
 pub(super) fn create_status_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
@@ -89,6 +93,38 @@ pub(super) fn create_rpc_schema_filter<REv: ReactorEventT>(
                 )
                 .map(move |open_rpc_schema| {
                     Ok::<_, Rejection>(reply::json(&open_rpc_schema).into_response())
+                })
+        })
+        .boxed()
+}
+
+pub(super) fn create_validator_info_filter<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    api_version: ProtocolVersion,
+) -> BoxedFilter<(Response<Body>,)> {
+    warp::get()
+        .and(warp::path(VALIDATOR_INFO_API_PATH))
+        .and_then(move || {
+            effect_builder
+                .get_consensus_validator_info()
+                .map(move |validator_info| {
+                    let json_validator_info = validator_info
+                        .into_iter()
+                        .map(|(public_key, era_changes)| {
+                            let era_changes = era_changes
+                                .into_iter()
+                                .map(|(era_id, validator_change)| {
+                                    JsonEraChanges::new(era_id, validator_change)
+                                })
+                                .collect();
+                            JsonValidatorInfo::new(public_key, era_changes)
+                        })
+                        .collect();
+                    let result = GetValidatorInfoResult {
+                        api_version,
+                        validator_info: json_validator_info,
+                    };
+                    Ok::<_, Rejection>(reply::json(&result).into_response())
                 })
         })
         .boxed()
