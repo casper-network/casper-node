@@ -5,6 +5,7 @@ use casper_types::{account::AccountHash, contracts::NamedKeys, StoredValue, URef
 use crate::{Error, Result};
 
 /// An `Account` instance.
+#[deprecated]
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Account {
     inner: casper_types::account::Account,

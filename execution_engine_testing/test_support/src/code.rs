@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::Hash;
 
 /// Represents the types of session or payment code.
+#[deprecated]
 pub enum Code {
     /// The filesystem path of compiled Wasm code.
     Path(PathBuf),

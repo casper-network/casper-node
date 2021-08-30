@@ -160,6 +160,7 @@ impl<S> Clone for WasmTestBuilder<S> {
 }
 
 /// A wrapper type to disambiguate builder from an actual result
+#[deprecated]
 #[derive(Clone)]
 pub struct WasmTestResult<S>(WasmTestBuilder<S>);
 

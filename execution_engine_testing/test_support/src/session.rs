@@ -8,6 +8,7 @@ use crate::{AccountHash, Code, DeployItemBuilder, ExecuteRequestBuilder, DEFAULT
 const ARG_AMOUNT: &str = "amount";
 
 /// Transfer Information for validating a transfer including gas usage from source
+#[deprecated]
 pub struct SessionTransferInfo {
     pub(crate) source_purse: URef,
     pub(crate) maybe_target_purse: Option<URef>,
@@ -35,6 +36,7 @@ impl SessionTransferInfo {
 }
 
 /// A single session, i.e. a single request to execute a single deploy within the test context.
+#[deprecated]
 pub struct Session {
     pub(crate) inner: ExecuteRequest,
     pub(crate) expect_success: bool,
@@ -43,6 +45,7 @@ pub struct Session {
 }
 
 /// Builder for a [`Session`].
+#[deprecated]
 pub struct SessionBuilder {
     er_builder: ExecuteRequestBuilder,
     di_builder: DeployItemBuilder,
