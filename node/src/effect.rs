@@ -1030,7 +1030,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested block and its associated metadata.
+    /// Gets the requested block and its finality signatures.
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
@@ -1048,9 +1048,26 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Get a block and sufficient finality signatures from storage.
+    pub(crate) async fn get_block_and_sufficient_finality_signatures_by_height_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<BlockWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block and its associated metadata.
-    #[allow(dead_code)]
-    pub(crate) async fn get_block_header_at_height_with_metadata_from_storage(
+    pub(crate) async fn get_block_header_and_sufficient_finality_signatures_by_height_from_storage(
         self,
         block_height: u64,
     ) -> Option<BlockHeaderWithMetadata>
@@ -1058,7 +1075,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockHeaderAndMetadataByHeight {
+            |responder| StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
                 responder,
             },

@@ -265,13 +265,21 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve block header with metadata by height.
-    GetBlockHeaderAndMetadataByHeight {
+    /// Retrieve block header with sufficient finality signatures by height.
+    GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
         /// Height of block to get header of.
         block_height: u64,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeaderWithMetadata>>,
+    },
+    /// Retrieves a block header with sufficient finality signatures by height.
+    GetBlockAndSufficientFinalitySignaturesByHeight {
+        /// Height of block to get header of.
+        block_height: u64,
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist or
+        /// does not have sufficient finality signatures by height.
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
@@ -431,7 +439,10 @@ impl Display for StorageRequest {
             StorageRequest::GetFinalizedDeploys { ttl, .. } => {
                 write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
             }
-            StorageRequest::GetBlockHeaderAndMetadataByHeight { block_height, .. } => {
+            StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                ..
+            } => {
                 write!(
                     formatter,
                     "get block and metadata for block by height: {}",
@@ -440,6 +451,16 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutBlockHeader { block_header, .. } => {
                 write!(formatter, "put block header: {}", block_header)
+            }
+            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get block and sufficient finality signatures by height: {}",
+                    block_height
+                )
             }
         }
     }

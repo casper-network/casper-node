@@ -420,13 +420,8 @@ impl Reactor {
             }
             Tag::BlockAndMetadataByHeight => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
-                    let chainspec = self.chainspec_loader.chainspec();
                     self.storage
-                        .read_block_and_sufficient_finality_signatures_by_height(
-                            block_height,
-                            chainspec.highway_config.finality_threshold_fraction,
-                            chainspec.protocol_config.last_emergency_restart,
-                        )
+                        .read_block_and_sufficient_finality_signatures_by_height(block_height)
                 })
             }
             Tag::GossipedAddress => {
@@ -440,12 +435,9 @@ impl Reactor {
             }
             Tag::BlockHeaderAndFinalitySignaturesByHeight => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
-                    let chainspec = self.chainspec_loader.chainspec();
                     self.storage
                         .read_block_header_and_sufficient_finality_signatures_by_height(
                             block_height,
-                            chainspec.highway_config.finality_threshold_fraction,
-                            chainspec.protocol_config.last_emergency_restart,
                         )
                 })
             }
