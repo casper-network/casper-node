@@ -1009,11 +1009,11 @@ impl<'a, T> MerkleBlockBodyPart<'a, T> {
     }
 
     /// The hash of the value and the rest of the linked list as a slice
-    pub fn value_and_rest_hashes_slice(&self) -> [Digest; 2] {
-        [
+    pub fn value_and_rest_hashes_slice(&self) -> (Digest, Digest) {
+        (
             self.value_hash,
             self.merkle_linked_list_node.merkle_proof_of_rest,
-        ]
+        )
     }
 
     /// The hash of the value of the block body part

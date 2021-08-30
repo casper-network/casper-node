@@ -59,7 +59,7 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
@@ -67,7 +67,10 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform};
+use casper_types::{
+    bytesrepr::{FromBytes, ToBytes},
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
+};
 
 use crate::{
     components::Component,
@@ -1184,12 +1187,12 @@ impl Storage {
         merklized_block_body_part: &MerkleBlockBodyPart<'a, T>,
     ) -> Result<bool, LmdbExtError>
     where
-        T: Serialize,
+        T: ToBytes,
     {
         // It's possible the value is already present (ie, if it is a block proposer).
         // We put the value and rest hashes in first, since we need that present even if the value
         // is already there.
-        if !tx.put_value(
+        if !tx.put_value_bytesrepr(
             self.block_body_v2_db,
             merklized_block_body_part.merkle_linked_list_node_hash(),
             &merklized_block_body_part.value_and_rest_hashes_slice(),
@@ -1198,7 +1201,7 @@ impl Storage {
             return Ok(false);
         };
 
-        if !tx.put_value(
+        if !tx.put_value_bytesrepr(
             part_database,
             merklized_block_body_part.value_hash(),
             merklized_block_body_part.value(),
@@ -1776,14 +1779,14 @@ fn get_merkle_linked_list_node<Tx, T>(
 ) -> Result<Option<MerkleLinkedListNode<T>>, LmdbExtError>
 where
     Tx: Transaction,
-    T: DeserializeOwned,
+    T: FromBytes,
 {
-    let [part_to_value_db, merkle_proof_of_rest]: [Digest; 2] =
-        match tx.get_value(block_body_v2_db, key_to_block_body_db)? {
+    let (part_to_value_db, merkle_proof_of_rest): (Digest, Digest) =
+        match tx.get_value_bytesrepr(block_body_v2_db, key_to_block_body_db)? {
             Some(slice) => slice,
             None => return Ok(None),
         };
-    let value = match tx.get_value(part_database, &part_to_value_db)? {
+    let value = match tx.get_value_bytesrepr(part_database, &part_to_value_db)? {
         Some(value) => value,
         None => return Ok(None),
     };
@@ -1866,8 +1869,8 @@ fn garbage_collect_block_body_v2_db(
         let mut live_digests_index = 1;
         while current_digest != hash::SENTINEL1 && !live_digests[0].contains(&current_digest) {
             live_digests[0].insert(current_digest);
-            let [key_to_part_db, merkle_proof_of_rest]: [Digest; 2] =
-                match txn.get_value(*block_body_v2_db, &current_digest)? {
+            let (key_to_part_db, merkle_proof_of_rest): (Digest, Digest) =
+                match txn.get_value_bytesrepr(*block_body_v2_db, &current_digest)? {
                     Some(slice) => slice,
                     None => {
                         return Err(Error::CouldNotFindBlockBodyPart {
