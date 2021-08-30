@@ -42,7 +42,7 @@ use crate::{
     },
     NodeRng,
 };
-use deploy_sets::BlockProposerDeploySets;
+use deploy_sets::{BlockProposerDeploySets, PruneResult};
 pub(crate) use event::{DeployInfo, Event};
 use metrics::BlockProposerMetrics;
 
@@ -265,7 +265,7 @@ impl BlockProposerReady {
             }
             Event::Prune => {
                 let pruned_hashes = self.prune(Timestamp::now());
-                let pruned_count = pruned_hashes.len();
+                let pruned_count = pruned_hashes.total_pruned;
                 debug!(%pruned_count, "pruned deploys from buffer");
 
                 let mut effects = effect_builder
@@ -274,7 +274,7 @@ impl BlockProposerReady {
 
                 effects.extend(
                     effect_builder
-                        .announce_expired_deploys(pruned_hashes)
+                        .announce_expired_deploys(pruned_hashes.expired_hashes_to_be_announced)
                         .ignore(),
                 );
                 effects
@@ -502,7 +502,7 @@ impl BlockProposerReady {
 
     /// Prunes expired deploy information from the BlockProposer, returns the hashes of deploys
     /// pruned.
-    fn prune(&mut self, current_instant: Timestamp) -> Vec<DeployHash> {
+    fn prune(&mut self, current_instant: Timestamp) -> PruneResult {
         self.sets.prune(current_instant)
     }
 

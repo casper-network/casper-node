@@ -11,6 +11,20 @@ use datasize::DataSize;
 use super::{event::DeployInfo, BlockHeight, FinalizationQueue};
 use crate::types::{DeployHash, DeployHeader, Timestamp};
 
+pub(crate) struct PruneResult {
+    pub(crate) total_pruned: usize,
+    pub(crate) expired_hashes_to_be_announced: Vec<DeployHash>,
+}
+
+impl PruneResult {
+    fn new(total_pruned: usize, expiration_to_be_announced: Vec<DeployHash>) -> Self {
+        Self {
+            total_pruned,
+            expired_hashes_to_be_announced: expiration_to_be_announced,
+        }
+    }
+}
+
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Default)]
 pub(super) struct BlockProposerDeploySets {
@@ -60,12 +74,22 @@ impl Display for BlockProposerDeploySets {
 impl BlockProposerDeploySets {
     /// Prunes expired deploy information from the BlockProposerState, returns the
     /// hashes of deploys pruned.
-    pub(crate) fn prune(&mut self, current_instant: Timestamp) -> Vec<DeployHash> {
+    pub(crate) fn prune(&mut self, current_instant: Timestamp) -> PruneResult {
         let pending_deploys = prune_pending_deploys(&mut self.pending_deploys, current_instant);
         let pending_transfers = prune_pending_deploys(&mut self.pending_transfers, current_instant);
+
+        // We prune from finalized deploys collection because expired deploys
+        // can never be proposed again. This makes this collection smaller for
+        // later iterations.
         let finalized = prune_deploys(&mut self.finalized_deploys, current_instant);
 
-        [pending_deploys, pending_transfers, finalized].concat()
+        // We return a total of pruned deploys, but for the deploys pruned
+        // from the `finalized` collection we don't want to send
+        // the expiration event.
+        PruneResult::new(
+            pending_deploys.len() + pending_transfers.len() + finalized.len(),
+            [pending_deploys, pending_transfers].concat(),
+        )
     }
 }
 
