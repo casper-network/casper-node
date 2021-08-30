@@ -1,23 +1,33 @@
-use std::{fmt, iter::Sum};
+//! The `gas` module is used for working with Gas including converting to and from Motes.
+
+use core::{
+    fmt,
+    iter::Sum,
+    ops::{Add, AddAssign, Div, Mul, Sub},
+};
 
 use num::Zero;
 
-use casper_types::U512;
+use crate::{Motes, U512};
 
-use crate::shared::motes::Motes;
-
+/// The `Gas` struct represents a `U512` amount of gas.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Gas(U512);
 
 impl Gas {
+    /// Constructs a new `Gas`.
     pub fn new(value: U512) -> Self {
         Gas(value)
     }
 
+    /// Returns the inner `U512` value.
     pub fn value(&self) -> U512 {
         self.0
     }
 
+    /// Converts the given `motes` to `Gas` by dividing them by `conv_rate`.
+    ///
+    /// Returns `None` if `conv_rate == 0`.
     pub fn from_motes(motes: Motes, conv_rate: u64) -> Option<Self> {
         motes
             .value()
@@ -25,10 +35,12 @@ impl Gas {
             .map(Self::new)
     }
 
+    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
     pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
         self.0.checked_sub(rhs.value()).map(Self::new)
     }
@@ -40,7 +52,7 @@ impl fmt::Display for Gas {
     }
 }
 
-impl std::ops::Add for Gas {
+impl Add for Gas {
     type Output = Gas;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -49,7 +61,7 @@ impl std::ops::Add for Gas {
     }
 }
 
-impl std::ops::Sub for Gas {
+impl Sub for Gas {
     type Output = Gas;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -58,7 +70,7 @@ impl std::ops::Sub for Gas {
     }
 }
 
-impl std::ops::Div for Gas {
+impl Div for Gas {
     type Output = Gas;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -67,7 +79,7 @@ impl std::ops::Div for Gas {
     }
 }
 
-impl std::ops::Mul for Gas {
+impl Mul for Gas {
     type Output = Gas;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -76,7 +88,7 @@ impl std::ops::Mul for Gas {
     }
 }
 
-impl std::ops::AddAssign for Gas {
+impl AddAssign for Gas {
     fn add_assign(&mut self, rhs: Self) {
         self.0 += rhs.0
     }
@@ -94,7 +106,7 @@ impl Zero for Gas {
 
 impl Sum for Gas {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Gas::zero(), std::ops::Add::add)
+        iter.fold(Gas::zero(), Add::add)
     }
 }
 
@@ -114,9 +126,9 @@ impl From<u64> for Gas {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::U512;
+    use crate::U512;
 
-    use crate::shared::{gas::Gas, motes::Motes};
+    use crate::{Gas, Motes};
 
     #[test]
     fn should_be_able_to_get_instance_of_gas() {

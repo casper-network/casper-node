@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    U512,
+    Gas, U512,
 };
-
-use super::gas::Gas;
 
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 

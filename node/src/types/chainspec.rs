@@ -210,12 +210,11 @@ mod tests {
 
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, ProtocolVersion, StoredValue, U512};
+    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, U512};
 
     use super::*;
     use crate::{

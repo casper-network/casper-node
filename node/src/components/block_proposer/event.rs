@@ -5,12 +5,13 @@ use derive_more::From;
 use fmt::Display;
 use serde::{Deserialize, Serialize};
 
+use casper_types::Motes;
+
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
     types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
-use casper_execution_engine::shared::motes::Motes;
 
 /// Information about a deploy.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]

@@ -144,6 +144,7 @@ pub(crate) type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
+    CreatedMessageToRandomPeer(Vec<u8>),
     InvalidIncomingMessage(Vec<u8>, I, Error),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
