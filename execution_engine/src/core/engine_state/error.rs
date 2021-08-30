@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, system::mint, ProtocolVersion};
+use casper_types::{bytesrepr, system::mint, ApiError, ProtocolVersion};
 
 use crate::{
     core::{
@@ -61,6 +61,17 @@ pub enum Error {
     MissingSystemContractRegistry,
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
+}
+
+impl Error {
+    /// Creates an [`enum@Error`] instance of an [`Error::Exec`] variant with an API
+    /// error-compatible object.
+    ///
+    /// This method should be used only by native code that has to mimic logic of a WASM executed
+    /// code.
+    pub fn reverter(api_error: impl Into<ApiError>) -> Error {
+        Error::Exec(execution::Error::Revert(api_error.into()))
+    }
 }
 
 impl From<execution::Error> for Error {

@@ -1042,6 +1042,17 @@ where
                     .send_message(to, message.into())
                     .ignore()
             }
+            ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
+                let message = ConsensusMessage::Protocol { era_id, payload };
+                let effect_builder = self.effect_builder;
+                async move {
+                    let peers = effect_builder.get_peers_in_random_order().await;
+                    if let Some(to) = peers.into_iter().next() {
+                        effect_builder.send_message(to, message.into()).await;
+                    }
+                }
+                .ignore()
+            }
             ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
                 let timediff = timestamp.saturating_diff(Timestamp::now());
                 self.effect_builder
