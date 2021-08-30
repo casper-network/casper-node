@@ -67,7 +67,7 @@ pub use contracts::{
 pub use crypto::*;
 pub use deploy_info::DeployInfo;
 pub use execution_result::{
-    JsonExecutionJournal, JsonExecutionResult, OpKind, Operation, Transform, TransformEntry,
+    ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]

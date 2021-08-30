@@ -600,7 +600,7 @@ impl ContractRuntime {
         let BlockAndExecutionEffects {
             block,
             execution_results,
-            maybe_step_execution_effect,
+            maybe_step_effect_and_upcoming_era_validators,
         } = match tokio::task::unconstrained(async move {
             operations::execute_finalized_block(
                 engine_state.as_ref(),
@@ -625,12 +625,11 @@ impl ContractRuntime {
         announcements::linear_chain_block(effect_builder, block, execution_results).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_effect,
+            step_execution_journal,
             upcoming_era_validators,
-                        ,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
-            announcements::step_success(effect_builder, current_era_id, step_execution_effect)
+            announcements::step_success(effect_builder, current_era_id, step_execution_journal)
                 .await;
 
             announcements::upcoming_era_validators(
@@ -640,20 +639,6 @@ impl ContractRuntime {
             )
             .await;
         }
-
-        /*
-
-        let era_id = block.header().era_id();
-        effect_builder
-            .announce_linear_chain_block(block, execution_results)
-            .await;
-        if let Some(step_execution_journal) = maybe_step_execution_journal {
-            effect_builder
-                .announce_step_success(era_id, step_execution_journal.into())
-                .await;
-        }
-
-         */
 
         // If the child is already finalized, start execution.
         let next_block = {

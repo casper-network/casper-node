@@ -94,8 +94,8 @@ use casper_execution_engine::{
     storage::trie::Trie,
 };
 use casper_types::{
-    system::auction::EraValidators, EraId, JsonExecutionJournal, JsonExecutionResult, Key,
-    ProtocolVersion, PublicKey, StoredValue, Transfer, U512,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, U512,
 };
 
 use crate::{
@@ -711,7 +711,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_linear_chain_block(
         self,
         block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
         REv: From<ContractRuntimeAnnouncement>,
     {
@@ -985,7 +985,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_execution_results_to_storage(
         self,
         block_hash: BlockHash,
-        execution_results: HashMap<DeployHash, JsonExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
     {

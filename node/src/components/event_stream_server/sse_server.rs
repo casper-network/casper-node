@@ -34,7 +34,7 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::{EraId, JsonExecutionJournal, JsonExecutionResult, ProtocolVersion, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey};
 
 use super::DeployGetter;
 use crate::types::{
@@ -99,7 +99,7 @@ pub enum SseData {
         dependencies: Vec<DeployHash>,
         block_hash: Box<BlockHash>,
         #[data_size(skip)]
-        execution_result: Box<JsonExecutionResult>,
+        execution_result: Box<ExecutionResult>,
     },
     /// Generic representation of validator's fault in an era.
     Fault {
@@ -112,7 +112,7 @@ pub enum SseData {
     Step {
         era_id: EraId,
         #[data_size(skip)]
-        execution_effect: JsonExecutionJournal,
+        execution_effect: ExecutionEffect,
     },
 }
 
@@ -193,9 +193,10 @@ impl SseData {
 
     /// Returns a random `SseData::Step`.
     pub(super) fn random_step(rng: &mut TestRng) -> Self {
-        let execution_effect = match rng.gen::<JsonExecutionResult>() {
-            JsonExecutionResult::Success { effect, .. }
-            | JsonExecutionResult::Failure { effect, .. } => effect,
+        let execution_effect = match rng.gen::<ExecutionResult>() {
+            ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
+                effect
+            }
         };
         SseData::Step {
             era_id: EraId::new(rng.gen()),

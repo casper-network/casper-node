@@ -10,7 +10,7 @@ use std::{
 
 use serde::Serialize;
 
-use casper_types::{EraId, JsonExecutionJournal, JsonExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
@@ -221,7 +221,7 @@ pub(crate) struct LinearChainBlock {
     /// The block.
     pub(crate) block: Block,
     /// The results of executing the deploys in this block.
-    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)>,
+    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
 }
 
 /// A Gossiper announcement.

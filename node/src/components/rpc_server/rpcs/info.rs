@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::{JsonExecutionResult, ProtocolVersion};
+use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -35,7 +35,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonBlockHashAndExecutionResult {
         block_hash: Block::doc_example().id(),
-        result: JsonExecutionResult::example().clone(),
+        result: ExecutionResult::example().clone(),
     }],
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
@@ -64,7 +64,7 @@ pub struct JsonBlockHashAndExecutionResult {
     /// The block hash.
     pub block_hash: BlockHash,
     /// Execution result.
-    pub result: JsonExecutionResult,
+    pub result: ExecutionResult,
 }
 
 /// Result for "info_get_deploy" RPC response.

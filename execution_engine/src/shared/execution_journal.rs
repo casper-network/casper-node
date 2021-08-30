@@ -1,5 +1,5 @@
 use casper_types::{
-    JsonExecutionJournal as JsonExecutionEffect, Key, TransformEntry as JsonTransformEntry,
+    ExecutionEffect as JsonExecutionEffect, Key, TransformEntry as JsonTransformEntry,
 };
 
 use crate::shared::transform::Transform;

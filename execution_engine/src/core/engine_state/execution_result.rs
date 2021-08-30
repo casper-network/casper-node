@@ -307,7 +307,7 @@ impl ExecutionResult {
     }
 }
 
-impl From<ExecutionResult> for casper_types::JsonExecutionResult {
+impl From<ExecutionResult> for casper_types::ExecutionResult {
     fn from(ee_execution_result: ExecutionResult) -> Self {
         match ee_execution_result {
             ExecutionResult::Success {
@@ -315,7 +315,7 @@ impl From<ExecutionResult> for casper_types::JsonExecutionResult {
                 transfers,
                 cost,
                 execution_journal,
-            } => casper_types::JsonExecutionResult::Success {
+            } => casper_types::ExecutionResult::Success {
                 effect: execution_journal.into(),
                 transfers,
                 cost: cost.value(),
@@ -326,7 +326,7 @@ impl From<ExecutionResult> for casper_types::JsonExecutionResult {
                 transfers,
                 cost,
                 execution_journal,
-            } => casper_types::JsonExecutionResult::Failure {
+            } => casper_types::ExecutionResult::Failure {
                 effect: execution_journal.into(),
                 transfers,
                 cost: cost.value(),

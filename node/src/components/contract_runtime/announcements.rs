@@ -5,13 +5,13 @@ use std::{
 
 use serde::Serialize;
 
-use casper_execution_engine::core::engine_state::execution_effect::ExecutionEffect as ExecutionEngineExecutionEffect;
-use casper_types::{EraId, JsonExecutionJournal, JsonExecutionResult, PublicKey, U512};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
     effect::{announcements::LinearChainBlock, EffectBuilder},
     types::{Block, DeployHash, DeployHeader},
 };
+use casper_execution_engine::shared::execution_journal::ExecutionJournal;
 use std::collections::BTreeMap;
 
 /// A ContractRuntime announcement.
@@ -78,14 +78,14 @@ impl Display for ContractRuntimeAnnouncement {
 pub(super) async fn step_success<REv>(
     effect_builder: EffectBuilder<REv>,
     era_id: EraId,
-    execution_effect: ExecutionEngineExecutionEffect,
+    execution_journal: ExecutionJournal,
 ) where
     REv: From<ContractRuntimeAnnouncement>,
 {
     effect_builder
         .schedule_regular(ContractRuntimeAnnouncement::StepSuccess {
             era_id,
-            execution_effect: (&execution_effect).into(),
+            execution_effect: execution_journal.into(),
         })
         .await
 }

@@ -29,7 +29,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    AsymmetricType, JsonExecutionResult, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    AsymmetricType, ExecutionResult, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -951,7 +951,7 @@ impl From<Deploy> for DeployItem {
 pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy in the context of one or more blocks.
-    pub execution_results: HashMap<BlockHash, JsonExecutionResult>,
+    pub execution_results: HashMap<BlockHash, ExecutionResult>,
 }
 
 impl ToBytes for Deploy {

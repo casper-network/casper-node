@@ -141,6 +141,5 @@ pub enum StepError {
 #[derive(Debug)]
 pub struct StepSuccess {
     pub post_state_hash: Blake2bHash,
-    pub next_era_validators: BTreeMap<PublicKey, U512>,
     pub execution_journal: ExecutionJournal,
 }

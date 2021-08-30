@@ -15,7 +15,7 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
-use casper_types::{EraId, JsonExecutionResult, Key, ProtocolVersion, PublicKey, U512};
+use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::{
@@ -53,7 +53,7 @@ pub(super) fn execute_finalized_block(
         next_block_height: _,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: HashMap<DeployHash, (DeployHeader, JsonExecutionResult)> =
+    let mut execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)> =
         HashMap::new();
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
@@ -92,7 +92,7 @@ pub(super) fn execute_finalized_block(
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {
                 post_state_hash,
-                execution_journal,
+                execution_journal: step_execution_journal,
             } = commit_step(
                 engine_state,
                 metrics,
@@ -108,7 +108,7 @@ pub(super) fn execute_finalized_block(
                 GetEraValidatorsRequest::new(Blake2bHash::from(state_root_hash), protocol_version),
             )?;
             Some(StepEffectAndUpcomingEraValidators {
-                step_execution_effect: execution_effect,
+                step_execution_journal,
                 upcoming_era_validators,
             })
         } else {
@@ -119,43 +119,6 @@ pub(super) fn execute_finalized_block(
     let block_height = finalized_block.height();
     metrics.chain_height.set(block_height as i64);
 
-    let block_and_execution_effects = if let Some(StepSuccess {
-        post_state_hash,
-        next_era_validators,
-        execution_journal: execution_effect,
-    }) = maybe_step_success
-    {
-        BlockAndExecutionEffects {
-            block: Block::new(
-                parent_hash,
-                parent_seed,
-                post_state_hash.into(),
-                finalized_block,
-                Some(next_era_validators),
-                protocol_version,
-            )?,
-            execution_results,
-            maybe_step_effect_and_upcoming_era_validators,
-            maybe_step_execution_journal: Some(execution_effect),
-        }
-    } else {
-        BlockAndExecutionEffects {
-            block: Block::new(
-                parent_hash,
-                parent_seed,
-                state_root_hash,
-                finalized_block,
-                None,
-                protocol_version,
-            )?,
-            execution_results,
-            maybe_step_effect_and_upcoming_era_validators,
-            maybe_step_execution_journal: None,
-        }
-    };
-    Ok(block_and_execution_effects)
-
-    /* DEV
     let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
         maybe_step_effect_and_upcoming_era_validators
             .as_ref()
@@ -183,8 +146,6 @@ pub(super) fn execute_finalized_block(
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
     })
-
-         */
 }
 
 /// Commits the execution effects.
@@ -194,12 +155,12 @@ fn commit_execution_effects(
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, JsonExecutionResult), BlockExecutionError> {
+) -> Result<(Digest, ExecutionResult), BlockExecutionError> {
     let ee_execution_result = execution_results
         .into_iter()
         .exactly_one()
         .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-    let json_execution_result = JsonExecutionResult::from(ee_execution_result.clone());
+    let json_execution_result = ExecutionResult::from(ee_execution_result.clone());
 
     let execution_effect = match ee_execution_result {
         EngineExecutionResult::Success {

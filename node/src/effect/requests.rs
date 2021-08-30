@@ -30,7 +30,7 @@ use casper_execution_engine::{
 };
 
 use casper_types::{
-    system::auction::EraValidators, EraId, JsonExecutionResult, Key, ProtocolVersion, PublicKey,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
     StoredValue, Transfer, URef,
 };
 
@@ -303,7 +303,7 @@ pub(crate) enum StorageRequest {
         /// Hash of block.
         block_hash: Box<BlockHash>,
         /// Mapping of deploys to execution results of the block.
-        execution_results: HashMap<DeployHash, JsonExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
         responder: Responder<()>,
     },

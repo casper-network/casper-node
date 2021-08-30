@@ -11,7 +11,7 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{EraId, JsonExecutionResult, ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
 
 use super::{
     move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
@@ -286,7 +286,7 @@ fn put_execution_results(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
-    execution_results: HashMap<DeployHash, JsonExecutionResult>,
+    execution_results: HashMap<DeployHash, ExecutionResult>,
 ) {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
@@ -714,7 +714,7 @@ fn store_execution_results_for_two_blocks() {
     );
 
     // Put first execution result.
-    let first_result: JsonExecutionResult = harness.rng.gen();
+    let first_result: ExecutionResult = harness.rng.gen();
     let mut first_results = HashMap::new();
     first_results.insert(*deploy.id(), first_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_a, first_results);
@@ -729,7 +729,7 @@ fn store_execution_results_for_two_blocks() {
     assert_eq!(first_metadata.execution_results, expected_per_block_results);
 
     // Add second result for the same deploy, different block.
-    let second_result: JsonExecutionResult = harness.rng.gen();
+    let second_result: ExecutionResult = harness.rng.gen();
     let mut second_results = HashMap::new();
     second_results.insert(*deploy.id(), second_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_b, second_results);
@@ -774,7 +774,7 @@ fn store_random_execution_results() {
     fn setup_block(
         harness: &mut ComponentHarness<UnitTestEvent>,
         storage: &mut Storage,
-        expected_outcome: &mut HashMap<DeployHash, HashMap<BlockHash, JsonExecutionResult>>,
+        expected_outcome: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
         block_hash: &BlockHash,
         shared_deploys: &[Deploy],
     ) {
@@ -790,7 +790,7 @@ fn store_random_execution_results() {
             // Store unique deploy.
             put_deploy(harness, storage, Box::new(deploy.clone()));
 
-            let execution_result: JsonExecutionResult = harness.rng.gen();
+            let execution_result: ExecutionResult = harness.rng.gen();
 
             // Insert deploy results for the unique block-deploy combination.
             let mut map = HashMap::new();
@@ -803,7 +803,7 @@ fn store_random_execution_results() {
 
         // Insert the shared deploys as well.
         for shared_deploy in shared_deploys {
-            let execution_result: JsonExecutionResult = harness.rng.gen();
+            let execution_result: ExecutionResult = harness.rng.gen();
 
             // Insert the new result and ensure it is not present yet.
             let result = block_results.insert(*shared_deploy.id(), execution_result.clone());
@@ -995,7 +995,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let block = random_block_at_height(&mut harness.rng, 42);
-    let execution_result: JsonExecutionResult = harness.rng.gen();
+    let execution_result: ExecutionResult = harness.rng.gen();
 
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
     put_block(&mut harness, &mut storage, block.clone());
@@ -1082,7 +1082,7 @@ fn should_hard_reset() {
     let mut execution_results = vec![];
     for block_hash in blocks.iter().map(|block| block.hash()) {
         let deploy = Deploy::random(&mut harness.rng);
-        let execution_result: JsonExecutionResult = harness.rng.gen();
+        let execution_result: ExecutionResult = harness.rng.gen();
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.id(), execution_result);
         put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));

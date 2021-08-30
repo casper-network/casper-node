@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::JsonExecutionResult;
+use casper_types::ExecutionResult;
 use derive_more::From;
 
 use crate::{
@@ -21,7 +21,7 @@ pub(crate) enum Event<I> {
         /// The block.
         block: Box<Block>,
         /// The deploys' execution results.
-        execution_results: HashMap<DeployHash, JsonExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     /// Finality signature received.
     /// Not necessarily _new_ finality signature.
