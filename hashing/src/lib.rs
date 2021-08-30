@@ -71,14 +71,8 @@ impl Digest {
     }
 
     /// Returns the underlying value.
-    pub fn value(&self) -> [u8; Digest::LENGTH] {
+    pub fn value(self) -> [u8; Digest::LENGTH] {
         self.0
-    }
-
-    /// Converts the underlying hash digest array to a `Vec`
-    #[cfg(feature = "std")]
-    pub fn into_vec(self) -> Vec<u8> {
-        self.0.to_vec()
     }
 
     /// Returns a `Digest` parsed from a hex-encoded `Digest`.

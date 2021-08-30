@@ -424,6 +424,6 @@ mod tests {
             210, 91, 221, 123, 200, 135, 102, 194, 204, 46, 76, 13, 254,
         ];
         let (_, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[]).unwrap();
-        assert_eq!(expected_bytes, root_hash.into_vec())
+        assert_eq!(expected_bytes, root_hash.value())
     }
 }
