@@ -73,8 +73,6 @@ fn run_tool_and_resulting_tests() {
         .arg(nightly_version.trim())
         .arg("cargo")
         .arg("test")
-        .arg("--")
-        .arg("--nocapture")
         .current_dir(test_dir.join("tests"));
     let test_output = output_from_command(test_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, test_output.status.code().unwrap());

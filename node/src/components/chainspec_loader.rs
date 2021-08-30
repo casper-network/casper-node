@@ -164,7 +164,6 @@ pub(crate) struct ChainspecLoader {
     /// If `Some`, we're finished loading and committing the chainspec.
     reactor_exit: Option<ReactorExit>,
     /// The initial state root hash for this session.
-    #[data_size(skip)]
     initial_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
     initial_block: Option<Block>,

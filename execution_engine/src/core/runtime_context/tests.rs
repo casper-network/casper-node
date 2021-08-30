@@ -228,7 +228,6 @@ fn account_key_not_writeable() {
 
 #[test]
 fn account_key_readable_valid() {
-    println!("evil shit");
     // Account key is readable if it is a "base" key - current context of the
     // execution.
     let query_result = test(HashMap::new(), |mut rc| {

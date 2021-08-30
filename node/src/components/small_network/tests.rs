@@ -10,7 +10,6 @@ use std::{
 };
 
 use derive_more::From;
-use pnet::datalink;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
@@ -357,7 +356,7 @@ async fn bind_to_real_network_interface() {
 
     let mut rng = crate::new_rng();
 
-    let iface = datalink::interfaces()
+    let iface = pnet::datalink::interfaces()
         .into_iter()
         .find(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))
         .expect("could not find a single networking interface that isn't localhost");

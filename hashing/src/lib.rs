@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-/// The number of bytes in a Blake2b hash
 use core::{array::TryFromSliceError, convert::TryFrom};
 
 #[cfg(all(feature = "no-std", no_std))]
@@ -39,6 +38,7 @@ pub struct Digest(
 );
 
 impl Digest {
+    /// The number of bytes in a digest hash
     pub const LENGTH: usize = 32;
 
     /// Creates a 32-byte hash digest from a given a piece of data
