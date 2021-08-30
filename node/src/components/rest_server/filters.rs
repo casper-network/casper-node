@@ -13,10 +13,10 @@ use warp::{
 use casper_types::ProtocolVersion;
 
 use super::ReactorEventT;
-use crate::rpcs::info::{GetValidatorInfoResult, JsonEraChanges, JsonValidatorInfo};
 use crate::{
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
+    rpcs::info::{GetValidatorInfoResult, JsonEraChanges, JsonValidatorInfo},
     types::GetStatusResult,
 };
 

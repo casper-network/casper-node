@@ -26,11 +26,11 @@ use super::{
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
-use crate::rpcs::info::GetValidatorInfo;
 use crate::{
     effect::EffectBuilder,
     rpcs::{
         chain::GetEraInfoBySwitchBlock,
+        info::GetValidatorInfo,
         state::{GetAccountInfo, GetDictionaryItem, QueryGlobalState},
     },
 };

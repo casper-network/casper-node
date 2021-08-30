@@ -18,7 +18,7 @@ enum DisplayOrder {
 #[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for GetValidatorInfo {
     const NAME: &'static str = "get-validator-info";
-    const ABOUT: &'static str = "Retrieves validator information";
+    const ABOUT: &'static str = "Retrieves changes in validator status between two eras.";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
