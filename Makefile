@@ -119,7 +119,7 @@ lint: lint-contracts-rs
 
 .PHONY: audit
 audit:
-	$(CARGO) audit --ignore RUSTSEC-2021-0073 --ignore RUSTSEC-2021-0076
+	$(CARGO) audit
 
 .PHONY: doc
 doc:
@@ -156,8 +156,12 @@ build-for-packaging: build-client-contracts
 	$(LEGACY) $(CARGO) build --release
 
 .PHONY: deb
-deb: setup build-for-packaging
+deb: setup-rs build-for-packaging
 	cd client && $(LEGACY) $(CARGO) deb -p casper-client --no-build
+
+.PHONY: rpm
+rpm: setup-rs
+	cd client && $(CARGO) rpm build
 
 .PHONY: package
 package:

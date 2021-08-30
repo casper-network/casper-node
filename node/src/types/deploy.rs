@@ -21,15 +21,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
-use casper_execution_engine::{
-    core::engine_state::{executable_deploy_item::ExecutableDeployItem, DeployItem},
-    shared::motes::Motes,
+use casper_execution_engine::core::engine_state::{
+    executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    AsymmetricType, ExecutionResult, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    AsymmetricType, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -838,6 +837,11 @@ impl Deploy {
             &secret_key,
             None,
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn invalidate(&mut self) {
+        self.header.chain_name.clear();
     }
 }
 

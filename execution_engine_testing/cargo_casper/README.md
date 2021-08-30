@@ -1,17 +1,17 @@
 # `cargo-casper`
 
-[![LOGO](https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
-[![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/casper-node/status.svg?branch=master)](http://drone-auto.casperlabs.io/CasperLabs/casper-node)
+[![Build Status](https://drone-auto-casper-network.casperlabs.io/api/badges/casper-network/casper-node/status.svg?branch=dev)](http://drone-auto-casper-network.casperlabs.io/casper-network/casper-node)
 [![Crates.io](https://img.shields.io/crates/v/cargo-casper)](https://crates.io/crates/cargo-casper)
 [![Documentation](https://docs.rs/cargo-casper/badge.svg)](https://docs.rs/cargo-casper)
-[![License](https://img.shields.io/badge/license-COSL-blue.svg)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/casper-network/casper-node/blob/dev/LICENSE)
 
 A command line tool for creating a Wasm smart contract and tests for use on the Casper network.
 
 ## License
 
-Licensed under the [CasperLabs Open Source License (COSL)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE).
+Licensed under the [Apache License Version 2.0](https://github.com/casper-network/casper-node/blob/master/LICENSE).
 
 ---
 
@@ -26,7 +26,7 @@ cargo install cargo-casper
 To install from the latest `dev` branch:
 
 ```
-git clone https://github.com/CasperLabs/casper-node
+git clone https://github.com/casper-network/casper-node
 cd casper-node/execution_engine_testing/cargo_casper
 cargo install cargo-casper --path=.
 ```
@@ -89,4 +89,4 @@ cargo test
 
 ## License
 
-Licensed under the [CasperLabs Open Source License (COSL)](../../LICENSE).
+Licensed under the [Apache License Version 2.0](https://github.com/casper-network/casper-node/blob/master/LICENSE).

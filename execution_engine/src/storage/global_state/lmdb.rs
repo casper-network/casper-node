@@ -291,6 +291,7 @@ mod tests {
                 &temp_dir.path().to_path_buf(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
+                true,
             )
             .unwrap(),
         );

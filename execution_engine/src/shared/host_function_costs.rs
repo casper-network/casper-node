@@ -2,9 +2,10 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
-
-use super::gas::Gas;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    Gas,
+};
 
 /// Representation of argument's cost.
 pub type Cost = u32;

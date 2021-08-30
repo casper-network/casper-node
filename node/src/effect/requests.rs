@@ -186,6 +186,12 @@ pub(crate) enum NetworkInfoRequest<I> {
         // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
         responder: Responder<BTreeMap<I, String>>,
     },
+    /// Get the peers in random order.
+    GetPeersInRandomOrder {
+        /// Responder to be called with all connected peers.
+        /// Responds with a vector in a random order.
+        responder: Responder<Vec<I>>,
+    },
 }
 
 impl<I> Display for NetworkInfoRequest<I>
@@ -195,6 +201,9 @@ where
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+            NetworkInfoRequest::GetPeersInRandomOrder { responder: _ } => {
+                write!(formatter, "get peers in random order")
+            }
         }
     }
 }
@@ -558,7 +567,6 @@ pub(crate) enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.

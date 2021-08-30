@@ -7,15 +7,12 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{self, genesis::GenesisAccount},
-        execution,
-    },
-    shared::motes::Motes,
+use casper_execution_engine::core::{
+    engine_state::{self, genesis::GenesisAccount},
+    execution,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, RuntimeArgs,
+    account::AccountHash, runtime_args, system::mint, ApiError, Key, Motes, PublicKey, RuntimeArgs,
     SecretKey, U512,
 };
 

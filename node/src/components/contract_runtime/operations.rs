@@ -84,6 +84,9 @@ pub(super) fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
+    // Flush once, after all deploys have been executed.
+    engine_state.flush_environment()?;
+
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators
     let maybe_step_effect_and_upcoming_era_validators =

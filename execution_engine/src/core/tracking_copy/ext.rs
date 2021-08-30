@@ -5,12 +5,12 @@ use parity_wasm::elements::Module;
 use casper_types::{
     account::{Account, AccountHash},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    ContractWasmHash, Key, StoredValue, StoredValueTypeMismatch, URef,
+    ContractWasmHash, Key, Motes, StoredValue, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
     core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy},
-    shared::{motes::Motes, newtypes::CorrelationId, wasm, wasm_prep::Preprocessor},
+    shared::{newtypes::CorrelationId, wasm, wasm_prep::Preprocessor},
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 

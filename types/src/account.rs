@@ -106,8 +106,8 @@ impl Account {
     }
 
     /// Returns associated keys.
-    pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
-        self.associated_keys.iter()
+    pub fn associated_keys(&self) -> &AssociatedKeys {
+        &self.associated_keys
     }
 
     /// Returns action thresholds.
@@ -282,9 +282,6 @@ impl FromBytes for Account {
         ))
     }
 }
-/// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
-/// account.
-pub const MAX_ASSOCIATED_KEYS: usize = 10;
 
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
@@ -304,8 +301,7 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 #[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum AddKeyFailure {
-    /// There are already [`MAX_ASSOCIATED_KEYS`] [`AccountHash`]s associated with the given
-    /// account.
+    /// There are already maximum [`AccountHash`]s associated with the given account.
     #[cfg_attr(
         feature = "std",
         error("Unable to add new associated key because maximum amount of keys is reached")

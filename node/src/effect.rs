@@ -590,6 +590,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the current network peers in a random order.
+    pub async fn get_peers_in_random_order<I>(self) -> Vec<I>
+    where
+        REv: From<NetworkInfoRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetPeersInRandomOrder { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
     /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
