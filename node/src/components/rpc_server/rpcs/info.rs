@@ -33,7 +33,7 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
-    execution_results: vec![JsonBlockHashAndExecutionResult {
+    execution_results: vec![JsonExecutionResult {
         block_hash: Block::doc_example().id(),
         result: ExecutionResult::example().clone(),
     }],
@@ -60,7 +60,7 @@ impl DocExample for GetDeployParams {
 /// The execution result of a single deploy.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JsonBlockHashAndExecutionResult {
+pub struct JsonExecutionResult {
     /// The block hash.
     pub block_hash: BlockHash,
     /// Execution result.
@@ -77,7 +77,7 @@ pub struct GetDeployResult {
     /// The deploy.
     pub deploy: Deploy,
     /// The map of block hash to execution result.
-    pub execution_results: Vec<JsonBlockHashAndExecutionResult>,
+    pub execution_results: Vec<JsonExecutionResult>,
 }
 
 impl DocExample for GetDeployResult {
@@ -132,7 +132,7 @@ impl RpcWithParamsExt for GetDeploy {
             let execution_results = metadata
                 .execution_results
                 .into_iter()
-                .map(|(block_hash, result)| JsonBlockHashAndExecutionResult { block_hash, result })
+                .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
                 .collect();
 
             let result = Self::ResponseResult {
