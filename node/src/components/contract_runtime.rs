@@ -137,6 +137,7 @@ pub(crate) struct ContractRuntimeMetrics {
     put_trie: Histogram,
     read_trie: Histogram,
     chain_height: IntGauge,
+    exec_block: Histogram,
 }
 
 /// Value of upper bound of histogram.
@@ -176,6 +177,8 @@ const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "tracking run of engine_state.put_trie in seconds.";
 const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
 const MISSING_TRIE_KEYS_HELP: &str = "tracking run of engine_state.missing_trie_keys in seconds.";
+const EXEC_BLOCK_NAME: &str = "contract_runtime_execute_block";
+const EXEC_BLOCK_HELP: &str = "tracking execution of all deploys in a block.";
 
 /// Create prometheus Histogram and register.
 fn register_histogram_metric(
@@ -233,6 +236,7 @@ impl ContractRuntimeMetrics {
                 MISSING_TRIE_KEYS_NAME,
                 MISSING_TRIE_KEYS_HELP,
             )?,
+            exec_block: register_histogram_metric(registry, EXEC_BLOCK_NAME, EXEC_BLOCK_HELP)?,
         })
     }
 }
