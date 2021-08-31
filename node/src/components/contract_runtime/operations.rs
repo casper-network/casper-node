@@ -86,7 +86,7 @@ pub(super) fn execute_finalized_block(
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
-    
+
     metrics.exec_block.observe(start.elapsed().as_secs_f64());
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
