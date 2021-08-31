@@ -1195,7 +1195,7 @@ impl Storage {
         if !tx.put_value_bytesrepr(
             self.block_body_v2_db,
             merklized_block_body_part.merkle_linked_list_node_hash(),
-            &merklized_block_body_part.value_and_rest_hashes_slice(),
+            &merklized_block_body_part.value_and_rest_hashes_pair(),
             true,
         )? {
             return Ok(false);
