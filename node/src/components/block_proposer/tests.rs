@@ -334,10 +334,10 @@ fn should_successfully_prune() {
 
     // now move the clock to make some things expire
     let mut pruned = proposer.prune(expired_time);
-    assert_eq!(pruned.total_pruned, 3); // Three deploy pruned
+    assert_eq!(pruned.total_pruned, 3); // Three deploys pruned
 
-    // Expired announcement created for two deploys only: deploy2 and deploy3
-    // because deploy4 did not expire and deploy1 has been finalized
+    // Expiration announcements created for two deploys only: "deploy2" and "deploy3"
+    // because "deploy4" did not expire and "deploy1" has been finalized
     assert_eq!(pruned.expired_hashes_to_be_announced.len(), 2);
     let mut hashes_to_be_announced = vec![*deploy2.id(), *deploy3.id()];
     hashes_to_be_announced.sort();

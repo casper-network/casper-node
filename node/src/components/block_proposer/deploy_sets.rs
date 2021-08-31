@@ -17,10 +17,10 @@ pub(crate) struct PruneResult {
 }
 
 impl PruneResult {
-    fn new(total_pruned: usize, expiration_to_be_announced: Vec<DeployHash>) -> Self {
+    fn new(total_pruned: usize, expired_hashes_to_be_announced: Vec<DeployHash>) -> Self {
         Self {
             total_pruned,
-            expired_hashes_to_be_announced: expiration_to_be_announced,
+            expired_hashes_to_be_announced,
         }
     }
 }
