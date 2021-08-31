@@ -57,6 +57,7 @@ pub(super) fn execute_finalized_block(
         HashMap::new();
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
+    let start = Instant::now();
     for deploy in deploys {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
@@ -82,6 +83,7 @@ pub(super) fn execute_finalized_block(
         execution_results.insert(deploy_hash, (deploy_header, execution_result));
         state_root_hash = state_hash;
     }
+    metrics.exec_block.observe(start.elapsed().as_secs_f64());
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
