@@ -65,14 +65,16 @@ fn should_fail_to_add_bid_from_stored_session_code() {
 
     match builder.get_error() {
         None => panic!("should have returned an error"),
-        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(14)))) => {}
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
         Some(error) => panic!("unexpected error: {:?}", error),
     }
 }
 
 #[ignore]
 #[test]
-fn should_add_bid_from_stored_contract_code() {
+fn should_fail_to_add_bid_from_stored_contract_code() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
 
     let store_call_auction_request = ExecuteRequestBuilder::standard(
@@ -102,7 +104,15 @@ fn should_add_bid_from_stored_contract_code() {
         .commit()
         .expect_success();
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder.exec(add_bid_request);
+
+    match builder.get_error() {
+        None => panic!("should have returned an error"),
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
+        Some(error) => panic!("unexpected error: {:?}", error),
+    }
 }
 
 #[ignore]
@@ -154,14 +164,16 @@ fn should_fail_to_withdraw_bid_from_stored_session_code() {
 
     match builder.get_error() {
         None => panic!("should have returned an error"),
-        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(14)))) => {}
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
         Some(error) => panic!("unexpected error: {:?}", error),
     }
 }
 
 #[ignore]
 #[test]
-fn should_withdraw_bid_from_stored_contract_code() {
+fn should_fail_to_withdraw_bid_from_stored_contract_code() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -204,7 +216,15 @@ fn should_withdraw_bid_from_stored_contract_code() {
         .commit()
         .expect_success();
 
-    builder.exec(withdraw_bid_request).commit().expect_success();
+    builder.exec(withdraw_bid_request);
+
+    match builder.get_error() {
+        None => panic!("should have returned an error"),
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
+        Some(error) => panic!("unexpected error: {:?}", error),
+    }
 }
 
 #[ignore]
@@ -281,14 +301,16 @@ fn should_fail_to_delegate_from_stored_session_code() {
 
     match builder.get_error() {
         None => panic!("should have returned an error"),
-        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(14)))) => {}
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
         Some(error) => panic!("unexpected error: {:?}", error),
     }
 }
 
 #[ignore]
 #[test]
-fn should_delegate_from_stored_contract_code() {
+fn should_fail_to_delegate_from_stored_contract_code() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
 
     let validator_public_key_arg = VALIDATOR_PUBLIC_KEY.clone();
@@ -356,7 +378,15 @@ fn should_delegate_from_stored_contract_code() {
         .commit()
         .expect_success();
 
-    builder.exec(delegate_request).commit().expect_success();
+    builder.exec(delegate_request);
+
+    match builder.get_error() {
+        None => panic!("should have returned an error"),
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
+        Some(error) => panic!("unexpected error: {:?}", error),
+    }
 }
 
 #[ignore]
@@ -401,14 +431,18 @@ fn should_fail_to_undelegate_from_stored_session_code() {
     )
     .build();
 
-    let delegate_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        PACKAGE_NAME,
-        None,
-        CONTRACT_DELEGATE_ENTRYPOINT_CONTRACT,
+        builder.get_auction_contract_hash(),
+        auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => default_public_key_arg.clone(),
             auction::ARG_VALIDATOR => validator_public_key_arg.clone(),
+            auction::ARG_AMOUNT => U512::one(),
         },
     )
     .build();
@@ -424,10 +458,6 @@ fn should_fail_to_undelegate_from_stored_session_code() {
         },
     )
     .build();
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder
         .exec(validator_fund_request)
@@ -447,14 +477,16 @@ fn should_fail_to_undelegate_from_stored_session_code() {
 
     match builder.get_error() {
         None => panic!("should have returned an error"),
-        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(14)))) => {}
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
         Some(error) => panic!("unexpected error: {:?}", error),
     }
 }
 
 #[ignore]
 #[test]
-fn should_undelegate_from_stored_contract_code() {
+fn should_fail_to_undelegate_from_stored_contract_code() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
 
     let validator_public_key_arg = VALIDATOR_PUBLIC_KEY.clone();
@@ -494,14 +526,18 @@ fn should_undelegate_from_stored_contract_code() {
     )
     .build();
 
-    let delegate_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        PACKAGE_NAME,
-        None,
-        CONTRACT_DELEGATE_ENTRYPOINT_CONTRACT,
+        builder.get_auction_contract_hash(),
+        auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => default_public_key_arg.clone(),
             auction::ARG_VALIDATOR => validator_public_key_arg.clone(),
+            auction::ARG_AMOUNT => U512::one(),
         },
     )
     .build();
@@ -518,10 +554,6 @@ fn should_undelegate_from_stored_contract_code() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
     builder
         .exec(validator_fund_request)
         .commit()
@@ -536,5 +568,13 @@ fn should_undelegate_from_stored_contract_code() {
 
     builder.exec(delegate_request).commit().expect_success();
 
-    builder.exec(undelegate_request).commit().expect_success();
+    builder.exec(undelegate_request);
+
+    match builder.get_error() {
+        None => panic!("should have returned an error"),
+        Some(engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(
+            auction_error,
+        )))) if auction_error == auction::Error::InvalidContext as u8 => {}
+        Some(error) => panic!("unexpected error: {:?}", error),
+    }
 }
