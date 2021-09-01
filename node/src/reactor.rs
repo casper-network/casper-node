@@ -51,6 +51,7 @@ use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
+use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
@@ -665,7 +666,6 @@ where
         };
         if let Err(error) = self.scheduler.debug_dump(&mut file).await {
             warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
-            return;
         }
     }
 
