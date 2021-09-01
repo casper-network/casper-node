@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Support building and testing using stable Rust.
+* Support `URef`, `PublicKey` and `AccountHash` as transfer targets for `transfer` and `make-transfer`.
 
 
 
