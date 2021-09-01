@@ -30,7 +30,7 @@ function main() {
 # Function: assert_error_count
 # Uses: Variable ERRORS_ALLOWED
 # Description: Searches the log files counting instances
-#              of equivocators. Compares count against
+#              of errors. Compares count against
 #              the total allowed by the test. If
 #              ERRORS_ALLOWED is set to ignore, it will
 #              return 0.
