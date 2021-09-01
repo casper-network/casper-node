@@ -39,7 +39,7 @@ fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
 }
 
 const HEX_CHARS: [char; 16] = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F',
 ];
 
 /// Encodes bytes as hexadecimal with mixed-case based checksums following a scheme similar to
