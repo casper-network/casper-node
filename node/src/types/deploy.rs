@@ -264,6 +264,12 @@ impl DeployHash {
     }
 }
 
+impl From<DeployHash> for Digest {
+    fn from(deploy_hash: DeployHash) -> Self {
+        deploy_hash.0
+    }
+}
+
 impl Display for DeployHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "deploy-hash({})", self.0,)

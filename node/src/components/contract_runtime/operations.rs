@@ -39,6 +39,7 @@ pub(super) fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
+    transfers: Vec<Deploy>,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -58,7 +59,7 @@ pub(super) fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
-    for deploy in deploys {
+    for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
