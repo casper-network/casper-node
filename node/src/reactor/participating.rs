@@ -65,7 +65,7 @@ use crate::{
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
-        ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitStatus, FinalizedBlock,
+        ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitCode, FinalizedBlock,
         Item, NodeId, Tag,
     },
     utils::{Source, WithDir},
@@ -1260,7 +1260,7 @@ impl reactor::Reactor for Reactor {
     fn maybe_exit(&self) -> Option<ReactorExit> {
         self.consensus
             .stop_for_upgrade()
-            .then(|| ReactorExit::ProcessShouldExit(ExitStatus::Success))
+            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
 }
 

@@ -37,7 +37,6 @@ All notable changes to this project will be documented in this file.  The format
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 * Remove dead code revealed by making modules `pub(crate)`.
-* Remove undocumented exit codes corresponding to `SIGINT`, `SIGTERM`, etc.
 * Remove legacy synchronization from genesis in favor of fast sync.
 
 

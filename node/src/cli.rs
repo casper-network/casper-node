@@ -21,7 +21,7 @@ use crate::{
     logging,
     reactor::{initializer, joiner, participating, ReactorExit, Runner},
     setup_signal_hooks,
-    types::ExitStatus,
+    types::ExitCode,
     utils::{
         pid_file::{PidFile, PidFileOutcome},
         WithDir,
@@ -231,7 +231,7 @@ impl Cli {
                     ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
                     reactor_exit => {
                         error!("validator should not exit with {:?}", reactor_exit);
-                        Ok(ExitStatus::Abort as i32)
+                        Ok(ExitCode::Abort as i32)
                     }
                 }
             }
@@ -255,7 +255,7 @@ impl Cli {
                     WithDir::new(old_root, old_config),
                     new_config,
                 )?;
-                Ok(ExitStatus::Success as i32)
+                Ok(ExitCode::Success as i32)
             }
             Cli::MigrateData {
                 old_config,
@@ -277,7 +277,7 @@ impl Cli {
                     WithDir::new(old_root, old_config),
                     new_config,
                 )?;
-                Ok(ExitStatus::Success as i32)
+                Ok(ExitCode::Success as i32)
             }
         }
     }

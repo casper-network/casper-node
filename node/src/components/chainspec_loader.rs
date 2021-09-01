@@ -39,7 +39,7 @@ use crate::{
     reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Chainspec, ChainspecInfo, ExitStatus,
+        ActivationPoint, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -187,7 +187,7 @@ impl ChainspecLoader {
             let chainspec_loader = ChainspecLoader {
                 chainspec,
                 root_dir,
-                reactor_exit: ReactorExit::ProcessShouldExit(ExitStatus::Abort),
+                reactor_exit: ReactorExit::ProcessShouldExit(ExitCode::Abort),
                 next_upgrade: None,
             };
             return (chainspec_loader, Effects::new());
@@ -221,7 +221,7 @@ impl ChainspecLoader {
         );
 
         let reactor_exit = if should_stop {
-            ReactorExit::ProcessShouldExit(ExitStatus::Success)
+            ReactorExit::ProcessShouldExit(ExitCode::Success)
         } else {
             ReactorExit::ProcessShouldContinue
         };
