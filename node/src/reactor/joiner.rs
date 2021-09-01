@@ -3,10 +3,10 @@
 mod memory_metrics;
 
 use std::{
-    env,
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -23,7 +23,7 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::ContractRuntime,
+        contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
@@ -32,7 +32,6 @@ use crate::{
         linear_chain,
         linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
@@ -40,9 +39,8 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            LinearChainBlock, NetworkAnnouncement,
+            ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -72,10 +70,6 @@ use crate::{
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub(crate) enum JoinerEvent {
-    /// Network event.
-    #[from]
-    Network(network::Event<Message>),
-
     /// Small Network event.
     #[from]
     SmallNetwork(small_network::Event<Message>),
@@ -227,11 +221,7 @@ impl From<StorageRequest> for JoinerEvent {
 
 impl From<NetworkRequest<NodeId, Message>> for JoinerEvent {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-            JoinerEvent::Network(network::Event::from(request))
-        } else {
-            JoinerEvent::SmallNetwork(small_network::Event::from(request))
-        }
+        JoinerEvent::SmallNetwork(small_network::Event::from(request))
     }
 }
 
@@ -252,7 +242,6 @@ impl From<RestRequest<NodeId>> for JoinerEvent {
 impl Display for JoinerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            JoinerEvent::Network(event) => write!(f, "network: {}", event),
             JoinerEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             JoinerEvent::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             JoinerEvent::Storage(request) => write!(f, "storage: {}", request),
@@ -315,7 +304,6 @@ impl Display for JoinerEvent {
 pub(crate) struct Reactor {
     root: PathBuf,
     metrics: Metrics,
-    network: Network<JoinerEvent, Message>,
     small_network: SmallNetwork<JoinerEvent, Message>,
     address_gossiper: Gossiper<GossipedAddress, JoinerEvent>,
     config: participating::Config,
@@ -342,6 +330,7 @@ pub(crate) struct Reactor {
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
+    node_startup_instant: Instant,
 }
 
 impl reactor::Reactor for Reactor {
@@ -366,8 +355,11 @@ impl reactor::Reactor for Reactor {
             storage,
             mut contract_runtime,
             small_network_identity,
-            network_identity,
         } = initializer;
+
+        // We don't need to be super precise about the startup time, i.e.
+        // we can skip the time spent in `initializer` for the sake of code simplicity.
+        let node_startup_instant = Instant::now();
 
         // TODO: Remove wrapper around Reactor::Config instead.
         let (_, config) = config.into_parts();
@@ -378,14 +370,6 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
-        let network_config = network::Config::from(&config.network);
-        let (network, network_effects) = Network::new(
-            event_queue,
-            network_config,
-            registry,
-            network_identity,
-            chainspec_loader.chainspec(),
-        )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
@@ -393,16 +377,11 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            None,
         )?;
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
-        let mut effects = reactor::wrap_effects(JoinerEvent::Network, network_effects);
-        effects.extend(reactor::wrap_effects(
-            JoinerEvent::SmallNetwork,
-            small_network_effects,
-        ));
+        let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -440,6 +419,7 @@ impl reactor::Reactor for Reactor {
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
+            node_startup_instant,
         )?;
 
         let event_stream_server = EventStreamServer::new(
@@ -506,7 +486,6 @@ impl reactor::Reactor for Reactor {
             Self {
                 root,
                 metrics,
-                network,
                 small_network,
                 address_gossiper,
                 config,
@@ -527,6 +506,7 @@ impl reactor::Reactor for Reactor {
                 rest_server,
                 event_stream_server,
                 memory_metrics,
+                node_startup_instant,
             },
             effects,
         ))
@@ -539,10 +519,6 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            JoinerEvent::Network(event) => reactor::wrap_effects(
-                JoinerEvent::Network,
-                self.network.handle_event(effect_builder, rng, event),
-            ),
             JoinerEvent::SmallNetwork(event) => reactor::wrap_effects(
                 JoinerEvent::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -826,15 +802,10 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockAdded(block.clone()),
                     ),
                 );
-                let reactor_event = JoinerEvent::LinearChainSync(
-                    linear_chain_sync::Event::BlockHandled(block.clone()),
-                );
+                let reactor_event =
+                    JoinerEvent::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
-                ));
+
                 effects
             }
             JoinerEvent::LinearChainAnnouncement(
@@ -872,11 +843,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::Storage(req.into()))
             }
             JoinerEvent::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-                    JoinerEvent::Network(network::Event::from(req))
-                } else {
-                    JoinerEvent::SmallNetwork(small_network::Event::from(req))
-                };
+                let event = JoinerEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             JoinerEvent::ChainspecLoaderAnnouncement(
@@ -899,6 +866,12 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 // no consensus, respond with None
                 responder.respond(None).ignore()
+            }
+            JoinerEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators { .. },
+            ) => {
+                // Upcoming validators are not used by joiner reactor
+                Effects::new()
             }
         }
     }
@@ -941,9 +914,8 @@ impl Reactor {
             maybe_latest_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
-            network_identity: NetworkIdentity::from(&self.network),
+            node_startup_instant: self.node_startup_instant,
         };
-        self.network.finalize().await;
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
         Ok(config)
@@ -954,11 +926,7 @@ impl Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
-            self.small_network.node_id()
-        } else {
-            self.network.node_id()
-        }
+        self.small_network.node_id()
     }
 }
 

@@ -1,10 +1,10 @@
 use proptest::{collection::vec, option, prelude::*};
 
-use crate::shared::{
-    newtypes::Blake2bHash,
-    stored_value::{gens::stored_value_arb, StoredValue},
+use crate::shared::newtypes::Blake2bHash;
+use casper_types::{
+    gens::{key_arb, stored_value_arb},
+    Key, StoredValue,
 };
-use casper_types::{gens::key_arb, Key};
 
 use super::{Pointer, PointerBlock, Trie};
 

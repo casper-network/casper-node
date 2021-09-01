@@ -1,8 +1,7 @@
 use clap::ArgMatches;
 
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
-use casper_execution_engine::shared::stored_value::StoredValue;
-use casper_types::CLValue;
+use casper_types::{CLValue, StoredValue};
 
 use crate::{
     auction_utils::{

@@ -19,7 +19,6 @@ use std::{
 
 pub use config::Config;
 use datasize::DataSize;
-use itertools::Itertools;
 use prometheus::{self, Registry};
 use tracing::{debug, error, info, trace, warn};
 
@@ -277,7 +276,19 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::FinalizedBlock(block) => {
-                let deploys = block.deploys_and_transfers_iter().collect_vec();
+                let deploys = block
+                    .deploy_hashes()
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Deploy)
+                    .chain(
+                        block
+                            .transfer_hashes()
+                            .iter()
+                            .copied()
+                            .map(DeployOrTransferHash::Transfer),
+                    )
+                    .collect();
                 let mut height = block.height();
 
                 if height > self.sets.next_finalized {

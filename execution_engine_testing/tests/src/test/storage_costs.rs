@@ -6,7 +6,7 @@ use casper_engine_test_support::internal::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -18,14 +18,13 @@ use casper_execution_engine::{
         host_function_costs::{HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
+    CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -162,6 +161,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
         *STORAGE_COSTS_ONLY,
         SystemConfig::default(),
     );

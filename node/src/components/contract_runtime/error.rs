@@ -48,11 +48,15 @@ pub(crate) enum BlockExecutionError {
     /// An error that occurred when trying to run the auction contract.
     #[error(transparent)]
     StepError(#[from] StepError),
-    /// An error that occurred when committing execution results to the trie.
-
     /// An error that occurred while creating a block.
     #[error(transparent)]
     BlockCreationError(#[from] BlockCreationError),
+    /// An error that occurred while interacting with lmdb.
+    #[error(transparent)]
+    LmdbError(#[from] lmdb::Error),
+    /// An error that occurred while getting era validators.
+    #[error(transparent)]
+    GetEraValidatorsError(#[from] GetEraValidatorsError),
 }
 
 /// An error raised when block execution events are being created for the reactor.

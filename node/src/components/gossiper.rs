@@ -9,7 +9,6 @@ mod tests;
 
 use datasize::DataSize;
 use prometheus::Registry;
-use smallvec::smallvec;
 use std::{
     collections::HashSet,
     convert::Infallible,
@@ -74,7 +73,7 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
     sender: NodeId,
 ) -> Effects<Event<Deploy>> {
     effect_builder
-        .get_deploys_from_storage(smallvec![deploy_hash])
+        .get_deploys_from_storage(vec![deploy_hash])
         .event(move |mut results| {
             let result = if results.len() == 1 {
                 results

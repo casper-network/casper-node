@@ -43,15 +43,17 @@ unit_hashes_folder = "../node-storage"
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '1min'
 
-# If the current era's protocol state has not progressed for this long, request the latest state
-# from peers.
-standstill_timeout = '5min'
+# If the current era's protocol state has not progressed for this long, shut down.
+# standstill_timeout = '10min'
 
-# If after another `standstill_timeout` there still was no progress, shut down.
-shutdown_on_standstill = false
+# Request the latest protocol state from a random peer periodically, with this interval.
+request_state_interval = '20sec'
 
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
+
+# Log the synchronizer state periodically, with this interval.
+log_synchronizer_interval = '5sec'
 
 # Log the size of every incoming and outgoing serialized unit.
 log_unit_sizes = false
@@ -113,10 +115,6 @@ known_addresses = ['127.0.0.1:34553']
 
 # The interval between each fresh round of gossiping the node's public address.
 gossip_interval = '30sec'
-
-# Minimum amount of time that has to pass before attempting to reconnect after losing all
-# connections to established nodes.
-isolation_reconnect_delay = '2sec'
 
 # Initial delay for starting address gossipping after the network starts. This should be slightly
 # more than the expected time required for initial connections to complete.
@@ -313,6 +311,11 @@ verify_accounts = true
 #
 # If unset, defaults to 5.
 #max_query_depth = 5
+
+# Enable manual synchronizing to disk.
+#
+# If unset, defaults to true.
+#enable_manual_sync = true
 
 
 # ========================================================

@@ -106,8 +106,8 @@ impl Account {
     }
 
     /// Returns associated keys.
-    pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
-        self.associated_keys.iter()
+    pub fn associated_keys(&self) -> &AssociatedKeys {
+        &self.associated_keys
     }
 
     /// Returns action thresholds.
@@ -282,9 +282,6 @@ impl FromBytes for Account {
         ))
     }
 }
-/// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
-/// account.
-pub const MAX_ASSOCIATED_KEYS: usize = 10;
 
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
@@ -304,8 +301,7 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 #[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum AddKeyFailure {
-    /// There are already [`MAX_ASSOCIATED_KEYS`] [`AccountHash`]s associated with the given
-    /// account.
+    /// There are already maximum [`AccountHash`]s associated with the given account.
     #[cfg_attr(
         feature = "std",
         error("Unable to add new associated key because maximum amount of keys is reached")
@@ -432,9 +428,50 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
+#[doc(hidden)]
+#[cfg(any(feature = "gens", test))]
+pub mod gens {
+    use proptest::prelude::*;
+
+    use crate::{
+        account::{
+            action_thresholds::gens::action_thresholds_arb,
+            associated_keys::gens::associated_keys_arb, Account, Weight,
+        },
+        gens::{account_hash_arb, named_keys_arb, uref_arb},
+    };
+
+    prop_compose! {
+        pub fn account_arb()(
+            account_hash in account_hash_arb(),
+            urefs in named_keys_arb(3),
+            purse in uref_arb(),
+            thresholds in action_thresholds_arb(),
+            mut associated_keys in associated_keys_arb(),
+        ) -> Account {
+                associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
+                Account::new(
+                    account_hash,
+                    urefs,
+                    purse,
+                    associated_keys,
+                    thresholds,
+                )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryFrom, vec::Vec};
+    use crate::{
+        account::{
+            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
+            SetThresholdFailure, UpdateKeyFailure, Weight,
+        },
+        contracts::NamedKeys,
+        AccessRights, URef,
+    };
+    use std::{collections::BTreeSet, convert::TryFrom, iter::FromIterator, vec::Vec};
 
     use super::*;
 
@@ -544,17 +581,6 @@ mod tests {
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(account_hash, decoded);
     }
-
-    use std::{collections::BTreeSet, iter::FromIterator};
-
-    use crate::{
-        account::{
-            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
-            SetThresholdFailure, UpdateKeyFailure, Weight,
-        },
-        contracts::NamedKeys,
-        AccessRights, URef,
-    };
 
     #[test]
     fn associated_keys_can_authorize_keys() {
@@ -896,39 +922,6 @@ mod tests {
         account
             .update_associated_key(key_1, Weight::new(1))
             .expect("should work");
-    }
-}
-
-#[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
-pub mod gens {
-    use proptest::prelude::*;
-
-    use crate::{
-        account::{
-            action_thresholds::gens::action_thresholds_arb,
-            associated_keys::gens::associated_keys_arb, Account, Weight,
-        },
-        gens::{account_hash_arb, named_keys_arb, uref_arb},
-    };
-
-    prop_compose! {
-        pub fn account_arb()(
-            account_hash in account_hash_arb(),
-            urefs in named_keys_arb(3),
-            purse in uref_arb(),
-            thresholds in action_thresholds_arb(),
-            mut associated_keys in associated_keys_arb(),
-        ) -> Account {
-                associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
-                Account::new(
-                    account_hash,
-                    urefs,
-                    purse,
-                    associated_keys,
-                    thresholds,
-                )
-        }
     }
 }
 

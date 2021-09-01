@@ -25,12 +25,13 @@ use casper_execution_engine::{
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
         upgrade::{UpgradeConfig, UpgradeSuccess},
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
+
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    Transfer, URef,
+    StoredValue, Transfer, URef,
 };
 
 use crate::{
@@ -185,6 +186,12 @@ pub(crate) enum NetworkInfoRequest<I> {
         // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
         responder: Responder<BTreeMap<I, String>>,
     },
+    /// Get the peers in random order.
+    GetPeersInRandomOrder {
+        /// Responder to be called with all connected peers.
+        /// Responds with a vector in a random order.
+        responder: Responder<Vec<I>>,
+    },
 }
 
 impl<I> Display for NetworkInfoRequest<I>
@@ -194,6 +201,9 @@ where
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+            NetworkInfoRequest::GetPeersInRandomOrder { responder: _ } => {
+                write!(formatter, "get peers in random order")
+            }
         }
     }
 }
@@ -557,7 +567,6 @@ pub(crate) enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
@@ -681,6 +690,8 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
+        /// The transfers for that `FinalizedBlock`
+        transfers: Vec<Deploy>,
     },
 
     /// Commit genesis chainspec.
@@ -769,6 +780,9 @@ pub(crate) enum ContractRuntimeRequest {
         /// The deploys for the block to execute; must correspond to the deploy and execution
         /// hashes of the `finalized_block` in that order.
         deploys: Vec<Deploy>,
+        /// The transfers for the block to execute; must correspond to the transfer and execution
+        /// hashes of the `finalized_block` in that order.
+        transfers: Vec<Deploy>,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
@@ -780,6 +794,7 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys: _,
+                transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }
