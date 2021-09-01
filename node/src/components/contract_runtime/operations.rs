@@ -57,6 +57,7 @@ pub(super) fn execute_finalized_block(
         HashMap::new();
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
+    let start = Instant::now();
     for deploy in deploys {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
@@ -85,6 +86,8 @@ pub(super) fn execute_finalized_block(
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
+
+    metrics.exec_block.observe(start.elapsed().as_secs_f64());
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators
