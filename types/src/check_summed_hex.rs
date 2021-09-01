@@ -42,8 +42,9 @@ fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-const HEX_CHARS: [char; 16] = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F',
+const HEX_CHARS: [char; 22] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C',
+    'D', 'E', 'F',
 ];
 
 /// Encodes bytes as hexadecimal with mixed-case based checksums following a scheme similar to
@@ -456,7 +457,7 @@ mod tests {
     fn encode_iter_works() {
         let input = "testing encode lazy";
         let data = encode(input.clone());
-        let lazy_data = encode_lazy(input.clone()).collect::<String>();
+        let lazy_data = encode_iter(input.clone()).collect::<String>();
 
         assert_eq!(data, lazy_data);
         assert_eq!(
