@@ -453,7 +453,10 @@ pub(crate) async fn run_fast_sync_task(
     // Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
     // replay detection.
     let mut current_header = most_recent_block_header.clone();
-    while current_header.timestamp().elapsed() < chainspec.deploy_config.max_ttl
+    while trusted_key_block_info
+        .era_start
+        .saturating_diff(current_header.timestamp())
+        < chainspec.deploy_config.max_ttl
         && !current_header.is_genesis_child()
     {
         current_header =
