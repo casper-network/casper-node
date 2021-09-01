@@ -4,7 +4,11 @@
 //!
 //! [1]: https://eips.ethereum.org/EIPS/eip-55
 //! [2]: https://docs.rs/hex-buffer-serde/0.3.0/hex_buffer_serde/trait.Hex.html
-use alloc::{borrow::Cow, string::String, vec::Vec};
+use alloc::{
+    borrow::Cow,
+    string::{String, ToString},
+    vec::Vec,
+};
 use base16;
 use core::{convert::TryFrom, fmt, marker::PhantomData};
 
@@ -57,13 +61,28 @@ pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
     let mut hex_output_string = String::with_capacity(input_bytes.len() * 2);
     for nibble in bytes_to_nibbles(input_bytes) {
         let c = HEX_CHARS[nibble as usize];
-        if c.is_alphabetic() && hash_bits.next().unwrap_or(true) {
+        let hash_bit = hash_bits.next().unwrap_or(true);
+        if c.is_alphabetic() && hash_bit {
             hex_output_string.extend(c.to_uppercase())
         } else {
             hex_output_string.extend(c.to_lowercase())
         }
     }
     hex_output_string
+}
+
+pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = String> + '_ {
+    let input_bytes = input.as_ref();
+    let hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
+    let nibbles = bytes_to_nibbles(input_bytes);
+    nibbles.zip(hash_bits).map(|(nibble, hash_bit)| {
+        let c = HEX_CHARS[nibble as usize];
+        if c.is_alphabetic() && hash_bit {
+            c.to_uppercase().to_string()
+        } else {
+            c.to_lowercase().to_string()
+        }
+    })
 }
 
 fn string_is_uppercase(input: &(impl AsRef<[u8]> + ?Sized)) -> bool {
@@ -431,5 +450,22 @@ mod tests {
         assert!(bytes_hex.contains(&"00".repeat(16)));
         let value_copy = serde_cbor::from_slice(&bytes).unwrap();
         assert_eq!(value, value_copy);
+    }
+
+    #[test]
+    fn encode_iter_works() {
+        let input = "testing encode lazy";
+        let data = encode(input.clone());
+        let lazy_data = encode_lazy(input.clone()).collect::<String>();
+
+        assert_eq!(data, lazy_data);
+        assert_eq!(
+            decode(&lazy_data)
+                .unwrap()
+                .iter()
+                .map(|&byte| byte as char)
+                .collect::<String>(),
+            "testing encode lazy"
+        );
     }
 }

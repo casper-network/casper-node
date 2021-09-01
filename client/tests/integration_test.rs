@@ -406,7 +406,7 @@ mod get_balance {
                     actual_byte_length: 0
                 }
             })
-        ))
+        ));
     }
 
     #[tokio::test(flavor = "multi_thread")]
