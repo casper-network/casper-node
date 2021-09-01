@@ -31,7 +31,7 @@ All notable changes to this project will be documented in this file.  The format
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
 
 ### Deprecated
-* The `starting_state_root_hash` field from the REST status endpoint has been deprecated
+* Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
 
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
