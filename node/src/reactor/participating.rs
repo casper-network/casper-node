@@ -120,8 +120,7 @@ pub(crate) enum ParticipatingEvent {
 
     // Requests
     /// Contract runtime request.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
@@ -193,6 +192,12 @@ impl ReactorEvent for ParticipatingEvent {
         } else {
             None
         }
+    }
+}
+
+impl From<ContractRuntimeRequest> for ParticipatingEvent {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        ParticipatingEvent::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -615,9 +620,9 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
-                ParticipatingEvent::ContractRuntime,
+                Into::into,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
             ParticipatingEvent::BlockValidator(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockValidator,
@@ -772,7 +777,7 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
 
-                            match self.storage.read_block_header_by_hash(&block_hash) {
+                            match self.storage.get_block_header_by_hash(&block_hash) {
                                 Ok(Some(block_header)) => {
                                     match Message::new_get_response(&block_header) {
                                         Err(error) => {

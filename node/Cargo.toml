@@ -112,6 +112,7 @@ tokio = { version = "1", features = ["test-util"] }
 
 [features]
 vendored-openssl = ['openssl/vendored']
+casper-mainnet = []
 
 [[bin]]
 name = "casper-node"

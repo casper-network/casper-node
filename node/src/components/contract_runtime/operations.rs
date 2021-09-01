@@ -39,6 +39,7 @@ pub(super) fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
+    transfers: Vec<Deploy>,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -57,7 +58,8 @@ pub(super) fn execute_finalized_block(
         HashMap::new();
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
-    for deploy in deploys {
+    let start = Instant::now();
+    for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
@@ -85,6 +87,8 @@ pub(super) fn execute_finalized_block(
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
+
+    metrics.exec_block.observe(start.elapsed().as_secs_f64());
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators
