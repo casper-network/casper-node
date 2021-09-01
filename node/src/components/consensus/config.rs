@@ -48,7 +48,7 @@ impl Config {
 /// Consensus protocol configuration.
 #[derive(DataSize, Debug)]
 pub(crate) struct ProtocolConfig {
-    pub(crate) highway_config: HighwayProtocolConfig,
+    pub(crate) highway: HighwayProtocolConfig,
     pub(crate) era_duration: TimeDiff,
     pub(crate) minimum_era_height: u64,
     /// Number of eras before an auction actually defines the set of validators.
@@ -72,7 +72,7 @@ pub(crate) struct ProtocolConfig {
 impl From<&Chainspec> for ProtocolConfig {
     fn from(chainspec: &Chainspec) -> Self {
         ProtocolConfig {
-            highway_config: chainspec.highway_config,
+            highway: chainspec.highway_config,
             era_duration: chainspec.core_config.era_duration,
             minimum_era_height: chainspec.core_config.minimum_era_height,
             auction_delay: chainspec.core_config.auction_delay,

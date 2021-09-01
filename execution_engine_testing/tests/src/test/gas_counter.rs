@@ -11,11 +11,8 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{
-    core::engine_state::Error,
-    shared::{gas::Gas, wasm_prep::PreprocessingError},
-};
-use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
+use casper_execution_engine::{core::engine_state::Error, shared::wasm_prep::PreprocessingError};
+use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
 
 /// Creates minimal session code that does nothing
 fn make_minimal_do_nothing() -> Vec<u8> {

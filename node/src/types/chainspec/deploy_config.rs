@@ -10,10 +10,9 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
-use casper_execution_engine::shared::motes::Motes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    U512,
+    Motes, U512,
 };
 
 #[cfg(test)]
