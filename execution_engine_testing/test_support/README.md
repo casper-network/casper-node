@@ -11,4 +11,4 @@ A library to support testing of Wasm smart contracts for use on the CasperLabs n
 
 ## License
 
-Licensed under the [CasperLabs Open Source License (COSL)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE).
+Licensed under the [Apache License Version 2.0](../../LICENSE).
