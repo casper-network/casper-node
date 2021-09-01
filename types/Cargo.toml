@@ -70,3 +70,7 @@ gens = ["std", "proptest/std"]
 [[bench]]
 name = "bytesrepr_bench"
 harness = false
+
+[[bench]]
+name = "check_summed_hex_bench"
+harness = false
