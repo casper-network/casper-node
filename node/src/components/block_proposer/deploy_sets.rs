@@ -134,42 +134,9 @@ pub(super) fn prune_pending_deploys(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        testing::TestRng,
-        types::{Deploy, TimeDiff},
-    };
+    use crate::{testing, testing::TestRng};
 
     use super::*;
-
-    /// Creates a test deploy created at given instant and with given ttl.
-    fn create_test_deploy(
-        created_ago: TimeDiff,
-        ttl: TimeDiff,
-        now: Timestamp,
-        mut test_rng: &mut TestRng,
-    ) -> Deploy {
-        Deploy::random_with_timestamp_and_ttl(&mut test_rng, now - created_ago, ttl)
-    }
-
-    /// Creates a random deploy that is considered expired.
-    fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-        create_test_deploy(
-            TimeDiff::from_seconds(20),
-            TimeDiff::from_seconds(10),
-            now,
-            test_rng,
-        )
-    }
-
-    /// Creates a random deploy that is considered not expired.
-    fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-        create_test_deploy(
-            TimeDiff::from_seconds(20),
-            TimeDiff::from_seconds(60),
-            now,
-            test_rng,
-        )
-    }
 
     #[test]
     fn prunes_pending_deploys() {
@@ -177,11 +144,11 @@ mod tests {
         let mut deploys: HashMap<DeployHash, (DeployInfo, Timestamp)> = HashMap::new();
         let now = Timestamp::now();
 
-        let deploy_1 = create_not_expired_deploy(now, &mut test_rng);
-        let deploy_2 = create_expired_deploy(now, &mut test_rng);
-        let deploy_3 = create_expired_deploy(now, &mut test_rng);
-        let deploy_4 = create_not_expired_deploy(now, &mut test_rng);
-        let deploy_5 = create_expired_deploy(now, &mut test_rng);
+        let deploy_1 = testing::create_not_expired_deploy(now, &mut test_rng);
+        let deploy_2 = testing::create_expired_deploy(now, &mut test_rng);
+        let deploy_3 = testing::create_expired_deploy(now, &mut test_rng);
+        let deploy_4 = testing::create_not_expired_deploy(now, &mut test_rng);
+        let deploy_5 = testing::create_expired_deploy(now, &mut test_rng);
 
         deploys.insert(*deploy_1.id(), (deploy_1.deploy_info().unwrap(), now));
         deploys.insert(*deploy_2.id(), (deploy_2.deploy_info().unwrap(), now));

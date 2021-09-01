@@ -41,7 +41,7 @@ use crate::types::{
     BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock, TimeDiff, Timestamp,
 };
 #[cfg(test)]
-use crate::{crypto::AsymmetricKeyExt, testing::TestRng, types::Block};
+use crate::{crypto::AsymmetricKeyExt, testing, testing::TestRng, types::Block};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -180,7 +180,7 @@ impl SseData {
 
     /// Returns a random `SseData::DeployExpired`
     pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
-        let deploy = Deploy::random(rng);
+        let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
             deploy_hash: *deploy.id(),
         }
