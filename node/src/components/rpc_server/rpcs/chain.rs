@@ -380,16 +380,14 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 }
             };
 
-            let era_id = match block.header().era_end() {
-                Some(_) => block.header().era_id(),
-                None => {
-                    return Ok(response_builder.success(Self::ResponseResult {
-                        api_version,
-                        era_summary: None,
-                    })?)
-                }
-            };
+            if !block.header().is_switch_block() {
+                return Ok(response_builder.success(Self::ResponseResult {
+                    api_version,
+                    era_summary: None,
+                })?);
+            }
 
+            let era_id = block.header().era_id();
             let state_root_hash = block.state_root_hash().to_owned();
             let base_key = Key::EraInfo(era_id);
             let path = Vec::new();

@@ -467,7 +467,7 @@ where
             let era_start_time = key_block.timestamp();
             let seed = Self::era_seed(*booking_block_hash, key_block.accumulated_seed());
             let new_faulty = key_block
-                .era_end()
+                .era_report()
                 .expect("key block must be a switch block")
                 .equivocators
                 .clone();
@@ -478,8 +478,8 @@ where
 
             let faulty = self
                 .iter_past(era_id, self.banning_period())
-                .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
-                .flat_map(|era_end| era_end.equivocators.clone())
+                .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_report()))
+                .flat_map(|report| report.equivocators.clone())
                 .collect();
 
             let results = self.new_era(
@@ -490,9 +490,9 @@ where
                 faulty,
                 key_blocks
                     .get(&era_id)
-                    .and_then(|bhdr| bhdr.era_end())
+                    .and_then(|bhdr| bhdr.era_report())
                     .into_iter()
-                    .flat_map(|era_end| &era_end.inactive_validators)
+                    .flat_map(|report| &report.inactive_validators)
                     .cloned()
                     .collect(),
                 seed,
@@ -728,12 +728,12 @@ where
         switch_block_header: BlockHeader,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
-        let (era_end, next_era_validators_weights) = match (
-            switch_block_header.era_end(),
+        let (report, next_era_validators_weights) = match (
+            switch_block_header.era_report(),
             switch_block_header.next_era_validator_weights(),
         ) {
-            (Some(era_end), Some(next_era_validator_weights)) => {
-                (era_end, next_era_validator_weights)
+            (Some(report), Some(next_era_validator_weights)) => {
+                (report, next_era_validator_weights)
             }
             _ => {
                 return fatal!(
@@ -744,7 +744,7 @@ where
                 .ignore()
             }
         };
-        let new_faulty = era_end.equivocators.clone();
+        let new_faulty = report.equivocators.clone();
         let era_id = switch_block_header.era_id().successor();
         info!(era = era_id.value(), "era created");
         let seed = EraSupervisor::<I>::era_seed(
@@ -765,7 +765,7 @@ where
             next_era_validators_weights.clone(),
             new_faulty,
             faulty,
-            era_end.inactive_validators.iter().cloned().collect(),
+            report.inactive_validators.iter().cloned().collect(),
             seed,
             switch_block_header.timestamp(),
             switch_block_header.height() + 1,
@@ -929,14 +929,14 @@ where
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
-                let era_end = terminal_block_data.map(|tbd| EraReport {
+                let report = terminal_block_data.map(|tbd| EraReport {
                     rewards: tbd.rewards,
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
                 });
                 let finalized_block = FinalizedBlock::new(
                     Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
-                    era_end,
+                    report,
                     timestamp,
                     era_id,
                     era.start_height + relative_height,

@@ -717,7 +717,7 @@ impl BlockHeader {
     }
 
     /// Returns reward and slashing information if this is the era's last block.
-    pub fn era_end(&self) -> Option<&EraReport> {
+    pub fn era_report(&self) -> Option<&EraReport> {
         match &self.era_end {
             Some(data) => Some(data.era_report()),
             None => None,

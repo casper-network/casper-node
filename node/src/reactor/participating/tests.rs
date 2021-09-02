@@ -274,7 +274,8 @@ async fn run_equivocator_network() {
         let expected = [alice_pk.clone()];
         // Returns true if Alice is listed as an equivocator in that block.
         let alice_is_equivocator = |header: &BlockHeader| {
-            header.era_end().expect("missing era end").equivocators == expected
+            let report = header.era_report().expect("missing era report");
+            report.equivocators == expected
         };
 
         // Verify that nobody gets slashed, and Alice's bid becomes inactive, but only after she
@@ -324,15 +325,16 @@ async fn run_equivocator_network() {
     // N + 1 was initialized, so no other validator will cite her or process her units.
     loop {
         let header = switch_blocks.pop().expect("missing switch block");
+        // TODO: Use era end!
         let validators = header
             .next_era_validator_weights()
             .expect("missing validator weights");
         if validators.contains_key(&alice_pk) {
             // We've found era N: This is the last switch block that still lists Alice as a
             // validator.
-            let era_end = header.era_end().expect("missing era end");
-            assert_eq!(*era_end.inactive_validators, []);
-            assert_eq!(*era_end.equivocators, [alice_pk.clone()]);
+            let report = header.era_report().expect("missing era report");
+            assert_eq!(*report.inactive_validators, []);
+            assert_eq!(*report.equivocators, [alice_pk.clone()]);
             return;
         } else {
             // We are in era N + 1 or later. There should be no direct evidence; that would mean

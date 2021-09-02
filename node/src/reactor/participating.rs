@@ -675,7 +675,7 @@ impl reactor::Reactor for Reactor {
                 vec![],
             )?;
             // Make sure the new block really is a switch block
-            if new_switch_block.header().era_end().is_none() {
+            if !new_switch_block.header().is_switch_block() {
                 return Err(Error::FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
                     new_bad_block: Box::new(new_switch_block),
                 });
