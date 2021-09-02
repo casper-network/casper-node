@@ -3,6 +3,7 @@
 mod memory_metrics;
 
 use std::{
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
@@ -64,7 +65,6 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-use std::collections::BTreeMap;
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]

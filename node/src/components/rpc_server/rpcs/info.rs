@@ -45,12 +45,12 @@ static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     peers: GetStatusResult::doc_example().peers.clone(),
 });
 static GET_VALIDATOR_INFO_RESULT: Lazy<GetValidatorInfoResult> = Lazy::new(|| {
-    let era_changes = JsonEraChanges::new(EraId::new(1), ValidatorChange::Added);
+    let era_changes = JsonEraChange::new(EraId::new(1), ValidatorChange::Added);
     let public_key = PublicKey::doc_example().clone();
     let validator_info = vec![JsonValidatorInfo::new(public_key, vec![era_changes])];
     GetValidatorInfoResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        validator_info,
+        changes_to_validators: validator_info,
     }
 });
 
@@ -237,45 +237,45 @@ impl RpcWithoutParamsExt for GetStatus {
     }
 }
 
-/// A change to a validator's status between two eras.
+/// A single change to a validator's status between two eras.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JsonEraChanges {
+pub struct JsonEraChange {
     /// The era in which the change occurred.
     era_id: EraId,
     /// The change in validator status.
     validator_change: ValidatorChange,
 }
 
-impl JsonEraChanges {
+impl JsonEraChange {
     pub(crate) fn new(era_id: EraId, validator_change: ValidatorChange) -> Self {
-        JsonEraChanges {
+        JsonEraChange {
             era_id,
             validator_change,
         }
     }
 }
 
-/// The information for a validator across two eras.
+/// The changes in a validator's status between any two eras.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JsonValidatorInfo {
     /// The public key of a given validator.
     public_key: PublicKey,
     /// The set of changes to the validator's status.
-    era_changes: Vec<JsonEraChanges>,
+    status_changes: Vec<JsonEraChange>,
 }
 
 impl JsonValidatorInfo {
-    pub(crate) fn new(public_key: PublicKey, era_changes: Vec<JsonEraChanges>) -> Self {
+    pub(crate) fn new(public_key: PublicKey, status_changes: Vec<JsonEraChange>) -> Self {
         JsonValidatorInfo {
             public_key,
-            era_changes,
+            status_changes,
         }
     }
 }
 
-/// Result for the "info_get_validator_info" RPC.
+/// Result for the "info_get_validator_changes" RPC.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetValidatorInfoResult {
@@ -283,7 +283,7 @@ pub struct GetValidatorInfoResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The validator information.
-    pub validator_info: Vec<JsonValidatorInfo>,
+    pub changes_to_validators: Vec<JsonValidatorInfo>,
 }
 
 impl DocExample for GetValidatorInfoResult {
@@ -292,11 +292,11 @@ impl DocExample for GetValidatorInfoResult {
     }
 }
 
-/// "info_get_validator_info" RPC.
+/// "info_get_validator_changes" RPC.
 pub struct GetValidatorInfo {}
 
 impl RpcWithoutParams for GetValidatorInfo {
-    const METHOD: &'static str = "info_get_validator_change";
+    const METHOD: &'static str = "info_get_validator_changes";
     type ResponseResult = GetValidatorInfoResult;
 }
 
@@ -316,7 +316,7 @@ impl RpcWithoutParamsExt for GetValidatorInfo {
                     let era_changes = era_changes
                         .into_iter()
                         .map(|(era_id, validator_change)| {
-                            JsonEraChanges::new(era_id, validator_change)
+                            JsonEraChange::new(era_id, validator_change)
                         })
                         .collect();
                     JsonValidatorInfo::new(public_key, era_changes)
@@ -324,7 +324,7 @@ impl RpcWithoutParamsExt for GetValidatorInfo {
                 .collect();
             let result = Self::ResponseResult {
                 api_version,
-                validator_info,
+                changes_to_validators: validator_info,
             };
             Ok(response_builder.success(result)?)
         }

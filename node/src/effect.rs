@@ -1660,7 +1660,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Returns a list of validator status changes, by public key.
-    // TODO: Expose this via RPC.
     pub(crate) async fn get_consensus_validator_info(
         self,
     ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>

@@ -16,7 +16,7 @@ use super::ReactorEventT;
 use crate::{
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
-    rpcs::info::{GetValidatorInfoResult, JsonEraChanges, JsonValidatorInfo},
+    rpcs::info::{GetValidatorInfoResult, JsonEraChange, JsonValidatorInfo},
     types::GetStatusResult,
 };
 
@@ -30,7 +30,7 @@ pub const METRICS_API_PATH: &str = "metrics";
 pub const JSON_RPC_SCHEMA_API_PATH: &str = "rpc-schema";
 
 /// The validator information URL path.
-pub const VALIDATOR_INFO_API_PATH: &str = "validator-info";
+pub const VALIDATOR_CHANGES_API_PATH: &str = "validator-changes";
 
 pub(super) fn create_status_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
@@ -103,7 +103,7 @@ pub(super) fn create_validator_info_filter<REv: ReactorEventT>(
     api_version: ProtocolVersion,
 ) -> BoxedFilter<(Response<Body>,)> {
     warp::get()
-        .and(warp::path(VALIDATOR_INFO_API_PATH))
+        .and(warp::path(VALIDATOR_CHANGES_API_PATH))
         .and_then(move || {
             effect_builder
                 .get_consensus_validator_info()
@@ -114,7 +114,7 @@ pub(super) fn create_validator_info_filter<REv: ReactorEventT>(
                             let era_changes = era_changes
                                 .into_iter()
                                 .map(|(era_id, validator_change)| {
-                                    JsonEraChanges::new(era_id, validator_change)
+                                    JsonEraChange::new(era_id, validator_change)
                                 })
                                 .collect();
                             JsonValidatorInfo::new(public_key, era_changes)
@@ -122,7 +122,7 @@ pub(super) fn create_validator_info_filter<REv: ReactorEventT>(
                         .collect();
                     let result = GetValidatorInfoResult {
                         api_version,
-                        validator_info: json_validator_info,
+                        changes_to_validators: json_validator_info,
                     };
                     Ok::<_, Rejection>(reply::json(&result).into_response())
                 })
