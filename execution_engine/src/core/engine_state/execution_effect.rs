@@ -28,7 +28,7 @@ impl From<ExecutionJournal> for ExecutionEffect {
             }
             let op: Op = (&transform).into();
             ops.insert_add(key, op);
-            transforms.insert_add(key, transform.clone());
+            transforms.insert_add(key, transform);
         }
 
         Self { ops, transforms }
