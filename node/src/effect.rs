@@ -590,6 +590,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the current network peers in a random order.
+    pub async fn get_peers_in_random_order<I>(self) -> Vec<I>
+    where
+        REv: From<NetworkInfoRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetPeersInRandomOrder { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
     /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
@@ -965,14 +978,14 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested deploys from the deploy store.
     pub(crate) async fn get_deploys_from_storage(
         self,
-        deploy_hashes: Multiple<DeployHash>,
+        deploy_hashes: Vec<DeployHash>,
     ) -> Vec<Option<Deploy>>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes: deploy_hashes.to_vec(),
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -1164,6 +1177,7 @@ impl<REv> EffectBuilder<REv> {
         execution_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1174,6 +1188,7 @@ impl<REv> EffectBuilder<REv> {
                 execution_pre_state,
                 finalized_block,
                 deploys,
+                transfers,
                 responder,
             },
             QueueKind::Regular,
@@ -1192,6 +1207,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1200,6 +1216,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
+                    transfers,
                 },
                 QueueKind::Regular,
             )

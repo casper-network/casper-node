@@ -51,6 +51,9 @@ pub(crate) enum BlockExecutionError {
     /// An error that occurred while creating a block.
     #[error(transparent)]
     BlockCreationError(#[from] BlockCreationError),
+    /// An error that occurred while interacting with lmdb.
+    #[error(transparent)]
+    LmdbError(#[from] lmdb::Error),
     /// An error that occurred while getting era validators.
     #[error(transparent)]
     GetEraValidatorsError(#[from] GetEraValidatorsError),

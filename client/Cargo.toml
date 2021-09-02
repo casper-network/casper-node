@@ -57,6 +57,7 @@ warp-json-rpc = "0.3.0"
 [features]
 default = ["ffi"]
 ffi = ["cbindgen"]
+casper-mainnet = ["casper-node/casper-mainnet"]
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
@@ -69,3 +70,12 @@ Package for Casper Client to connect to Casper Node.
 
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
+
+[package.metadata.rpm]
+package = "casper-client"
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]
+
+[package.metadata.rpm.targets]
+casper-client = { path = "/usr/bin/casper-client" }

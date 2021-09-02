@@ -7,15 +7,12 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{
-    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
-    shared::motes::Motes,
-};
+use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate},
-    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";

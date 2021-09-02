@@ -11,8 +11,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
+    crypto::hash::{self, Digest},
     types::{TimeDiff, Timestamp},
 };
+use casper_types::bytesrepr::ToBytes;
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -109,6 +111,57 @@ pub struct EraReport<VID> {
     pub(crate) inactive_validators: Vec<VID>,
 }
 
+impl<VID> Default for EraReport<VID>
+where
+    VID: Ord,
+{
+    fn default() -> Self {
+        EraReport {
+            equivocators: vec![],
+            rewards: BTreeMap::new(),
+            inactive_validators: vec![],
+        }
+    }
+}
+
+impl<VID> EraReport<VID> {
+    pub fn hash(&self) -> Digest
+    where
+        VID: ToBytes,
+    {
+        // Helper function to hash slice of validators
+        fn hash_slice_of_validators<VID>(slice_of_validators: &[VID]) -> Digest
+        where
+            VID: ToBytes,
+        {
+            let hashes = slice_of_validators
+                .iter()
+                .map(|validator| {
+                    hash::hash(validator.to_bytes().expect("Could not serialize validator"))
+                })
+                .collect();
+            hash::hash_vec_merkle_tree(hashes)
+        }
+
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let EraReport {
+            equivocators,
+            inactive_validators,
+            rewards,
+        } = self;
+
+        let hashed_equivocators = hash_slice_of_validators(equivocators);
+        let hashed_inactive_validators = hash_slice_of_validators(inactive_validators);
+        let hashed_rewards = hash::hash_btree_map(rewards).expect("Could not hash rewards");
+
+        hash::hash_slice_rfold(&[
+            hashed_equivocators,
+            hashed_rewards,
+            hashed_inactive_validators,
+        ])
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TerminalBlockData<C: Context> {
     /// The list of validators that haven't produced any units.
@@ -142,6 +195,7 @@ pub(crate) type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
+    CreatedMessageToRandomPeer(Vec<u8>),
     InvalidIncomingMessage(Vec<u8>, I, Error),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),

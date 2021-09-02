@@ -3,8 +3,7 @@ use std::sync::Arc;
 use num::Zero;
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, Motes, PublicKey, SecretKey, U512};
 
 use crate::{
     types::{

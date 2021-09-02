@@ -20,7 +20,7 @@ export class PublicKey {
         return this.bytes;
     }
 
-    getAlgorithmName(): string{
+    getAlgorithmName(): string {
         const ED25519_LOWERCASE: string = "ed25519";
         const SECP256K1_LOWERCASE: string = "secp256k1";
         
@@ -29,6 +29,8 @@ export class PublicKey {
                 return ED25519_LOWERCASE;
             case PublicKeyVariant.Secp256k1:
                 return SECP256K1_LOWERCASE;
+            default:
+                return <string>unreachable();
         }
     }
 

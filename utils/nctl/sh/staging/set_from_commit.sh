@@ -45,7 +45,7 @@ function _set_repo()
     # Clone.
     if [ ! -d "$PATH_TO_REPO" ]; then
         mkdir -p "$PATH_TO_REPO"
-        git clone "https://github.com/CasperLabs/casper-node.git" "$PATH_TO_REPO" > /dev/null 2>&1
+        git clone "https://github.com/casper-network/casper-node.git" "$PATH_TO_REPO" > /dev/null 2>&1
     fi
 
     # Fetch remotes & checkout commit.

@@ -73,7 +73,7 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
 }
 
 impl ReactorEvent for Event {
@@ -83,6 +83,12 @@ impl ReactorEvent for Event {
         } else {
             None
         }
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -358,9 +364,9 @@ impl reactor::Reactor for Reactor {
                 self.network.handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
+                Into::into,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
         }
     }

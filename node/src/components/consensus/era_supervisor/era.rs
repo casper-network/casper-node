@@ -179,7 +179,7 @@ impl<I> Era<I> {
         // the actual duration of the era, times the BLOCK_REWARD constant, independent of how many
         // blocks were actually created.
         let era_duration = timestamp.saturating_diff(self.start_time);
-        let min_round_length = protocol_config.highway_config.min_round_length();
+        let min_round_length = protocol_config.highway.min_round_length();
         let number_of_min_length_rounds = era_duration / min_round_length;
         let total_rewards: u64 = number_of_min_length_rounds
             .checked_mul(BLOCK_REWARD)

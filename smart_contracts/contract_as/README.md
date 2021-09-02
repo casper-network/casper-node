@@ -1,7 +1,7 @@
 # casper-contract
 
 This package allows a distributed app developer to create smart contracts
-for the open source [Casper](https://github.com/CasperLabs/casper-node) project using [AssemblyScript](https://www.npmjs.com/package/assemblyscript).
+for the open source [Casper](https://github.com/casper-network/casper-node) project using [AssemblyScript](https://www.npmjs.com/package/assemblyscript).
 
 ## Installation
 For each smart contract you create, make a project directory and initialize it.
@@ -80,7 +80,7 @@ export function call(): void {
     Error.fromErrorCode(ErrorCode.None).revert(); // ErrorCode: 1
 }
 ```
-If you prefer a more complicated first contract, you can look at client contracts on the [casper-node](https://github.com/CasperLabs/casper-node/tree/master/smart_contracts/contracts_as/client) GitHub repository for inspiration.
+If you prefer a more complicated first contract, you can look at client contracts on the [casper-node](https://github.com/casper-network/casper-node/tree/dev/smart_contracts/contracts_as/client) GitHub repository for inspiration.
 
 ### Compile to wasm
 To compile your contract to wasm, use npm to run the asbuild script from your project root.

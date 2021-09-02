@@ -1,34 +1,46 @@
-use std::{fmt, iter::Sum};
+//! The `motes` module is used for working with Motes.
+
+use alloc::vec::Vec;
+use core::{
+    fmt,
+    iter::Sum,
+    ops::{Add, Div, Mul, Sub},
+};
 
 use datasize::DataSize;
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    U512,
+    Gas, U512,
 };
 
-use crate::shared::gas::Gas;
-
+/// A struct representing a number of `Motes`.
 #[derive(
     DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
 )]
 pub struct Motes(U512);
 
 impl Motes {
+    /// Constructs a new `Motes`.
     pub fn new(value: U512) -> Motes {
         Motes(value)
     }
 
+    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
+    /// Returns the inner `U512` value.
     pub fn value(&self) -> U512 {
         self.0
     }
 
+    /// Converts the given `gas` to `Motes` by multiplying them by `conv_rate`.
+    ///
+    /// Returns `None` if an arithmetic overflow occurred.
     pub fn from_gas(gas: Gas, conv_rate: u64) -> Option<Self> {
         gas.value()
             .checked_mul(U512::from(conv_rate))
@@ -42,7 +54,7 @@ impl fmt::Display for Motes {
     }
 }
 
-impl std::ops::Add for Motes {
+impl Add for Motes {
     type Output = Motes;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -51,7 +63,7 @@ impl std::ops::Add for Motes {
     }
 }
 
-impl std::ops::Sub for Motes {
+impl Sub for Motes {
     type Output = Motes;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -60,7 +72,7 @@ impl std::ops::Sub for Motes {
     }
 }
 
-impl std::ops::Div for Motes {
+impl Div for Motes {
     type Output = Motes;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -69,7 +81,7 @@ impl std::ops::Div for Motes {
     }
 }
 
-impl std::ops::Mul for Motes {
+impl Mul for Motes {
     type Output = Motes;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -90,7 +102,7 @@ impl Zero for Motes {
 
 impl Sum for Motes {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Motes::zero(), std::ops::Add::add)
+        iter.fold(Motes::zero(), Add::add)
     }
 }
 
@@ -113,9 +125,9 @@ impl FromBytes for Motes {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::U512;
+    use crate::U512;
 
-    use crate::shared::{gas::Gas, motes::Motes};
+    use crate::{Gas, Motes};
 
     #[test]
     fn should_be_able_to_get_instance_of_motes() {
