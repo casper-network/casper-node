@@ -39,7 +39,7 @@ where
     JoinerEvent: From<FetcherRequest<NodeId, T>>,
 {
     loop {
-        'peer_loop: for peer in effect_builder.get_peers_in_random_order().await {
+        for peer in effect_builder.get_peers_in_random_order().await {
             trace!(
                 "Attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
