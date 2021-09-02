@@ -1,23 +1,33 @@
 [package]
 name = "hashing"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2018"
 
 [dependencies]
-bytesrepr = { path = "../bytesrepr", default-features = false }
-
+bytesrepr = { version = "1.0.0", path = "../bytesrepr", default-features = false }
 base16 = { version = "0.2.1", default-features = false, optional = true}
-blake2 = { version = "0.9.2", default-features = false }
+blake2 = { version = "0.9.2", default-features = false, optional = true}
 hex = { version = "0.4.2", default-features = false, optional = true}
 hex-buffer-serde = { version = "0.2.1", optional = true }
 serde = { version = "1", default-features = false, features = ["derive"], optional = true}
 datasize = { version = "0.2.9", default-features = false, optional = true}
 schemars = { version  = "0.8.3", optional = true }
-itertools = { version  = "0.10.1", optional = true }
+itertools = { version  = "0.10.1", default-features = false }
+
+[dev-dependencies]
+proptest-attr-macro = "1.0.0"
+proptest = "1.0.0"
+criterion = "0.3.5"
+rand = "0.8.4"
+
+[[bench]]
+name = "digest_benchmark"
+harness = false
 
 [features]
 default = ["std"]
 std = [
+    "blake2",
     "base16/std",
     "bytesrepr/std",
     "datasize",

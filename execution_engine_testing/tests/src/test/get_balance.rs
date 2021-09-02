@@ -6,9 +6,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core, core::ValidationError};
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, Digest, Key, PublicKey, RuntimeArgs,
-    SecretKey, URef, U512,
+    account::AccountHash, runtime_args, AccessRights, Key, PublicKey, RuntimeArgs, SecretKey, URef,
+    U512,
 };
+use hashing::Digest;
 
 const TRANSFER_ARG_TARGET: &str = "target";
 const TRANSFER_ARG_AMOUNT: &str = "amount";

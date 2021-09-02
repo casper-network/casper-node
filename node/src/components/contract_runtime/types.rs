@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 use casper_execution_engine::core::engine_state::{
     execution_effect::ExecutionEffect, GetEraValidatorsRequest,
 };
-use casper_types::{Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
+use hashing::Digest;
 
 use crate::types::{Block, DeployHash, DeployHeader};
 

@@ -2519,8 +2519,8 @@ mod payment {
     };
 
     // DEPTHS should not contain 1, as it will eliminate the initial element from the subcalls
-    // vector.  Going further than 5 will git the gas limit.
-    const DEPTHS: &[usize] = &[0, 2, 5];
+    // vector.  Going further than 4 will git the gas limit.
+    const DEPTHS: &[usize] = &[0, 2, 4];
 
     // Session + recursive subcall
 
@@ -2560,7 +2560,6 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-
             builder.exec(execute_request).commit().expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
@@ -2589,6 +2588,7 @@ mod payment {
                 subcalls.push(super::stored_contract(current_contract_hash.into()));
             }
 
+            println!("post setup");
             let execute_request = {
                 let mut rng = rand::thread_rng();
                 let deploy_hash = rng.gen();

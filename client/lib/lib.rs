@@ -33,7 +33,8 @@ use casper_node::{
     rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
     types::{BlockHash, Deploy},
 };
-use casper_types::{Digest, Key};
+use casper_types::Key;
+use hashing::Digest;
 
 pub use cl_type::help;
 pub use deploy::ListDeploysResult;

@@ -1,4 +1,5 @@
-use casper_types::{system::auction::Bids, Digest, Key, StoredValue};
+use casper_types::{system::auction::Bids, Key, StoredValue};
+use hashing::Digest;
 
 use crate::{
     core::tracking_copy::TrackingCopyQueryResult, storage::trie::merkle_proof::TrieMerkleProof,

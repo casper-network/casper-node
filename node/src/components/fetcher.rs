@@ -10,7 +10,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info};
 
 use casper_execution_engine::storage::trie::Trie;
-use casper_types::{Digest, Key, StoredValue};
+use casper_types::{Key, StoredValue};
+use hashing::Digest;
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},

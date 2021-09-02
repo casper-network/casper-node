@@ -2,6 +2,7 @@
 mod bid;
 mod constants;
 mod delegator;
+#[cfg(feature = "std")]
 mod detail;
 mod entry_points;
 mod era_info;
@@ -12,10 +13,14 @@ mod unbonding_purse;
 
 use alloc::{collections::BTreeMap, vec::Vec};
 
+#[cfg(feature = "std")]
 use num_rational::Ratio;
+#[cfg(feature = "std")]
 use num_traits::{CheckedMul, CheckedSub};
 
-use crate::{account::AccountHash, system::CallStackElement, EraId, PublicKey, U512};
+#[cfg(feature = "std")]
+use crate::system::CallStackElement;
+use crate::{account::AccountHash, EraId, PublicKey, U512};
 
 pub use bid::Bid;
 pub use constants::*;
@@ -49,6 +54,7 @@ pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
 
 /// Bonding auction contract interface
+#[cfg(feature = "std")]
 pub trait Auction:
     StorageProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
 {

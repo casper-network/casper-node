@@ -6,9 +6,12 @@ mod runtime_provider;
 mod storage_provider;
 mod system_provider;
 
+#[cfg(feature = "std")]
 use num_rational::Ratio;
+#[cfg(feature = "std")]
 use num_traits::CheckedMul;
 
+#[cfg(feature = "std")]
 use crate::{account::AccountHash, system::CallStackElement, Key, Phase, PublicKey, URef, U512};
 
 pub use crate::system::mint::{
@@ -17,6 +20,7 @@ pub use crate::system::mint::{
 };
 
 /// Mint trait.
+#[cfg(feature = "std")]
 pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
     /// an error.

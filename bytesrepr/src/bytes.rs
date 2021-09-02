@@ -1,11 +1,9 @@
-#[cfg(not(feature = "std"))]
-use alloc::{
-    string::String,
-    vec::{IntoIter, Vec},
-};
-
 #[cfg(feature = "std")]
-use std::{
+use std as alloc;
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+use alloc::{
     string::String,
     vec::{IntoIter, Vec},
 };
@@ -19,10 +17,6 @@ use core::{
 };
 
 use datasize::DataSize;
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
 use serde::{
     de::{Error as SerdeError, SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -203,19 +197,6 @@ impl DataSize for Bytes {
     }
 }
 
-const RANDOM_BYTES_MAX_LENGTH: usize = 100;
-
-impl Distribution<Bytes> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Bytes {
-        let len = rng.gen_range(0..RANDOM_BYTES_MAX_LENGTH);
-        let mut result = Vec::with_capacity(len);
-        for _ in 0..len {
-            result.push(rng.gen());
-        }
-        result.into()
-    }
-}
-
 struct BytesVisitor;
 
 impl<'de> Visitor<'de> for BytesVisitor {
@@ -323,12 +304,6 @@ mod tests {
     }
 
     #[test]
-    fn should_serialize_deserialize_bytes() {
-        let data: Bytes = vec![1, 2, 3, 4, 5].into();
-        bytesrepr::test_serialization_roundtrip(&data);
-    }
-
-    #[test]
     fn should_fail_to_serialize_deserialize_malicious_bytes() {
         let data: Bytes = vec![1, 2, 3, 4, 5].into();
         let mut serialized = data.to_bytes().expect("should serialize data");
@@ -372,18 +347,5 @@ mod tests {
     fn should_ser_de_compact() {
         let truth: Bytes = TRUTH.into();
         assert_tokens(&truth.compact(), &[Token::Bytes(TRUTH)]);
-    }
-}
-
-#[cfg(test)]
-pub mod gens {
-    use super::Bytes;
-    use proptest::{
-        collection::{vec, SizeRange},
-        prelude::*,
-    };
-
-    pub fn bytes_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Bytes> {
-        vec(any::<u8>(), size).prop_map(Bytes::from)
     }
 }

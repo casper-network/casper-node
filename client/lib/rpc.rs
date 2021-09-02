@@ -27,7 +27,8 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{AsymmetricType, Digest, Key, PublicKey, URef};
+use casper_types::{AsymmetricType, Key, PublicKey, URef};
+use hashing::Digest;
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},

@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
-    crypto::hash::{self, Digest},
     types::{TimeDiff, Timestamp},
 };
 use casper_types::bytesrepr::ToBytes;
+use hashing::Digest;
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -137,10 +137,10 @@ impl<VID> EraReport<VID> {
             let hashes = slice_of_validators
                 .iter()
                 .map(|validator| {
-                    hash::hash(validator.to_bytes().expect("Could not serialize validator"))
+                    Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
                 })
                 .collect();
-            hash::hash_vec_merkle_tree(hashes)
+            hashing::hash_vec_merkle_tree(hashes)
         }
 
         // Pattern match here leverages compiler to ensure every field is accounted for
@@ -152,9 +152,9 @@ impl<VID> EraReport<VID> {
 
         let hashed_equivocators = hash_slice_of_validators(equivocators);
         let hashed_inactive_validators = hash_slice_of_validators(inactive_validators);
-        let hashed_rewards = hash::hash_btree_map(rewards).expect("Could not hash rewards");
+        let hashed_rewards = hashing::hash_btree_map(rewards).expect("Could not hash rewards");
 
-        hash::hash_slice_rfold(&[
+        hashing::hash_slice_rfold(&[
             hashed_equivocators,
             hashed_rewards,
             hashed_inactive_validators,

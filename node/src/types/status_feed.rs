@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Digest, EraId, ProtocolVersion, PublicKey};
+use casper_types::{EraId, ProtocolVersion, PublicKey};
 
 use crate::{
     components::{
@@ -22,6 +22,7 @@ use crate::{
     crypto::AsymmetricKeyExt,
     types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, TimeDiff, Timestamp},
 };
+use hashing::Digest;
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
     let next_upgrade = NextUpgrade::new(

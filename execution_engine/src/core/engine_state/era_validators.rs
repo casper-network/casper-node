@@ -2,7 +2,8 @@ use thiserror::Error;
 
 use datasize::DataSize;
 
-use casper_types::{Digest, ProtocolVersion};
+use casper_types::ProtocolVersion;
+use hashing::Digest;
 
 use crate::core::engine_state::error::Error;
 

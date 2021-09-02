@@ -2,7 +2,8 @@ use casper_execution_engine::core::engine_state::{
     step::{EvictItem, RewardItem, SlashItem},
     StepRequest,
 };
-use casper_types::{Digest, EraId, ProtocolVersion};
+use casper_types::{EraId, ProtocolVersion};
+use hashing::Digest;
 
 #[derive(Debug)]
 pub struct StepRequestBuilder {

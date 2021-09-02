@@ -29,9 +29,10 @@ use casper_execution_engine::{
 };
 
 use casper_types::{
-    system::auction::EraValidators, Digest, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, StoredValue, Transfer, URef,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, URef,
 };
+use hashing::Digest;
 
 use crate::{
     components::{

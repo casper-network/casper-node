@@ -5,7 +5,8 @@ use itertools::Itertools;
 use tracing::{debug, warn};
 
 use crate::types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature};
-use casper_types::{Digest, ExecutionResult, ProtocolVersion};
+use casper_types::{ExecutionResult, ProtocolVersion};
+use hashing::Digest;
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,

@@ -10,8 +10,6 @@
 //! Serialization errors are unified into a generic, type erased `std` error to allow for easy
 //! interchange of the serialization format if desired.
 
-use crate::types::BlockHash;
-use casper_types::Digest;
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;

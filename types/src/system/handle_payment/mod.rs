@@ -5,9 +5,10 @@ mod error;
 mod mint_provider;
 mod runtime_provider;
 
-use core::marker::Sized;
-
+#[cfg(feature = "std")]
 use crate::{account::AccountHash, AccessRights, URef, U512};
+#[cfg(feature = "std")]
+use core::marker::Sized;
 
 pub use crate::system::handle_payment::{
     constants::*, entry_points::handle_payment_entry_points, error::Error,
@@ -15,9 +16,11 @@ pub use crate::system::handle_payment::{
 };
 
 // A simplified representation of a refund percentage which is currently hardcoded to 0%.
+#[cfg(feature = "std")]
 const REFUND_PERCENTAGE: U512 = U512::zero();
 
 /// Handle payment functionality implementation.
+#[cfg(feature = "std")]
 pub trait HandlePayment: MintProvider + RuntimeProvider + Sized {
     /// Get payment purse.
     fn get_payment_purse(&self) -> Result<URef, Error> {
@@ -51,6 +54,7 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + Sized {
     }
 }
 
+#[cfg(feature = "std")]
 mod internal {
     use crate::{
         account::AccountHash,

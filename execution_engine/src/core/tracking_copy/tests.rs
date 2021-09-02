@@ -7,9 +7,10 @@ use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, Digest, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
+    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
     StoredValue, URef, U256, U512,
 };
+use hashing::Digest;
 
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,

@@ -3,11 +3,14 @@ use core::convert::TryInto;
 
 use num_rational::Ratio;
 
+#[cfg(feature = "std")]
+use crate::system::auction::Auction;
+
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
+        constants::*, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
     },
     CLTyped, Key, KeyTag, PublicKey, URef, U512,

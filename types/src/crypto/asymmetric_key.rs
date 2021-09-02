@@ -28,8 +28,10 @@ use k256::ecdsa::{
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+#[cfg(feature = "std")]
+use crate::account::AccountHash;
+
 use crate::{
-    account::AccountHash,
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     crypto::Error,
@@ -210,6 +212,7 @@ impl PublicKey {
     pub const SECP256K1_LENGTH: usize = SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH;
 
     /// Creates an `AccountHash` from a given `PublicKey` instance.
+    #[cfg(feature = "std")]
     pub fn to_account_hash(&self) -> AccountHash {
         AccountHash::from(self)
     }

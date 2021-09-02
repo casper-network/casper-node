@@ -1,7 +1,8 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
+use casper_types::{bytesrepr, system::mint, ApiError, ProtocolVersion};
+use hashing::Digest;
 
 use crate::{
     core::{

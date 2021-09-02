@@ -7,16 +7,20 @@ pub mod associated_keys;
 mod error;
 mod weight;
 
+#[cfg(feature = "std")]
+use crate::BLAKE2B_DIGEST_LENGTH;
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
-    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
+    AccessRights, URef,
 };
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{convert::TryFrom, fmt::Debug};
 #[cfg(feature = "std")]
 use thiserror::Error;
 
+#[cfg(feature = "std")]
 use hashing::Digest;
 
 pub use self::{
@@ -282,6 +286,7 @@ impl FromBytes for Account {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "std")]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     Digest::hash(data).into()
 }

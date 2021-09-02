@@ -291,8 +291,6 @@ pub mod gens {
 mod tests {
     use proptest::proptest;
 
-    use casper_types::bytesrepr;
-
     use super::gens;
 
     proptest! {

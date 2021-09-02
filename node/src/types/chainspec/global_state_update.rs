@@ -12,8 +12,6 @@ use casper_types::{
 
 use super::error::GlobalStateUpdateLoadError;
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::utils::{self, Loadable};
 
 const GLOBAL_STATE_UPDATE_FILENAME: &str = "global_state.toml";
@@ -58,18 +56,6 @@ impl ToBytes for GlobalStateUpdate {
     }
 }
 
-#[cfg(test)]
-impl GlobalStateUpdate {
-    pub fn random(rng: &mut TestRng) -> Self {
-        let entries = rng.gen_range(0..10);
-        let mut map = BTreeMap::new();
-        for _ in 0..entries {
-            map.insert(rng.gen(), rng.gen());
-        }
-        Self(map)
-    }
-}
-
 impl FromBytes for GlobalStateUpdate {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (update, remainder) = BTreeMap::<Key, Bytes>::from_bytes(bytes)?;
@@ -98,10 +84,23 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
 mod tests {
     use super::*;
 
+    const RANDOM_BYTES_MAX_LENGTH: usize = 100;
+
     #[test]
     fn global_state_update_bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
-        let update = GlobalStateUpdate::random(&mut rng);
+        let update = {
+            let mut rng = crate::new_rng();
+            let mut map = BTreeMap::new();
+            for _ in 0..rng.gen_range(0..10) {
+                let len = rng.gen_range(0..RANDOM_BYTES_MAX_LENGTH);
+                let mut vec_u8: Vec<u8> = Vec::with_capacity(len);
+                for _ in 0..len {
+                    vec_u8.push(rng.gen());
+                }
+                map.insert(rng.gen(), Bytes::from(vec_u8));
+            }
+            GlobalStateUpdate(map)
+        };
         bytesrepr::test_serialization_roundtrip(&update);
     }
 }

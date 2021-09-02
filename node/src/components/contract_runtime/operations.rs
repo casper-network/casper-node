@@ -15,7 +15,8 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
-use casper_types::{Digest, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
+use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
+use hashing::Digest;
 
 use crate::{
     components::{

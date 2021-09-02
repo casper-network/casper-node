@@ -66,16 +66,15 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
 };
+use hashing::Digest;
 
 use crate::{
     components::Component,
     crypto,
-    crypto::hash::{self, Digest},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -1825,7 +1824,10 @@ fn get_single_block_body_v2<Tx: Transaction>(
         transfer_hashes_with_proof.merkle_proof_of_rest(),
     )? {
         Some(proposer_with_proof) => {
-            debug_assert_eq!(*proposer_with_proof.merkle_proof_of_rest(), hash::SENTINEL1);
+            debug_assert_eq!(
+                *proposer_with_proof.merkle_proof_of_rest(),
+                hashing::SENTINEL1
+            );
             proposer_with_proof
         }
         None => return Ok(None),
@@ -1867,7 +1869,7 @@ fn garbage_collect_block_body_v2_db(
         }
         let mut current_digest = *body_hash;
         let mut live_digests_index = 1;
-        while current_digest != hash::SENTINEL1 && !live_digests[0].contains(&current_digest) {
+        while current_digest != hashing::SENTINEL1 && !live_digests[0].contains(&current_digest) {
             live_digests[0].insert(current_digest);
             let (key_to_part_db, merkle_proof_of_rest): (Digest, Digest) =
                 match txn.get_value_bytesrepr(*block_body_v2_db, &current_digest)? {

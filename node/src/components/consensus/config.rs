@@ -3,7 +3,8 @@ use std::{path::Path, sync::Arc};
 use datasize::DataSize;
 use serde::Deserialize;
 
-use casper_types::{Digest, ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey};
+use hashing::Digest;
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},

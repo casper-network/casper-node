@@ -1498,6 +1498,10 @@ where
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
+        println!(
+            "call_host_mint: {}",
+            mint_runtime.gas_counter() - gas_counter
+        );
         // Charge just for the amount that particular entry point cost - using gas cost from the
         // isolated runtime might have a recursive costs whenever system contract calls other system
         // contract.
@@ -1620,6 +1624,10 @@ where
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
+        println!(
+            "call_host_handle_payment: {}",
+            runtime.gas_counter() - gas_counter
+        );
         self.gas(runtime.gas_counter() - gas_counter)?;
 
         let ret = result?;
@@ -1835,6 +1843,7 @@ where
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
+        println!("call_host_auction: {}", runtime.gas_counter() - gas_counter);
         // Charge for the gas spent during execution in an isolated runtime.
         self.gas(runtime.gas_counter() - gas_counter)?;
 

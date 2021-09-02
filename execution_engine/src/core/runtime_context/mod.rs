@@ -754,6 +754,10 @@ where
                 Err(Error::GasLimit)
             }
             Some(val) if val > gas_limit => {
+                println!(
+                    "charge_gas over limit: val={}, amount={}, limit={} {:?}",
+                    val, amount, gas_limit, self.phase,
+                );
                 self.set_gas_counter(gas_limit);
                 Err(Error::GasLimit)
             }
@@ -787,6 +791,11 @@ where
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 
+        println!(
+            "charge_gas_system_contract {} / {}",
+            gas_cost,
+            self.gas_limit()
+        );
         self.charge_gas(gas_cost)
     }
 
@@ -802,6 +811,7 @@ where
             return Ok(());
         }
         let amount: Gas = call_cost.into();
+        println!("charge_gas_system_contract {} / {}", amount, self.gas_limit);
         self.charge_gas(amount)
     }
 

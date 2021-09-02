@@ -9,7 +9,8 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
 use casper_execution_engine::storage::trie::Trie;
-use casper_types::{bytesrepr::ToBytes, Digest, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use hashing::Digest;
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.

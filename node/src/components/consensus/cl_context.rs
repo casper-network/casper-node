@@ -3,7 +3,8 @@ use std::sync::Arc;
 use datasize::DataSize;
 use tracing::info;
 
-use casper_types::{Digest, PublicKey, SecretKey, Signature};
+use casper_types::{PublicKey, SecretKey, Signature};
+use hashing::Digest;
 
 use crate::{
     components::consensus::traits::{ConsensusValueT, Context, ValidatorSecret},

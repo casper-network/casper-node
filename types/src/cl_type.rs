@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     Key, URef, U128, U256, U512,
 };
 
@@ -482,6 +482,12 @@ impl<T1: CLTyped, T2: CLTyped, T3: CLTyped> CLTyped for (T1, T2, T3) {
 impl<T: CLTyped> CLTyped for Ratio<T> {
     fn cl_type() -> CLType {
         <(T, T)>::cl_type()
+    }
+}
+
+impl CLTyped for Bytes {
+    fn cl_type() -> CLType {
+        <Vec<u8>>::cl_type()
     }
 }
 

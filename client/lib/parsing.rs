@@ -12,9 +12,10 @@ use casper_node::{
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr, AsymmetricType, CLType, CLValue, Digest, HashAddr, Key, NamedArg, PublicKey,
-    RuntimeArgs, SecretKey, UIntParseError, U512,
+    bytesrepr, AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs,
+    SecretKey, UIntParseError, U512,
 };
+use hashing::Digest;
 
 use crate::{
     cl_type,

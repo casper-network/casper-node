@@ -13,6 +13,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
+use hashing::Digest;
 
 use super::{
     construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db,
@@ -21,7 +22,7 @@ use super::{
 };
 use crate::{
     components::storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,

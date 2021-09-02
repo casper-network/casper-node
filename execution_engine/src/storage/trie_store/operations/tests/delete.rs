@@ -193,8 +193,9 @@ mod full_tries {
     use casper_types::{
         bytesrepr::{self, FromBytes, ToBytes},
         gens::{colliding_key_arb, stored_value_arb},
-        Digest, Key, StoredValue,
+        Key, StoredValue,
     };
+    use hashing::Digest;
 
     use crate::{
         shared::newtypes::CorrelationId,

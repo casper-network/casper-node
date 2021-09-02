@@ -56,9 +56,10 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, Digest, EraId, Gas, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue,
-    Transfer, TransferAddr, URef, U512,
+    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, U512,
 };
+use hashing::Digest;
 
 use crate::internal::{
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,

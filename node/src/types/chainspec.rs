@@ -26,8 +26,9 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, ProtocolVersion,
+    ProtocolVersion,
 };
+use hashing::Digest;
 
 #[cfg(test)]
 pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};

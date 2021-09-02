@@ -3,7 +3,7 @@ use std::mem;
 use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
 use super::deploy_item::DeployItem;
-use casper_types::Digest;
+use hashing::Digest;
 
 #[derive(Debug)]
 pub struct ExecuteRequest {

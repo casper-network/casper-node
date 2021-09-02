@@ -29,7 +29,7 @@ use casper_execution_engine::{
 use casper_types::{runtime_args, ApiError, RuntimeArgs};
 
 use casper_engine_tests::profiling;
-use casper_types::Digest;
+use hashing::Digest;
 
 const ABOUT: &str =
     "Executes a contract which logs metrics for all host functions.  Note that the \

@@ -2,7 +2,6 @@
 
 members = [
     "bytesrepr",
-    "bytesrepr_proptest",
     "ci/casper_updater",
     "client",
     "execution_engine",
@@ -20,7 +19,6 @@ members = [
 
 default-members = [
     "bytesrepr",
-    "bytesrepr_proptest",
     "ci/casper_updater",
     "client",
     "execution_engine",

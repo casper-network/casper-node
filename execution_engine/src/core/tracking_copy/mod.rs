@@ -14,9 +14,10 @@ use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
 use casper_types::{
-    bytesrepr, CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue,
-    StoredValueTypeMismatch, Tagged, U512,
+    bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
+    Tagged, U512,
 };
+use hashing::Digest;
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};

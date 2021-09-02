@@ -15,7 +15,8 @@ use casper_node::{
         json_compatibility, Block, BlockHeader, BlockValidationError, JsonBlock, JsonBlockHeader,
     },
 };
-use casper_types::{bytesrepr, Digest, Key, StoredValue, U512};
+use casper_types::{bytesrepr, Key, StoredValue, U512};
+use hashing::Digest;
 
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";

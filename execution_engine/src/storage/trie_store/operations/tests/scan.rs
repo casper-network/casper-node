@@ -1,5 +1,5 @@
 use crate::shared::newtypes::CorrelationId;
-use casper_types::Digest;
+use hashing::Digest;
 
 use super::*;
 use crate::storage::{

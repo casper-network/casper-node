@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
 
-use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    Digest,
-};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use hashing::Digest;
 
 use crate::storage::trie::{Pointer, Trie, RADIX};
 
@@ -289,8 +287,6 @@ mod gens {
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-
-    use casper_types::bytesrepr;
 
     use super::gens;
 

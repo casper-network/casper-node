@@ -17,9 +17,8 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{
-    account::AccountHash, Digest, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
-};
+use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
+use hashing::Digest;
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 

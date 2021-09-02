@@ -16,7 +16,7 @@ use casper_types::{
 };
 
 use crate::{
-    contract_api::{self, account, runtime},
+    contract_api::{self, account, runtime, runtime::blake2b},
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
@@ -146,7 +146,7 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
 /// Transfers `amount` of motes from the main purse of the caller's account to the main purse of
 /// `target`.  If the account referenced by `target` does not exist, it will be created.
 pub fn transfer_to_public_key(target: PublicKey, amount: U512, id: Option<u64>) -> TransferResult {
-    let target = AccountHash::from(&target);
+    let target = AccountHash::from_public_key(&target, blake2b);
     transfer_to_account(target, amount, id)
 }
 
@@ -195,7 +195,7 @@ pub fn transfer_from_purse_to_public_key(
     amount: U512,
     id: Option<u64>,
 ) -> TransferResult {
-    let target = AccountHash::from(&target);
+    let target = AccountHash::from_public_key(&target, blake2b);
     transfer_from_purse_to_account(source, target, amount, id)
 }
 

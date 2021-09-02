@@ -4,8 +4,9 @@ use casper_execution_engine::storage::trie::{Pointer, PointerBlock, Trie};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    CLValue, Digest, Key, StoredValue,
+    CLValue, Key, StoredValue,
 };
+use hashing::Digest;
 
 fn serialize_trie_leaf(b: &mut Bencher) {
     let leaf = Trie::Leaf {

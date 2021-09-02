@@ -11,4 +11,5 @@ casper-engine-test-support = { path = "../../execution_engine_testing/test_suppo
 casper-execution-engine = { path = "../../execution_engine" }
 casper-types = { path = "../../types", default-features = false, features = ["std"] }
 clap = "2.33"
+hashing = { version = "1.0.0", path = "../../hashing", default-features = false }
 lmdb = "0.8"

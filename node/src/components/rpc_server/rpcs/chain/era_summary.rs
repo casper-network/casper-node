@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     system::auction::{EraInfo, SeigniorageAllocation},
-    AsymmetricType, Digest, EraId, PublicKey, U512,
+    AsymmetricType, EraId, PublicKey, U512,
 };
+use hashing::Digest;
 
 use crate::{
     rpcs::{common::MERKLE_PROOF, docs::DocExample},

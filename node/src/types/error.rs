@@ -3,12 +3,10 @@
 use std::collections::BTreeMap;
 
 use casper_types::{bytesrepr, PublicKey, U512};
+use hashing::Digest;
 use thiserror::Error;
 
-use crate::{
-    crypto::hash::Digest,
-    types::{block::EraReport, Block, BlockHash},
-};
+use crate::types::{block::EraReport, Block, BlockHash};
 
 /// An error that can arise when creating a block from a finalized block and other components
 #[derive(Error, Debug)]

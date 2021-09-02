@@ -43,9 +43,10 @@ use casper_types::{
         CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Digest, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    URef, U512,
+    Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef,
+    U512,
 };
+use hashing::Digest;
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},

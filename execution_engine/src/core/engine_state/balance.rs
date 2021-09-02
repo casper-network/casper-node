@@ -1,4 +1,5 @@
-use casper_types::{Digest, Key, StoredValue, URef, U512};
+use casper_types::{Key, StoredValue, URef, U512};
+use hashing::Digest;
 
 use crate::storage::trie::merkle_proof::TrieMerkleProof;
 

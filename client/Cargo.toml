@@ -27,6 +27,7 @@ casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node = { version = "1.0.0", path = "../node" }
 casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std"] }
 clap = "2"
+hashing = { version = "1.0.0", path = "../hashing" }
 hex = { version = "0.4.2", features = ["serde"] }
 humantime = "2"
 jsonrpc-lite = "0.5.0"

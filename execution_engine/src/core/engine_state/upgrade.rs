@@ -9,8 +9,9 @@ use casper_types::{
         auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    Contract, ContractHash, Digest, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
+    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
 };
+use hashing::Digest;
 
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},

@@ -1,21 +1,28 @@
-use core::{array::TryFromSliceError, convert::TryFrom};
+#![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-#[cfg(not(feature = "std"))]
-use alloc::{collections::BTreeMap, vec::Vec};
 #[cfg(feature = "std")]
 use std::{collections::BTreeMap, vec::Vec};
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
+use core::{array::TryFromSliceError, convert::TryFrom};
+
+#[cfg(feature = "std")]
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-use bytesrepr::{FromBytes, ToBytes};
 #[cfg(feature = "std")]
 use hex_buffer_serde::{Hex, HexForm};
+
+#[cfg(feature = "std")]
 use itertools::Itertools;
+
+use bytesrepr::{FromBytes, ToBytes};
 
 /// The hash digest; a wrapped `u8` array.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
@@ -44,6 +51,7 @@ impl Digest {
     pub const LENGTH: usize = 32;
 
     /// Creates a 32-byte hash digest from a given a piece of data
+    #[cfg(feature = "std")]
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
         let mut result = [0; Digest::LENGTH];
 
@@ -56,6 +64,7 @@ impl Digest {
     }
 
     /// Hashes a pair of byte slices into a single [`Digest`]
+    #[cfg(feature = "std")]
     pub fn hash_pair<T: AsRef<[u8]>, U: AsRef<[u8]>>(data1: T, data2: U) -> Digest {
         let mut result = [0; Digest::LENGTH];
         let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
@@ -86,10 +95,20 @@ impl Digest {
     }
 }
 
+impl ToBytes for Digest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
 impl FromBytes for Digest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         FromBytes::from_bytes(bytes)
-            .map(|(inner, remainder): ([u8; Digest::LENGTH], _)| (Digest::from(inner), remainder))
+            .map(|(inner, remainder): ([u8; Digest::LENGTH], _)| (Digest(inner), remainder))
     }
 }
 
@@ -174,7 +193,7 @@ pub const SENTINEL1: Digest = Digest([1u8; Digest::LENGTH]);
 pub const SENTINEL2: Digest = Digest([2u8; Digest::LENGTH]);
 
 /// Hashes a [`Vec`] of [`Digest`]s into a single [`Digest`] by constructing a [Merkle tree][1].
-/// Reduces pairs of elements in the [`Vec`] by repeatedly calling [hash_pair].
+/// Reduces pairs of elements in the [`Vec`] by repeatedly calling [`Digest::hash_pair`].
 /// This hash procedure is suited to hashing `BTree`s.
 ///
 /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
@@ -195,6 +214,7 @@ pub const SENTINEL2: Digest = Digest([2u8; Digest::LENGTH]);
 ///
 /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
 /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
+#[cfg(feature = "std")]
 pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
     vec.into_iter()
         .tree_fold1(|x, y| Digest::hash_pair(&x, &y))
@@ -202,6 +222,7 @@ pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
 }
 
 /// Hashes a [BTreeMap].
+#[cfg(feature = "std")]
 pub fn hash_btree_map<K, V>(btree_map: &BTreeMap<K, V>) -> Result<Digest, bytesrepr::Error>
 where
     K: ToBytes,
@@ -231,6 +252,7 @@ where
 /// Returns [`SENTINEL1`] when given an empty [`Vec`] as input.
 ///
 /// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
+#[cfg(feature = "std")]
 pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
     hash_slice_with_proof(slice, SENTINEL1)
 }
@@ -239,6 +261,7 @@ pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
 /// tail of the slice.
 ///
 /// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
+#[cfg(feature = "std")]
 pub fn hash_slice_with_proof(slice: &[Digest], proof: Digest) -> Digest {
     slice
         .iter()
@@ -247,9 +270,17 @@ pub fn hash_slice_with_proof(slice: &[Digest], proof: Digest) -> Digest {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     use std::iter;
 
-    use super::*;
+    use proptest_attr_macro::proptest;
+
+    #[proptest]
+    fn bytesrepr_roundtrip(data: [u8; Digest::LENGTH]) {
+        let hash = Digest(data);
+        bytesrepr::test_serialization_roundtrip(&hash);
+    }
 
     #[test]
     fn blake2b_hash_known() {
@@ -335,5 +366,100 @@ mod test {
             hash_hex_alt,
             "0x0000000000000000000000000000000000000000000000000000000000000000"
         )
+    }
+
+    #[test]
+    fn test_hash_pair() {
+        let hash1 = Digest([1u8; 32]);
+        let hash2 = Digest([2u8; 32]);
+
+        let hash = Digest::hash_pair(&hash1, &hash2);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "30b600fb1f0cc0b3f0fc28cdcb7389405a6659be81c7d5c5905725aa3a5119ce"
+        );
+    }
+
+    #[test]
+    fn test_hash_rfold() {
+        let hashes = vec![
+            Digest([1u8; 32]),
+            Digest([2u8; 32]),
+            Digest([3u8; 32]),
+            Digest([4u8; 32]),
+            Digest([5u8; 32]),
+        ];
+
+        let hash = hash_slice_rfold(&hashes[..]);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "e137f4eb94d2387065454eecfe2cdb5584e3dbd5f1ca07fc511fffd13d234e8e"
+        );
+
+        let proof = hash_slice_rfold(&hashes[2..]);
+        let hash_proof = hash_slice_with_proof(&hashes[..2], proof);
+
+        assert_eq!(hash, hash_proof);
+    }
+
+    #[test]
+    fn test_hash_merkle_odd() {
+        let hashes = vec![
+            Digest([1u8; 32]),
+            Digest([2u8; 32]),
+            Digest([3u8; 32]),
+            Digest([4u8; 32]),
+            Digest([5u8; 32]),
+        ];
+
+        let hash = hash_vec_merkle_tree(hashes);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "c18aaf359f7b4643991f68fbfa8c503eb460da497399cdff7d8a2b1bc4399589"
+        );
+    }
+
+    #[test]
+    fn test_hash_merkle_even() {
+        let hashes = vec![
+            Digest([1u8; 32]),
+            Digest([2u8; 32]),
+            Digest([3u8; 32]),
+            Digest([4u8; 32]),
+            Digest([5u8; 32]),
+            Digest([6u8; 32]),
+        ];
+
+        let hash = hash_vec_merkle_tree(hashes);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "0470ecc8abdcd6ecd3a4c574431b80bb8751c7a43337d5966dadf07899f8804b"
+        );
+    }
+
+    #[test]
+    fn test_hash_btreemap() {
+        let mut map = BTreeMap::new();
+        let _ = map.insert(Digest([1u8; 32]), Digest([2u8; 32]));
+        let _ = map.insert(Digest([3u8; 32]), Digest([4u8; 32]));
+        let _ = map.insert(Digest([5u8; 32]), Digest([6u8; 32]));
+        let _ = map.insert(Digest([7u8; 32]), Digest([8u8; 32]));
+        let _ = map.insert(Digest([9u8; 32]), Digest([10u8; 32]));
+
+        let hash = hash_btree_map(&map).unwrap();
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "f3bc94beb2470d5c09f575b439d5f238bdc943233774c7aa59e597cc2579e148"
+        );
     }
 }

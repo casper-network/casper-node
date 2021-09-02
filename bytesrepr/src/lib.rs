@@ -1,25 +1,28 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //! Contains serialization and deserialization code for types used throughout the system.
 mod bytes;
 
 #[cfg(not(feature = "std"))]
+use alloc::fmt::Debug;
+#[cfg(feature = "std")]
+use std::fmt::Debug;
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+#[cfg(feature = "std")]
+use std as alloc;
+
 use alloc::{
     alloc::{alloc, Layout},
     collections::{BTreeMap, BTreeSet, VecDeque},
     str,
     string::String,
+    vec,
     vec::Vec,
 };
 
-#[cfg(feature = "std")]
-use std::{
-    alloc::{alloc, Layout},
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    str,
-    string::String,
-    vec::Vec,
-};
-
-use core::{any, mem, ptr::NonNull};
+use core::{mem, mem::MaybeUninit, ptr::NonNull};
 
 use num_integer::Integer;
 use num_rational::Ratio;
@@ -43,11 +46,11 @@ pub const U16_SERIALIZED_LENGTH: usize = mem::size_of::<u16>();
 pub const U32_SERIALIZED_LENGTH: usize = mem::size_of::<u32>();
 /// The number of bytes in a serialized `u64`.
 pub const U64_SERIALIZED_LENGTH: usize = mem::size_of::<u64>();
-/// The number of bytes in a serialized [`U128`](crate::U128).
+/// The number of bytes in a serialized `U128`.
 pub const U128_SERIALIZED_LENGTH: usize = mem::size_of::<u128>();
-/// The number of bytes in a serialized [`U256`](crate::U256).
+/// The number of bytes in a serialized `U256`.
 pub const U256_SERIALIZED_LENGTH: usize = U128_SERIALIZED_LENGTH * 2;
-/// The number of bytes in a serialized [`U512`](crate::U512).
+/// The number of bytes in a serialized `U512`.
 pub const U512_SERIALIZED_LENGTH: usize = U256_SERIALIZED_LENGTH * 2;
 /// The tag representing a `None` value.
 pub const OPTION_NONE_TAG: u8 = 0;
@@ -139,7 +142,7 @@ pub fn serialize(t: impl ToBytes) -> Result<Vec<u8>, Error> {
     t.into_bytes()
 }
 
-pub(crate) fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
+pub fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
     if n > bytes.len() {
         Err(Error::EarlyEndOfStream)
     } else {
@@ -323,8 +326,8 @@ impl FromBytes for String {
 fn ensure_efficient_serialization<T>() {
     #[cfg(debug_assertions)]
     debug_assert_ne!(
-        any::type_name::<T>(),
-        any::type_name::<u8>(),
+        core::any::type_name::<T>(),
+        core::any::type_name::<u8>(),
         "You should use Bytes newtype wrapper for efficiency"
     );
 }
@@ -442,41 +445,6 @@ impl<T: FromBytes> FromBytes for VecDeque<T> {
         let (vec, bytes) = vec_from_vec(bytes)?;
         Ok((VecDeque::from(vec), bytes))
     }
-}
-
-macro_rules! impl_to_from_bytes_for_array {
-    ($($N:literal)+) => {
-        $(
-            impl ToBytes for [u8; $N] {
-                #[inline(always)]
-                fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-                    Ok(self.to_vec())
-                }
-
-                #[inline(always)]
-                fn serialized_length(&self) -> usize { $N }
-            }
-
-            impl FromBytes for [u8; $N] {
-                fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-                    let (bytes, rem) = safe_split_at(bytes, $N)?;
-                    // SAFETY: safe_split_at makes sure `bytes` is exactly $N bytes.
-                    let ptr = bytes.as_ptr() as *const [u8; $N];
-                    let result = unsafe { *ptr };
-                    Ok((result, rem))
-                }
-            }
-        )+
-    }
-}
-
-impl_to_from_bytes_for_array! {
-     0  1  2  3  4  5  6  7  8  9
-    10 11 12 13 14 15 16 17 18 19
-    20 21 22 23 24 25 26 27 28 29
-    30 31 32
-    33
-    64 128 256 512
 }
 
 impl<V: ToBytes> ToBytes for BTreeSet<V> {
@@ -1039,6 +1007,47 @@ impl<
     }
 }
 
+impl<T, const N: usize> ToBytes for [T; N]
+where
+    T: ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = crate::allocate_buffer(self)?;
+        for item in self.iter() {
+            result.append(&mut item.to_bytes()?);
+        }
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.iter().map(ToBytes::serialized_length).sum::<usize>()
+    }
+}
+
+impl<T, const N: usize> FromBytes for [T; N]
+where
+    T: FromBytes,
+{
+    fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let mut result: MaybeUninit<[T; N]> = MaybeUninit::uninit();
+        let result_ptr = result.as_mut_ptr() as *mut T;
+        for i in 0..N {
+            let (t, remainder) = match FromBytes::from_bytes(bytes) {
+                Ok(success) => success,
+                Err(error) => {
+                    for j in 0..i {
+                        unsafe { result_ptr.add(j).drop_in_place() }
+                    }
+                    return Err(error);
+                }
+            };
+            unsafe { result_ptr.add(i).write(t) };
+            bytes = remainder;
+        }
+        Ok((unsafe { result.assume_init() }, bytes))
+    }
+}
+
 impl ToBytes for str {
     #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -1131,15 +1140,41 @@ pub(crate) fn vec_u8_serialized_length(vec: &Vec<u8>) -> usize {
     u8_slice_serialized_length(vec.as_slice())
 }
 
+/// A property test (leveraging `proptest`) that roundtrips data using `bytesrepr`.
+pub fn test_serialization_roundtrip<T>(input: &T)
+where
+    T: Debug + ToBytes + FromBytes + PartialEq,
+{
+    let serialized = ToBytes::to_bytes(input).expect("Unable to serialize data");
+    assert_eq!(
+        serialized.len(),
+        input.serialized_length(),
+        "Length of serialized data according to bytesrepr impl: {},\n\
+         serialized_length() yielded: {},\n\
+         serialized data: {:?},\n\
+         input: {:?}",
+        serialized.len(),
+        input.serialized_length(),
+        serialized,
+        input
+    );
+    let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
+    assert_eq!(
+        input, &deserialized,
+        "Expected deserialized data: {:?}\n\
+         Actual deserialized data: {:?}",
+        input, deserialized
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn bytesrepr_digest_roundtrip() {
-        let mut rng = crate::new_rng();
-        let hash = Digest::random(&mut rng);
-        test_serialization_roundtrip(&hash);
+    fn should_serialize_deserialize_bytes() {
+        let data: Bytes = vec![1, 2, 3, 4, 5].into();
+        crate::test_serialization_roundtrip(&data);
     }
 
     #[test]

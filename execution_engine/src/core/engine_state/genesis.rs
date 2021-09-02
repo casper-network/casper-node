@@ -32,9 +32,10 @@ use casper_types::{
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, DeployHash, Digest, EntryPointType, EntryPoints, EraId, Gas,
-    Key, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
+    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Gas, Key,
+    Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
 };
+use hashing::Digest;
 
 use crate::{
     core::{

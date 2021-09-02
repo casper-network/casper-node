@@ -17,6 +17,7 @@ dictionary-call = { path = "../../smart_contracts/contracts/test/dictionary-call
 env_logger = "0.8.1"
 fs_extra = "1.2.0"
 get-call-stack-recursive-subcall = { path = "../../smart_contracts/contracts/test/get-call-stack-recursive-subcall", default-features = false, features = ["std"] }
+hashing = { version = "1.0.0", path = "../../hashing" }
 hex = { version = "0.4.2", features = ["serde"] }
 log = "0.4.8"
 parity-wasm = "0.41.0"

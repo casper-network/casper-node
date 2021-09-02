@@ -387,21 +387,20 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     ]
 }
 
-pub fn bytes_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Bytes> {
-    vec(any::<u8>(), size).prop_map(Bytes::from)
-}
-
 #[cfg(test)]
 mod proptests {
+
+    use super::*;
+
     use std::collections::VecDeque;
 
-    use bytesrepr::Bytes;
-    use proptest::{
-        collection::{vec, SizeRange},
-        prelude::*,
-    };
+    use proptest::collection::{vec, SizeRange};
 
-    use bytesrepr_proptest::test_serialization_roundtrip;
+    use bytesrepr::{test_serialization_roundtrip, Bytes, ToBytes};
+
+    pub fn bytes_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Bytes> {
+        vec(any::<u8>(), size).prop_map(Bytes::from)
+    }
 
     proptest! {
         #[test]

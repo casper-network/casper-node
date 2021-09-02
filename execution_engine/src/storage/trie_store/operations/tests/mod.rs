@@ -12,10 +12,8 @@ use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
 use crate::shared::newtypes::CorrelationId;
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    Digest,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use hashing::Digest;
 
 use crate::storage::{
     error::{self, in_memory},

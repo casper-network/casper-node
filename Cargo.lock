@@ -311,7 +311,7 @@ checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
 name = "bytesrepr"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base16",
  "datasize",
@@ -319,20 +319,10 @@ dependencies = [
  "num-rational 0.4.0",
  "proptest",
  "proptest-attr-macro",
- "rand 0.8.4",
  "serde",
  "serde_json",
  "serde_test",
  "thiserror",
-]
-
-[[package]]
-name = "bytesrepr-proptest"
-version = "0.1.0"
-dependencies = [
- "bytesrepr",
- "proptest",
- "proptest-attr-macro",
 ]
 
 [[package]]
@@ -360,6 +350,7 @@ dependencies = [
  "cbindgen",
  "clap 2.33.3",
  "futures",
+ "hashing",
  "hex",
  "humantime",
  "hyper",
@@ -396,6 +387,7 @@ dependencies = [
  "casper-contract",
  "casper-execution-engine",
  "casper-types",
+ "hashing",
  "lmdb",
  "log",
  "num-rational 0.4.0",
@@ -425,6 +417,7 @@ dependencies = [
  "get-call-stack-recursive-subcall",
  "gh-1470-regression",
  "gh-1470-regression-call",
+ "hashing",
  "hex",
  "log",
  "num-rational 0.4.0",
@@ -445,10 +438,12 @@ dependencies = [
  "assert_matches",
  "base16",
  "bincode",
+ "bytesrepr",
  "casper-types",
  "chrono",
  "criterion",
  "datasize",
+ "hashing",
  "hex",
  "hex-buffer-serde",
  "hex_fmt",
@@ -492,6 +487,7 @@ dependencies = [
  "base64",
  "bincode",
  "bytes",
+ "bytesrepr",
  "casper-execution-engine",
  "casper-node-macros",
  "casper-types",
@@ -507,6 +503,7 @@ dependencies = [
  "futures",
  "futures-io",
  "getrandom 0.2.3",
+ "hashing",
  "hex",
  "hex-buffer-serde",
  "hex_fmt",
@@ -597,7 +594,6 @@ dependencies = [
  "bincode",
  "bitflags",
  "bytesrepr",
- "bytesrepr-proptest",
  "criterion",
  "datasize",
  "displaydoc",
@@ -1971,6 +1967,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-types",
  "clap 2.33.3",
+ "hashing",
  "lmdb",
 ]
 
@@ -2026,15 +2023,19 @@ checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 
 [[package]]
 name = "hashing"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base16",
  "blake2",
  "bytesrepr",
+ "criterion",
  "datasize",
  "hex",
  "hex-buffer-serde",
  "itertools",
+ "proptest",
+ "proptest-attr-macro",
+ "rand 0.8.4",
  "schemars",
  "serde",
 ]

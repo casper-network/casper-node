@@ -22,7 +22,7 @@ use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
 
-use casper_types::Digest;
+use hashing::Digest;
 
 use super::{tls::KeyFingerprint, Message, Payload};
 #[cfg(test)]

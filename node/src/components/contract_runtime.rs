@@ -35,7 +35,8 @@ use casper_execution_engine::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{Digest, Key, ProtocolVersion, StoredValue};
+use casper_types::{Key, ProtocolVersion, StoredValue};
+use hashing::Digest;
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},

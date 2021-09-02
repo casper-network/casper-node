@@ -1,7 +1,8 @@
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 
-use casper_types::{AccessRights, Digest, Phase, URef};
+use casper_types::{AccessRights, Phase, URef};
+use hashing::Digest;
 
 use crate::core::{Address, ADDRESS_LENGTH};
 

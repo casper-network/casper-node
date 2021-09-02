@@ -18,6 +18,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+#[cfg(feature = "std")]
 use hashing::Digest;
 
 use crate::{
@@ -400,6 +401,7 @@ impl Key {
 
     /// Creates a new [`Key::Dictionary`] variant based on a `seed_uref` and a `dictionary_item_key`
     /// bytes.
+    #[cfg(feature = "std")]
     pub fn dictionary(seed_uref: URef, dictionary_item_key: &[u8]) -> Key {
         // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
         Key::Dictionary(Digest::hash_pair(seed_uref.addr(), dictionary_item_key).value())

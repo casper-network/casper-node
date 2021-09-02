@@ -2,7 +2,7 @@
 use super::{Store, Trie, TrieStore, NAME};
 use crate::storage::{error::in_memory::Error, transaction_source::in_memory::InMemoryEnvironment};
 
-use casper_types::Digest;
+use hashing::Digest;
 
 /// An in-memory trie store.
 pub struct InMemoryTrieStore {
@@ -40,10 +40,8 @@ mod test {
         trie::{Pointer, PointerBlock, Trie},
         trie_store::in_memory::InMemoryTrieStore,
     };
-    use casper_types::{
-        bytesrepr::{Bytes, ToBytes},
-        Digest,
-    };
+    use casper_types::bytesrepr::{Bytes, ToBytes};
+    use hashing::Digest;
 
     #[test]
     fn test_in_memory_trie_store() {

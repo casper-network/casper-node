@@ -93,9 +93,10 @@ use casper_execution_engine::{
     storage::trie::Trie,
 };
 use casper_types::{
-    system::auction::EraValidators, Digest, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, StoredValue, Transfer, U512,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, U512,
 };
+use hashing::Digest;
 
 use crate::{
     components::{

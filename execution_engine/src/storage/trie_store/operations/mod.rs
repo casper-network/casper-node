@@ -10,10 +10,8 @@ use std::{
 
 use tracing::warn;
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    Digest,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use hashing::Digest;
 
 use crate::{
     shared::newtypes::CorrelationId,

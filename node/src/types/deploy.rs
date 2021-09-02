@@ -28,9 +28,9 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    AsymmetricType, Digest, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature,
-    U512,
+    AsymmetricType, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
+use hashing::Digest;
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]

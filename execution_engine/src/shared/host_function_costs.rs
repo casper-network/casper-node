@@ -742,8 +742,6 @@ mod tests {
 mod proptests {
     use proptest::prelude::*;
 
-    use casper_types::bytesrepr;
-
     use super::*;
 
     type Signature = [Cost; 10];

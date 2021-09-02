@@ -2,8 +2,9 @@ use proptest::{collection::vec, option, prelude::*};
 
 use casper_types::{
     gens::{key_arb, stored_value_arb},
-    Digest, Key, StoredValue,
+    Key, StoredValue,
 };
+use hashing::Digest;
 
 use super::{Pointer, PointerBlock, Trie};
 

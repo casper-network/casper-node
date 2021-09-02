@@ -2,14 +2,13 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use alloc::vec::Vec;
-use core::mem::MaybeUninit;
 
 #[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr::{self, Error, FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     U512,
 };
 
@@ -82,41 +81,6 @@ impl VestingSchedule {
                 U512::zero()
             }
         })
-    }
-}
-
-impl ToBytes for [U512; LOCKED_AMOUNTS_LENGTH] {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        for item in self.iter() {
-            result.append(&mut item.to_bytes()?);
-        }
-        Ok(result)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.iter().map(ToBytes::serialized_length).sum::<usize>()
-    }
-}
-
-impl FromBytes for [U512; LOCKED_AMOUNTS_LENGTH] {
-    fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let mut result: MaybeUninit<[U512; LOCKED_AMOUNTS_LENGTH]> = MaybeUninit::uninit();
-        let result_ptr = result.as_mut_ptr() as *mut U512;
-        for i in 0..LOCKED_AMOUNTS_LENGTH {
-            let (t, remainder) = match FromBytes::from_bytes(bytes) {
-                Ok(success) => success,
-                Err(error) => {
-                    for j in 0..i {
-                        unsafe { result_ptr.add(j).drop_in_place() }
-                    }
-                    return Err(error);
-                }
-            };
-            unsafe { result_ptr.add(i).write(t) };
-            bytes = remainder;
-        }
-        Ok((unsafe { result.assume_init() }, bytes))
     }
 }
 

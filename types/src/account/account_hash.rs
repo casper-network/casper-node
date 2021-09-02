@@ -1,6 +1,9 @@
 use alloc::{string::String, vec::Vec};
+#[cfg(feature = "std")]
+use core::convert::From;
+
 use core::{
-    convert::{From, TryFrom},
+    convert::TryFrom,
     fmt::{Debug, Display, Formatter},
 };
 use datasize::DataSize;
@@ -12,7 +15,9 @@ use rand::{
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{blake2b, FromStrError};
+#[cfg(feature = "std")]
+use super::blake2b;
+use super::FromStrError;
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
@@ -149,6 +154,7 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<&PublicKey> for AccountHash {
     fn from(public_key: &PublicKey) -> Self {
         AccountHash::from_public_key(public_key, blake2b)

@@ -1,7 +1,8 @@
 use std::{ops::Deref, sync::Arc};
 
 use crate::shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform};
-use casper_types::{Digest, Key, StoredValue};
+use casper_types::{Key, StoredValue};
+use hashing::Digest;
 
 use crate::storage::{
     error::{self, in_memory},
@@ -280,7 +281,8 @@ impl StateProvider for InMemoryGlobalState {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{account::AccountHash, CLValue, Digest};
+    use casper_types::{account::AccountHash, CLValue};
+    use hashing::Digest;
 
     use super::*;
 

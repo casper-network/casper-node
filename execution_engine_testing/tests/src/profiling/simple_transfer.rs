@@ -15,7 +15,8 @@ use casper_engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::core::engine_state::EngineConfig;
-use casper_types::{runtime_args, Digest, RuntimeArgs, U512};
+use casper_types::{runtime_args, RuntimeArgs, U512};
+use hashing::Digest;
 
 use casper_engine_tests::profiling;
 

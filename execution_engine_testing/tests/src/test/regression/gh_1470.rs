@@ -14,9 +14,10 @@ use casper_execution_engine::core::{
 use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
-    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
+use hashing::Digest;
 
 use crate::lmdb_fixture;
 

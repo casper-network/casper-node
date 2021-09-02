@@ -4,7 +4,8 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Digest, ProtocolVersion};
+use casper_types::ProtocolVersion;
+use hashing::Digest;
 
 use super::genesis::ExecConfig;
 

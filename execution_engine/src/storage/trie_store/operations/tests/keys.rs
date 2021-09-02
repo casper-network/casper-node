@@ -89,7 +89,7 @@ mod partial_tries {
 mod full_tries {
 
     use crate::shared::newtypes::CorrelationId;
-    use casper_types::Digest;
+    use hashing::Digest;
 
     use crate::storage::{
         transaction_source::{Transaction, TransactionSource},
@@ -150,7 +150,8 @@ mod full_tries {
 #[cfg(debug_assertions)]
 mod keys_iterator {
     use crate::shared::newtypes::CorrelationId;
-    use casper_types::{bytesrepr, Digest};
+    use casper_types::bytesrepr;
+    use hashing::Digest;
 
     use crate::storage::{
         transaction_source::TransactionSource,

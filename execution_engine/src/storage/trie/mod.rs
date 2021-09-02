@@ -12,10 +12,8 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest,
-};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use hashing::Digest;
 
 #[cfg(test)]
 pub mod gens;
@@ -473,10 +471,8 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
 }
 
 pub(crate) mod operations {
-    use casper_types::{
-        bytesrepr::{self, ToBytes},
-        Digest,
-    };
+    use casper_types::bytesrepr::{self, ToBytes};
+    use hashing::Digest;
 
     use crate::storage::trie::Trie;
 

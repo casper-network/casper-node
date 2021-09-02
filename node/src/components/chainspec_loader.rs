@@ -31,7 +31,8 @@ use casper_execution_engine::core::engine_state::{
     genesis::GenesisSuccess,
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
-use casper_types::{bytesrepr::FromBytes, Digest, EraId, ProtocolVersion, StoredValue};
+use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion, StoredValue};
+use hashing::Digest;
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
@@ -817,7 +818,7 @@ mod tests {
         testing::TestRng,
         types::chainspec::CHAINSPEC_NAME,
     };
-    use casper_types::Digest;
+    use hashing::Digest;
 
     #[test]
     fn should_get_next_installed_version() {

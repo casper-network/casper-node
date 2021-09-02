@@ -28,7 +28,8 @@ use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
     QueryResult,
 };
-use casper_types::{system::auction::EraValidators, Digest, Key, ProtocolVersion, URef};
+use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
+use hashing::Digest;
 
 use self::rpcs::chain::BlockIdentifier;
 

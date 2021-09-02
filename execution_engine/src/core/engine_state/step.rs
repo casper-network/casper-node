@@ -1,9 +1,11 @@
 use std::{collections::BTreeMap, vec::Vec};
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, Digest, EraId, Key, ProtocolVersion, PublicKey,
+    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey,
     StoredValueTypeMismatch,
 };
+
+use hashing::Digest;
 
 use crate::core::{
     engine_state::{execution_effect::ExecutionEffect, Error},
