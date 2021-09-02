@@ -1,6 +1,6 @@
-use std::{fmt, iter::Sum};
+use std::fmt;
 
-use num::{CheckedMul, Integer, Zero};
+use num::CheckedMul;
 use num_derive::{Num, NumOps, One, Zero};
 use num_traits::{CheckedAdd, CheckedSub};
 
@@ -60,51 +60,6 @@ impl CheckedSub for Gas {
     }
 }
 
-impl Sum for Gas {
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Gas::zero(), std::ops::Add::add)
-    }
-}
-
-impl Integer for Gas {
-    fn div_floor(&self, other: &Self) -> Self {
-        Gas(self.0.div_floor(&other.0))
-    }
-
-    fn mod_floor(&self, other: &Self) -> Self {
-        Gas(self.0.mod_floor(&other.0))
-    }
-
-    fn gcd(&self, other: &Self) -> Self {
-        Gas(self.0.gcd(&other.0))
-    }
-
-    fn lcm(&self, other: &Self) -> Self {
-        Gas(self.0.lcm(&other.0))
-    }
-
-    fn divides(&self, other: &Self) -> bool {
-        self.0.divides(&other.0)
-    }
-
-    fn is_multiple_of(&self, other: &Self) -> bool {
-        self.0.is_multiple_of(&other.0)
-    }
-
-    fn is_even(&self) -> bool {
-        self.0.is_even()
-    }
-
-    fn is_odd(&self) -> bool {
-        self.0.is_odd()
-    }
-
-    fn div_rem(&self, other: &Self) -> (Self, Self) {
-        let (div, rem) = self.0.div_rem(&other.0);
-        (Gas(div), Gas(rem))
-    }
-}
-
 impl From<u32> for Gas {
     fn from(gas: u32) -> Self {
         Gas::new(gas as u64)
@@ -137,7 +92,7 @@ impl From<Gas> for u64 {
 
 #[cfg(test)]
 mod tests {
-    use num_traits::One;
+    use num_traits::{One, Zero};
 
     use casper_types::U512;
 

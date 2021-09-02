@@ -1,4 +1,5 @@
 use datasize::DataSize;
+use num::CheckedMul;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -29,9 +30,9 @@ impl StorageCosts {
     /// the result would overflow [`Gas`] range - in this case the contract execution logic should
     /// exit early with a gas limit error.
     pub fn calculate_gas_cost(&self, bytes: usize) -> Option<Gas> {
-        let lhs = self.gas_per_byte as u64;
-        let rhs = bytes as u64;
-        let gas_cost = lhs.checked_mul(rhs).map(Gas::new)?;
+        let lhs = Gas::from(self.gas_per_byte);
+        let rhs = Gas::from(bytes);
+        let gas_cost = lhs.checked_mul(&rhs)?;
         Some(gas_cost)
     }
 }

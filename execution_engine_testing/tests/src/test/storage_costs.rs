@@ -1,4 +1,3 @@
-use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
@@ -336,15 +335,13 @@ fn should_measure_gas_cost_for_storage_usage_write() {
 
     let expected_small_cost = Gas::from(expected_small_write_data.serialized_length());
 
-    let small_write_cost = Ratio::new(small_write_function_cost, cost_per_byte);
-
     assert_eq!(
-        small_write_cost.fract().to_integer(),
+        small_write_function_cost % cost_per_byte,
         Gas::zero(),
         "small cost does not divide without remainder"
     );
     assert!(
-        small_write_cost.to_integer() >= expected_small_cost,
+        small_write_function_cost >= expected_small_cost * cost_per_byte,
         "small write function call should cost at least the expected amount"
     );
 
@@ -376,15 +373,13 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         StoredValue::from(CLValue::from_t(Bytes::from(WRITE_LARGE_VALUE.to_vec())).unwrap());
     let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
-    let large_write_cost = Ratio::new(large_write_function_cost, cost_per_byte);
-
     assert_eq!(
-        large_write_cost.fract().to_integer(),
+        large_write_function_cost % cost_per_byte,
         Gas::zero(),
         "cost does not divide without remainder"
     );
     assert!(
-        large_write_cost.to_integer() >= expected_large_cost,
+        large_write_function_cost >= expected_large_cost * cost_per_byte,
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
@@ -447,15 +442,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
 
     let expected_small_cost = Gas::from(expected_small_write_data.serialized_length());
 
-    let small_write_cost = Ratio::new(small_write_function_cost, cost_per_byte);
-
-    assert_eq!(
-        small_write_cost.fract().to_integer(),
-        Gas::zero(),
-        "small cost does not divide without remainder"
-    );
     assert!(
-        small_write_cost.to_integer() >= expected_small_cost,
+        small_write_function_cost >= expected_small_cost * cost_per_byte,
         "small write function call should cost at least the expected amount"
     );
 
@@ -486,15 +474,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
         StoredValue::from(CLValue::from_t(Bytes::from(WRITE_LARGE_VALUE.to_vec())).unwrap());
     let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
-    let large_write_cost = Ratio::new(large_write_function_cost, cost_per_byte);
-
-    assert_eq!(
-        large_write_cost.fract().to_integer(),
-        Gas::zero(),
-        "cost does not divide without remainder"
-    );
     assert!(
-        large_write_cost.to_integer() >= expected_large_cost,
+        large_write_function_cost >= expected_large_cost * cost_per_byte,
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
@@ -560,15 +541,13 @@ fn should_measure_gas_cost_for_storage_usage_add() {
 
     let expected_small_cost = Gas::from(expected_small_add_data.serialized_length());
 
-    let small_add_cost = Ratio::new(small_add_function_cost, cost_per_byte);
-
     assert_eq!(
-        small_add_cost.fract().to_integer(),
+        small_add_function_cost % cost_per_byte,
         Gas::zero(),
         "small cost does not divide without remainder"
     );
     assert!(
-        small_add_cost.to_integer() >= expected_small_cost,
+        small_add_function_cost >= expected_small_cost * cost_per_byte,
         "small write function call should cost at least the expected amount"
     );
 
@@ -602,15 +581,13 @@ fn should_measure_gas_cost_for_storage_usage_add() {
 
     assert!(expected_large_cost > expected_small_cost);
 
-    let large_write_cost = Ratio::new(large_add_function_cost, cost_per_byte);
-
     assert_eq!(
-        large_write_cost.fract().to_integer(),
+        large_add_function_cost % cost_per_byte,
         Gas::zero(),
         "cost does not divide without remainder"
     );
     assert!(
-        large_write_cost.to_integer() >= expected_large_cost,
+        large_add_function_cost >= expected_large_cost * cost_per_byte,
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
@@ -675,15 +652,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
 
     let expected_small_cost = Gas::from(expected_small_add_data.serialized_length());
 
-    let small_add_cost = Ratio::new(small_add_function_cost, cost_per_byte);
-
-    assert_eq!(
-        small_add_cost.fract().to_integer(),
-        Gas::zero(),
-        "small cost does not divide without remainder"
-    );
     assert!(
-        small_add_cost.to_integer() >= expected_small_cost,
+        small_add_function_cost >= expected_small_cost * cost_per_byte,
         "small write function call should cost at least the expected amount"
     );
 
@@ -716,15 +686,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
 
     assert!(expected_large_cost > expected_small_cost);
 
-    let large_write_cost = Ratio::new(large_add_function_cost, cost_per_byte);
-
-    assert_eq!(
-        large_write_cost.fract().to_integer(),
-        Gas::zero(),
-        "cost does not divide without remainder"
-    );
     assert!(
-        large_write_cost.to_integer() >= expected_large_cost,
+        large_add_function_cost >= expected_large_cost * cost_per_byte,
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );

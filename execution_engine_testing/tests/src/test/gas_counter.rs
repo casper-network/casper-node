@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use num_traits::Zero;
+use num_traits::{CheckedAdd, Zero};
 use parity_wasm::{
     builder,
     elements::{BlockType, Instruction, Instructions},
@@ -269,7 +269,13 @@ fn should_correctly_measure_gas_for_opcodes() {
     builder.exec(exec_request).commit().expect_success();
 
     let gas_cost = builder.last_exec_gas_cost() - payment_cost;
-    let expected_cost = accounted_opcodes.clone().into_iter().map(Gas::from).sum();
+    let expected_cost = accounted_opcodes
+        .clone()
+        .into_iter()
+        .map(Gas::from)
+        .try_fold(Gas::zero(), |acc, x| acc.checked_add(&x))
+        .expect("should sum without overflow");
+
     assert_eq!(
         gas_cost, expected_cost,
         "accounted costs {:?}",
