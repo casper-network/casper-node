@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.  The format
 * Major rewrite of the contract runtime component.
 * More node modules are now `pub(crate)`.
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
+* Asymmetric connections are now swept regularly again.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
