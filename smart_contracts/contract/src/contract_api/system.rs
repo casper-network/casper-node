@@ -11,7 +11,7 @@ use casper_types::{
         auction::{self, EraInfo},
         SystemContractType,
     },
-    ApiError, ContractHash, EraId, HashAddr, TransferResult, TransferredTo, URef, U512,
+    ApiError, ContractHash, EraId, HashAddr, PublicKey, TransferResult, TransferredTo, URef, U512,
     UREF_SERIALIZED_LENGTH,
 };
 
@@ -143,6 +143,13 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
     TransferredTo::result_from(transferred_to_value)
 }
 
+/// Transfers `amount` of motes from the main purse of the caller's account to the main purse of
+/// `target`.  If the account referenced by `target` does not exist, it will be created.
+pub fn transfer_to_public_key(target: PublicKey, amount: U512, id: Option<u64>) -> TransferResult {
+    let target = AccountHash::from(&target);
+    transfer_to_account(target, amount, id)
+}
+
 /// Transfers `amount` of motes from `source` purse to `target` account.  If `target` does not exist
 /// it will be created.
 #[doc(hidden)]
@@ -178,6 +185,18 @@ pub fn transfer_from_purse_to_account(
     // Return appropriate result if transfer was successful
     let transferred_to_value = unsafe { maybe_result_value.assume_init() };
     TransferredTo::result_from(transferred_to_value)
+}
+
+/// Transfers `amount` of motes from `source` to the main purse of `target`.  If the account
+/// referenced by `target` does not exist, it will be created.
+pub fn transfer_from_purse_to_public_key(
+    source: URef,
+    target: PublicKey,
+    amount: U512,
+    id: Option<u64>,
+) -> TransferResult {
+    let target = AccountHash::from(&target);
+    transfer_from_purse_to_account(source, target, amount, id)
 }
 
 /// Transfers `amount` of motes from `source` purse to `target` purse.  If `target` does not exist

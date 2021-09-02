@@ -1,8 +1,8 @@
 use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
 use datasize::DataSize;
+use num::Zero;
 use num_rational::Ratio;
-use num_traits::Zero;
 use parity_wasm::elements::Module;
 use rand::{
     distributions::{Distribution, Standard},
@@ -32,8 +32,8 @@ use casper_types::{
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
+    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Gas, Key,
+    Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -44,8 +44,6 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        gas::Gas,
-        motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
         system_config::SystemConfig,
         wasm_config::WasmConfig,

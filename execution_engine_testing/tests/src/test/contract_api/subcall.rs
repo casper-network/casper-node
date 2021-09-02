@@ -2,8 +2,7 @@ use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::shared::gas::Gas;
-use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs};
+use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, Gas, RuntimeArgs};
 
 const ARG_TARGET: &str = "target_contract";
 const ARG_GAS_AMOUNT: &str = "gas_amount";

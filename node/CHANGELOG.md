@@ -10,10 +10,17 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-
 ## [Unreleased]
 
+### Added
+* Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+* Added `contract_runtime_execute_block` histogram tracking execution time of a whole block.
+
 ### Changed
+* The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
+  * `standstill_timeout` causes the node to restart if no progress is made.
+  * `request_state_interval` makes the node periodically request the latest state from a peer.
+  * `log_synchronizer_interval` periodically logs the number of entries in the synchronizer queues.
 * Add support for providing node uptime via the addition of an `uptime` parameter in the response to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
@@ -36,7 +43,16 @@ All notable changes to this project will be documented in this file.  The format
 * The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
 
+## [1.3.2] - 2021-08-02
 
+### Fixed
+* Resolve an issue in the `state_get_dictionary_item` JSON-RPC when a `ContractHash` is used.
+* Corrected network state engine to hold in blocked state for full 10 minutes when encountering out of order race condition.
+
+## [1.3.1] - 2021-07-26
+
+### Fixed
+* Parametrized sync_timeout and increased value to stop possible post upgrade restart loop.
 
 ## [1.3.0] - 2021-07-19
 
@@ -63,6 +79,7 @@ All notable changes to this project will be documented in this file.  The format
 * Improve logging around stalled consensus detection.
 * Skip storage integrity checks if the node didn't previously crash.
 * Update pinned version of Rust to `nightly-2021-06-17`.
+* Changed LMDB flags to reduce flushing and optimize IO performance in the Contract Runtime.
 * Don't shut down by default anymore if stalled. To enable set config option `shutdown_on_standstill = true` in `[consensus.highway]`.
 * Major rewrite of the contract runtime component.
 * Ports used for local testing are now determined in a manner that hopefully leads to less accidental conflicts.

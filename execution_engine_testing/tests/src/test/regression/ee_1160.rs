@@ -7,9 +7,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    shared::{gas::Gas, motes::Motes, system_config::DEFAULT_WASMLESS_TRANSFER_COST},
+    shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST,
 };
-use casper_types::{runtime_args, system::mint, RuntimeArgs, U512};
+use casper_types::{runtime_args, system::mint, Gas, Motes, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 

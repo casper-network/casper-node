@@ -20,10 +20,10 @@ use casper_execution_engine::{
     core::engine_state::{
         run_genesis_request::RunGenesisRequest, Error, ExecConfig, GenesisAccount,
     },
-    shared::{gas::Gas, motes::Motes, wasm_prep::PreprocessingError},
+    shared::wasm_prep::PreprocessingError,
 };
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, system::mint, RuntimeArgs, U512,
+    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, system::mint, Gas, Motes, RuntimeArgs, U512,
 };
 
 const ARG_PURSE_NAME: &str = "purse_name";
@@ -291,11 +291,8 @@ fn should_not_fail_with_payment_amount_larger_than_u64_max() {
     let genesis_request = {
         let accounts = {
             let mut ret = Vec::new();
-            let genesis_account = GenesisAccount::account(
-                DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-                Motes::new(U512::MAX),
-                None,
-            );
+            let genesis_account =
+                GenesisAccount::account(DEFAULT_ACCOUNT_PUBLIC_KEY.clone(), Motes::MAX, None);
             ret.push(genesis_account);
             let proposer_account = GenesisAccount::account(
                 DEFAULT_PROPOSER_PUBLIC_KEY.clone(),

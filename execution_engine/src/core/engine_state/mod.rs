@@ -43,7 +43,8 @@ use casper_types::{
         CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef,
+    U512,
 };
 
 pub use self::{
@@ -76,13 +77,14 @@ use crate::{
     },
     shared::{
         additive_map::AdditiveMap,
-        gas::Gas,
-        motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
         transform::Transform,
         wasm_prep::Preprocessor,
     },
-    storage::{global_state::StateProvider, trie::Trie},
+    storage::{
+        global_state::{lmdb::LmdbGlobalState, StateProvider},
+        trie::Trie,
+    },
 };
 
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -97,6 +99,16 @@ pub struct EngineState<S> {
     config: EngineConfig,
     system_contract_cache: SystemContractCache,
     state: S,
+}
+
+impl EngineState<LmdbGlobalState> {
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
+    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+        if self.state.environment.is_manual_sync_enabled() {
+            self.state.environment.sync()?
+        }
+        Ok(())
+    }
 }
 
 impl<S> EngineState<S>

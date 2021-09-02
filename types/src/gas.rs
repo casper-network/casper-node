@@ -1,22 +1,24 @@
-use std::fmt;
+use core::fmt;
 
 use num::CheckedMul;
 use num_derive::{Num, NumOps, One, Zero};
 use num_traits::{CheckedAdd, CheckedSub};
 
-use casper_types::U512;
-
-use crate::shared::motes::Motes;
+use crate::{Motes, U512};
 
 const GAS_MAX_AS_U512: U512 = U512([u64::MAX, 0, 0, 0, 0, 0, 0, 0]);
 
+/// The `Gas` struct represents an amount of gas used during execution.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Num, Zero, One, NumOps)]
 pub struct Gas(u64);
 
 impl Gas {
+    /// Maximum value a [`Gas`] struct can hold.
     pub const MAX: Gas = Gas::new(u64::MAX);
+    /// Minimum value a [`Gas`] struct can hold.
     pub const MIN: Gas = Gas::new(u64::MIN);
 
+    /// Constructs a new `Gas`.
     pub const fn new(value: u64) -> Self {
         Gas(value)
     }
@@ -28,6 +30,9 @@ impl Gas {
         Some(Gas(value.as_u64()))
     }
 
+    /// Converts the given `motes` to `Gas` by dividing them by `conv_rate`.
+    ///
+    /// Returns `None` if `conv_rate == 0`.
     pub fn from_motes(motes: Motes, conv_rate: u64) -> Option<Self> {
         motes
             .value()
@@ -94,9 +99,7 @@ impl From<Gas> for u64 {
 mod tests {
     use num_traits::{One, Zero};
 
-    use casper_types::U512;
-
-    use crate::shared::{gas::Gas, motes::Motes};
+    use crate::{Gas, Motes};
 
     use super::*;
 

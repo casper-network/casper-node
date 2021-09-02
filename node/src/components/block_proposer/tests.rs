@@ -3,12 +3,10 @@ use std::time::Duration;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::{
-    core::engine_state::executable_deploy_item::ExecutableDeployItem, shared::motes::Motes,
-};
+use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
-    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, RuntimeArgs, SecretKey,
-    U512,
+    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, Motes, RuntimeArgs,
+    SecretKey, U512,
 };
 
 use super::*;

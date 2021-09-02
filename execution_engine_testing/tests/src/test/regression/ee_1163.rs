@@ -10,12 +10,12 @@ use casper_execution_engine::{
         engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
         execution,
     },
-    shared::{gas::Gas, motes::Motes, system_config::DEFAULT_WASMLESS_TRANSFER_COST},
+    shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
     runtime_args,
     system::{handle_payment, mint},
-    ApiError, RuntimeArgs, U512,
+    ApiError, Gas, Motes, RuntimeArgs, U512,
 };
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;

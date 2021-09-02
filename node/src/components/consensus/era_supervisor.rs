@@ -27,7 +27,6 @@ use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
-use smallvec::SmallVec;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
@@ -1030,6 +1029,17 @@ where
                     .send_message(to, message.into())
                     .ignore()
             }
+            ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
+                let message = ConsensusMessage::Protocol { era_id, payload };
+                let effect_builder = self.effect_builder;
+                async move {
+                    let peers = effect_builder.get_peers_in_random_order().await;
+                    if let Some(to) = peers.into_iter().next() {
+                        effect_builder.send_message(to, message.into()).await;
+                    }
+                }
+                .ignore()
+            }
             ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
                 let timediff = timestamp.saturating_diff(Timestamp::now());
                 self.effect_builder
@@ -1271,35 +1281,68 @@ where
     }
 }
 
+async fn get_deploys_or_transfers<REv>(
+    effect_builder: EffectBuilder<REv>,
+    hashes: Vec<DeployHash>,
+) -> Option<Vec<Deploy>>
+where
+    REv: From<StorageRequest>,
+{
+    let mut deploys_or_transfer: Vec<Deploy> = Vec::with_capacity(hashes.len());
+    for maybe_deploy_or_transfer in effect_builder.get_deploys_from_storage(hashes).await {
+        if let Some(deploy_or_transfer) = maybe_deploy_or_transfer {
+            deploys_or_transfer.push(deploy_or_transfer)
+        } else {
+            return None;
+        }
+    }
+    Some(deploys_or_transfer)
+}
+
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
 {
-    // Get the deploy hashes for the finalized block.
-    let deploy_hashes = finalized_block
-        .deploys_and_transfers_iter()
-        .map(DeployHash::from)
-        .collect::<SmallVec<_>>();
-
     // Get all deploys in order they appear in the finalized block.
-    let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
-    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
-        if let Some(deploy) = maybe_deploy {
-            deploys.push(deploy)
-        } else {
+    let deploys =
+        match get_deploys_or_transfers(effect_builder, finalized_block.deploy_hashes().to_owned())
+            .await
+        {
+            Some(deploys) => deploys,
+            None => {
+                fatal!(
+                    effect_builder,
+                    "Could not fetch deploys for finalized block: {:?}",
+                    finalized_block
+                )
+                .await;
+                return;
+            }
+        };
+
+    // Get all transfers in order they appear in the finalized block.
+    let transfers = match get_deploys_or_transfers(
+        effect_builder,
+        finalized_block.transfer_hashes().to_owned(),
+    )
+    .await
+    {
+        Some(transfers) => transfers,
+        None => {
             fatal!(
                 effect_builder,
-                "Could not fetch deploys for finalized block: {:?}",
+                "Could not fetch transfers for finalized block: {:?}",
                 finalized_block
             )
             .await;
             return;
         }
-    }
+    };
+
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys)
+        .enqueue_block_for_execution(finalized_block, deploys, transfers)
         .await
 }
 

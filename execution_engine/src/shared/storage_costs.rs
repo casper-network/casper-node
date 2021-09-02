@@ -3,9 +3,10 @@ use num::CheckedMul;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-
-use super::gas::Gas;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Gas,
+};
 
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 
