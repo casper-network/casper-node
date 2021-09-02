@@ -75,8 +75,6 @@ where
                         ?peer,
                         "Peer timed out",
                     );
-                    // Peer timed out fetching the item, continue with the next peer
-                    continue 'peer_loop;
                 }
                 Err(error) => return Err(error),
             }
