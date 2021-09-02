@@ -387,7 +387,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     .flatten()
                     .find(|(vv, _)| vv.inner().id() == transitive_dependency)
                 {
-                    info!(
+                    debug!(
                         dependency = ?transitive_dependency, %sender,
                         "adding sender as a source for proposal"
                     );
@@ -409,7 +409,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
-                info!(dependency = ?transitive_dependency, %sender, "requesting dependency");
+                debug!(dependency = ?transitive_dependency, %sender, "requesting dependency");
                 let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
