@@ -1,19 +1,21 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use core::{array::TryFromSliceError, convert::TryFrom};
 
-#[cfg(all(feature = "no-std", no_std))]
-use alloc::vec::Vec;
-#[cfg(all(features = "std", not(no_std)))]
-use std::vec::Vec;
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::{collections::BTreeMap, vec::Vec};
+#[cfg(feature = "std")]
+use std::{collections::BTreeMap, vec::Vec};
 
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-
+use bytesrepr::{FromBytes, ToBytes};
 #[cfg(feature = "std")]
 use hex_buffer_serde::{Hex, HexForm};
+use itertools::Itertools;
 
 /// The hash digest; a wrapped `u8` array.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
@@ -81,6 +83,13 @@ impl Digest {
         let mut inner = [0; Digest::LENGTH];
         hex::decode_to_slice(hex_input, &mut inner)?;
         Ok(Digest(inner))
+    }
+}
+
+impl FromBytes for Digest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        FromBytes::from_bytes(bytes)
+            .map(|(inner, remainder): ([u8; Digest::LENGTH], _)| (Digest::from(inner), remainder))
     }
 }
 
@@ -164,14 +173,6 @@ pub const SENTINEL1: Digest = Digest([1u8; Digest::LENGTH]);
 /// Sentinel hash to be used by [hash_vec_merkle_tree] in the case of an empty list.
 pub const SENTINEL2: Digest = Digest([2u8; Digest::LENGTH]);
 
-/// Hashes a pair of [`Digest`]s.
-pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
-    let mut to_hash = [0; Digest::LENGTH * 2];
-    to_hash[..Digest::LENGTH].copy_from_slice(&(hash1.to_array())[..]);
-    to_hash[Digest::LENGTH..].copy_from_slice(&(hash2.to_array())[..]);
-    hash(&to_hash)
-}
-
 /// Hashes a [`Vec`] of [`Digest`]s into a single [`Digest`] by constructing a [Merkle tree][1].
 /// Reduces pairs of elements in the [`Vec`] by repeatedly calling [hash_pair].
 /// This hash procedure is suited to hashing `BTree`s.
@@ -196,7 +197,7 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
 /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
 pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
     vec.into_iter()
-        .tree_fold1(|x, y| hash_pair(&x, &y))
+        .tree_fold1(|x, y| Digest::hash_pair(&x, &y))
         .unwrap_or(SENTINEL2)
 }
 
@@ -208,7 +209,10 @@ where
 {
     let mut kv_hashes: Vec<Digest> = Vec::with_capacity(btree_map.len());
     for (key, value) in btree_map.iter() {
-        kv_hashes.push(hash_pair(&hash(key.to_bytes()?), &hash(value.to_bytes()?)))
+        kv_hashes.push(Digest::hash_pair(
+            &Digest::hash(key.to_bytes()?),
+            &Digest::hash(value.to_bytes()?),
+        ))
     }
     Ok(hash_vec_merkle_tree(kv_hashes))
 }
@@ -238,7 +242,7 @@ pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
 pub fn hash_slice_with_proof(slice: &[Digest], proof: Digest) -> Digest {
     slice
         .iter()
-        .rfold(proof, |prev, next| hash_pair(next, &prev))
+        .rfold(proof, |prev, next| Digest::hash_pair(next, &prev))
 }
 
 #[cfg(test)]

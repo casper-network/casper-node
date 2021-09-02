@@ -1,0 +1,15 @@
+[package]
+name = "bytesrepr-proptest"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+bytesrepr = { path = "../bytesrepr" }
+proptest = "1.0.0"
+
+[dev-dependencies]
+proptest-attr-macro = "1.0.0"
+
+[features]
+default = ["std"]
+std = []

@@ -310,6 +310,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
+name = "bytesrepr"
+version = "0.1.0"
+dependencies = [
+ "base16",
+ "datasize",
+ "num-integer",
+ "num-rational 0.4.0",
+ "proptest",
+ "proptest-attr-macro",
+ "rand 0.8.4",
+ "serde",
+ "serde_json",
+ "serde_test",
+ "thiserror",
+]
+
+[[package]]
+name = "bytesrepr-proptest"
+version = "0.1.0"
+dependencies = [
+ "bytesrepr",
+ "proptest",
+ "proptest-attr-macro",
+]
+
+[[package]]
 name = "cargo-casper"
 version = "1.0.0"
 dependencies = [
@@ -570,6 +596,8 @@ dependencies = [
  "base64",
  "bincode",
  "bitflags",
+ "bytesrepr",
+ "bytesrepr-proptest",
  "criterion",
  "datasize",
  "displaydoc",
@@ -2002,9 +2030,11 @@ version = "0.1.0"
 dependencies = [
  "base16",
  "blake2",
+ "bytesrepr",
  "datasize",
  "hex",
  "hex-buffer-serde",
+ "itertools",
  "schemars",
  "serde",
 ]
@@ -3200,6 +3230,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "proptest-attr-macro"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fa06db3abc95f048e0afa371db5569b24912bb98a8e2e2e89c75c5b43bc2aa8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "protobuf"
 version = "2.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3778,9 +3819,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.66"
+version = "1.0.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "336b10da19a12ad094b59d870ebde26a45402e5b470add4b5fd03c5048a32127"
+checksum = "a7f9e390c27c3c0ce8bc5d725f6e4d30a29d26659494aa4b17535f7522c5c950"
 dependencies = [
  "itoa",
  "ryu",

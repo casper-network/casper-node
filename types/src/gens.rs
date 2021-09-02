@@ -386,3 +386,228 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         transfer_arb().prop_map(StoredValue::Transfer)
     ]
 }
+
+pub fn bytes_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Bytes> {
+    vec(any::<u8>(), size).prop_map(Bytes::from)
+}
+
+#[cfg(test)]
+mod proptests {
+    use std::collections::VecDeque;
+
+    use bytesrepr::Bytes;
+    use proptest::{
+        collection::{vec, SizeRange},
+        prelude::*,
+    };
+
+    use bytesrepr_proptest::test_serialization_roundtrip;
+
+    proptest! {
+        #[test]
+        fn test_bool(u in any::<bool>()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_u8(u in any::<u8>()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_u16(u in any::<u16>()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_u32(u in any::<u32>()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_i32(u in any::<i32>()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_u64(u in any::<u64>()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_i64(u in any::<i64>()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_u8_slice_32(s in u8_slice_32()) {
+            test_serialization_roundtrip(&s);
+        }
+
+        #[test]
+        fn test_vec_u8(u in bytes_arb(1..100)) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_vec_i32(u in vec(any::<i32>(), 1..100)) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_vecdeque_i32((front, back) in (vec(any::<i32>(), 1..100), vec(any::<i32>(), 1..100))) {
+            let mut vec_deque = VecDeque::new();
+            for f in front {
+                vec_deque.push_front(f);
+            }
+            for f in back {
+                vec_deque.push_back(f);
+            }
+            test_serialization_roundtrip(&vec_deque);
+        }
+
+        #[test]
+        fn test_vec_vec_u8(u in vec(bytes_arb(1..100), 10)) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_uref_map(m in named_keys_arb(20)) {
+            test_serialization_roundtrip(&m);
+        }
+
+        #[test]
+        fn test_array_u8_32(arr in any::<[u8; 32]>()) {
+            test_serialization_roundtrip(&arr);
+        }
+
+        #[test]
+        fn test_string(s in "\\PC*") {
+            test_serialization_roundtrip(&s);
+        }
+
+        #[test]
+        fn test_str(s in "\\PC*") {
+            let not_a_string_object = s.as_str();
+            not_a_string_object.to_bytes().expect("should serialize a str");
+        }
+
+        #[test]
+        fn test_option(o in proptest::option::of(key_arb())) {
+            test_serialization_roundtrip(&o);
+        }
+
+        #[test]
+        fn test_unit(unit in Just(())) {
+            test_serialization_roundtrip(&unit);
+        }
+
+        #[test]
+        fn test_u128_serialization(u in u128_arb()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_u256_serialization(u in u256_arb()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_u512_serialization(u in u512_arb()) {
+            test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_key_serialization(key in key_arb()) {
+            test_serialization_roundtrip(&key);
+        }
+
+        #[test]
+        fn test_cl_value_serialization(cl_value in cl_value_arb()) {
+            test_serialization_roundtrip(&cl_value);
+        }
+
+        #[test]
+        fn test_access_rights(access_right in access_rights_arb()) {
+            test_serialization_roundtrip(&access_right);
+        }
+
+        #[test]
+        fn test_uref(uref in uref_arb()) {
+            test_serialization_roundtrip(&uref);
+        }
+
+        #[test]
+        fn test_account_hash(pk in account_hash_arb()) {
+            test_serialization_roundtrip(&pk);
+        }
+
+        #[test]
+        fn test_result(result in result_arb()) {
+            test_serialization_roundtrip(&result);
+        }
+
+        #[test]
+        fn test_phase_serialization(phase in phase_arb()) {
+            test_serialization_roundtrip(&phase);
+        }
+
+        #[test]
+        fn test_protocol_version(protocol_version in protocol_version_arb()) {
+            test_serialization_roundtrip(&protocol_version);
+        }
+
+        #[test]
+        fn test_sem_ver(sem_ver in sem_ver_arb()) {
+            test_serialization_roundtrip(&sem_ver);
+        }
+
+        #[test]
+        fn test_tuple1(t in (any::<u8>(),)) {
+            test_serialization_roundtrip(&t);
+        }
+
+        #[test]
+        fn test_tuple2(t in (any::<u8>(),any::<u32>())) {
+            test_serialization_roundtrip(&t);
+        }
+
+        #[test]
+        fn test_tuple3(t in (any::<u8>(),any::<u32>(),any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+
+        #[test]
+        fn test_tuple4(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple5(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple6(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple7(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple8(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple9(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple10(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_ratio_u64(t in (any::<u64>(), 1..u64::max_value())) {
+            test_serialization_roundtrip(&t);
+        }
+    }
+}

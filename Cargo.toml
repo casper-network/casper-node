@@ -1,32 +1,36 @@
 [workspace]
 
 members = [
+    "bytesrepr",
+    "bytesrepr_proptest",
     "ci/casper_updater",
     "client",
     "execution_engine",
     "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
+    "hashing",
     "node",
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
     "types",
-    "utils/validation",
     "utils/global-state-update-gen",
-    "hashing",
+    "utils/validation",
 ]
 
 default-members = [
+    "bytesrepr",
+    "bytesrepr_proptest",
     "ci/casper_updater",
     "client",
     "execution_engine",
     "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
+    "hashing",
     "node",
     "utils/global-state-update-gen",
     "utils/validation",
-    "hashing"
 ]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
@@ -35,5 +39,5 @@ default-members = [
 debug = true
 
 [profile.bench]
-codegen-units = 1
+codegen-units = 3
 lto = true

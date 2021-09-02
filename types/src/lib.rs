@@ -25,7 +25,7 @@ mod access_rights;
 pub mod account;
 pub mod api_error;
 mod block_time;
-pub mod bytesrepr;
+pub use bytesrepr;
 mod cl_type;
 mod cl_value;
 mod contract_wasm;
