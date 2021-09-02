@@ -86,22 +86,26 @@ pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = 
     })
 }
 
-fn string_is_uppercase(input: &(impl AsRef<[u8]> + ?Sized)) -> bool {
+pub fn string_is_same_case(input: &(impl AsRef<[u8]> + ?Sized)) -> bool {
     let bytes: &[u8] = input.as_ref();
-    bytes
+    let case_counts = bytes
         .iter()
         .map(|byte| *byte as char)
         .filter(|c| c.is_alphabetic())
-        .all(|c| c.is_uppercase())
-}
+        .fold((0_u64, 0_u64), |(upper_count, lower_count), c| {
+            if c.is_uppercase() {
+                (upper_count + 1, lower_count)
+            } else {
+                (upper_count, lower_count + 1)
+            }
+        });
 
-fn string_is_lowercase(input: &(impl AsRef<[u8]> + ?Sized)) -> bool {
-    let bytes: &[u8] = input.as_ref();
-    bytes
-        .iter()
-        .map(|byte| *byte as char)
-        .filter(|c| c.is_alphabetic())
-        .all(|c| c.is_lowercase())
+    match case_counts {
+        (0, 0) => true,
+        (0, 0..=u64::MAX) => true,
+        (0..=u64::MAX, 0) => true,
+        (0..=u64::MAX, 0..=u64::MAX) => false,
+    }
 }
 
 /// Decodes a mixed-case hexadecimal string, verifying that it conforms to the checksum scheme
@@ -122,7 +126,7 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
     // If the string was all uppercase or all lower case, don't verify the checksum.
     // This is to support legacy clients.
     // Otherwise perform the check as below.
-    if !(string_is_uppercase(input) || string_is_lowercase(input)) {
+    if !string_is_same_case(&bytes) {
         let checksum_hex_bytes = encode(&bytes).into_bytes();
         let input_string_bytes = input.as_ref();
         for idx in 0..input_string_bytes.len() {
@@ -468,5 +472,26 @@ mod tests {
                 .collect::<String>(),
             "testing encode lazy"
         );
+    }
+
+    #[test]
+    fn string_is_same_case_true_when_same_case() {
+        let input = "aaaaaaaaaaa";
+        assert!(string_is_same_case(input));
+
+        let input = "AAAAAAAAAAA";
+        assert!(string_is_same_case(input));
+    }
+
+    #[test]
+    fn string_is_same_case_false_when_mixed_case() {
+        let input = "aAaAaAaAaAa";
+        assert!(!string_is_same_case(input));
+    }
+
+    #[test]
+    fn string_is_same_case_no_alphabetic_chars_in_string() {
+        let input = "424242424242";
+        assert!(string_is_same_case(input));
     }
 }
