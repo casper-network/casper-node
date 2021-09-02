@@ -375,8 +375,8 @@ where
             start_time,
             start_height,
             new_faulty,
-            inactive,
             faulty,
+            inactive,
             validators,
         );
 

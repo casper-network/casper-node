@@ -251,11 +251,11 @@ impl JsonEraChanges {
     }
 }
 
-/// The information for a validator across eras.
+/// The information for a validator across two eras.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JsonValidatorInfo {
-    /// The public key of the given validator.
+    /// The public key of a given validator.
     public_key: PublicKey,
     /// The set of changes to the validator's status.
     era_changes: Vec<JsonEraChanges>,
