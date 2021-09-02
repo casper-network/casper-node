@@ -4,11 +4,7 @@
 //!
 //! [1]: https://eips.ethereum.org/EIPS/eip-55
 //! [2]: https://docs.rs/hex-buffer-serde/0.3.0/hex_buffer_serde/trait.Hex.html
-use alloc::{
-    borrow::Cow,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{borrow::Cow, string::String, vec::Vec};
 use base16;
 use core::{convert::TryFrom, fmt, marker::PhantomData};
 
@@ -62,8 +58,8 @@ pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
     let mut hex_output_string = String::with_capacity(input_bytes.len() * 2);
     for nibble in bytes_to_nibbles(input_bytes) {
         let c = HEX_CHARS[nibble as usize];
-        let hash_bit = hash_bits.next().unwrap_or(true);
-        if c.is_alphabetic() && hash_bit {
+        // let hash_bit = hash_bits.next().unwrap_or(true);
+        if c.is_alphabetic() && hash_bits.next().unwrap_or(true) {
             hex_output_string.extend(c.to_uppercase())
         } else {
             hex_output_string.extend(c.to_lowercase())
@@ -72,39 +68,35 @@ pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
     hex_output_string
 }
 
-pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = String> + '_ {
+/// `encode` but it returns an iterator.
+pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = char> + '_ {
     let input_bytes = input.as_ref();
     let hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
     let nibbles = bytes_to_nibbles(input_bytes);
     nibbles.zip(hash_bits).map(|(nibble, hash_bit)| {
         let c = HEX_CHARS[nibble as usize];
         if c.is_alphabetic() && hash_bit {
-            c.to_uppercase().to_string()
+            c.to_ascii_uppercase()
         } else {
-            c.to_lowercase().to_string()
+            c.to_ascii_lowercase()
         }
     })
 }
 
-pub fn string_is_same_case(input: &(impl AsRef<[u8]> + ?Sized)) -> bool {
-    let bytes: &[u8] = input.as_ref();
-    let case_counts = bytes
-        .iter()
-        .map(|byte| *byte as char)
-        .filter(|c| c.is_alphabetic())
-        .fold((0_u64, 0_u64), |(upper_count, lower_count), c| {
-            if c.is_uppercase() {
-                (upper_count + 1, lower_count)
-            } else {
-                (upper_count, lower_count + 1)
-            }
-        });
+/// Returns true if all chars in a string are uppercase or lowercase.
+/// Returns false if the string is mixed case or if there are no alphabetic chars.
+fn string_is_same_case<T: AsRef<[u8]> + ?Sized>(s: &T) -> bool {
+    let mut chars = s.as_ref().iter().filter(|c| c.is_ascii_alphabetic());
 
-    match case_counts {
-        (0, 0) => true,
-        (0, 0..=u64::MAX) => true,
-        (0..=u64::MAX, 0) => true,
-        (0..=u64::MAX, 0..=u64::MAX) => false,
+    match chars.next() {
+        Some(first) => {
+            let is_upper = first.is_ascii_uppercase();
+            chars.all(|c| c.is_ascii_uppercase() == is_upper)
+        }
+        None => {
+            // String has no actual characters.
+            true
+        }
     }
 }
 
@@ -127,16 +119,22 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
     // This is to support legacy clients.
     // Otherwise perform the check as below.
     if !string_is_same_case(&bytes) {
-        let checksum_hex_bytes = encode(&bytes).into_bytes();
         let input_string_bytes = input.as_ref();
-        for idx in 0..input_string_bytes.len() {
-            if checksum_hex_bytes[idx] != input_string_bytes[idx] {
-                return Err(base16::DecodeError::InvalidByte {
-                    index: idx,
-                    byte: input_string_bytes[idx],
-                });
-            }
-        }
+
+        return encode_iter(&bytes)
+            .zip(input_string_bytes.iter())
+            .enumerate()
+            .map(|(idx, (chr, &byt))| {
+                if chr as u8 == byt {
+                    Ok(chr as u8)
+                } else {
+                    Err(base16::DecodeError::InvalidByte {
+                        index: idx,
+                        byte: byt,
+                    })
+                }
+            })
+            .collect();
     }
     Ok(bytes)
 }
