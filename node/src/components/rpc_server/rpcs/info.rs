@@ -23,6 +23,7 @@ use super::{
 };
 use crate::{
     components::consensus::ValidatorChange,
+    crypto::AsymmetricKeyExt,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
@@ -43,11 +44,15 @@ static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     peers: GetStatusResult::doc_example().peers.clone(),
 });
-static GET_VALIDATOR_INFO_RESULT: Lazy<GetValidatorInfoResult> =
-    Lazy::new(|| GetValidatorInfoResult {
+static GET_VALIDATOR_INFO_RESULT: Lazy<GetValidatorInfoResult> = Lazy::new(|| {
+    let era_changes = JsonEraChanges::new(EraId::new(1), ValidatorChange::Added);
+    let public_key = PublicKey::doc_example().clone();
+    let validator_info = vec![JsonValidatorInfo::new(public_key, vec![era_changes])];
+    GetValidatorInfoResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        validator_info: vec![],
-    });
+        validator_info,
+    }
+});
 
 /// Params for "info_get_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -291,7 +296,7 @@ impl DocExample for GetValidatorInfoResult {
 pub struct GetValidatorInfo {}
 
 impl RpcWithoutParams for GetValidatorInfo {
-    const METHOD: &'static str = "info_get_validator_info";
+    const METHOD: &'static str = "info_get_validator_change";
     type ResponseResult = GetValidatorInfoResult;
 }
 
@@ -310,15 +315,11 @@ impl RpcWithoutParamsExt for GetValidatorInfo {
                 .map(|(public_key, era_changes)| {
                     let era_changes = era_changes
                         .into_iter()
-                        .map(|(era_id, validator_change)| JsonEraChanges {
-                            era_id,
-                            validator_change,
+                        .map(|(era_id, validator_change)| {
+                            JsonEraChanges::new(era_id, validator_change)
                         })
                         .collect();
-                    JsonValidatorInfo {
-                        public_key,
-                        era_changes,
-                    }
+                    JsonValidatorInfo::new(public_key, era_changes)
                 })
                 .collect();
             let result = Self::ResponseResult {

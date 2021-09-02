@@ -24,12 +24,11 @@ use casper_node::rpcs::{
     account::PutDeploy,
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
-    info::GetDeploy,
+    info::{GetDeploy, GetValidatorInfo},
     state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, QueryGlobalState},
 };
 
 use account_address::GenerateAccountHash as AccountAddress;
-use casper_node::rpcs::info::GetValidatorInfo;
 use command::{ClientCommand, Success};
 use deploy::{ListDeploys, MakeDeploy, MakeTransfer, SendDeploy, SignDeploy, Transfer};
 use generate_completion::GenerateCompletion;

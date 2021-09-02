@@ -17,7 +17,7 @@ use casper_node::{
             GetEraInfoBySwitchBlock, GetEraInfoParams, GetStateRootHash, GetStateRootHashParams,
         },
         docs::ListRpcs,
-        info::{GetDeploy, GetDeployParams},
+        info::{GetDeploy, GetDeployParams, GetValidatorInfo},
         state::{
             GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
             GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams, GetItem, GetItemParams,
@@ -34,7 +34,6 @@ use crate::{
     error::{Error, Result},
     validation, DictionaryItemStrParams, GlobalStateStrParams,
 };
-use casper_node::rpcs::info::GetValidatorInfo;
 
 /// Struct representing a single JSON-RPC call to the casper node.
 #[derive(Debug)]
