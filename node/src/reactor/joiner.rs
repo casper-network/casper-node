@@ -343,7 +343,7 @@ pub(crate) struct Reactor {
     contract_runtime: ContractRuntime,
     linear_chain_sync: LinearChainSyncState,
     deploy_fetcher: Fetcher<Deploy>,
-    block_fetcher: Fetcher<Block>,
+    block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
@@ -490,7 +490,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
-        let block_fetcher = Fetcher::new("block", config.fetcher, registry)?;
+        let block_by_hash_fetcher = Fetcher::new("block", config.fetcher, registry)?;
         let trie_fetcher = Fetcher::new("trie", config.fetcher, registry)?;
         let block_header_and_finality_signatures_by_height_fetcher =
             Fetcher::new("block_header_by_height", config.fetcher, registry)?;
@@ -517,7 +517,7 @@ impl reactor::Reactor for Reactor {
                 storage,
                 contract_runtime,
                 linear_chain_sync,
-                block_fetcher,
+                block_by_hash_fetcher,
                 trie_fetcher,
                 deploy_fetcher,
                 block_by_height_fetcher,
@@ -729,7 +729,7 @@ impl reactor::Reactor for Reactor {
             ),
             JoinerEvent::BlockFetcher(event) => reactor::wrap_effects(
                 JoinerEvent::BlockFetcher,
-                self.block_fetcher
+                self.block_by_hash_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::DeployFetcher(event) => reactor::wrap_effects(

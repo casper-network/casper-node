@@ -130,7 +130,7 @@ impl MemoryMetrics {
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
-        let block_fetcher = reactor.block_fetcher.estimate_heap_size() as i64;
+        let block_fetcher = reactor.block_by_hash_fetcher.estimate_heap_size() as i64;
         let linear_chain_sync = reactor.linear_chain_sync.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
 
