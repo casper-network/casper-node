@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
 * Added `contract_runtime_execute_block` histogram tracking execution time of a whole block.
+* Long running events now log their event type.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
