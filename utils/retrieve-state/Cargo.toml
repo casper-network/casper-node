@@ -1,0 +1,29 @@
+[package]
+name = "retrieve-state"
+version = "0.1.0"
+authors = ["Daniel Werner <dan@casperlabs.io>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+casper-contract = { path = "../../smart_contracts/contract", default-features = false, features = ["std"] }
+casper-execution-engine = { path = "../../execution_engine", features = ["gens"] }
+casper-types = { path = "../../types", default-features = false, features = ["std"] }
+casper-node = { path = "../../node" }
+lmdb = "0.8.0"
+log = "0.4.8"
+num-rational = "0.4.0"
+num-traits = "0.2.10"
+once_cell = "1.5.2"
+rand = "0.8.3"
+anyhow = "*"
+hex="*"
+jsonrpc-lite = "*"
+reqwest = { version = "0.11.1", features = ["json"] }
+serde_json = "*"
+serde = "*"
+structopt = "0.3.22"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+version-sync = "0.9"
+walkdir = "2"
