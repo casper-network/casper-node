@@ -58,14 +58,10 @@ pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
     let mut hex_output_string = String::with_capacity(input_bytes.len() * 2);
 
     for mut nibble in bytes_to_nibbles(input_bytes) {
-        // let c = HEX_CHARS[nibble as usize];
-        // let hash_bit = hash_bits.next().unwrap_or(true);
         if nibble >= 10 && hash_bits.next().unwrap_or(true) {
             nibble += 6;
-            hex_output_string.push(HEX_CHARS[nibble as usize])
-        } else {
-            hex_output_string.push(HEX_CHARS[nibble as usize])
         }
+        hex_output_string.push(HEX_CHARS[nibble as usize])
     }
     hex_output_string
 }
