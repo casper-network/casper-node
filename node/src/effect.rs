@@ -945,7 +945,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Read a trie by its hash key
-    pub(crate) async fn read_trie(self, trie_key: Digest) -> Option<Trie<Key, StoredValue>>
+    pub(crate) async fn read_trie(
+        self,
+        trie_key: Digest,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

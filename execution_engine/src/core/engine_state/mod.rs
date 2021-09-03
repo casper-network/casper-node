@@ -97,7 +97,7 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 pub struct EngineState<S> {
     config: EngineConfig,
     system_contract_cache: SystemContractCache,
-    state: S,
+    pub state: S,
 }
 
 impl EngineState<LmdbGlobalState> {

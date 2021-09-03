@@ -48,6 +48,7 @@ enum ErrorCode {
     InvalidDeploy = -32008,
     NoSuchAccount = -32009,
     FailedToGetDictionaryURef = -32010,
+    ReadTrie = -32011,
 }
 
 #[derive(Debug)]
@@ -308,7 +309,7 @@ mod common {
             }
         };
 
-        let value_compat = match StoredValue::try_from(&*value) {
+        let value_compat = match StoredValue::try_from(*value) {
             Ok(value_compat) => value_compat,
             Err(error) => {
                 let error_msg = format!("failed to encode stored value: {:?}", error);

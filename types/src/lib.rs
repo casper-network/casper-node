@@ -38,7 +38,7 @@ mod gas;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
 mod json_pretty_printer;
-mod key;
+pub mod key;
 mod motes;
 mod named_key;
 mod phase;

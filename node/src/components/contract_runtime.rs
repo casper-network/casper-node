@@ -17,7 +17,7 @@ use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -26,12 +26,12 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
-use casper_types::{Key, ProtocolVersion, StoredValue};
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -356,15 +356,13 @@ where
                 responder,
             } => {
                 trace!(?trie_key, "read_trie request");
-                let result = self.read_trie(trie_key);
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(?error, "read_trie_request");
-                            None
-                        }
-                    };
+                    let correlation_id = CorrelationId::new();
+                    let start = Instant::now();
+                    let result = engine_state.read_trie(correlation_id, trie_key);
+                    metrics.read_trie.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "read_trie response");
                     responder.respond(result).await
                 }
@@ -657,20 +655,6 @@ impl ContractRuntime {
                 .enqueue_block_for_execution(finalized_block, deploys, transfers)
                 .await
         }
-    }
-
-    /// Read a [Trie<Key, StoredValue>] from the trie store.
-    pub(crate) fn read_trie(
-        &self,
-        trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
-        let correlation_id = CorrelationId::new();
-        let start = Instant::now();
-        let result = self.engine_state.read_trie(correlation_id, trie_key);
-        self.metrics
-            .read_trie
-            .observe(start.elapsed().as_secs_f64());
-        result
     }
 
     /// Returns the engine state, for testing only.
