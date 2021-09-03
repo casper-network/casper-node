@@ -31,8 +31,6 @@ pub(super) struct MemoryMetrics {
     mem_block_fetcher: IntGauge,
     /// Estimated heap memory usage of deploy fetcher component.
     mem_deploy_fetcher: IntGauge,
-    /// Estimated heap memory usage of linear chain component.
-    mem_linear_chain: IntGauge,
 
     /// Histogram detailing how long it took to estimate memory usage.
     mem_estimator_runtime_s: Histogram,
@@ -73,10 +71,6 @@ impl MemoryMetrics {
             "joiner_mem_deploy_fetcher",
             "deploy_fetcher memory usage in bytes",
         )?;
-        let mem_linear_chain = IntGauge::new(
-            "joiner_mem_linear_chain",
-            "linear_chain memory usage in bytes",
-        )?;
         let mem_estimator_runtime_s = Histogram::with_opts(
             HistogramOpts::new(
                 "joiner_mem_estimator_runtime_s",
@@ -97,7 +91,6 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_contract_runtime.clone()))?;
         registry.register(Box::new(mem_block_fetcher.clone()))?;
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;
-        registry.register(Box::new(mem_linear_chain.clone()))?;
         registry.register(Box::new(mem_estimator_runtime_s.clone()))?;
 
         Ok(MemoryMetrics {
@@ -112,7 +105,6 @@ impl MemoryMetrics {
             mem_contract_runtime,
             mem_block_fetcher,
             mem_deploy_fetcher,
-            mem_linear_chain,
             mem_estimator_runtime_s,
             registry,
         })
@@ -192,7 +184,6 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_contract_runtime);
         unregister_metric!(self.registry, self.mem_block_fetcher);
         unregister_metric!(self.registry, self.mem_deploy_fetcher);
-        unregister_metric!(self.registry, self.mem_linear_chain);
         unregister_metric!(self.registry, self.mem_estimator_runtime_s);
     }
 }
