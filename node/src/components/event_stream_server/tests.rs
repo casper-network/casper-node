@@ -593,7 +593,6 @@ async fn should_serve_events_with_no_query(path: &str) {
     let url = url(server_address, path, None);
     let (expected_events, final_id) = fixture.all_filtered_events(path);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
-
     fixture.stop_server().await;
 
     assert_eq!(received_events, expected_events);

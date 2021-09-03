@@ -603,7 +603,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces that deploys have expired.
+    /// Announces which deploys have expired.
     pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
     where
         REv: From<BlockProposerAnnouncement>,

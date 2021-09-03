@@ -1122,16 +1122,12 @@ impl reactor::Reactor for Reactor {
             }
             ParticipatingEvent::BlockProposerAnnouncement(
                 BlockProposerAnnouncement::DeploysExpired(hashes),
-            ) => hashes
-                .into_iter()
-                .map(|hash| {
-                    let reactor_event = ParticipatingEvent::EventStreamServer(
-                        event_stream_server::Event::DeployExpired(hash),
-                    );
-                    self.dispatch_event(effect_builder, rng, reactor_event)
-                })
-                .flatten()
-                .collect(),
+            ) => {
+                let reactor_event = ParticipatingEvent::EventStreamServer(
+                    event_stream_server::Event::DeploysExpired(hashes),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
             ) => {

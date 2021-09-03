@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use itertools::Itertools;
 
 use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp};
 
@@ -14,7 +15,7 @@ pub enum Event {
         block_hash: BlockHash,
         execution_result: Box<ExecutionResult>,
     },
-    DeployExpired(DeployHash),
+    DeploysExpired(Vec<DeployHash>),
     Fault {
         era_id: EraId,
         public_key: PublicKey,
@@ -34,8 +35,12 @@ impl Display for Event {
             Event::DeployAccepted(deploy_hash) => {
                 write!(formatter, "deploy accepted {}", deploy_hash)
             }
-            Event::DeployExpired(deploy_hash) => {
-                write!(formatter, "deploy expired {}", deploy_hash)
+            Event::DeploysExpired(deploy_hashes) => {
+                write!(
+                    formatter,
+                    "deploys expired: {}",
+                    deploy_hashes.iter().join(", ")
+                )
             }
             Event::DeployProcessed { deploy_hash, .. } => {
                 write!(formatter, "deploy processed {}", deploy_hash)
