@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use datasize::DataSize;
 use pwasm_utils::rules::{InstructionType, Metering, Set};
 use rand::{distributions::Standard, prelude::*, Rng};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
@@ -29,7 +30,7 @@ const NUM_FIELDS: usize = 17;
 pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Debug, DataSize)]
 pub struct OpcodeCosts {
     /// Bit operations multiplier.
     pub bit: u32,

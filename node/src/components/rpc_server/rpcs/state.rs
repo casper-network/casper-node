@@ -98,6 +98,111 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
         stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
+
+pub mod read_trie {
+    //! RPC examples for `ReadTrie`.
+
+    use super::*;
+    use crate::types::json_compatibility::Base64Blob;
+    use casper_execution_engine::shared::newtypes::Blake2bHash;
+
+    static GET_KEYS_WITH_PREFIX_EXAMPLE: ReadTrie = ReadTrie {};
+    static READ_TRIE_PARAMS_EXAMPLE: Lazy<ReadTrieParams> = Lazy::new(|| ReadTrieParams {
+        trie_key: *Block::doc_example().header().state_root_hash(),
+    });
+    static GET_KEYS_WITH_PREFIX_RESULT_EXAMPLE: Lazy<ReadTrieResult> =
+        Lazy::new(|| ReadTrieResult {
+            maybe_trie_bytes: None,
+        });
+
+    /// TODO
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    pub struct ReadTrie {}
+
+    impl RpcWithParams for ReadTrie {
+        const METHOD: &'static str = "read_trie";
+        type RequestParams = ReadTrieParams;
+        type ResponseResult = ReadTrieResult;
+    }
+
+    impl RpcWithParamsExt for ReadTrie {
+        fn handle_request<REv: ReactorEventT>(
+            effect_builder: EffectBuilder<REv>,
+            response_builder: Builder,
+            params: Self::RequestParams,
+            _api_version: ProtocolVersion,
+        ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+            async move {
+                let trie_key = params.trie_key;
+
+                let ee_trie = match effect_builder.read_trie(Blake2bHash::from(trie_key)).await {
+                    Ok(Some(maybe_trie)) => maybe_trie,
+                    Ok(None) => {
+                        return Ok(response_builder.success(Self::ResponseResult {
+                            maybe_trie_bytes: None,
+                        })?)
+                    }
+                    Err(error) => {
+                        error!(?error, "read_trie_request");
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::ReadTrie as i64,
+                            "Failed to read trie",
+                        ))?);
+                    }
+                };
+
+                let trie_bytes = match ee_trie.to_bytes() {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        error!(?error, "read_trie_request");
+                        return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                    }
+                };
+
+                let result = Self::ResponseResult {
+                    maybe_trie_bytes: Some(trie_bytes.into()),
+                };
+
+                Ok(response_builder.success(result)?)
+            }
+            .boxed()
+        }
+    }
+
+    impl DocExample for ReadTrie {
+        fn doc_example() -> &'static Self {
+            &GET_KEYS_WITH_PREFIX_EXAMPLE
+        }
+    }
+
+    /// Parameters for `ReadTrie` request.
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    pub struct ReadTrieParams {
+        /// A trie key to read.
+        pub trie_key: Digest,
+    }
+
+    impl DocExample for ReadTrieParams {
+        fn doc_example() -> &'static Self {
+            &*READ_TRIE_PARAMS_EXAMPLE
+        }
+    }
+
+    /// Result of a `ReadTrie` request.
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    pub struct ReadTrieResult {
+        /// A list of keys read under the specified prefix.
+        #[schemars(with = "String", description = "A trie from global state storage.")]
+        pub maybe_trie_bytes: Option<Base64Blob>,
+    }
+
+    impl DocExample for ReadTrieResult {
+        fn doc_example() -> &'static Self {
+            &*GET_KEYS_WITH_PREFIX_RESULT_EXAMPLE
+        }
+    }
+}
+
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
         state_identifier: GlobalStateIdentifier::BlockHash(*Block::doc_example().hash()),
@@ -111,6 +216,7 @@ static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
         stored_value: StoredValue::Account(JsonAccount::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
+
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]

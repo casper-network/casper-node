@@ -14,15 +14,16 @@ use std::{
 };
 
 pub(crate) use announcements::ContractRuntimeAnnouncement;
-pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError};
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
+pub use config::Config;
+pub use error::{BlockExecutionError, ConfigError};
+pub use operations::execute_finalized_block;
+pub use types::{BlockAndExecutionEffects, EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
 
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -56,7 +57,7 @@ use crate::{
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
-pub(crate) struct ExecutionPreState {
+pub struct ExecutionPreState {
     /// The height of the next `Block` to be constructed. Note that this must match the height of
     /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
@@ -85,7 +86,7 @@ impl ExecutionPreState {
     }
 
     /// Get the next block height according that will succeed the block specified by `parent_hash`.
-    pub(crate) fn next_block_height(&self) -> u64 {
+    pub fn next_block_height(&self) -> u64 {
         self.next_block_height
     }
 }
@@ -105,7 +106,7 @@ type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deplo
 
 /// The contract runtime components.
 #[derive(DataSize)]
-pub(crate) struct ContractRuntime {
+pub struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
@@ -123,7 +124,7 @@ impl Debug for ContractRuntime {
 
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
-pub(crate) struct ContractRuntimeMetrics {
+pub struct ContractRuntimeMetrics {
     run_execute: Histogram,
     apply_effect: Histogram,
     commit_upgrade: Histogram,
@@ -363,18 +364,8 @@ where
             } => {
                 trace!(?trie_key, "read_trie request");
                 let result = self.read_trie(trie_key);
-                async move {
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(?error, "read_trie_request");
-                            None
-                        }
-                    };
-                    trace!(?result, "read_trie response");
-                    responder.respond(result).await
-                }
-                .ignore()
+                trace!(?result, "read_trie response");
+                responder.respond(result).ignore()
             }
             ContractRuntimeRequest::PutTrie { trie, responder } => {
                 trace!(?trie, "put_trie request");
@@ -419,9 +410,9 @@ where
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 tokio::task::unconstrained(async move {
-                    let result = operations::execute_finalized_block(
+                    let result = execute_finalized_block(
                         engine_state.as_ref(),
-                        metrics.as_ref(),
+                        Some(metrics.as_ref()),
                         protocol_version,
                         execution_pre_state,
                         finalized_block,
@@ -613,9 +604,9 @@ impl ContractRuntime {
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
         } = match tokio::task::unconstrained(async move {
-            operations::execute_finalized_block(
+            execute_finalized_block(
                 engine_state.as_ref(),
-                metrics.as_ref(),
+                Some(metrics.as_ref()),
                 protocol_version,
                 current_execution_pre_state,
                 finalized_block,
@@ -666,7 +657,7 @@ impl ContractRuntime {
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
-    pub(crate) fn read_trie(
+    pub fn read_trie(
         &self,
         trie_key: Blake2bHash,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {

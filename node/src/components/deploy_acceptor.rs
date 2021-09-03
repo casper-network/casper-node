@@ -26,7 +26,7 @@ pub(crate) use config::Config;
 pub(crate) use event::Event;
 
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub enum Error {
     /// An invalid deploy was received from the client.
     #[error("invalid deploy: {0}")]
     InvalidDeploy(DeployValidationFailure),

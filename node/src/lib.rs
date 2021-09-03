@@ -37,7 +37,7 @@ pub(crate) mod utils;
 pub mod cli;
 pub mod crypto;
 pub mod types;
-pub use components::rpc_server::rpcs;
+pub use components::{contract_runtime, rpc_server::rpcs};
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
