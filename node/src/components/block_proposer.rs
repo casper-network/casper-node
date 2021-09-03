@@ -264,14 +264,15 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::Prune => {
-                let pruned_hashes = self.prune(Timestamp::now());
-                let pruned_count = pruned_hashes.total_pruned;
-                debug!(%pruned_count, "pruned deploys from buffer");
-
+                // Re-trigger timer after `PRUNE_INTERVAL`.
                 let mut effects = effect_builder
                     .set_timeout(PRUNE_INTERVAL)
                     .event(|_| Event::Prune);
 
+                // Announce pruned hashes
+                let pruned_hashes = self.prune(Timestamp::now());
+                let pruned_count = pruned_hashes.total_pruned;
+                debug!(%pruned_count, "pruned deploys from buffer");
                 effects.extend(
                     effect_builder
                         .announce_expired_deploys(pruned_hashes.expired_hashes_to_be_announced)
