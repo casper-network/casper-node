@@ -26,6 +26,8 @@ use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
+#[cfg(test)]
+use casper_types::bytesrepr::Bytes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
@@ -175,16 +177,16 @@ pub enum DeployValidationFailure {
     #[error("missing payment argument amount")]
     MissingPaymentAmount,
 
-    /// Failed to parse payment amount
+    /// Failed to parse payment amount.
     #[error("failed to parse payment amount as U512")]
     FailedToParsePaymentAmount,
 
     /// The payment amount associated with the deploy exceeds the block gas limit.
     #[error("payment amount of {got} exceeds the block gas limit of {block_gas_limit}")]
     ExceededBlockGasLimit {
-        /// Configured block gas limit
+        /// Configured block gas limit.
         block_gas_limit: u64,
-        /// The payment amount received
+        /// The payment amount received.
         got: U512,
     },
 
@@ -860,7 +862,7 @@ impl Deploy {
         let chain_name = String::from("casper-example");
 
         let payment = ExecutableDeployItem::ModuleBytes {
-            module_bytes: casper_types::bytesrepr::Bytes::new(),
+            module_bytes: Bytes::new(),
             args: runtime_args! {
                 "amount" => *MAX_PAYMENT
             },
@@ -1359,5 +1361,45 @@ mod tests {
             deploy.is_valid.is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
+    }
+
+    #[test]
+    fn transfer_acceptable_regardless_of_excessive_payment_amount() {
+        let mut rng = crate::new_rng();
+        let secret_key = SecretKey::random(&mut rng);
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let amount = U512::from(deploy_config.block_gas_limit + 1);
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => amount
+            },
+        };
+
+        let transfer_args = {
+            let mut transfer_args = RuntimeArgs::new();
+            let value =
+                CLValue::from_t(U512::from(MAX_PAYMENT_AMOUNT)).expect("should create CLValue");
+            transfer_args.insert_cl_value(ARG_AMOUNT, value);
+            transfer_args
+        };
+
+        let mut deploy = Deploy::new(
+            Timestamp::now(),
+            deploy_config.max_ttl,
+            1,
+            vec![],
+            chain_name.to_string(),
+            payment,
+            ExecutableDeployItem::Transfer {
+                args: transfer_args,
+            },
+            &secret_key,
+            None,
+        );
+
+        assert_eq!(Ok(()), deploy.is_acceptable(chain_name, &deploy_config))
     }
 }
