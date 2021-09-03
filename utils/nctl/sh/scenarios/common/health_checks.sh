@@ -41,11 +41,6 @@ function assert_error_count() {
     local COUNT
     local TOTAL
 
-    if [ "$ERRORS_ALLOWED" = "ignore" ]; then
-        log_step "Error count ignored by test, continuing..."
-        return 0
-    fi
-
     log_step "Looking for errors in logs..."
 
     TOTAL='0'
@@ -54,6 +49,11 @@ function assert_error_count() {
         TOTAL=$((TOTAL + COUNT))
         log "... node-$i: ERROR COUNT = $COUNT"
     done
+
+    if [ "$ERRORS_ALLOWED" = "ignore" ]; then
+        log "Error count ignored by test, skipping $TOTAL errors..."
+        return 0
+    fi
 
     if [ "$ERRORS_ALLOWED" != "$TOTAL" ]; then
         log "ERROR: ALLOWED: $ERRORS_ALLOWED != TOTAL: $TOTAL"
@@ -71,25 +71,41 @@ function assert_error_count() {
 #              the total allowed by the test. If
 #              EQUIVS_ALLOWED is set to ignore, it will
 #              return 0.
+#
+# NOTE: Since equivocations are global we divide the total
+#       by the number of nodes it's found on. This is
+#       so we don't confuse ourselves when we expect
+#       1 but each node has the message and thus the
+#       TOTAL would print 5.
 ##########################################################
 
 function assert_equivocator_count() {
     local COUNT
     local TOTAL
-
-    if [ "$EQUIVS_ALLOWED" = "ignore" ]; then
-        log_step "Equivocator count ignored by test, continuing..."
-        return 0
-    fi
+    local GLOBAL_DIVIDER
 
     log_step "Looking for equivocators in logs..."
 
     TOTAL='0'
+    GLOBAL_DIVIDER='0'
     for i in $(seq 1 "$(get_count_of_nodes)"); do
         COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'validator equivocated' | wc -l)
+        if [ "$COUNT" != "0" ]; then
+            GLOBAL_DIVIDER=$((GLOBAL_DIVIDER + 1))
+        fi
+
         TOTAL=$((TOTAL + COUNT))
         log "... node-$i: EQUIV COUNT = $COUNT"
     done
+
+    if [ "$GLOBAL_DIVIDER" != "0" ]; then
+        TOTAL=$((TOTAL / GLOBAL_DIVIDER))
+    fi
+
+    if [ "$EQUIVS_ALLOWED" = "ignore" ]; then
+        log "Equivocator count ignored by test, skipping $TOTAL equivocations..."
+        return 0
+    fi
 
     if [ "$EQUIVS_ALLOWED" != "$TOTAL" ]; then
         log "ERROR: ALLOWED: $EQUIVS_ALLOWED != TOTAL: $TOTAL"
@@ -113,11 +129,6 @@ function assert_crash_count() {
     local COUNT
     local TOTAL
 
-    if [ "$CRASH_ALLOWED" = "ignore" ]; then
-        log_step "Crash count ignored by test, continuing..."
-        return 0
-    fi
-
     log_step "Looking for crashes in logs..."
 
     TOTAL='0'
@@ -126,6 +137,11 @@ function assert_crash_count() {
         TOTAL=$((TOTAL + COUNT))
         log "... node-$i: CRASH COUNT = $COUNT"
     done
+
+    if [ "$CRASH_ALLOWED" = "ignore" ]; then
+        log "Crash count ignored by test, skipping $TOTAL crashes..."
+        return 0
+    fi
 
     if [ "$CRASH_ALLOWED" != "$TOTAL" ]; then
         log "ERROR: ALLOWED: $CRASH_ALLOWED != TOTAL: $TOTAL"
@@ -149,11 +165,6 @@ function assert_restart_count() {
     local COUNT
     local TOTAL
 
-    if [ "$RESTARTS_ALLOWED" = "ignore" ]; then
-        log_step "Restart count ignored by test, continuing..."
-        return 0
-    fi
-
     log_step "Looking for restarts in logs..."
 
     TOTAL='0'
@@ -166,6 +177,11 @@ function assert_restart_count() {
         TOTAL=$((TOTAL + COUNT))
         log "... node-$i: RESTART COUNT = $COUNT"
     done
+
+    if [ "$RESTARTS_ALLOWED" = "ignore" ]; then
+        log "Restart count ignored by test, skipping $TOTAL restarts..."
+        return 0
+    fi
 
     if [ "$RESTARTS_ALLOWED" != "$TOTAL" ]; then
         log "ERROR: ALLOWED: $RESTARTS_ALLOWED != TOTAL: $TOTAL"
@@ -189,11 +205,6 @@ function assert_doppel_count() {
     local COUNT
     local TOTAL
 
-    if [ "$DOPPEL_ALLOWED" = "ignore" ]; then
-        log_step "Doppelganger count ignored by test, continuing..."
-        return 0
-    fi
-
     log_step "Looking for doppels in logs..."
 
     TOTAL='0'
@@ -202,6 +213,11 @@ function assert_doppel_count() {
         TOTAL=$((TOTAL + COUNT))
         log "... node-$i: DOPPEL COUNT = $COUNT"
     done
+
+    if [ "$DOPPEL_ALLOWED" = "ignore" ]; then
+        log "Doppelganger count ignored by test, skipping $TOTAL doppelgangers..."
+        return 0
+    fi
 
     if [ "$DOPPEL_ALLOWED" != "$TOTAL" ]; then
         log "ERROR: ALLOWED: $DOPPEL_ALLOWED != TOTAL: $TOTAL"
@@ -232,11 +248,6 @@ function assert_eject_count() {
     local TOTAL
     local GLOBAL_DIVIDER
 
-    if [ "$EJECTS_ALLOWED" = "ignore" ]; then
-        log_step "Ejection count ignored by test, continuing..."
-        return 0
-    fi
-
     log_step "Looking for ejections in logs..."
 
     TOTAL='0'
@@ -259,6 +270,11 @@ function assert_eject_count() {
 
     if [ "$GLOBAL_DIVIDER" != "0" ]; then
         TOTAL=$((TOTAL / GLOBAL_DIVIDER))
+    fi
+
+    if [ "$EJECTS_ALLOWED" = "ignore" ]; then
+        log "Ejection count ignored by test, skipping $TOTAL ejections..."
+        return 0
     fi
 
     if [ "$EJECTS_ALLOWED" != "$TOTAL" ]; then
