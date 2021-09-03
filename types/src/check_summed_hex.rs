@@ -56,13 +56,15 @@ pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
     let input_bytes = input.as_ref();
     let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
     let mut hex_output_string = String::with_capacity(input_bytes.len() * 2);
-    for nibble in bytes_to_nibbles(input_bytes) {
-        let c = HEX_CHARS[nibble as usize];
+
+    for mut nibble in bytes_to_nibbles(input_bytes) {
+        // let c = HEX_CHARS[nibble as usize];
         // let hash_bit = hash_bits.next().unwrap_or(true);
-        if c.is_alphabetic() && hash_bits.next().unwrap_or(true) {
-            hex_output_string.extend(c.to_uppercase())
+        if nibble >= 10 && hash_bits.next().unwrap_or(true) {
+            nibble += 6;
+            hex_output_string.push(HEX_CHARS[nibble as usize])
         } else {
-            hex_output_string.extend(c.to_lowercase())
+            hex_output_string.push(HEX_CHARS[nibble as usize])
         }
     }
     hex_output_string
@@ -71,15 +73,14 @@ pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
 /// `encode` but it returns an iterator.
 pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = char> + '_ {
     let input_bytes = input.as_ref();
-    let hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
+    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
     let nibbles = bytes_to_nibbles(input_bytes);
-    nibbles.zip(hash_bits).map(|(nibble, hash_bit)| {
-        let c = HEX_CHARS[nibble as usize];
-        if c.is_alphabetic() && hash_bit {
-            c.to_ascii_uppercase()
-        } else {
-            c.to_ascii_lowercase()
+
+    nibbles.map(move |mut nibble| {
+        if nibble >= 10 && hash_bits.next().unwrap_or(true) {
+            nibble += 6;
         }
+        HEX_CHARS[nibble as usize]
     })
 }
 
