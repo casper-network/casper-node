@@ -455,8 +455,8 @@ mod tests {
     #[test]
     fn encode_iter_works() {
         let input = "testing encode lazy";
-        let data = encode(input.clone());
-        let lazy_data = encode_iter(input.clone()).collect::<String>();
+        let data = encode(&input);
+        let lazy_data = encode_iter(&input).collect::<String>();
 
         assert_eq!(data, lazy_data);
         assert_eq!(

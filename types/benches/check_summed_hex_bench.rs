@@ -1,13 +1,12 @@
 use casper_types::check_summed_hex::{encode, encode_iter};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rand::Rng;
 
-fn encode_and_print_first_5(input: &Vec<u8>) {
+fn encode_and_print_first_5(input: &[u8]) {
     let encoded = encode(input);
     format!("{:5}", encoded);
 }
 
-fn encode_iter_and_print_first_5(input: &Vec<u8>) {
+fn encode_iter_and_print_first_5(input: &[u8]) {
     let encoded = encode_iter(input).take(5).collect::<String>();
     format!("{:5}", encoded);
 }
