@@ -292,13 +292,21 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
         id: Blake2bHash,
         peer: NodeId,
     ) -> Effects<Event<GlobalStorageTrie>> {
-        effect_builder
-            .read_trie(id)
-            .event(move |maybe_trie| Event::GetFromStorageResult {
+        async move {
+            let maybe_trie = match effect_builder.read_trie(id).await {
+                Ok(maybe_trie) => maybe_trie,
+                Err(error) => {
+                    error!(?error, "read_trie_request");
+                    None
+                }
+            };
+            Event::GetFromStorageResult {
                 id,
                 peer,
                 maybe_item: Box::new(maybe_trie),
-            })
+            }
+        }
+        .event(std::convert::identity)
     }
 }
 

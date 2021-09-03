@@ -6,6 +6,7 @@ use std::{
     mem::MaybeUninit,
 };
 
+use schemars::JsonSchema;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeMap,
@@ -30,11 +31,13 @@ pub(crate) const RADIX: usize = 256;
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 
 /// Represents a pointer to the next object in a Merkle Trie
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, JsonSchema, Serialize, Deserialize)]
 pub enum Pointer {
     /// Leaf pointer.
+    #[schemars(with = "String", description = "Hex encoded blake2b hash.")]
     LeafPointer(Blake2bHash),
     /// Node pointer.
+    #[schemars(with = "String", description = "Hex encoded blake2b hash.")]
     NodePointer(Blake2bHash),
 }
 

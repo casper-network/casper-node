@@ -66,6 +66,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add optional in-memory deduplication of deploys, controllable via new `[storage]` config options `[enable_mem_deduplication]` and `[mem_pool_prune_interval]`.
 * Add a new event stream to SSE server accessed via `<IP:Port>/events/deploys` which emits deploys in full as they are accepted.
 * Events now log their ancestors, so detailed tracing of events is possible.
+* Adds `GetKeysWithPrefix` rpc endpoint.
+* Adds `retrieve-state` and `dry-run-deploys` in `utils/`.
 
 ### Changed
 * Major rewrite of the network component, covering connection negotiation and management, periodic housekeeping and logging.

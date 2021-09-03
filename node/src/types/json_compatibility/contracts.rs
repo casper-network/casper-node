@@ -1,14 +1,20 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
+};
+
 use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::json_compatibility::vectorize;
 use casper_types::{
-    Contract as DomainContract, ContractHash, ContractPackage as DomainContractPackage,
-    ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, ProtocolVersion, URef,
+    contracts::ContractPackageStatus, key::FromStrError, Contract as DomainContract, ContractHash,
+    ContractPackage as DomainContractPackage, ContractPackageHash, ContractVersionKey,
+    ContractWasmHash, EntryPoint, EntryPoints, Group, Key, NamedKey, ProtocolVersion, URef,
 };
 
 #[derive(
@@ -62,6 +68,38 @@ impl From<&DomainContract> for Contract {
     }
 }
 
+impl TryFrom<Contract> for DomainContract {
+    type Error = FromStrError;
+
+    fn try_from(contract: Contract) -> Result<Self, Self::Error> {
+        let contract_package_hash = contract.contract_package_hash;
+        let contract_wasm_hash = contract.contract_wasm_hash;
+        let named_keys = {
+            let mut tmp = BTreeMap::new();
+            let named_keys_vec = contract.named_keys;
+            for named_key in named_keys_vec {
+                let name = named_key.name;
+                let key_str = named_key.key;
+                let key: Key = Key::from_formatted_str(&key_str)?;
+                tmp.insert(name, key);
+            }
+            tmp
+        };
+        let entry_points = {
+            let entry_points_vec = contract.entry_points;
+            EntryPoints::from(entry_points_vec)
+        };
+        let protocol_version = contract.protocol_version;
+        Ok(DomainContract::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            named_keys,
+            entry_points,
+            protocol_version,
+        ))
+    }
+}
+
 /// Contract definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, DataSize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -109,5 +147,52 @@ impl From<&DomainContractPackage> for ContractPackage {
             disabled_versions,
             groups,
         }
+    }
+}
+
+impl TryFrom<ContractPackage> for DomainContractPackage {
+    type Error = ();
+
+    fn try_from(contract_package: ContractPackage) -> Result<Self, Self::Error> {
+        let access_key = contract_package.access_key;
+        let versions = {
+            let mut tmp = BTreeMap::new();
+            for version in contract_package.versions {
+                let contract_version_key = ContractVersionKey::new(
+                    version.protocol_version_major,
+                    version.contract_version,
+                );
+                tmp.insert(contract_version_key, version.contract_hash);
+            }
+            tmp
+        };
+        let disabled_versions = {
+            let mut tmp = BTreeSet::new();
+            for disabled_version in contract_package.disabled_versions {
+                let contract_version_key = ContractVersionKey::new(
+                    disabled_version.protocol_version_major,
+                    disabled_version.contract_version,
+                );
+                tmp.insert(contract_version_key);
+            }
+            tmp
+        };
+        let groups = {
+            let mut tmp = BTreeMap::new();
+            for group in contract_package.groups {
+                let domain_group = Group::new(group.group);
+                let keys: BTreeSet<URef> = group.keys.into_iter().collect();
+                tmp.insert(domain_group, keys);
+            }
+            tmp
+        };
+        let lock_status = ContractPackageStatus::default(); // TODO
+        Ok(DomainContractPackage::new(
+            access_key,
+            versions,
+            disabled_versions,
+            groups,
+            lock_status,
+        ))
     }
 }

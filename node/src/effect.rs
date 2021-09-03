@@ -72,6 +72,7 @@ use std::{
 };
 
 use datasize::DataSize;
+
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
 use serde::Serialize;
@@ -933,7 +934,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Read a trie by its hash key
-    pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> Option<Trie<Key, StoredValue>>
+    pub(crate) async fn read_trie(
+        self,
+        trie_key: Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

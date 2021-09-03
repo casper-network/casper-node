@@ -32,9 +32,10 @@ use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
 };
 
-pub(super) fn execute_finalized_block(
+/// Executes a finalized block against the engine state.
+pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    metrics: Option<&ContractRuntimeMetrics>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
@@ -88,7 +89,9 @@ pub(super) fn execute_finalized_block(
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 
-    metrics.exec_block.observe(start.elapsed().as_secs_f64());
+    if let Some(metrics) = metrics {
+        metrics.exec_block.observe(start.elapsed().as_secs_f64());
+    }
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators
@@ -121,7 +124,9 @@ pub(super) fn execute_finalized_block(
 
     // Update the metric.
     let block_height = finalized_block.height();
-    metrics.chain_height.set(block_height as i64);
+    if let Some(metrics) = metrics {
+        metrics.chain_height.set(block_height as i64);
+    }
 
     let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
         maybe_step_effect_and_upcoming_era_validators
@@ -155,7 +160,7 @@ pub(super) fn execute_finalized_block(
 /// Commits the execution effects.
 fn commit_execution_effects(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    maybe_metrics: Option<&ContractRuntimeMetrics>,
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
@@ -192,7 +197,7 @@ fn commit_execution_effects(
     };
     let new_state_root = commit_transforms(
         engine_state,
-        metrics,
+        maybe_metrics,
         state_root_hash,
         execution_effect.transforms,
     )?;
@@ -201,7 +206,7 @@ fn commit_execution_effects(
 
 fn commit_transforms(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    maybe_metrics: Option<&ContractRuntimeMetrics>,
     state_root_hash: Digest,
     effects: AdditiveMap<Key, Transform>,
 ) -> Result<Digest, engine_state::Error> {
@@ -209,28 +214,32 @@ fn commit_transforms(
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
     let result = engine_state.apply_effect(correlation_id, state_root_hash.into(), effects);
-    metrics.apply_effect.observe(start.elapsed().as_secs_f64());
+    if let Some(metrics) = maybe_metrics {
+        metrics.apply_effect.observe(start.elapsed().as_secs_f64());
+    }
     trace!(?result, "commit result");
     result.map(Digest::from)
 }
 
 fn execute(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    maybe_metrics: Option<&ContractRuntimeMetrics>,
     execute_request: ExecuteRequest,
 ) -> Result<VecDeque<EngineExecutionResult>, engine_state::Error> {
     trace!(?execute_request, "execute");
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
     let result = engine_state.run_execute(correlation_id, execute_request);
-    metrics.run_execute.observe(start.elapsed().as_secs_f64());
+    if let Some(metrics) = maybe_metrics {
+        metrics.run_execute.observe(start.elapsed().as_secs_f64());
+    }
     trace!(?result, "execute result");
     result
 }
 
 fn commit_step(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    maybe_metrics: Option<&ContractRuntimeMetrics>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
     era_report: &EraReport<PublicKey>,
@@ -245,8 +254,9 @@ fn commit_step(
     } = era_report;
 
     let reward_items = rewards
-        .iter()
-        .map(|(vid, value)| RewardItem::new(vid.clone(), *value))
+        .clone()
+        .into_iter()
+        .map(|(vid, value)| RewardItem::new(vid, value))
         .collect();
 
     // Both inactive validators and equivocators are evicted
@@ -273,7 +283,9 @@ fn commit_step(
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
     let result = engine_state.commit_step(correlation_id, step_request);
-    metrics.commit_step.observe(start.elapsed().as_secs_f64());
+    if let Some(metrics) = maybe_metrics {
+        metrics.commit_step.observe(start.elapsed().as_secs_f64());
+    }
     trace!(?result, "step response");
     result
 }

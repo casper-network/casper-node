@@ -80,21 +80,31 @@ impl LmdbEnvironment {
     ) -> Result<Self, error::Error> {
         let lmdb_flags = if manual_sync_enabled {
             // These options require that we manually call sync on the environment for the EE.
-            EnvironmentFlags::NO_SUB_DIR
-                | EnvironmentFlags::MAP_ASYNC
+            EnvironmentFlags::MAP_ASYNC
                 | EnvironmentFlags::WRITE_MAP
                 | EnvironmentFlags::NO_META_SYNC
         } else {
-            EnvironmentFlags::NO_SUB_DIR
+            EnvironmentFlags::empty()
         };
+        Self::with_flags(path, map_size, max_readers, lmdb_flags, manual_sync_enabled)
+    }
 
+    /// Constructs an environment with the given LMDB `EnvironmentFlags`.
+    pub fn with_flags<P: AsRef<Path>>(
+        path: P,
+        map_size: usize,
+        max_readers: u32,
+        env_flags: EnvironmentFlags,
+        manual_sync_enabled: bool,
+    ) -> Result<Self, error::Error> {
         let env = Environment::new()
             // Set the flag to manage our own directory like in the storage component.
-            .set_flags(lmdb_flags)
+            .set_flags(EnvironmentFlags::NO_SUB_DIR | env_flags)
             .set_max_dbs(MAX_DBS)
             .set_map_size(map_size)
             .set_max_readers(max_readers)
             .open(&path.as_ref().join(EE_DB_FILENAME))?;
+
         Ok(LmdbEnvironment {
             env,
             manual_sync_enabled,

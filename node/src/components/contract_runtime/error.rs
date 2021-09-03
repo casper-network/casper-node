@@ -13,7 +13,7 @@ use casper_execution_engine::core::engine_state::GetEraValidatorsError;
 
 /// Error returned from mis-configuring the contract runtime component.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum ConfigError {
+pub enum ConfigError {
     /// Error initializing the LMDB environment.
     #[error("failed to initialize LMDB environment for contract runtime: {0}")]
     Lmdb(#[from] StorageLmdbError),
@@ -24,7 +24,7 @@ pub(crate) enum ConfigError {
 
 /// An error raised by a contract runtime variant.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum BlockExecutionError {
+pub enum BlockExecutionError {
     /// Currently the contract runtime can only execute one commit at a time, so we cannot handle
     /// more than one execution result.
     #[error("More than one execution result")]

@@ -1,5 +1,6 @@
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -11,7 +12,7 @@ use super::{
 pub const DEFAULT_WASM_MAX_MEMORY: u32 = 64;
 pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Debug, DataSize)]
 pub struct WasmConfig {
     /// Maximum amount of a heap memory (represented in 64kb pages) each contract can use.
     pub max_memory: u32,

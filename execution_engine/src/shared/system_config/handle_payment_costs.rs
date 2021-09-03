@@ -1,6 +1,7 @@
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_GET_PAYMENT_PURSE_COST: u32 = 10_000;
@@ -9,7 +10,7 @@ pub const DEFAULT_GET_REFUND_PURSE_COST: u32 = 10_000;
 pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 10_000;
 
 /// Description of costs of calling handle payment entrypoints.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Debug, DataSize)]
 pub struct HandlePaymentCosts {
     pub get_payment_purse: u32,
     pub set_refund_purse: u32,
