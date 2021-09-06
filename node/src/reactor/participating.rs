@@ -236,6 +236,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
             ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
         }
     }
 }
