@@ -226,12 +226,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 TIMER_ID_SYNCHRONIZER_LOG,
             ));
         }
-        if let Some(interval) = config.request_state_interval {
-            outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
-                TIMER_ID_REQUEST_STATE,
-            ));
-        }
         if let Some(timeout) = config.standstill_timeout {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
                 now.max(era_start_time) + timeout,
@@ -787,9 +781,17 @@ where
         }
     }
 
-    fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
+    fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<I, C> {
         // Request latest protocol state of the current era.
-        self.latest_state_request()
+        let mut outcomes = self.latest_state_request();
+        // If configured, schedule periodic latest state requests.
+        if let Some(interval) = self.config.request_state_interval {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now + interval,
+                TIMER_ID_REQUEST_STATE,
+            ));
+        }
+        outcomes
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {

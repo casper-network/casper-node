@@ -9,11 +9,13 @@ use std::{
     time::Duration,
 };
 
+use assert_json_diff::assert_json_eq;
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
 use schemars::schema_for;
+use serde_json::Value;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -1175,8 +1177,8 @@ fn schema() {
     );
     let expected_schema = fs::read_to_string(schema_path).unwrap();
     let schema = schema_for!(SseData);
-    assert_eq!(
-        serde_json::to_string_pretty(&schema).unwrap(),
-        expected_schema.trim()
-    );
+    let actual_schema = serde_json::to_string_pretty(&schema).unwrap();
+    let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+    let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
+    assert_json_eq!(actual_schema, expected_schema);
 }

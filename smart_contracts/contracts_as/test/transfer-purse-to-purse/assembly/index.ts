@@ -14,7 +14,7 @@ const PURSE_MAIN = "purse:main";
 const PURSE_TRANSFER_RESULT = "purse_transfer_result";
 const MAIN_PURSE_BALANCE = "main_purse_balance";
 const SUCCESS_MESSAGE = "Ok(())";
-const TRANSFER_ERROR_MESSAGE = "Err(ApiError::Mint(0) [65024])";
+const TRANSFER_ERROR_MESSAGE = "Err(ApiError::Mint(InsufficientFunds) [65024])";
 
 const ARG_SOURCE = "source";
 const ARG_TARGET = "target";

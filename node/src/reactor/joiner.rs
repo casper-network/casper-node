@@ -205,6 +205,42 @@ impl ReactorEvent for JoinerEvent {
             None
         }
     }
+
+    fn description(&self) -> &'static str {
+        match self {
+            JoinerEvent::SmallNetwork(_) => "SmallNetwork",
+            JoinerEvent::Storage(_) => "Storage",
+            JoinerEvent::RestServer(_) => "RestServer",
+            JoinerEvent::EventStreamServer(_) => "EventStreamServer",
+            JoinerEvent::MetricsRequest(_) => "MetricsRequest",
+            JoinerEvent::ChainspecLoader(_) => "ChainspecLoader",
+            JoinerEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            JoinerEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
+            JoinerEvent::BlockFetcher(_) => "BlockFetcher",
+            JoinerEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
+            JoinerEvent::DeployFetcher(_) => "DeployFetcher",
+            JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
+            JoinerEvent::BlockValidator(_) => "BlockValidator",
+            JoinerEvent::LinearChainSync(_) => "LinearChainSync",
+            JoinerEvent::ContractRuntime(_) => "ContractRuntime",
+            JoinerEvent::LinearChain(_) => "LinearChain",
+            JoinerEvent::AddressGossiper(_) => "AddressGossiper",
+            JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
+            JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
+            JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            JoinerEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
+            JoinerEvent::BlockProposerRequest(_) => "BlockProposerRequest",
+            JoinerEvent::StateStoreRequest(_) => "StateStoreRequest",
+            JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
+            JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
+            JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
+            JoinerEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
+            JoinerEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            JoinerEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
+            JoinerEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            JoinerEvent::ConsensusRequest(_) => "ConsensusRequest",
+        }
+    }
 }
 
 impl From<LinearChainRequest<NodeId>> for JoinerEvent {
