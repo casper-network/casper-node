@@ -35,9 +35,11 @@ fn output_from_command(mut command: Command) -> Output {
         Ok(output) => output,
         Err(error) => {
             panic!(
-                "\nFailed to execute {:?}\n===== stderr begin =====\n{}\n===== stderr end =====\n",
+                "\nFailed to execute {:?}\n===== stderr begin =====\n{}\n===== stderr end \
+                =====\n===== stdout begin =====\n{}\n===== stdout end =====\n",
                 command,
-                String::from_utf8_lossy(&error.as_output().unwrap().stderr)
+                String::from_utf8_lossy(&error.as_output().unwrap().stderr),
+                String::from_utf8_lossy(&error.as_output().unwrap().stdout)
             );
         }
     }
@@ -59,9 +61,9 @@ fn run_tool_and_resulting_tests() {
     let tool_output = output_from_command(tool_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, tool_output.status.code().unwrap());
 
-    // Run 'cargo test' in the 'tests' folder of the generated project.  This builds the Wasm
-    // contract as well as the tests.  This requires the use of a nightly version of Rust, so we use
-    // rustup to execute the appropriate cargo version.
+    // Run 'make test' in the root of the generated project.  This builds the Wasm contract as well
+    // as the tests.  This requires the use of a nightly version of Rust, so we use rustup to
+    // execute the appropriate cargo version.
     let mut test_cmd = Command::new("rustup");
     let nightly_version = fs::read_to_string(format!(
         "{}/../../smart_contracts/rust-toolchain",
@@ -71,9 +73,10 @@ fn run_tool_and_resulting_tests() {
     test_cmd
         .arg("run")
         .arg(nightly_version.trim())
-        .arg("cargo")
+        .arg("make")
         .arg("test")
-        .current_dir(test_dir.join("tests"));
+        .current_dir(test_dir);
+
     let test_output = output_from_command(test_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, test_output.status.code().unwrap());
 

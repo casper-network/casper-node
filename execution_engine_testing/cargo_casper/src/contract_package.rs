@@ -5,70 +5,32 @@ use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
 
-use crate::{
-    common::{self, CL_CONTRACT, CL_TYPES},
-    ARGS, TOOLCHAIN,
-};
+use crate::{common, erc20, simple, ProjectKind, ARGS};
 
-const PACKAGE_NAME: &str = "contract";
+static PACKAGE_NAME: Lazy<&'static str> = Lazy::new(|| match ARGS.project_kind() {
+    ProjectKind::Simple => "contract",
+    ProjectKind::Erc20 => "erc20-token",
+});
 
-const MAIN_RS_CONTENTS: &str = r#"#![cfg_attr(
-    not(target_arch = "wasm32"),
-    crate_type = "target arch should be wasm32"
-)]
-#![no_std]
-#![no_main]
-
-extern crate alloc;
-
-use alloc::string::String;
-
-use casper_contract::{contract_api::{runtime, storage}};
-use casper_types::{Key, URef};
-
-const KEY: &str = "special_value";
-const ARG_MESSAGE: &str = "message";
-
-fn store(value: String) {
-    // Store `value` under a new unforgeable reference.
-    let value_ref: URef = storage::new_uref(value);
-
-    // Wrap the unforgeable reference in a value of type `Key`.
-    let value_key: Key = value_ref.into();
-
-    // Store this key under the name "special_value" in context-local storage.
-    runtime::put_key(KEY, value_key);
-}
-
-// All session code must have a `call` entrypoint.
-#[no_mangle]
-pub extern "C" fn call() {
-    // Get the optional first argument supplied to the argument.
-    let value: String = runtime::get_named_arg(ARG_MESSAGE);
-    store(value);
-}
-"#;
+static CONTRACT_PACKAGE_ROOT: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME.replace("-", "_")));
+static CARGO_TOML: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("Cargo.toml"));
+static MAIN_RS: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("src/main.rs"));
+static CONFIG_TOML: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join(".cargo/config.toml"));
 
 const CONFIG_TOML_CONTENTS: &str = r#"[build]
 target = "wasm32-unknown-unknown"
 "#;
 
-static CARGO_TOML: Lazy<PathBuf> =
-    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("Cargo.toml"));
-static RUST_TOOLCHAIN: Lazy<PathBuf> =
-    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("rust-toolchain"));
-static MAIN_RS: Lazy<PathBuf> =
-    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("src/main.rs"));
-static CONFIG_TOML: Lazy<PathBuf> = Lazy::new(|| {
-    ARGS.root_path()
-        .join(PACKAGE_NAME)
-        .join(".cargo/config.toml")
-});
-static CARGO_TOML_ADDITIONAL_CONTENTS: Lazy<String> = Lazy::new(|| {
+static CARGO_TOML_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(
-        r#"{}
-{}
+        r#"[package]
+name = "{}"
+version = "0.1.0"
+edition = "2018"
 
+[dependencies]
+{}
 [[bin]]
 name = "{}"
 path = "src/main.rs"
@@ -76,38 +38,34 @@ bench = false
 doctest = false
 test = false
 
-# To enable the test-only function `casper_contract::runtime::print()`, uncomment the following
-#[features]
-#default = ["casper-contract/test-support"]
-
 [profile.release]
 codegen-units = 1
 lto = true
 "#,
-        CL_CONTRACT.display_with_features(true, vec![]),
-        CL_TYPES.display_with_features(true, vec![]),
-        PACKAGE_NAME
+        *PACKAGE_NAME,
+        match ARGS.project_kind() {
+            ProjectKind::Simple => &*simple::CONTRACT_DEPENDENCIES,
+            ProjectKind::Erc20 => &*erc20::CONTRACT_DEPENDENCIES,
+        },
+        PACKAGE_NAME.replace("-", "_"),
     )
 });
 
-pub fn run_cargo_new() {
-    common::run_cargo_new(PACKAGE_NAME);
-}
+pub fn create() {
+    // Create "<PACKAGE_NAME>/src" folder and write "main.rs" inside.
+    let src_folder = MAIN_RS.parent().expect("should have parent");
+    common::create_dir_all(src_folder);
+    let main_rs_contents = match ARGS.project_kind() {
+        ProjectKind::Simple => simple::MAIN_RS_CONTENTS,
+        ProjectKind::Erc20 => erc20::MAIN_RS_CONTENTS,
+    };
+    common::write_file(&*MAIN_RS, main_rs_contents);
 
-pub fn update_cargo_toml() {
-    common::append_to_file(&*CARGO_TOML, &*CARGO_TOML_ADDITIONAL_CONTENTS);
-}
-
-pub fn add_rust_toolchain() {
-    common::write_file(&*RUST_TOOLCHAIN, format!("{}\n", TOOLCHAIN));
-}
-
-pub fn update_main_rs() {
-    common::write_file(&*MAIN_RS, MAIN_RS_CONTENTS);
-}
-
-pub fn add_config_toml() {
-    let folder = CONFIG_TOML.parent().expect("should have parent");
-    common::create_dir_all(folder);
+    // Create "<PACKAGE_NAME>/.cargo" folder and write "config.toml" inside.
+    let config_folder = CONFIG_TOML.parent().expect("should have parent");
+    common::create_dir_all(config_folder);
     common::write_file(&*CONFIG_TOML, CONFIG_TOML_CONTENTS);
+
+    // Write "<PACKAGE_NAME>/Cargo.toml".
+    common::write_file(&*CARGO_TOML, &*CARGO_TOML_CONTENTS);
 }

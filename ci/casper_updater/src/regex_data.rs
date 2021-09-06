@@ -276,7 +276,7 @@ pub mod execution_engine_testing_test_support {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
                 DependentFile::new(
-                    "execution_engine_testing/cargo_casper/src/tests_package.rs",
+                    "execution_engine_testing/cargo_casper/src/common.rs",
                     Regex::new(r#"(?m)("casper-engine-test-support",\s*)"(?:[^"]+)"#).unwrap(),
                     cargo_casper_src_test_package_rs_replacement,
                 ),

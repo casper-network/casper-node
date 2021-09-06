@@ -23,15 +23,24 @@ impl Dependency {
     }
 
     pub fn display_with_features(&self, default_features: bool, features: Vec<&str>) -> String {
+        if default_features
+            && features.is_empty()
+            && (ARGS.workspace_path().is_none() || self.relative_path.is_empty())
+        {
+            return format!("{} = \"{}\"\n", self.name, self.version);
+        }
+
         let mut output = format!(r#"{} = {{ version = "{}""#, self.name, self.version);
 
         if let Some(workspace_path) = ARGS.workspace_path() {
-            output = format!(
-                r#"{}, path = "{}/{}""#,
-                output,
-                workspace_path.display(),
-                self.relative_path
-            );
+            if !self.relative_path.is_empty() {
+                output = format!(
+                    r#"{}, path = "{}/{}""#,
+                    output,
+                    workspace_path.display(),
+                    self.relative_path
+                );
+            }
         }
 
         if !default_features {
@@ -42,7 +51,7 @@ impl Dependency {
             output = format!("{}, features = {:?}", output, features);
         }
 
-        format!("{} }}", output)
+        format!("{} }}\n", output)
     }
 
     #[cfg(test)]
