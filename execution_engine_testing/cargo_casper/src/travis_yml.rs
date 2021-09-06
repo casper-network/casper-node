@@ -3,8 +3,9 @@ use crate::{common, ARGS};
 const FILENAME: &str = ".travis.yml";
 const CONTENTS: &str = r#"language: rust
 script:
-  - cd tests && cargo build
-  - cd tests && cargo test
+  - make prepare
+  - make check-lint
+  - make test
 "#;
 
 pub fn create() {
