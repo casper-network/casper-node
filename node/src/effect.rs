@@ -128,7 +128,7 @@ use requests::{
     NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
-use self::announcements::BlocklistAnnouncement;
+use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
 use crate::components::contract_runtime::{
     BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeAnnouncement, ExecutionPreState,
 };
@@ -601,6 +601,19 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Api,
         )
         .await
+    }
+
+    /// Announces which deploys have expired.
+    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
+    where
+        REv: From<BlockProposerAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+                QueueKind::Regular,
+            )
+            .await;
     }
 
     /// Announces that a network message has been received.
