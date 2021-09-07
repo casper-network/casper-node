@@ -3,6 +3,7 @@ mod contract_api;
 mod contract_context;
 mod counter;
 mod deploy;
+mod erc20;
 mod explorer;
 mod gas_counter;
 mod get_balance;

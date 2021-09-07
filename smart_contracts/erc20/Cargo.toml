@@ -1,0 +1,23 @@
+[package]
+name = "casper-erc20"
+version = "0.1.0"
+edition = "2018"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+description = "Library for developing ERC20 tokens on Casper network."
+readme = "README.md"
+documentation = "https://docs.rs/casper-contract"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/smart_contracts/erc20"
+license-file = "../../LICENSE"
+
+[dependencies]
+casper-contract = { version = "1.0.0", path = "../contract" }
+casper-types = { version = "1.0.0", path = "../../types" }
+hex = { version = "0.4.3", default-features = false }
+
+[features]
+default = ["no-std", "provide-allocator"]
+no-std = ["casper-contract/no-std", "casper-types/no-std"]
+provide-allocator = ["casper-contract/provide-allocator"]
+std = ["casper-types/std"]
+test-support = ["casper-contract/test-support"]

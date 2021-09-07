@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 base16 = "0.2.1"
 casper-contract = { path = "../../smart_contracts/contract", default-features = false, features = ["std", "test-support"] }
+# casper-erc20 = { path = "../../smart_contracts/erc20", default-features = false, features = ["std", "test-support"] }
 casper-engine-test-support = { path = "../test_support", features = ["test-support"] }
 casper-execution-engine = { path = "../../execution_engine", features = ["test-support"] }
 casper-types = { path = "../../types", default-features = false, features = ["std"] }

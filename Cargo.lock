@@ -422,6 +422,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-erc20"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+ "hex",
+]
+
+[[package]]
 name = "casper-execution-engine"
 version = "1.0.0"
 dependencies = [
@@ -1605,6 +1614,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3de9ad4541d99dc22b59134e7ff8dc3d6c988c89ecd7324bf10a8362b07a2afa"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "erc20-test"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-erc20",
+ "casper-types",
+]
+
+[[package]]
+name = "erc20-test-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-erc20",
+ "casper-types",
+]
+
+[[package]]
+name = "erc20-token"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-erc20",
+ "casper-types",
 ]
 
 [[package]]

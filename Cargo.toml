@@ -9,6 +9,7 @@ members = [
     "execution_engine_testing/tests",
     "node",
     "smart_contracts/contract",
+    "smart_contracts/erc20",
     "smart_contracts/contracts/[!.]*/*",
     "types",
     "utils/validation",
