@@ -3,7 +3,7 @@ use std::result;
 use casper_types::{CLValueError, StoredValueTypeMismatch};
 
 /// The error type returned by any casper-engine-test-support operation.
-#[deprecated]
+// #[deprecated]
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]
 pub struct Error {
     inner: String,

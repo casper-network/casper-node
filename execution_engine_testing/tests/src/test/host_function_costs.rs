@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{bytesrepr::Bytes, runtime_args, ContractHash, RuntimeArgs};
@@ -20,7 +20,7 @@ const ARG_SIZE_FUNCTION_CALL_100_NAME: &str = "arg_size_function_call_100";
 fn should_measure_gas_cost() {
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -88,7 +88,7 @@ fn should_measure_gas_cost() {
 fn should_measure_nested_host_function_call_cost() {
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -166,7 +166,7 @@ fn should_measure_nested_host_function_call_cost() {
 #[test]
 fn should_measure_argument_size_in_host_function_call() {
     // Checks if calling a contract with large arguments affects costs
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

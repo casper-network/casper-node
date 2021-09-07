@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::RuntimeArgs;
@@ -18,7 +18,7 @@ fn should_run_ee_221_get_uref_regression_test() {
     )
     .build();
 
-    let _result = InMemoryWasmTestBuilder::default()
+    let _result = InMemoryWasmTestContext::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()

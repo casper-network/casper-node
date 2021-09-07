@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
@@ -15,7 +15,7 @@ const VICTIM_ADDR: AccountHash = AccountHash::new([42; 32]);
 
 static VICTIM_INITIAL_FUNDS: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT * 10);
 
-fn setup() -> InMemoryWasmTestBuilder {
+fn setup() -> InMemoryWasmTestContext {
     // Creates victim account
     let exec_request_1 = {
         let args = runtime_args! {
@@ -35,7 +35,7 @@ fn setup() -> InMemoryWasmTestBuilder {
             .build()
     };
 
-    let result = InMemoryWasmTestBuilder::default()
+    let result = InMemoryWasmTestContext::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
@@ -45,7 +45,7 @@ fn setup() -> InMemoryWasmTestBuilder {
         .commit()
         .finish();
 
-    InMemoryWasmTestBuilder::from_result(result)
+    InMemoryWasmTestContext::from_result(result)
 }
 
 #[ignore]

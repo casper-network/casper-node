@@ -4,7 +4,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
@@ -81,7 +81,7 @@ fn should_run_ee_1120_slash_delegators() {
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&run_genesis_request);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(

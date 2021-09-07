@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
@@ -79,7 +79,7 @@ fn should_enforce_intended_execution_contexts() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

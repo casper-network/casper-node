@@ -4,7 +4,7 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
     SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
@@ -68,13 +68,13 @@ static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
     )
 });
 
-fn get_validator_bid(builder: &mut InMemoryWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
+fn get_validator_bid(builder: &mut InMemoryWasmTestContext, validator: PublicKey) -> Option<Bid> {
     let mut bids: Bids = builder.get_bids();
     bids.remove(&validator)
 }
 
 fn get_delegator_bid(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut InMemoryWasmTestContext,
     validator: PublicKey,
     delegator: PublicKey,
 ) -> Option<Delegator> {
@@ -83,7 +83,7 @@ fn get_delegator_bid(
 }
 
 fn withdraw_bid(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut InMemoryWasmTestContext,
     sender: AccountHash,
     validator: PublicKey,
     amount: U512,
@@ -104,7 +104,7 @@ fn withdraw_bid(
 }
 
 fn undelegate(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut InMemoryWasmTestContext,
     sender: AccountHash,
     delegator: PublicKey,
     validator: PublicKey,
@@ -127,7 +127,7 @@ fn undelegate(
 }
 
 fn get_delegator_staked_amount(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut InMemoryWasmTestContext,
     validator: PublicKey,
     delegator: PublicKey,
 ) -> U512 {
@@ -244,7 +244,7 @@ fn should_distribute_delegation_rate_zero() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -482,7 +482,7 @@ fn should_withdraw_bids_after_distribute() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -756,7 +756,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1134,7 +1134,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1525,7 +1525,7 @@ fn should_distribute_delegation_rate_half() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1721,7 +1721,7 @@ fn should_distribute_delegation_rate_full() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1922,7 +1922,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -2124,7 +2124,7 @@ fn should_distribute_by_factor() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -2335,7 +2335,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -2547,7 +2547,7 @@ fn should_distribute_by_factor_uneven() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -2828,7 +2828,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -3154,7 +3154,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -3512,7 +3512,7 @@ fn should_increase_total_supply_after_distribute() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -3666,7 +3666,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
@@ -141,10 +141,10 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     )
 });
 
-fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
+fn initialize_isolated_storage_costs() -> InMemoryWasmTestContext {
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     //
     // Isolate storage costs without host function costs, and without opcode costs
     //
@@ -389,7 +389,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
 fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
@@ -615,7 +615,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
 fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(

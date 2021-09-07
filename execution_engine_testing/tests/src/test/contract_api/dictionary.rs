@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    AccountHash, Code, ExecuteRequestBuilder, InMemoryWasmTestBuilder, SessionBuilder,
+    AccountHash, Code, ExecuteRequestBuilder, InMemoryWasmTestContext, SessionBuilder,
     TestContextBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -16,8 +16,8 @@ const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
 const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
-fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn setup() -> (InMemoryWasmTestContext, ContractHash) {
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -405,7 +405,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 #[ignore]
 #[test]
 fn dictionary_put_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -449,7 +449,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
 #[ignore]
 #[test]
 fn dictionary_get_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

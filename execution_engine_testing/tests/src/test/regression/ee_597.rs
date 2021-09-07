@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNTS,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::engine_state::GenesisAccount;
@@ -41,7 +41,7 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
     )
     .build();
 
-    let result = InMemoryWasmTestBuilder::default()
+    let result = InMemoryWasmTestContext::default()
         .run_genesis(&run_genesis_request)
         .exec(exec_request)
         .commit()

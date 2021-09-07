@@ -2,7 +2,7 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -35,7 +35,7 @@ fn should_transfer_to_account() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -90,7 +90,7 @@ fn should_transfer_from_account_to_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -180,7 +180,7 @@ fn should_transfer_to_existing_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -297,7 +297,7 @@ fn should_fail_when_insufficient_funds() {
     )
     .build();
 
-    let result = InMemoryWasmTestBuilder::default()
+    let result = InMemoryWasmTestContext::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Exec transfer contract
         .exec(exec_request_1)
@@ -325,7 +325,7 @@ fn should_fail_when_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_transfer_total_amount() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

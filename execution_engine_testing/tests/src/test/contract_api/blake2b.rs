@@ -1,7 +1,7 @@
 use rand::Rng;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
@@ -10,7 +10,7 @@ const BLAKE2B_WASM: &str = "blake2b.wasm";
 const ARG_BYTES: &str = "bytes";
 const HASH_RESULT: &str = "hash_result";
 
-fn get_digest(builder: &InMemoryWasmTestBuilder) -> [u8; BLAKE2B_DIGEST_LENGTH] {
+fn get_digest(builder: &InMemoryWasmTestContext) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -37,7 +37,7 @@ fn should_hash() {
     const RUNS: usize = 100;
 
     let mut rng = rand::thread_rng();
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

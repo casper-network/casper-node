@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, UpgradeRequestBuilder,
+    WasmTestContext, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
@@ -40,7 +40,7 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
 }
 
 fn store_payment_to_account_context(
-    builder: &mut WasmTestBuilder<InMemoryGlobalState>,
+    builder: &mut WasmTestContext<InMemoryGlobalState>,
 ) -> (Account, ContractHash) {
     // store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
@@ -98,7 +98,7 @@ fn should_exec_non_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
@@ -133,7 +133,7 @@ fn should_exec_stored_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
@@ -220,7 +220,7 @@ fn should_exec_stored_code_by_named_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
@@ -315,7 +315,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder.exec_commit_finish(exec_request);
@@ -399,7 +399,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder.exec_commit_finish(exec_request);
@@ -476,7 +476,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder.exec_commit_finish(exec_request_1);
@@ -562,7 +562,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder.exec_commit_finish(exec_request_1);
@@ -649,7 +649,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder.exec_commit_finish(exec_request_1);
@@ -714,7 +714,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     //
@@ -796,7 +796,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
             .build()
     };
 
-    InMemoryWasmTestBuilder::from_result(test_result)
+    InMemoryWasmTestContext::from_result(test_result)
         .exec(exec_request_stored_payment)
         .expect_success()
         .commit();

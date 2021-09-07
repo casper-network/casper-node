@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
@@ -49,7 +49,7 @@ static TRANSFER_AMOUNT_3: Lazy<U512> = Lazy::new(|| U512::from(300_100_000));
 #[ignore]
 #[test]
 fn should_record_wasmless_transfer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let id = Some(0);
@@ -117,7 +117,7 @@ fn should_record_wasmless_transfer() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let transfer_request = ExecuteRequestBuilder::standard(
@@ -180,7 +180,7 @@ fn should_record_wasm_transfer() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfer_with_id() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let id = Some(0);
@@ -247,7 +247,7 @@ fn should_record_wasm_transfer_with_id() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfers() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
@@ -386,7 +386,7 @@ fn should_record_wasm_transfers() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfers_with_subcall() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let alice_id = Some(0);

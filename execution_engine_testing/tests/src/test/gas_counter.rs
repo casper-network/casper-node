@@ -5,7 +5,7 @@ use parity_wasm::{
 };
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::{core::engine_state::Error, shared::wasm_prep::PreprocessingError};
@@ -93,7 +93,7 @@ fn make_session_code_with(instructions: Vec<Instruction>) -> Vec<u8> {
 #[ignore]
 #[test]
 fn should_fail_to_overflow_gas_counter() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     let session_bytes = make_gas_counter_overflow();
 
@@ -220,7 +220,7 @@ fn should_correctly_measure_gas_for_opcodes() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

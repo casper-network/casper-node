@@ -125,7 +125,7 @@ pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{
-    InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder, WasmTestResult,
+    InMemoryWasmTestContext, LmdbWasmTestContext, WasmTestContext, WasmTestResult,
 };
 
 /// TODO: doc comment.

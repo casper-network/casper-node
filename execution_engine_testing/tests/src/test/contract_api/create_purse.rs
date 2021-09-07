@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    ExecuteRequestBuilder, WasmTestContext, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
@@ -31,7 +31,7 @@ fn should_insert_account_into_named_keys() {
     )
     .build();
 
-    let mut builder = WasmTestBuilder::default();
+    let mut builder = WasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -65,7 +65,7 @@ fn should_create_usable_purse() {
         runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
     )
     .build();
-    let result = WasmTestBuilder::default()
+    let result = WasmTestContext::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()

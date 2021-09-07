@@ -1,7 +1,7 @@
 use parity_wasm::{self, builder};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
@@ -50,7 +50,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let result = InMemoryWasmTestBuilder::default()
+    let result = InMemoryWasmTestContext::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .commit()
@@ -78,7 +78,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let result = InMemoryWasmTestBuilder::default()
+    let result = InMemoryWasmTestContext::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .commit()

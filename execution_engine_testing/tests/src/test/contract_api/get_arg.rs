@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, ApiError, RuntimeArgs, U512};
@@ -15,7 +15,7 @@ const ARG_VALUE1: &str = "value1";
 fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
     let exec_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_GET_ARG, args).build();
-    let result = InMemoryWasmTestBuilder::default()
+    let result = InMemoryWasmTestContext::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()

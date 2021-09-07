@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, RuntimeArgs, U512};
@@ -22,7 +22,7 @@ const COMMAND_INCREASE_UREF2: &str = "increase-uref2";
 const COMMAND_OVERWRITE_UREF2: &str = "overwrite-uref2";
 const ARG_COMMAND: &str = "command";
 
-fn run_command(builder: &mut InMemoryWasmTestBuilder, command: &str) {
+fn run_command(builder: &mut InMemoryWasmTestContext, command: &str) {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_NAMED_KEYS,
@@ -36,7 +36,7 @@ fn run_command(builder: &mut InMemoryWasmTestBuilder, command: &str) {
         .finish();
 }
 
-fn read_value<T: CLTyped + FromBytes>(builder: &mut InMemoryWasmTestBuilder, key: Key) -> T {
+fn read_value<T: CLTyped + FromBytes>(builder: &mut InMemoryWasmTestContext, key: Key) -> T {
     CLValue::try_from(builder.query(None, key, &[]).expect("should have value"))
         .expect("should have CLValue")
         .into_t()
@@ -46,7 +46,7 @@ fn read_value<T: CLTyped + FromBytes>(builder: &mut InMemoryWasmTestBuilder, key
 #[ignore]
 #[test]
 fn should_run_named_keys_contract() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

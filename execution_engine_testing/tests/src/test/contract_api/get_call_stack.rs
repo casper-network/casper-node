@@ -1,7 +1,7 @@
 use num_traits::One;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, WasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
@@ -56,7 +56,7 @@ fn stored_versioned_contract(contract_package_hash: ContractPackageHash) -> Call
     }
 }
 
-fn store_contract(builder: &mut WasmTestBuilder<InMemoryGlobalState>, session_filename: &str) {
+fn store_contract(builder: &mut WasmTestContext<InMemoryGlobalState>, session_filename: &str) {
     let store_contract_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, session_filename, runtime_args! {})
             .build();
@@ -93,7 +93,7 @@ trait BuilderExt {
     ) -> Vec<CallStackElement>;
 }
 
-impl BuilderExt for WasmTestBuilder<InMemoryGlobalState> {
+impl BuilderExt for WasmTestContext<InMemoryGlobalState> {
     fn get_call_stack_from_session_context(
         &mut self,
         stored_call_stack_key: &str,
@@ -147,15 +147,15 @@ impl BuilderExt for WasmTestBuilder<InMemoryGlobalState> {
     }
 }
 
-fn setup() -> WasmTestBuilder<InMemoryGlobalState> {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn setup() -> WasmTestContext<InMemoryGlobalState> {
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
     store_contract(&mut builder, CONTRACT_RECURSIVE_SUBCALL);
     builder
 }
 
 fn assert_each_context_has_correct_call_stack_info(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut InMemoryWasmTestContext,
     top_level_call: Call,
     mut subcalls: Vec<Call>,
     current_contract_package_hash: HashAddr,
@@ -197,7 +197,7 @@ fn assert_each_context_has_correct_call_stack_info(
     }
 }
 
-fn assert_invalid_context(builder: &mut InMemoryWasmTestBuilder, depth: usize) {
+fn assert_invalid_context(builder: &mut InMemoryWasmTestContext, depth: usize) {
     if depth == 0 {
         builder.expect_success();
     } else {
@@ -212,7 +212,7 @@ fn assert_invalid_context(builder: &mut InMemoryWasmTestBuilder, depth: usize) {
 }
 
 fn assert_each_context_has_correct_call_stack_info_module_bytes(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut InMemoryWasmTestContext,
     subcalls: Vec<Call>,
     current_contract_package_hash: HashAddr,
 ) {

@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{core, core::ValidationError, shared::newtypes::Blake2bHash};
@@ -25,7 +25,7 @@ static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_000_000));
 #[ignore]
 #[test]
 fn get_balance_should_work() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let transfer_request = ExecuteRequestBuilder::transfer(
@@ -110,7 +110,7 @@ fn get_balance_should_work() {
 #[ignore]
 #[test]
 fn get_balance_using_public_key_should_work() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let transfer_request = ExecuteRequestBuilder::transfer(

@@ -5,13 +5,13 @@ use casper_execution_engine::core::engine_state::{
 use casper_types::{AccessRights, Key, Motes, PublicKey, StoredValue, URef, U512};
 
 use crate::{
-    Account, AccountHash, Error, InMemoryWasmTestBuilder, Result, Session, URefAddr, Value,
+    Account, AccountHash, Error, InMemoryWasmTestContext, Result, Session, URefAddr, Value,
     DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
 };
 
 /// Context in which to run a test of a Wasm smart contract.
 pub struct TestContext {
-    inner: InMemoryWasmTestBuilder,
+    inner: InMemoryWasmTestContext,
 }
 
 impl TestContext {
@@ -226,7 +226,7 @@ impl TestContextBuilder {
 
     /// Builds the [`TestContext`].
     pub fn build(self) -> TestContext {
-        let mut inner = InMemoryWasmTestBuilder::default();
+        let mut inner = InMemoryWasmTestContext::default();
         let run_genesis_request = RunGenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             self.genesis_config.protocol_version(),

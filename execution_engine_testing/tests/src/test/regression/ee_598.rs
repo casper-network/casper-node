@@ -2,7 +2,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
@@ -80,7 +80,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&run_genesis_request);
 
     builder.exec(exec_request_1).expect_success().commit();

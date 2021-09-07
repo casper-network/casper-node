@@ -6,7 +6,7 @@ use criterion::{
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::engine_state::{EngineConfig, ExecuteRequest};
@@ -39,7 +39,7 @@ fn make_deploy_hash(i: u64) -> [u8; 32] {
     result
 }
 
-fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbWasmTestBuilder {
+fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbWasmTestContext {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_CREATE_ACCOUNTS,
@@ -49,7 +49,7 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
 
     let engine_config = EngineConfig::default();
 
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
+    let mut builder = LmdbWasmTestContext::new_with_config(data_dir, engine_config);
 
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
@@ -61,7 +61,7 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
 }
 
 fn create_purses(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut LmdbWasmTestContext,
     source: AccountHash,
     total_purses: u64,
     purse_amount: U512,
@@ -99,7 +99,7 @@ fn create_purses(
 /// Uses multiple exec requests with a single deploy to transfer tokens. Executes all transfers in
 /// batch determined by value of TRANSFER_BATCH_SIZE.
 fn transfer_to_account_multiple_execs(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut LmdbWasmTestContext,
     account: AccountHash,
     should_commit: bool,
 ) {
@@ -125,7 +125,7 @@ fn transfer_to_account_multiple_execs(
 
 /// Executes multiple deploys per single exec with based on TRANSFER_BATCH_SIZE.
 fn transfer_to_account_multiple_deploys(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut LmdbWasmTestContext,
     account: AccountHash,
     should_commit: bool,
 ) {
@@ -159,7 +159,7 @@ fn transfer_to_account_multiple_deploys(
 /// Uses multiple exec requests with a single deploy to transfer tokens from purse to purse.
 /// Executes all transfers in batch determined by value of TRANSFER_BATCH_SIZE.
 fn transfer_to_purse_multiple_execs(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut LmdbWasmTestContext,
     purse: URef,
     should_commit: bool,
 ) {
@@ -182,7 +182,7 @@ fn transfer_to_purse_multiple_execs(
 
 /// Executes multiple deploys per single exec with based on TRANSFER_BATCH_SIZE.
 fn transfer_to_purse_multiple_deploys(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut LmdbWasmTestContext,
     purse: URef,
     should_commit: bool,
 ) {
@@ -298,7 +298,7 @@ pub fn multiple_native_transfers(group: &mut BenchmarkGroup<WallTime>) {
 
 /// This test simulates flushing at the end of a block.
 fn transfer_to_account_multiple_native_transfers(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut LmdbWasmTestContext,
     execute_requests: &[ExecuteRequest],
 ) {
     for exec_request in execute_requests {

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    AccountHash, ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder,
+    AccountHash, ExecuteRequestBuilder, InMemoryWasmTestContext, LmdbWasmTestContext,
     UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -34,8 +34,8 @@ const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
-fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn setup() -> InMemoryWasmTestContext {
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let transfer = ExecuteRequestBuilder::transfer(
@@ -54,7 +54,7 @@ fn setup() -> InMemoryWasmTestBuilder {
 }
 
 fn apply_global_state_update(
-    builder: &LmdbWasmTestBuilder,
+    builder: &LmdbWasmTestContext,
     post_state_hash: Blake2bHash,
 ) -> BTreeMap<Key, StoredValue> {
     let key = URef::new([0u8; 32], AccessRights::all()).into();

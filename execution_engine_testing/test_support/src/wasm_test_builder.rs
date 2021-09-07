@@ -72,16 +72,16 @@ const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 /// The default value is chosen to be the same as the node itself.
 const DEFAULT_MAX_READERS: u32 = 512;
 
-/// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
+/// This is appended to the data dir path provided to the `LmdbWasmTestContext`".
 const GLOBAL_STATE_DIR: &str = "global_state";
 
 /// TODO: doc comment.
-pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
+pub type InMemoryWasmTestContext = WasmTestContext<InMemoryGlobalState>;
 /// TODO: doc comment.
-pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
+pub type LmdbWasmTestContext = WasmTestContext<LmdbGlobalState>;
 
 /// Builder for simple WASM test
-pub struct WasmTestBuilder<S> {
+pub struct WasmTestContext<S> {
     /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     engine_state: Rc<EngineState<S>>,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
@@ -106,14 +106,14 @@ pub struct WasmTestBuilder<S> {
     auction_contract_hash: Option<ContractHash>,
 }
 
-impl<S> WasmTestBuilder<S> {
+impl<S> WasmTestContext<S> {
     fn initialize_logging() {
         let log_settings = Settings::new(LevelFilter::Error).with_style(Style::HumanReadable);
         let _ = logging::initialize(log_settings);
     }
 }
 
-impl Default for InMemoryWasmTestBuilder {
+impl Default for InMemoryWasmTestContext {
     fn default() -> Self {
         Self::initialize_logging();
         let engine_config = EngineConfig::default();
@@ -121,7 +121,7 @@ impl Default for InMemoryWasmTestBuilder {
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);
 
-        WasmTestBuilder {
+        WasmTestContext {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -138,11 +138,11 @@ impl Default for InMemoryWasmTestBuilder {
     }
 }
 
-// TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
+// TODO: Deriving `Clone` for `WasmTestContext<S>` doesn't work correctly (unsure why), so
 // implemented by hand here.  Try to derive in the future with a different compiler version.
-impl<S> Clone for WasmTestBuilder<S> {
+impl<S> Clone for WasmTestContext<S> {
     fn clone(&self) -> Self {
-        WasmTestBuilder {
+        WasmTestContext {
             engine_state: Rc::clone(&self.engine_state),
             exec_results: self.exec_results.clone(),
             upgrade_results: self.upgrade_results.clone(),
@@ -162,16 +162,16 @@ impl<S> Clone for WasmTestBuilder<S> {
 /// A wrapper type to disambiguate builder from an actual result
 #[deprecated]
 #[derive(Clone)]
-pub struct WasmTestResult<S>(WasmTestBuilder<S>);
+pub struct WasmTestResult<S>(WasmTestContext<S>);
 
 impl<S> WasmTestResult<S> {
     /// Access the builder
-    pub fn builder(&self) -> &WasmTestBuilder<S> {
+    pub fn builder(&self) -> &WasmTestContext<S> {
         &self.0
     }
 }
 
-impl InMemoryWasmTestBuilder {
+impl InMemoryWasmTestContext {
     /// TODO: doc comment.
     pub fn new(
         global_state: InMemoryGlobalState,
@@ -180,7 +180,7 @@ impl InMemoryWasmTestBuilder {
     ) -> Self {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
-        WasmTestBuilder {
+        WasmTestContext {
             engine_state: Rc::new(engine_state),
             genesis_hash: Some(post_state_hash),
             post_state_hash: Some(post_state_hash),
@@ -189,7 +189,7 @@ impl InMemoryWasmTestBuilder {
     }
 }
 
-impl LmdbWasmTestBuilder {
+impl LmdbWasmTestContext {
     /// TODO: doc comment.
     pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
@@ -216,7 +216,7 @@ impl LmdbWasmTestBuilder {
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
-        WasmTestBuilder {
+        WasmTestContext {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -297,7 +297,7 @@ impl LmdbWasmTestBuilder {
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
-        WasmTestBuilder {
+        WasmTestContext {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -329,15 +329,16 @@ impl LmdbWasmTestBuilder {
     }
 }
 
-impl<S> WasmTestBuilder<S>
+impl<S> WasmTestContext<S>
 where
     S: StateProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error>,
 {
     /// Carries on attributes from TestResult for further executions
+    #[deprecated]
     pub fn from_result(result: WasmTestResult<S>) -> Self {
-        WasmTestBuilder {
+        WasmTestContext {
             engine_state: result.0.engine_state,
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -767,6 +768,7 @@ where
     }
 
     /// TODO: doc comment.
+    #[deprecated]
     pub fn finish(&self) -> WasmTestResult<S> {
         WasmTestResult(self.clone())
     }

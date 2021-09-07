@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    AccountHash, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    AccountHash, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -88,7 +88,7 @@ fn assert_forged_uref_error(error: CoreError, forged_uref: URef) {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_from_forged_purse_to_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -132,7 +132,7 @@ fn should_not_transfer_funds_from_forged_purse_to_account() {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -172,7 +172,7 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -226,7 +226,7 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_into_bob_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -271,7 +271,7 @@ fn should_not_transfer_funds_into_bob_purse() {
 #[ignore]
 #[test]
 fn should_not_transfer_from_hardcoded_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -314,7 +314,7 @@ fn should_not_transfer_from_hardcoded_purse() {
 #[ignore]
 #[test]
 fn should_not_refund_to_bob_and_charge_alice() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -374,7 +374,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
 #[ignore]
 #[test]
 fn should_not_charge_alice_for_execution() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -432,7 +432,7 @@ fn should_not_charge_alice_for_execution() {
 #[ignore]
 #[test]
 fn should_not_charge_for_execution_from_hardcoded_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 

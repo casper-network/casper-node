@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{
@@ -31,8 +31,8 @@ static ALICE: Lazy<PublicKey> = Lazy::new(|| {
 static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
 
-fn get_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn get_builder() -> InMemoryWasmTestContext {
+    let mut builder = InMemoryWasmTestContext::default();
     {
         // first, store contract
         let store_request = ExecuteRequestBuilder::standard(
@@ -100,7 +100,7 @@ fn should_fail_to_create_account() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&run_genesis_request);
 
     let store_faucet_request = ExecuteRequestBuilder::standard(
@@ -168,7 +168,7 @@ fn should_fail_transfer_to_existing_account() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestContext::default();
     builder.run_genesis(&run_genesis_request);
 
     let store_faucet_request = ExecuteRequestBuilder::standard(
