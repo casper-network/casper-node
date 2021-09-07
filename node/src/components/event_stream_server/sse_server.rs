@@ -41,7 +41,7 @@ use crate::types::{
     BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock, TimeDiff, Timestamp,
 };
 #[cfg(test)]
-use crate::{crypto::AsymmetricKeyExt, testing::TestRng, types::Block};
+use crate::{crypto::AsymmetricKeyExt, testing, testing::TestRng, types::Block};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -56,9 +56,10 @@ pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 pub const QUERY_FIELD: &str = "start_from";
 
 /// The filter associated with `/events/main` path.
-const MAIN_FILTER: [EventFilter; 4] = [
+const MAIN_FILTER: [EventFilter; 5] = [
     EventFilter::BlockAdded,
     EventFilter::DeployProcessed,
+    EventFilter::DeployExpired,
     EventFilter::Fault,
     EventFilter::Step,
 ];
@@ -101,6 +102,8 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
+    /// The given deploy has expired.
+    DeployExpired { deploy_hash: DeployHash },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
@@ -123,6 +126,7 @@ impl SseData {
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
             SseData::DeployAccepted { .. } => filter.contains(&EventFilter::DeployAccepted),
             SseData::DeployProcessed { .. } => filter.contains(&EventFilter::DeployProcessed),
+            SseData::DeployExpired { .. } => filter.contains(&EventFilter::DeployExpired),
             SseData::Fault { .. } => filter.contains(&EventFilter::Fault),
             SseData::FinalitySignature(_) => filter.contains(&EventFilter::FinalitySignature),
             SseData::Step { .. } => filter.contains(&EventFilter::Step),
@@ -171,6 +175,14 @@ impl SseData {
             dependencies: deploy.header().dependencies().clone(),
             block_hash: Box::new(BlockHash::random(rng)),
             execution_result: Box::new(rng.gen()),
+        }
+    }
+
+    /// Returns a random `SseData::DeployExpired`
+    pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
+        let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
+        SseData::DeployExpired {
+            deploy_hash: *deploy.id(),
         }
     }
 
@@ -257,6 +269,7 @@ pub(super) enum EventFilter {
     BlockAdded,
     DeployAccepted,
     DeployProcessed,
+    DeployExpired,
     Fault,
     FinalitySignature,
     Step,
@@ -299,6 +312,7 @@ async fn filter_map_server_sent_event(
 
         &SseData::BlockAdded { .. }
         | &SseData::DeployProcessed { .. }
+        | &SseData::DeployExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_) => Some(Ok(WarpServerSentEvent::default()
@@ -629,6 +643,10 @@ mod tests {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
         };
+        let deploy_expired = ServerSentEvent {
+            id: Some(rng.gen()),
+            data: SseData::random_deploy_expired(&mut rng),
+        };
         let fault = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_fault(&mut rng),
@@ -646,6 +664,7 @@ mod tests {
         should_not_filter_out(&api_version, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&block_added, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&deploy_processed, &MAIN_FILTER[..], getter.clone()).await;
+        should_not_filter_out(&deploy_expired, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&fault, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&step, &MAIN_FILTER[..], getter.clone()).await;
 
@@ -659,6 +678,7 @@ mod tests {
 
         should_filter_out(&block_added, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_processed, &DEPLOYS_FILTER[..], getter.clone()).await;
+        should_filter_out(&deploy_expired, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&fault, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&finality_signature, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&step, &DEPLOYS_FILTER[..], getter.clone()).await;
@@ -671,6 +691,7 @@ mod tests {
         should_filter_out(&block_added, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_accepted, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_processed, &SIGNATURES_FILTER[..], getter.clone()).await;
+        should_filter_out(&deploy_expired, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&fault, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&step, &SIGNATURES_FILTER[..], getter).await;
     }
@@ -702,6 +723,10 @@ mod tests {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
         };
+        let malformed_deploy_expired = ServerSentEvent {
+            id: None,
+            data: SseData::random_deploy_expired(&mut rng),
+        };
         let malformed_fault = ServerSentEvent {
             id: None,
             data: SseData::random_fault(&mut rng),
@@ -724,6 +749,7 @@ mod tests {
             should_filter_out(&malformed_block_added, filter, getter.clone()).await;
             should_filter_out(&malformed_deploy_accepted, filter, getter.clone()).await;
             should_filter_out(&malformed_deploy_processed, filter, getter.clone()).await;
+            should_filter_out(&malformed_deploy_expired, filter, getter.clone()).await;
             should_filter_out(&malformed_fault, filter, getter.clone()).await;
             should_filter_out(&malformed_finality_signature, filter, getter.clone()).await;
             should_filter_out(&malformed_step, filter, getter.clone()).await;

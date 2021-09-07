@@ -244,7 +244,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         -> ProtocolOutcomes<I, C>;
 
     /// Current instance of consensus protocol is latest era.
-    fn handle_is_current(&self) -> ProtocolOutcomes<I, C>;
+    fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<I, C>;
 
     /// Triggers consensus' timer.
     fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;

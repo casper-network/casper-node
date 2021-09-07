@@ -8,6 +8,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{EraId, ExecutionResult, PublicKey};
@@ -150,6 +151,23 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
             ),
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
                 write!(formatter, "invalid deploy {} from {}", deploy.id(), source)
+            }
+        }
+    }
+}
+
+// A block proposer announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockProposerAnnouncement {
+    /// Hashes of the deploys that expired.
+    DeploysExpired(Vec<DeployHash>),
+}
+
+impl Display for BlockProposerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockProposerAnnouncement::DeploysExpired(hashes) => {
+                write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
         }
     }

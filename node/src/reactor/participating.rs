@@ -46,9 +46,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
+            BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
+            ConsensusAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -183,6 +184,9 @@ pub(crate) enum ParticipatingEvent {
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+    /// Block proposer announcement.
+    #[from]
+    BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -191,6 +195,48 @@ impl ReactorEvent for ParticipatingEvent {
             Some(ctrl_ann)
         } else {
             None
+        }
+    }
+
+    #[inline]
+    fn description(&self) -> &'static str {
+        match self {
+            ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
+            ParticipatingEvent::BlockProposer(_) => "BlockProposer",
+            ParticipatingEvent::Storage(_) => "Storage",
+            ParticipatingEvent::RpcServer(_) => "RpcServer",
+            ParticipatingEvent::RestServer(_) => "RestServer",
+            ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
+            ParticipatingEvent::ChainspecLoader(_) => "ChainspecLoader",
+            ParticipatingEvent::Consensus(_) => "Consensus",
+            ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
+            ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
+            ParticipatingEvent::DeployGossiper(_) => "DeployGossiper",
+            ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
+            ParticipatingEvent::BlockValidator(_) => "BlockValidator",
+            ParticipatingEvent::LinearChain(_) => "LinearChain",
+            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
+            ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
+            ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
+            ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
+            ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
+            ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
+            ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
+            ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
+            ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
+            ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            ParticipatingEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
+            ParticipatingEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
+            ParticipatingEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
+            ParticipatingEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
+            ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
+            ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
         }
     }
 }
@@ -308,6 +354,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChainAnnouncement(ann) => {
                 write!(f, "linear chain announcement: {}", ann)
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(ann) => {
+                write!(f, "block proposer announcement: {}", ann)
             }
             ParticipatingEvent::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
@@ -1117,6 +1166,14 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
 
                 effects
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+            ) => {
+                let reactor_event = ParticipatingEvent::EventStreamServer(
+                    event_stream_server::Event::DeploysExpired(hashes),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),

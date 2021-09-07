@@ -75,6 +75,16 @@ impl ReactorEvent for Event {
             None
         }
     }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Event::Chainspec(_) => "Chainspec",
+            Event::Storage(_) => "Storage",
+            Event::ContractRuntime(_) => "ContractRuntime",
+            Event::StateStoreRequest(_) => "StateStoreRequest",
+            Event::ControlAnnouncement(_) => "ControlAnnouncement",
+        }
+    }
 }
 
 impl From<StorageRequest> for Event {

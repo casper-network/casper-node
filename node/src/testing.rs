@@ -33,6 +33,7 @@ use crate::{
     effect::{announcements::ControlAnnouncement, EffectBuilder, Effects, Responder},
     logging,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
+    types::{Deploy, TimeDiff, Timestamp},
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
@@ -327,6 +328,35 @@ pub(crate) async fn advance_time(duration: time::Duration) {
     debug!("advanced time by {} secs", duration.as_secs());
 }
 
+/// Creates a test deploy created at given instant and with given ttl.
+pub(crate) fn create_test_deploy(
+    created_ago: TimeDiff,
+    ttl: TimeDiff,
+    now: Timestamp,
+    mut test_rng: &mut TestRng,
+) -> Deploy {
+    Deploy::random_with_timestamp_and_ttl(&mut test_rng, now - created_ago, ttl)
+}
+
+/// Creates a random deploy that is considered expired.
+pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
+    create_test_deploy(
+        TimeDiff::from_seconds(20),
+        TimeDiff::from_seconds(10),
+        now,
+        test_rng,
+    )
+}
+
+/// Creates a random deploy that is considered not expired.
+pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
+    create_test_deploy(
+        TimeDiff::from_seconds(20),
+        TimeDiff::from_seconds(60),
+        now,
+        test_rng,
+    )
+}
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;

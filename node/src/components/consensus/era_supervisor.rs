@@ -447,6 +447,7 @@ where
         activation_era_validators: BTreeMap<PublicKey, U512>,
     ) -> HashMap<EraId, ProtocolOutcomes<I, ClContext>> {
         let mut result_map = HashMap::new();
+        let now = Timestamp::now();
 
         for era_id in self.iter_past(self.current_era, self.bonded_eras().saturating_mul(2)) {
             let new_faulty;
@@ -505,7 +506,7 @@ where
 
             let results = self.new_era(
                 era_id,
-                Timestamp::now(),
+                now,
                 validators,
                 new_faulty,
                 faulty,
@@ -524,7 +525,7 @@ where
         }
         let active_era_outcomes = self.active_eras[&self.current_era]
             .consensus
-            .handle_is_current();
+            .handle_is_current(now);
         result_map
             .entry(self.current_era)
             .or_default()
@@ -900,10 +901,11 @@ where
             .chain(&new_faulty)
             .cloned()
             .collect();
+        let now = Timestamp::now(); // TODO: This should be passed in.
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let mut outcomes = self.era_supervisor.new_era(
             era_id,
-            Timestamp::now(), // TODO: This should be passed in.
+            now,
             next_era_validators_weights.clone(),
             new_faulty,
             faulty,
@@ -915,7 +917,7 @@ where
         outcomes.extend(
             self.era_supervisor.active_eras[&era_id]
                 .consensus
-                .handle_is_current(),
+                .handle_is_current(now),
         );
         self.handle_consensus_outcomes(era_id, outcomes)
     }
