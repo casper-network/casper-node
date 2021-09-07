@@ -1,6 +1,7 @@
 //! Contains [`ApiError`] and associated helper functions.
 
 use core::{
+    convert::TryFrom,
     fmt::{self, Debug, Formatter},
     u16, u8,
 };
@@ -78,363 +79,6 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// | [65280, 65535]  | `HandlePayment`                                                  |
 /// | [65536, 131071] | `User`                                                          |
 ///
-/// ## Mappings
-///
-/// The expanded mapping of all variants to their numerical equivalents is as follows:
-/// ```
-/// # use casper_types::ApiError::{self, *};
-/// # macro_rules! show_and_check {
-/// #     ($lhs:literal => $rhs:expr) => {
-/// #         assert_eq!($lhs as u32, u32::from(ApiError::from($rhs)));
-/// #     };
-/// # }
-/// // General system errors:
-/// # show_and_check!(
-/// 1 => None
-/// # );
-/// # show_and_check!(
-/// 2 => MissingArgument
-/// # );
-/// # show_and_check!(
-/// 3 => InvalidArgument
-/// # );
-/// # show_and_check!(
-/// 4 => Deserialize
-/// # );
-/// # show_and_check!(
-/// 5 => Read
-/// # );
-/// # show_and_check!(
-/// 6 => ValueNotFound
-/// # );
-/// # show_and_check!(
-/// 7 => ContractNotFound
-/// # );
-/// # show_and_check!(
-/// 8 => GetKey
-/// # );
-/// # show_and_check!(
-/// 9 => UnexpectedKeyVariant
-/// # );
-/// # show_and_check!(
-/// 10 => UnexpectedContractRefVariant
-/// # );
-/// # show_and_check!(
-/// 11 => InvalidPurseName
-/// # );
-/// # show_and_check!(
-/// 12 => InvalidPurse
-/// # );
-/// # show_and_check!(
-/// 13 => UpgradeContractAtURef
-/// # );
-/// # show_and_check!(
-/// 14 => Transfer
-/// # );
-/// # show_and_check!(
-/// 15 => NoAccessRights
-/// # );
-/// # show_and_check!(
-/// 16 => CLTypeMismatch
-/// # );
-/// # show_and_check!(
-/// 17 => EarlyEndOfStream
-/// # );
-/// # show_and_check!(
-/// 18 => Formatting
-/// # );
-/// # show_and_check!(
-/// 19 => LeftOverBytes
-/// # );
-/// # show_and_check!(
-/// 20 => OutOfMemory
-/// # );
-/// # show_and_check!(
-/// 21 => MaxKeysLimit
-/// # );
-/// # show_and_check!(
-/// 22 => DuplicateKey
-/// # );
-/// # show_and_check!(
-/// 23 => PermissionDenied
-/// # );
-/// # show_and_check!(
-/// 24 => MissingKey
-/// # );
-/// # show_and_check!(
-/// 25 => ThresholdViolation
-/// # );
-/// # show_and_check!(
-/// 26 => KeyManagementThreshold
-/// # );
-/// # show_and_check!(
-/// 27 => DeploymentThreshold
-/// # );
-/// # show_and_check!(
-/// 28 => InsufficientTotalWeight
-/// # );
-/// # show_and_check!(
-/// 29 => InvalidSystemContract
-/// # );
-/// # show_and_check!(
-/// 30 => PurseNotCreated
-/// # );
-/// # show_and_check!(
-/// 31 => Unhandled
-/// # );
-/// # show_and_check!(
-/// 32 => BufferTooSmall
-/// # );
-/// # show_and_check!(
-/// 33 => HostBufferEmpty
-/// # );
-/// # show_and_check!(
-/// 34 => HostBufferFull
-/// # );
-/// // Auction errors:
-/// use casper_types::system::auction::Error as AuctionError;
-/// # show_and_check!(
-/// 64_512 => AuctionError::MissingKey
-/// # );
-/// # show_and_check!(
-/// 64_513 => AuctionError::InvalidKeyVariant
-/// # );
-/// # show_and_check!(
-/// 64_514 => AuctionError::MissingValue
-/// # );
-/// # show_and_check!(
-/// 64_515 => AuctionError::Serialization
-/// # );
-/// # show_and_check!(
-/// 64_516 => AuctionError::TransferToBidPurse
-/// # );
-/// # show_and_check!(
-/// 64_517 => AuctionError::InvalidAmount
-/// # );
-/// # show_and_check!(
-/// 64_518 => AuctionError::BidNotFound
-/// # );
-/// # show_and_check!(
-/// 64_519 => AuctionError::ValidatorNotFound
-/// # );
-/// # show_and_check!(
-/// 64_520 => AuctionError::DelegatorNotFound
-/// # );
-/// # show_and_check!(
-/// 64_521 => AuctionError::Storage
-/// # );
-/// # show_and_check!(
-/// 64_522 => AuctionError::Bonding
-/// # );
-/// # show_and_check!(
-/// 64_523 => AuctionError::Unbonding
-/// # );
-/// # show_and_check!(
-/// 64_524 => AuctionError::ReleaseFounderStake
-/// # );
-/// # show_and_check!(
-/// 64_525 => AuctionError::GetBalance
-/// # );
-/// # show_and_check!(
-/// 64_526 => AuctionError::InvalidContext
-/// # );
-/// # show_and_check!(
-/// 64_527 => AuctionError::ValidatorFundsLocked
-/// # );
-/// # show_and_check!(
-/// 64_528 => AuctionError::InvalidCaller
-/// # );
-/// # show_and_check!(
-/// 64_529 => AuctionError::InvalidPublicKey
-/// # );
-/// # show_and_check!(
-/// 64_530 => AuctionError::BondNotFound
-/// # );
-/// # show_and_check!(
-/// 64_531 => AuctionError::CreatePurseFailed
-/// # );
-/// # show_and_check!(
-/// 64_532 => AuctionError::UnbondTooLarge
-/// # );
-/// # show_and_check!(
-/// 64_533 => AuctionError::BondTooSmall
-/// # );
-/// # show_and_check!(
-/// 64_534 => AuctionError::MissingDelegations
-/// # );
-/// # show_and_check!(
-/// 64_535 => AuctionError::MismatchedEraValidators
-/// # );
-/// # show_and_check!(
-/// 64_536 => AuctionError::MintReward
-/// # );
-/// # show_and_check!(
-/// 64_537 => AuctionError::InvalidValidatorSlotsValue
-/// # );
-/// # show_and_check!(
-/// 64_538 => AuctionError::MintReduceTotalSupply
-/// # );
-/// # show_and_check!(
-/// 64_539 => AuctionError::TransferToDelegatorPurse
-/// # );
-/// # show_and_check!(
-/// 64_540 => AuctionError::ValidatorRewardTransfer
-/// # );
-/// # show_and_check!(
-/// 64_541 => AuctionError::DelegatorRewardTransfer
-/// # );
-/// # show_and_check!(
-/// 64_542 => AuctionError::WithdrawDelegatorReward
-/// # );
-/// # show_and_check!(
-/// 64_543 => AuctionError::WithdrawValidatorReward
-/// # );
-/// # show_and_check!(
-/// 64_544 => AuctionError::TransferToUnbondingPurse
-/// # );
-/// // Contract header errors:
-/// use casper_types::contracts::Error as ContractHeaderError;
-/// # show_and_check!(
-/// 64_769 => ContractHeaderError::PreviouslyUsedVersion
-/// # );
-/// # show_and_check!(
-/// 64_770 => ContractHeaderError::ContractNotFound
-/// # );
-/// # show_and_check!(
-/// 64_771 => ContractHeaderError::GroupAlreadyExists
-/// # );
-/// # show_and_check!(
-/// 64_772 => ContractHeaderError::MaxGroupsExceeded
-/// # );
-/// # show_and_check!(
-/// 64_773 => ContractHeaderError::MaxTotalURefsExceeded
-/// # );
-/// // Mint errors:
-/// use casper_types::system::mint::Error as MintError;
-/// # show_and_check!(
-/// 65_024 => MintError::InsufficientFunds
-/// # );
-/// # show_and_check!(
-/// 65_025 => MintError::SourceNotFound
-/// # );
-/// # show_and_check!(
-/// 65_026 => MintError::DestNotFound
-/// # );
-/// # show_and_check!(
-/// 65_027 => MintError::InvalidURef
-/// # );
-/// # show_and_check!(
-/// 65_028 => MintError::InvalidAccessRights
-/// # );
-/// # show_and_check!(
-/// 65_029 => MintError::InvalidNonEmptyPurseCreation
-/// # );
-/// # show_and_check!(
-/// 65_030 => MintError::Storage
-/// # );
-/// # show_and_check!(
-/// 65_031 => MintError::PurseNotFound
-/// # );
-///
-/// // Handle Payment errors:
-/// use casper_types::system::handle_payment::Error as PosError;
-/// # show_and_check!(
-/// 65_280 => PosError::NotBonded
-/// # );
-/// # show_and_check!(
-/// 65_281 => PosError::TooManyEventsInQueue
-/// # );
-/// # show_and_check!(
-/// 65_282 => PosError::CannotUnbondLastValidator
-/// # );
-/// # show_and_check!(
-/// 65_283 => PosError::SpreadTooHigh
-/// # );
-/// # show_and_check!(
-/// 65_284 => PosError::MultipleRequests
-/// # );
-/// # show_and_check!(
-/// 65_285 => PosError::BondTooSmall
-/// # );
-/// # show_and_check!(
-/// 65_286 => PosError::BondTooLarge
-/// # );
-/// # show_and_check!(
-/// 65_287 => PosError::UnbondTooLarge
-/// # );
-/// # show_and_check!(
-/// 65_288 => PosError::BondTransferFailed
-/// # );
-/// # show_and_check!(
-/// 65_289 => PosError::UnbondTransferFailed
-/// # );
-/// # show_and_check!(
-/// 65_290 => PosError::TimeWentBackwards
-/// # );
-/// # show_and_check!(
-/// 65_291 => PosError::StakesNotFound
-/// # );
-/// # show_and_check!(
-/// 65_292 => PosError::PaymentPurseNotFound
-/// # );
-/// # show_and_check!(
-/// 65_293 => PosError::PaymentPurseKeyUnexpectedType
-/// # );
-/// # show_and_check!(
-/// 65_294 => PosError::PaymentPurseBalanceNotFound
-/// # );
-/// # show_and_check!(
-/// 65_295 => PosError::BondingPurseNotFound
-/// # );
-/// # show_and_check!(
-/// 65_296 => PosError::BondingPurseKeyUnexpectedType
-/// # );
-/// # show_and_check!(
-/// 65_297 => PosError::RefundPurseKeyUnexpectedType
-/// # );
-/// # show_and_check!(
-/// 65_298 => PosError::RewardsPurseNotFound
-/// # );
-/// # show_and_check!(
-/// 65_299 => PosError::RewardsPurseKeyUnexpectedType
-/// # );
-/// # show_and_check!(
-/// 65_300 => PosError::StakesKeyDeserializationFailed
-/// # );
-/// # show_and_check!(
-/// 65_301 => PosError::StakesDeserializationFailed
-/// # );
-/// # show_and_check!(
-/// 65_302 => PosError::SystemFunctionCalledByUserAccount
-/// # );
-/// # show_and_check!(
-/// 65_303 => PosError::InsufficientPaymentForAmountSpent
-/// # );
-/// # show_and_check!(
-/// 65_304 => PosError::FailedTransferToRewardsPurse
-/// # );
-/// # show_and_check!(
-/// 65_305 => PosError::FailedTransferToAccountPurse
-/// # );
-/// # show_and_check!(
-/// 65_306 => PosError::SetRefundPurseCalledOutsidePayment
-/// # );
-///
-/// // User-defined errors:
-/// # show_and_check!(
-/// 65_536 => User(0)
-/// # );
-/// # show_and_check!(
-/// 65_537 => User(1)
-/// # );
-/// # show_and_check!(
-/// 65_538 => User(2)
-/// # );
-/// # show_and_check!(
-/// 131_071 => User(u16::max_value())
-/// # );
-/// ```
-///
 /// Users can specify a C-style enum and implement `From` to ease usage of
 /// `casper_contract::runtime::revert()`, e.g.
 /// ```
@@ -460,98 +104,284 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ApiError {
     /// Optional data was unexpectedly `None`.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(1), ApiError::None);
+    /// ```
     None,
     /// Specified argument not provided.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(2), ApiError::MissingArgument);
+    /// ```
     MissingArgument,
     /// Argument not of correct type.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(3), ApiError::InvalidArgument);
+    /// ```
     InvalidArgument,
     /// Failed to deserialize a value.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(4), ApiError::Deserialize);
+    /// ```
     Deserialize,
     /// `casper_contract::storage::read()` returned an error.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(5), ApiError::Read);
+    /// ```
     Read,
     /// The given key returned a `None` value.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(6), ApiError::ValueNotFound);
+    /// ```
     ValueNotFound,
     /// Failed to find a specified contract.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(7), ApiError::ContractNotFound);
+    /// ```
     ContractNotFound,
     /// A call to `casper_contract::runtime::get_key()` returned a failure.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(8), ApiError::GetKey);
+    /// ```
     GetKey,
     /// The [`Key`](crate::Key) variant was not as expected.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(9), ApiError::UnexpectedKeyVariant);
+    /// ```
     UnexpectedKeyVariant,
     /// Obsolete error variant (we no longer have ContractRef).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(10), ApiError::UnexpectedContractRefVariant);
+    /// ```
     UnexpectedContractRefVariant, // TODO: this variant is not used any longer and can be removed
     /// Invalid purse name given.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(11), ApiError::InvalidPurseName);
+    /// ```
     InvalidPurseName,
     /// Invalid purse retrieved.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(12), ApiError::InvalidPurse);
+    /// ```
     InvalidPurse,
     /// Failed to upgrade contract at [`URef`](crate::URef).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(13), ApiError::UpgradeContractAtURef);
+    /// ```
     UpgradeContractAtURef,
     /// Failed to transfer motes.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(14), ApiError::Transfer);
+    /// ```
     Transfer,
     /// The given [`URef`](crate::URef) has no access rights.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(15), ApiError::NoAccessRights);
+    /// ```
     NoAccessRights,
     /// A given type could not be constructed from a [`CLValue`](crate::CLValue).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(16), ApiError::CLTypeMismatch);
+    /// ```
     CLTypeMismatch,
     /// Early end of stream while deserializing.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(17), ApiError::EarlyEndOfStream);
+    /// ```
     EarlyEndOfStream,
     /// Formatting error while deserializing.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(18), ApiError::Formatting);
+    /// ```
     Formatting,
     /// Not all input bytes were consumed in [`deserialize`](crate::bytesrepr::deserialize).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(19), ApiError::LeftOverBytes);
+    /// ```
     LeftOverBytes,
     /// Out of memory error.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(20), ApiError::OutOfMemory);
+    /// ```
     OutOfMemory,
     /// There are already maximum [`AccountHash`](crate::account::AccountHash)s associated with the
     /// given account.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(21), ApiError::MaxKeysLimit);
+    /// ```
     MaxKeysLimit,
     /// The given [`AccountHash`](crate::account::AccountHash) is already associated with the given
     /// account.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(22), ApiError::DuplicateKey);
+    /// ```
     DuplicateKey,
     /// Caller doesn't have sufficient permissions to perform the given action.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(23), ApiError::PermissionDenied);
+    /// ```
     PermissionDenied,
     /// The given [`AccountHash`](crate::account::AccountHash) is not associated with the given
     /// account.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(24), ApiError::MissingKey);
+    /// ```
     MissingKey,
     /// Removing/updating the given associated [`AccountHash`](crate::account::AccountHash) would
     /// cause the total [`Weight`](crate::account::Weight) of all remaining `AccountHash`s to
     /// fall below one of the action thresholds for the given account.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(25), ApiError::ThresholdViolation);
+    /// ```
     ThresholdViolation,
     /// Setting the key-management threshold to a value lower than the deployment threshold is
     /// disallowed.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(26), ApiError::KeyManagementThreshold);
+    /// ```
     KeyManagementThreshold,
     /// Setting the deployment threshold to a value greater than any other threshold is disallowed.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(27), ApiError::DeploymentThreshold);
+    /// ```
     DeploymentThreshold,
     /// Setting a threshold to a value greater than the total weight of associated keys is
     /// disallowed.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(28), ApiError::InsufficientTotalWeight);
+    /// ```
     InsufficientTotalWeight,
     /// The given `u32` doesn't map to a [`SystemContractType`](crate::system::SystemContractType).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(29), ApiError::InvalidSystemContract);
+    /// ```
     InvalidSystemContract,
     /// Failed to create a new purse.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(30), ApiError::PurseNotCreated);
+    /// ```
     PurseNotCreated,
     /// An unhandled value, likely representing a bug in the code.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(31), ApiError::Unhandled);
+    /// ```
     Unhandled,
     /// The provided buffer is too small to complete an operation.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(32), ApiError::BufferTooSmall);
+    /// ```
     BufferTooSmall,
     /// No data available in the host buffer.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(33), ApiError::HostBufferEmpty);
+    /// ```
     HostBufferEmpty,
     /// The host buffer has been set to a value and should be consumed first by a read operation.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(34), ApiError::HostBufferFull);
+    /// ```
     HostBufferFull,
     /// Could not lay out an array in memory
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(35), ApiError::AllocLayout);
+    /// ```
     AllocLayout,
     /// The `dictionary_item_key` length exceeds the maximum length.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(36), ApiError::DictionaryItemKeyExceedsLength);
+    /// ```
     DictionaryItemKeyExceedsLength,
     /// The `dictionary_item_key` is invalid.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(37), ApiError::InvalidDictionaryItemKey);
+    /// ```
     InvalidDictionaryItemKey,
     /// Unable to retrieve the requested system contract hash.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(38), ApiError::MissingSystemContractHash);
+    /// ```
     MissingSystemContractHash,
-    /// Error specific to Auction contract.
+    /// Error specific to Auction contract. See
+    /// [casper_types::system::auction::Error](crate::system::auction::Error).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// for code in 64512..=64767 {
+    ///     assert!(matches!(ApiError::from(code), ApiError::AuctionError(_auction_error)));
+    /// }
+    /// ```
     AuctionError(u8),
-    /// Contract header errors.
+    /// Contract header errors. See [casper_types::contracts::Error](crate::contracts::Error).
+    ///
+    /// ```
+    /// # use casper_types::ApiError;
+    /// for code in 64768..=65023 {
+    ///     assert!(matches!(ApiError::from(code), ApiError::ContractHeader(_contract_header_error)));
+    /// }
+    /// ```
     ContractHeader(u8),
-    /// Error specific to Mint contract.
+    /// Error specific to Mint contract. See
+    /// [casper_types::system::mint::Error](crate::system::mint::Error).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// for code in 65024..=65279 {
+    ///     assert!(matches!(ApiError::from(code), ApiError::Mint(_mint_error)));
+    /// }
+    /// ```
     Mint(u8),
-    /// Error specific to Handle Payment contract.
+    /// Error specific to Handle Payment contract. See
+    /// [casper_types::system::handle_payment](crate::system::handle_payment::Error).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// for code in 65280..=65535 {
+    ///     assert!(matches!(ApiError::from(code), ApiError::HandlePayment(_handle_payment_error)));
+    /// }
+    /// ```
     HandlePayment(u8),
     /// User-specified error code.  The internal `u16` value is added to `u16::MAX as u32 + 1` when
     /// an `Error::User` is converted to a `u32`.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// for code in 65536..131071 {
+    ///     assert!(matches!(ApiError::from(code), ApiError::User(_)));
+    /// }
+    /// ```
     User(u16),
 }
 
@@ -800,10 +630,26 @@ impl Debug for ApiError {
             }
             ApiError::InvalidDictionaryItemKey => write!(f, "ApiError::InvalidDictionaryItemKey")?,
             ApiError::MissingSystemContractHash => write!(f, "ApiError::MissingContractHash")?,
-            ApiError::AuctionError(value) => write!(f, "ApiError::AuctionError({})", value)?,
-            ApiError::ContractHeader(value) => write!(f, "ApiError::ContractHeader({})", value)?,
-            ApiError::Mint(value) => write!(f, "ApiError::Mint({})", value)?,
-            ApiError::HandlePayment(value) => write!(f, "ApiError::HandlePayment({})", value)?,
+            ApiError::AuctionError(value) => write!(
+                f,
+                "ApiError::AuctionError({:?})",
+                auction::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+            )?,
+            ApiError::ContractHeader(value) => write!(
+                f,
+                "ApiError::ContractHeader({:?})",
+                contracts::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+            )?,
+            ApiError::Mint(value) => write!(
+                f,
+                "ApiError::Mint({:?})",
+                mint::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+            )?,
+            ApiError::HandlePayment(value) => write!(
+                f,
+                "ApiError::HandlePayment({:?})",
+                handle_payment::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+            )?,
             ApiError::User(value) => write!(f, "ApiError::User({})", value)?,
         }
         write!(f, " [{}]", u32::from(*self))
@@ -869,13 +715,19 @@ mod tests {
     }
 
     #[test]
-    fn error_descriptions() {
+    fn error_descriptions_getkey() {
         assert_eq!("ApiError::GetKey [8]", &format!("{:?}", ApiError::GetKey));
         assert_eq!("ApiError::GetKey [8]", &format!("{}", ApiError::GetKey));
+    }
 
+    #[test]
+    fn error_descriptions_contract_header() {
         assert_eq!(
-            "ApiError::ContractHeader(0) [64768]",
-            &format!("{:?}", ApiError::ContractHeader(0))
+            "ApiError::ContractHeader(PreviouslyUsedVersion) [64769]",
+            &format!(
+                "{:?}",
+                ApiError::ContractHeader(contracts::Error::PreviouslyUsedVersion as u8)
+            )
         );
         assert_eq!(
             "Contract header error: 0",
@@ -885,29 +737,46 @@ mod tests {
             "Contract header error: 255",
             &format!("{}", ApiError::ContractHeader(u8::MAX))
         );
+    }
 
+    #[test]
+    fn error_descriptions_mint() {
         assert_eq!(
-            "ApiError::Mint(0) [65024]",
+            "ApiError::Mint(InsufficientFunds) [65024]",
             &format!("{:?}", ApiError::Mint(0))
         );
         assert_eq!("Mint error: 0", &format!("{}", ApiError::Mint(0)));
         assert_eq!("Mint error: 255", &format!("{}", ApiError::Mint(u8::MAX)));
+    }
+
+    #[test]
+    fn error_descriptions_handle_payment() {
         assert_eq!(
-            "ApiError::HandlePayment(0) [65280]",
-            &format!("{:?}", ApiError::HandlePayment(0))
+            "ApiError::HandlePayment(NotBonded) [65280]",
+            &format!(
+                "{:?}",
+                ApiError::HandlePayment(handle_payment::Error::NotBonded as u8)
+            )
         );
+    }
+    #[test]
+    fn error_descriptions_handle_payment_display() {
         assert_eq!(
             "Handle Payment error: 0",
-            &format!("{}", ApiError::HandlePayment(0))
+            &format!(
+                "{}",
+                ApiError::HandlePayment(handle_payment::Error::NotBonded as u8)
+            )
         );
-        assert_eq!(
-            "ApiError::HandlePayment(255) [65535]",
-            &format!("{:?}", ApiError::HandlePayment(u8::MAX))
-        );
+    }
+
+    #[test]
+    fn error_descriptions_user_errors() {
         assert_eq!(
             "ApiError::User(0) [65536]",
             &format!("{:?}", ApiError::User(0))
         );
+
         assert_eq!("User error: 0", &format!("{}", ApiError::User(0)));
         assert_eq!(
             "ApiError::User(65535) [131071]",

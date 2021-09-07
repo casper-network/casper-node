@@ -48,7 +48,7 @@ export function delegate(): void {
     }
     
     if (result.isErr) {
-        message = "Err(ApiError::Mint(0) [65024])";
+        message = "Err(ApiError::Mint(InsufficientFunds) [65024])";
     }
     const transferResultKey = Key.create(CLValue.fromString(message));
     putKey(TRANSFER_RESULT_UREF_NAME, <Key>transferResultKey);

@@ -21,13 +21,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
-#[cfg(test)]
-use casper_execution_engine::core::engine_state::MAX_PAYMENT;
+// #[cfg(test)]
+// use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
-#[cfg(test)]
-use casper_types::bytesrepr::Bytes;
+// #[cfg(test)]
+// use casper_types::bytesrepr::Bytes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
@@ -282,6 +282,12 @@ impl DeployHash {
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = Digest::random(rng);
         DeployHash(hash)
+    }
+}
+
+impl From<DeployHash> for Digest {
+    fn from(deploy_hash: DeployHash) -> Self {
+        deploy_hash.0
     }
 }
 
@@ -847,11 +853,17 @@ impl Deploy {
         self.is_valid()
     }
 
-    /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let timestamp = Timestamp::random(rng);
-        let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+    pub(crate) fn invalidate(&mut self) {
+        self.header.chain_name.clear();
+    }
+
+    #[cfg(test)]
+    pub fn random_with_timestamp_and_ttl(
+        rng: &mut TestRng,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
         let gas_price = rng.gen_range(1..100);
 
         let dependencies = vec![
@@ -861,12 +873,17 @@ impl Deploy {
         ];
         let chain_name = String::from("casper-example");
 
-        let payment = ExecutableDeployItem::ModuleBytes {
-            module_bytes: Bytes::new(),
-            args: runtime_args! {
-                "amount" => *MAX_PAYMENT
-            },
+        // We need "amount" in order to be able to
+        // get correct info via `deploy_info()`
+        let payment_args = runtime_args! {
+            "amount" => U512::from(10),
         };
+        let payment = ExecutableDeployItem::StoredContractByName {
+            name: String::from("casper-example"),
+            entry_point: String::from("example-entry-point"),
+            args: payment_args,
+        };
+
         let session = rng.gen();
 
         let secret_key = SecretKey::random(rng);
@@ -884,9 +901,12 @@ impl Deploy {
         )
     }
 
+    /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
-    pub(crate) fn invalidate(&mut self) {
-        self.header.chain_name.clear();
+    pub fn random(rng: &mut TestRng) -> Self {
+        let timestamp = Timestamp::random(rng);
+        let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+        Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
     }
 }
 

@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+* Added new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+* Added `contract_runtime_execute_block` histogram tracking execution time of a whole block.
+* Long running events now log their event type.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
@@ -33,14 +36,16 @@ All notable changes to this project will be documented in this file.  The format
   * `[gossip][gossip_request_timeout]`
   * `[gossip][get_remainder_timeout]`
   * `[fetcher][get_from_peer_timeout]`
-
-
+  
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 * Experimental support for libp2p has been removed.
 * The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
+
+### Fixed
+* Resolved an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
 
 ## [1.3.2] - 2021-08-02
 
