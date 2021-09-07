@@ -338,7 +338,8 @@ pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
             let parse = || {
                 AccountHash::from_formatted_str(trimmed_value).map_err(|error| {
                     Error::InvalidCLValue(format!(
-                        "can't parse {} as AccountHash: {:?}",
+                        "can't parse {} as AccountHash: {:?}.\
+                        AccountHash type values should start with 'account-hash-' prefix.",
                         trimmed_value, error
                     ))
                 })
@@ -349,7 +350,8 @@ pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
             let parse = || {
                 URef::from_formatted_str(trimmed_value).map_err(|error| {
                     Error::InvalidCLValue(format!(
-                        "can't parse {} as URef: {:?}",
+                        "can't parse {} as URef: {:?}. \
+                        URef type values should start with 'uref-' prefix.",
                         trimmed_value, error
                     ))
                 })
