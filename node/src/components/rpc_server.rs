@@ -326,3 +326,38 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use assert_json_diff::assert_json_eq;
+    use schemars::schema_for_value;
+    use serde_json::Value;
+
+    use crate::rpcs::docs::OPEN_RPC_SCHEMA;
+
+    #[test]
+    fn schema() {
+        let schema_path = format!(
+            "{}/../resources/test/rpc_schema.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+
+        // TODO: json atoms at path ".examples[0].methods[6].examples[0].result.value.build_version"
+        // are not equal:
+        //  lhs:
+        //  "1.0.0-c5c489d09@DEBUG"
+        //  rhs:
+        //  "1.0.0-f9d88de2b@DEBUG"
+
+        let expected_schema = fs::read_to_string(schema_path).unwrap();
+        let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
+
+        let actual_schema = schema_for_value!(OPEN_RPC_SCHEMA.clone());
+        let actual_schema = serde_json::to_string(&actual_schema).unwrap();
+        let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+
+        assert_json_eq!(actual_schema, expected_schema);
+    }
+}
