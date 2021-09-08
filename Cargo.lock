@@ -922,6 +922,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "proptest",
+ "proptest-attr-macro",
  "rand 0.8.4",
  "schemars",
  "serde",
@@ -4282,6 +4283,17 @@ dependencies = [
  "regex-syntax",
  "rusty-fork",
  "tempfile",
+]
+
+[[package]]
+name = "proptest-attr-macro"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fa06db3abc95f048e0afa371db5569b24912bb98a8e2e2e89c75c5b43bc2aa8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

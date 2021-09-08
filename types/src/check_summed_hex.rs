@@ -115,15 +115,15 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
     // If the string was all uppercase or all lower case, don't verify the checksum.
     // This is to support legacy clients.
     // Otherwise perform the check as below.
-    if !string_is_same_case(&bytes) {
+    if !string_is_same_case(input.as_ref()) {
         let input_string_bytes = input.as_ref();
 
-        return encode_iter(&bytes)
+        encode_iter(&bytes)
             .zip(input_string_bytes.iter())
             .enumerate()
             .map(|(idx, (chr, &byt))| {
                 if chr as u8 == byt {
-                    Ok(chr as u8)
+                    Ok(())
                 } else {
                     Err(base16::DecodeError::InvalidByte {
                         index: idx,
@@ -131,7 +131,7 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
                     })
                 }
             })
-            .collect();
+            .collect::<Result<(), base16::DecodeError>>()?;
     }
     Ok(bytes)
 }
@@ -258,6 +258,8 @@ mod tests {
         vec,
     };
     use core::array::TryFromSliceError;
+    use proptest::prelude::{prop_assert, prop_assert_eq};
+    use proptest_attr_macro::proptest;
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Buffer([u8; 8]);
@@ -470,6 +472,22 @@ mod tests {
     }
 
     #[test]
+    fn encode_iter_single_zero() {
+        let input = [0_u8];
+        let actual = encode_iter(&input).collect::<String>();
+
+        assert_eq!(actual, "00");
+    }
+
+    #[test]
+    fn decode_zero_hex_string() {
+        let input = "00";
+        let actual = decode(&input).expect("Failed to decode input.");
+
+        assert_eq!(&actual, &[0_u8])
+    }
+
+    #[test]
     fn string_is_same_case_true_when_same_case() {
         let input = "aaaaaaaaaaa";
         assert!(string_is_same_case(input));
@@ -488,5 +506,36 @@ mod tests {
     fn string_is_same_case_no_alphabetic_chars_in_string() {
         let input = "424242424242";
         assert!(string_is_same_case(input));
+    }
+
+    #[proptest]
+    fn hex_roundtrip(input: Vec<u8>) {
+        prop_assert_eq!(
+            input.clone(),
+            decode(&encode(&input)).expect("Failed to decode input.")
+        );
+    }
+
+    #[proptest]
+    fn hex_roundtrip_sanity(input: Vec<u8>) {
+        prop_assert!(matches!(decode(&encode(&input)), Ok(_)))
+    }
+
+    #[proptest]
+    fn is_same_case_uppercase(input: String) {
+        let input = input.to_uppercase();
+        prop_assert!(string_is_same_case(&input));
+    }
+
+    #[proptest]
+    fn is_same_case_lowercase(input: String) {
+        let input = input.to_lowercase();
+        prop_assert!(string_is_same_case(&input));
+    }
+
+    #[proptest]
+    fn is_not_same_case(input: String) {
+        let input = format!("aA{}", input);
+        prop_assert!(!string_is_same_case(&input));
     }
 }
