@@ -188,6 +188,8 @@ pub(crate) trait Payload:
 /// The default implementation sets all weights to zero.
 #[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
 pub struct PayloadWeights {
+    /// Weight to attach to consensus traffic.
+    pub consensus: u32,
     /// Weight to attach to deploy requests.
     pub deploy_requests: u32,
 }

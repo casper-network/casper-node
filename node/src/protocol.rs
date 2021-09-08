@@ -71,7 +71,7 @@ impl Payload for Message {
     #[inline]
     fn incoming_resource_estimate(&self, weights: &PayloadWeights) -> u32 {
         match self {
-            Message::Consensus(_) => 0,
+            Message::Consensus(_) => weights.consensus,
             Message::DeployGossiper(_) => 0,
             Message::AddressGossiper(_) => 0,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
