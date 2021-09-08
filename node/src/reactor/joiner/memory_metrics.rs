@@ -123,7 +123,6 @@ impl MemoryMetrics {
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
         let block_fetcher = reactor.block_by_hash_fetcher.estimate_heap_size() as i64;
-        let linear_chain_sync = reactor.linear_chain_sync.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
 
         let total = metrics
@@ -135,7 +134,6 @@ impl MemoryMetrics {
             + storage
             + contract_runtime
             + block_fetcher
-            + linear_chain_sync
             + deploy_fetcher;
 
         self.mem_total.set(total);
@@ -165,7 +163,6 @@ impl MemoryMetrics {
         %storage ,
         %contract_runtime,
         %block_fetcher,
-        %linear_chain_sync,
         %deploy_fetcher,
         "Collected new set of memory metrics for the joiner");
     }
