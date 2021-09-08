@@ -121,17 +121,16 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
         encode_iter(&bytes)
             .zip(input_string_bytes.iter())
             .enumerate()
-            .map(|(idx, (chr, &byt))| {
-                if chr as u8 == byt {
+            .try_for_each(|(index, (input_hex_char, &expected_case_hex_char))| {
+                if input_hex_char as u8 == expected_case_hex_char {
                     Ok(())
                 } else {
                     Err(base16::DecodeError::InvalidByte {
-                        index: idx,
-                        byte: byt,
+                        index,
+                        byte: expected_case_hex_char,
                     })
                 }
-            })
-            .collect::<Result<(), base16::DecodeError>>()?;
+            })?;
     }
     Ok(bytes)
 }
