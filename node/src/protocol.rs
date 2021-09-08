@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         consensus, gossiper,
-        small_network::{GossipedAddress, MessageKind, Payload},
+        small_network::{GossipedAddress, MessageKind, Payload, PayloadWeights},
     },
     types::{Deploy, FinalitySignature, Item, SharedObject, Tag},
 };
@@ -69,7 +69,7 @@ impl Payload for Message {
     }
 
     #[inline]
-    fn incoming_resource_estimate(&self) -> u32 {
+    fn incoming_resource_estimate(&self, _weights: &PayloadWeights) -> u32 {
         match self {
             Message::Consensus(_) => 0,
             Message::DeployGossiper(_) => 0,

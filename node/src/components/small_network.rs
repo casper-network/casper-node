@@ -84,7 +84,7 @@ use self::{
 pub(crate) use self::{
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{Message, MessageKind, Payload},
+    message::{Message, MessageKind, Payload, PayloadWeights},
 };
 use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{

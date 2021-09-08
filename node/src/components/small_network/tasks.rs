@@ -44,7 +44,7 @@ use super::{
     Event, FramedTransport, Message, Payload, Transport,
 };
 use crate::{
-    components::networking_metrics::NetworkingMetrics,
+    components::{networking_metrics::NetworkingMetrics, small_network::message::PayloadWeights},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
@@ -453,6 +453,8 @@ where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
+    let weights = PayloadWeights {};
+
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
             match msg_result {
@@ -462,7 +464,7 @@ where
                     // then push it to the reactor.
 
                     limiter
-                        .request_allowance(msg.payload_incoming_resource_estimate())
+                        .request_allowance(msg.payload_incoming_resource_estimate(&weights))
                         .await;
                     context
                         .event_queue
