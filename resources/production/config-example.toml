@@ -135,7 +135,7 @@ max_incoming_message_rate_non_validators = 3000
 # `max_incoming_message_rate_non_validators`.
 #
 # Any weight set to 0 means that the category of traffic is exempt from throttling.
-estimator_weights = { consensus=1, deploy_requests=1 }
+estimator_weights = { consensus=0, deploy_requests=1 }
 
 
 # ==================================================
