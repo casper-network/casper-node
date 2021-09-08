@@ -182,6 +182,8 @@ where
     pub(super) public_addr: SocketAddr,
     /// Optional set of consensus keys, to identify as a validator during handshake.
     pub(super) consensus_keys: Option<ConsensusKeyPair>,
+    /// Weights to estimate payloads with.
+    pub(super) payload_weights: PayloadWeights,
 }
 
 /// Handles an incoming connection.
@@ -453,8 +455,6 @@ where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
-    let weights = PayloadWeights {};
-
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
             match msg_result {
@@ -464,7 +464,9 @@ where
                     // then push it to the reactor.
 
                     limiter
-                        .request_allowance(msg.payload_incoming_resource_estimate(&weights))
+                        .request_allowance(
+                            msg.payload_incoming_resource_estimate(&context.payload_weights),
+                        )
                         .await;
                     context
                         .event_queue

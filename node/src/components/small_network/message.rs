@@ -5,6 +5,7 @@ use std::{
 };
 
 use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
+use datasize::DataSize;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::crypto;
@@ -183,8 +184,13 @@ pub(crate) trait Payload:
 /// A generic configuration for payload weights.
 ///
 /// Implementors of `Payload` are free to interpret this as they see fit.
-#[derive(Debug)]
-pub(crate) struct PayloadWeights {}
+///
+/// The default implementation sets all weights to zero.
+#[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
+pub struct PayloadWeights {
+    /// Weight to attach to deploy requests.
+    pub deploy_requests: u32,
+}
 
 #[cfg(test)]
 // We use a variety of weird names in these tests.

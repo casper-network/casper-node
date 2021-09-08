@@ -282,6 +282,7 @@ where
             chain_info: chain_info_source.into(),
             public_addr,
             consensus_keys,
+            payload_weights: cfg.estimator_weights.clone(),
         });
 
         // Run the server task.
