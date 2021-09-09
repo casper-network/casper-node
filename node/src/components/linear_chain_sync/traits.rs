@@ -1,6 +1,7 @@
 use crate::{
+    components::contract_runtime::ContractRuntimeAnnouncement,
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::ControlAnnouncement,
         requests::{
             BlockValidationRequest, ContractRuntimeRequest, FetcherRequest, StateStoreRequest,
             StorageRequest,

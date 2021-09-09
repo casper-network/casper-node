@@ -190,8 +190,9 @@ pub async fn send_deploy_file(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
@@ -229,8 +230,9 @@ pub async fn transfer(
 ///
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See

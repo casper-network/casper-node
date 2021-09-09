@@ -35,6 +35,9 @@ fs2 = "0.4.3"
 futures = "0.3.5"
 futures-io = "0.3.5"
 getrandom = "0.2.0"
+hex = "0.4.2"
+hex-buffer-serde = "0.2.1"
+hex_fmt = "0.3.0"
 hostname = "0.3.0"
 http = "0.2.1"
 humantime = "2"
@@ -44,7 +47,6 @@ jemalloc-ctl = "0.3.3"
 jemallocator = "0.3.2"
 k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
 libc = "0.2.66"
-libp2p = { version = "0.35.1", default-features = false, features = ["deflate", "dns", "floodsub", "gossipsub", "identify", "kad", "mdns", "mplex", "noise", "ping", "request-response", "tcp-tokio", "uds", "yamux"] }
 linked-hash-map = "0.5.3"
 lmdb = "0.8.0"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
@@ -100,6 +102,7 @@ wheelbuf = "0.2.0"
 vergen = "3"
 
 [dev-dependencies]
+assert-json-diff = "2.0.1"
 fake_instant = "0.4.0"
 hex = "0.4.2"
 multihash = "0.13.2"
@@ -112,6 +115,7 @@ tokio = { version = "1", features = ["test-util"] }
 
 [features]
 vendored-openssl = ['openssl/vendored']
+casper-mainnet = []
 
 [[bin]]
 name = "casper-node"

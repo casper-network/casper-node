@@ -47,6 +47,8 @@ unbonding_delay = 14
 #
 # (1+0.02)^((2^12)/31536000000)-1 is expressed as a fractional number below.
 round_seigniorage_rate = [15_959, 6_204_824_582_392]
+# Maximum number of associated keys for a single account.
+max_associated_keys = 100
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

@@ -74,9 +74,8 @@ where
         secret_key_path: Default::default(),
         highway: HighwayConfig {
             pending_vertex_timeout: "1min".parse().unwrap(),
-            standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
-            shutdown_on_standstill: true,
-            log_participation_interval: "10sec".parse().unwrap(),
+            standstill_timeout: Some(STANDSTILL_TIMEOUT.parse().unwrap()),
+            log_participation_interval: Some("10sec".parse().unwrap()),
             max_execution_delay: 3,
             ..HighwayConfig::default()
         },
@@ -95,11 +94,12 @@ where
         0,
         start_timestamp,
     );
-    // We expect for messages:
+    // We expect five messages:
     // * log participation timer,
     // * log synchronizer queue length timer,
     // * purge synchronizer queue timer,
-    // * inactivity timer,
+    // * standstill alert timer,
+    // * latest state request timer
     // If there are more, the tests might need to handle them.
     assert_eq!(4, outcomes.len());
     hw_proto

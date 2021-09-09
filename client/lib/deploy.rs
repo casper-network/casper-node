@@ -12,7 +12,8 @@ use casper_node::{
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, UIntParseError, URef, U512,
+    account::AccountHash, AsymmetricType, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    UIntParseError, URef, U512,
 };
 
 use crate::{
@@ -263,8 +264,6 @@ impl DeployExt for Deploy {
             context: TRANSFER_ARG_AMOUNT,
             error: UIntParseError::FromDecStr(err),
         })?;
-        let target_account = parsing::parse_public_key(target_account)?;
-        let transfer_id = parsing::transfer_id(transfer_id)?;
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
@@ -273,9 +272,23 @@ impl DeployExt for Deploy {
             transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
         }
 
-        let target_account_hash = target_account.to_account_hash().value();
-        transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
+        if let Ok(public_key) = PublicKey::from_hex(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, public_key)?;
+        } else if let Ok(account_hash) = AccountHash::from_formatted_str(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, account_hash)?;
+        } else if let Ok(uref) = URef::from_formatted_str(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, uref)?;
+        } else {
+            return Err(Error::InvalidArgument {
+                context: "target_account",
+                error: format!(
+                    "Allowed types: PublicKey, AccountHash or URef, got {}",
+                    target_account
+                ),
+            });
+        }
 
+        let transfer_id = parsing::transfer_id(transfer_id)?;
         let maybe_transfer_id = Some(transfer_id);
         transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
 
@@ -625,12 +638,46 @@ mod tests {
     fn should_create_transfer() {
         use casper_types::{AsymmetricType, PublicKey};
 
+        // with public key.
         let secret_key = SecretKey::generate_ed25519().unwrap();
         let public_key = PublicKey::from(&secret_key).to_hex();
         let transfer_deploy = Deploy::new_transfer(
             "10000",
             None,
             &public_key,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
+
+        // with account hash
+        let account_hash =
+            "account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            account_hash,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
+
+        // with uref.
+        let uref = "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            uref,
             "1",
             deploy_params().try_into().unwrap(),
             ExecutableDeployItem::Transfer {

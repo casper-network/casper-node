@@ -35,7 +35,7 @@ use crate::{
 };
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 0, 0);
+    ProtocolVersion::from_parts(1, 3, 2);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -447,7 +447,6 @@ impl RpcWithoutParamsExt for ListRpcs {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use crate::{types::Chainspec, utils::Loadable};

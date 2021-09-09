@@ -44,7 +44,6 @@ use crate::{
     types::{TimeDiff, Timestamp},
 };
 
-pub use self::config::Config as HighwayConfig;
 use self::round_success_meter::RoundSuccessMeter;
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
@@ -63,8 +62,8 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 /// The timer for logging synchronizer queue size.
 const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
-/// The timer to check for initial progress.
-const TIMER_ID_PROGRESS_ALERT: TimerId = TimerId(6);
+/// The timer to request the latest state from a random peer.
+const TIMER_ID_REQUEST_STATE: TimerId = TimerId(6);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 pub(crate) const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -87,16 +86,7 @@ where
     /// The panorama snapshot. This is updated periodically, and if it does not change for too
     /// long, an alert is raised.
     last_panorama: Panorama<C>,
-    /// If the current era's protocol state has not progressed for this long, request the latest
-    /// state from peers.
-    standstill_timeout: TimeDiff,
-    /// If after another `standstill_timeout` there is no progress, raise
-    /// `ProtocolOutcome::StandstillAlert` and shut down.
-    shutdown_on_standstill: bool,
-    /// Log inactive or faulty validators periodically, with this interval.
-    log_participation_interval: TimeDiff,
-    /// Whether to log the size of every incoming and outgoing serialized unit.
-    log_unit_sizes: bool,
+    config: config::Config,
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
@@ -141,10 +131,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             "cannot start era with total weight 0"
         );
 
-        let highway_config = &protocol_config.highway_config;
-
         let total_weight = u128::from(validators.total_weight());
-        let ftt_fraction = highway_config.finality_threshold_fraction;
+        let ftt_fraction = protocol_config.highway.finality_threshold_fraction;
         assert!(
             ftt_fraction < 1.into(),
             "finality threshold must be less than 100%"
@@ -158,9 +146,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time.max(now)))
             .unwrap_or_else(|| {
                 RoundSuccessMeter::new(
-                    highway_config.minimum_round_exponent,
-                    highway_config.minimum_round_exponent,
-                    highway_config.maximum_round_exponent,
+                    protocol_config.highway.minimum_round_exponent,
+                    protocol_config.highway.minimum_round_exponent,
+                    protocol_config.highway.maximum_round_exponent,
                     era_start_time.max(now),
                     config.into(),
                 )
@@ -177,7 +165,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting faulty.
-        let min_round_len = state::round_len(highway_config.minimum_round_exponent);
+        let min_round_len = state::round_len(protocol_config.highway.minimum_round_exponent);
         let min_rounds_per_era = protocol_config
             .minimum_era_height
             .max((TimeDiff::from(1) + protocol_config.era_duration) / min_round_len);
@@ -188,9 +176,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let params = Params::new(
             seed,
             BLOCK_REWARD,
-            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
-            highway_config.minimum_round_exponent,
-            highway_config.maximum_round_exponent,
+            (protocol_config.highway.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
+            protocol_config.highway.minimum_round_exponent,
+            protocol_config.highway.maximum_round_exponent,
             init_round_exp,
             protocol_config.minimum_era_height,
             era_start_time,
@@ -207,14 +195,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(config.highway.clone(), validators_count, instance_id),
+            synchronizer: Synchronizer::new(validators_count, instance_id),
             pvv_cache: Default::default(),
             evidence_only: false,
             last_panorama,
-            standstill_timeout: config.highway.standstill_timeout,
-            shutdown_on_standstill: config.highway.shutdown_on_standstill,
-            log_participation_interval: config.highway.log_participation_interval,
-            log_unit_sizes: config.highway.log_unit_sizes,
+            config: config.highway.clone(),
         });
 
         (hw_proto, outcomes)
@@ -223,23 +208,31 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn initialize_timers(
         now: Timestamp,
         era_start_time: Timestamp,
-        highway_config: &HighwayConfig,
+        config: &config::Config,
     ) -> ProtocolOutcomes<I, C> {
-        vec![
-            ProtocolOutcome::ScheduleTimer(
-                now + highway_config.pending_vertex_timeout,
-                TIMER_ID_PURGE_VERTICES,
-            ),
-            ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + highway_config.log_participation_interval,
+        let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
+            now + config.pending_vertex_timeout,
+            TIMER_ID_PURGE_VERTICES,
+        )];
+        if let Some(interval) = config.log_participation_interval {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now.max(era_start_time) + interval,
                 TIMER_ID_LOG_PARTICIPATION,
-            ),
-            ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + highway_config.standstill_timeout,
-                TIMER_ID_PROGRESS_ALERT,
-            ),
-            ProtocolOutcome::ScheduleTimer(now + TimeDiff::from(5_000), TIMER_ID_SYNCHRONIZER_LOG),
-        ]
+            ));
+        }
+        if let Some(interval) = config.log_synchronizer_interval {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now + interval,
+                TIMER_ID_SYNCHRONIZER_LOG,
+            ));
+        }
+        if let Some(timeout) = config.standstill_timeout {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now.max(era_start_time) + timeout,
+                TIMER_ID_STANDSTILL_ALERT,
+            ));
+        }
+        outcomes
     }
 
     fn process_av_effects<E>(&mut self, av_effects: E, now: Timestamp) -> ProtocolOutcomes<I, C>
@@ -310,9 +303,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// dependencies or validation. Recursively schedules events to add everything that is
     /// unblocked now.
     fn add_vertex(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
-        let (maybe_pending_vertex, mut outcomes) = self
-            .synchronizer
-            .pop_vertex_to_add(&self.highway, &self.pending_values);
+        let (maybe_pending_vertex, mut outcomes) = self.synchronizer.pop_vertex_to_add(
+            &self.highway,
+            &self.pending_values,
+            self.config.max_requests_for_vertex,
+        );
         let pending_vertex = match maybe_pending_vertex {
             None => return outcomes,
             Some(pending_vertex) => pending_vertex,
@@ -453,9 +448,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         info!(?participation, %instance_id, "validator participation");
     }
 
-    /// If the `log_unit_sizes` flag is set and the vertex is a unit, logs its serialized size.
+    /// Logs the vertex' serialized size.
     fn log_unit_size(&self, vertex: &Vertex<C>, log_msg: &str) {
-        if self.log_unit_sizes {
+        if self.config.log_unit_sizes {
             if let Some(hash) = vertex.unit_hash() {
                 let size = HighwayMessage::NewVertex(vertex.clone()).serialize().len();
                 info!(size, %hash, "{}", log_msg);
@@ -471,76 +466,54 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .map_or(false, is_switch)
     }
 
-    // Check if we've made any progress since joining.
-    // If we haven't, we might have been left alone in the era and we should request the state from
-    // peers.
-    fn handle_progress_alert_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
+    /// Request the latest state from a random peer.
+    fn handle_request_state_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
         if self.evidence_only || self.finalized_switch_block() {
             return vec![]; // Era has ended. No further progress is expected.
         }
-        if self.last_panorama == *self.highway.state().panorama() {
-            info!(
-                instance_id = ?self.highway.instance_id(),
-                "no progress in the last {}, creating latest state request",
-                self.standstill_timeout,
-            );
-            // We haven't made any progress. Request latest panorama from peers and schedule
-            // standstill alert. If we still won't progress by the time
-            // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
-            let mut outcomes = self.latest_panorama_request();
-            if self.shutdown_on_standstill {
-                outcomes.push(ProtocolOutcome::ScheduleTimer(
-                    now + self.standstill_timeout,
-                    TIMER_ID_STANDSTILL_ALERT,
-                ));
-            }
-            return outcomes;
-        }
-
-        if !self.shutdown_on_standstill {
-            debug!(
-                instance_id = ?self.highway.instance_id(),
-                "progress detected; not requesting latest state",
-            );
-            return vec![];
-        }
         debug!(
             instance_id = ?self.highway.instance_id(),
-            "progress detected; scheduling next standstill check in {}",
-            self.standstill_timeout,
+            "requesting latest state from random peer",
         );
-        // Record the current panorama and schedule the next standstill check.
-        self.last_panorama = self.highway.state().panorama().clone();
-        vec![ProtocolOutcome::ScheduleTimer(
-            now + self.standstill_timeout,
-            TIMER_ID_STANDSTILL_ALERT,
-        )]
+        // Request latest state from a peer and schedule the next request.
+        let mut outcomes = self.latest_state_request();
+        if let Some(interval) = self.config.request_state_interval {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now + interval,
+                TIMER_ID_REQUEST_STATE,
+            ));
+        }
+        outcomes
     }
 
     /// Returns a `StandstillAlert` if no progress was made; otherwise schedules the next check.
     fn handle_standstill_alert_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
-        if self.evidence_only || self.finalized_switch_block() || !self.shutdown_on_standstill {
+        if self.evidence_only || self.finalized_switch_block() {
             // Era has ended and no further progress is expected, or shutdown on standstill is
             // turned off.
             return vec![];
         }
+        let timeout = match self.config.standstill_timeout {
+            None => return vec![],
+            Some(timeout) => timeout,
+        };
         if self.last_panorama == *self.highway.state().panorama() {
             info!(
                 instance_id = ?self.highway.instance_id(),
                 "no progress in the last {}, raising standstill alert",
-                self.standstill_timeout,
+                timeout,
             );
             return vec![ProtocolOutcome::StandstillAlert]; // No progress within the timeout.
         }
         debug!(
             instance_id = ?self.highway.instance_id(),
             "progress detected; scheduling next standstill check in {}",
-            self.standstill_timeout,
+            timeout,
         );
         // Record the current panorama and schedule the next standstill check.
         self.last_panorama = self.highway.state().panorama().clone();
         vec![ProtocolOutcome::ScheduleTimer(
-            now + self.standstill_timeout,
+            now + timeout,
             TIMER_ID_STANDSTILL_ALERT,
         )]
     }
@@ -583,12 +556,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         Ok(pvv)
     }
 
-    /// Creates a message to be gossiped that sends the validator's panorama.
-    fn latest_panorama_request(&self) -> ProtocolOutcomes<I, C> {
+    /// Creates a message to send our panorama to a random peer.
+    fn latest_state_request(&self) -> ProtocolOutcomes<I, C> {
         let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
-        vec![ProtocolOutcome::CreatedGossipMessage(
-            (&request).serialize(),
-        )]
+        let payload = (&request).serialize();
+        vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)]
     }
 }
 
@@ -670,9 +642,7 @@ where
                 }
 
                 match pvv.timestamp() {
-                    Some(timestamp)
-                        if timestamp > now + self.synchronizer.pending_vertex_timeout() =>
-                    {
+                    Some(timestamp) if timestamp > now + self.config.pending_vertex_timeout => {
                         trace!("received a vertex with a timestamp far in the future; dropping");
                         vec![]
                     }
@@ -715,48 +685,48 @@ where
                 trace!("received a request for the latest state");
                 let state = self.highway.state();
 
-                let create_message =
-                    |observations: ((ValidatorIndex, &Observation<C>), &Observation<C>)| {
-                        let vid = observations.0 .0;
-                        let observations = (observations.0 .1, observations.1);
-                        match observations {
-                            (obs0, obs1) if obs0 == obs1 => None,
+                let create_message = |((vid, our_obs), their_obs): (
+                    (ValidatorIndex, &Observation<C>),
+                    &Observation<C>,
+                )| {
+                    match (our_obs, their_obs) {
+                        (our_obs, their_obs) if our_obs == their_obs => None,
 
-                            (Observation::None, Observation::None) => None,
+                        (Observation::None, Observation::None) => None,
 
-                            (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
-                                HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
-                            }),
+                        (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
+                            HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
+                        }),
 
-                            (_, Observation::Faulty) => {
-                                Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
-                            }
+                        (_, Observation::Faulty) => {
+                            Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                        }
 
-                            (Observation::None, Observation::Correct(hash)) => {
-                                Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
-                            }
+                        (Observation::None, Observation::Correct(hash)) => {
+                            Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                        }
 
-                            (Observation::Correct(hash), Observation::None) => state
-                                .wire_unit(hash, *self.highway.instance_id())
-                                .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+                        (Observation::Correct(hash), Observation::None) => state
+                            .wire_unit(hash, *self.highway.instance_id())
+                            .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
 
-                            (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
-                                if state.has_unit(their_hash)
-                                    && state.panorama().sees_correct(state, their_hash)
-                                {
-                                    state
-                                        .wire_unit(our_hash, *self.highway.instance_id())
-                                        .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
-                                } else if !state.has_unit(their_hash) {
-                                    Some(HighwayMessage::RequestDependency(Dependency::Unit(
-                                        *their_hash,
-                                    )))
-                                } else {
-                                    None
-                                }
+                        (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
+                            if state.has_unit(their_hash)
+                                && state.panorama().sees_correct(state, their_hash)
+                            {
+                                state
+                                    .wire_unit(our_hash, *self.highway.instance_id())
+                                    .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                            } else if !state.has_unit(their_hash) {
+                                Some(HighwayMessage::RequestDependency(Dependency::Unit(
+                                    *their_hash,
+                                )))
+                            } else {
+                                None
                             }
                         }
-                    };
+                    }
+                };
 
                 state
                     .panorama()
@@ -781,38 +751,47 @@ where
                 self.synchronizer.add_past_due_stored_vertices(now)
             }
             TIMER_ID_PURGE_VERTICES => {
-                self.synchronizer.purge_vertices(now);
+                let oldest = now.saturating_sub(self.config.pending_vertex_timeout);
+                self.synchronizer.purge_vertices(oldest);
                 self.pvv_cache.clear();
-                let next_time = now + self.synchronizer.pending_vertex_timeout();
+                let next_time = now + self.config.pending_vertex_timeout;
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
             TIMER_ID_LOG_PARTICIPATION => {
                 self.log_participation();
-                if !self.evidence_only && !self.finalized_switch_block() {
-                    let next_time = now + self.log_participation_interval;
-                    vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
-                } else {
-                    vec![]
+                match self.config.log_participation_interval {
+                    Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
+                        vec![ProtocolOutcome::ScheduleTimer(now + interval, timer_id)]
+                    }
+                    _ => vec![],
                 }
             }
-            TIMER_ID_PROGRESS_ALERT => self.handle_progress_alert_timer(now),
+            TIMER_ID_REQUEST_STATE => self.handle_request_state_timer(now),
             TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
             TIMER_ID_SYNCHRONIZER_LOG => {
                 self.synchronizer.log_len();
-                if !self.finalized_switch_block() {
-                    let next_timer = Timestamp::now() + TimeDiff::from(5_000);
-                    vec![ProtocolOutcome::ScheduleTimer(next_timer, timer_id)]
-                } else {
-                    vec![]
+                match self.config.log_synchronizer_interval {
+                    Some(interval) if !self.finalized_switch_block() => {
+                        vec![ProtocolOutcome::ScheduleTimer(now + interval, timer_id)]
+                    }
+                    _ => vec![],
                 }
             }
             _ => unreachable!("unexpected timer ID"),
         }
     }
 
-    fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
+    fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<I, C> {
         // Request latest protocol state of the current era.
-        self.latest_panorama_request()
+        let mut outcomes = self.latest_state_request();
+        // If configured, schedule periodic latest state requests.
+        if let Some(interval) = self.config.request_state_interval {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now + interval,
+                TIMER_ID_REQUEST_STATE,
+            ));
+        }
+        outcomes
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {

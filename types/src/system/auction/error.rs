@@ -20,59 +20,131 @@ use crate::{
 #[repr(u8)]
 pub enum Error {
     /// Unable to find named key in the contract's named keys.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(0, Error::MissingKey as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Missing key"))]
     MissingKey = 0,
     /// Given named key contains invalid variant.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(1, Error::InvalidKeyVariant as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid key variant"))]
     InvalidKeyVariant = 1,
     /// Value under an uref does not exist. This means the installer contract didn't work properly.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(2, Error::MissingValue as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Missing value"))]
     MissingValue = 2,
     /// ABI serialization issue while reading or writing.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(3, Error::Serialization as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Serialization error"))]
     Serialization = 3,
     /// Triggered when contract was unable to transfer desired amount of tokens into a bid purse.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(4, Error::TransferToBidPurse as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Transfer to bid purse error"))]
     TransferToBidPurse = 4,
     /// User passed invalid amount of tokens which might result in wrong values after calculation.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(5, Error::InvalidAmount as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid amount"))]
     InvalidAmount = 5,
     /// Unable to find a bid by account hash in `active_bids` map.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(6, Error::BidNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Bid not found"))]
     BidNotFound = 6,
     /// Validator's account hash was not found in the map.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(7, Error::ValidatorNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Validator not found"))]
     ValidatorNotFound = 7,
     /// Delegator's account hash was not found in the map.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(8, Error::DelegatorNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Delegator not found"))]
     DelegatorNotFound = 8,
     /// Storage problem.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(9, Error::Storage as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Storage error"))]
     Storage = 9,
     /// Raised when system is unable to bond.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(10, Error::Bonding as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Bonding error"))]
     Bonding = 10,
     /// Raised when system is unable to unbond.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(11, Error::Unbonding as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Unbonding error"))]
     Unbonding = 11,
     /// Raised when Mint contract is unable to release founder stake.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(12, Error::ReleaseFounderStake as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Unable to release founder stake"))]
     ReleaseFounderStake = 12,
     /// Raised when the system is unable to determine purse balance.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(13, Error::GetBalance as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Unable to get purse balance"))]
     GetBalance = 13,
     /// Raised when an entry point is called from invalid account context.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(14, Error::InvalidContext as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid context"))]
     InvalidContext = 14,
     /// Raised whenever a validator's funds are still locked in but an attempt to withdraw was
     /// made.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(15, Error::ValidatorFundsLocked as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Validator's funds are locked"))]
     ValidatorFundsLocked = 15,
     /// Raised when caller is not the system account.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(16, Error::InvalidCaller as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Function must be called by system account"))]
     InvalidCaller = 16,
     /// Raised when function is supplied a public key that does match the caller's or does not have
     /// an associated account.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(17, Error::InvalidPublicKey as u8);
+    /// ```
     #[cfg_attr(
         feature = "std",
         error(
@@ -81,76 +153,164 @@ pub enum Error {
     )]
     InvalidPublicKey = 17,
     /// Validator is not not bonded.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(18, Error::BondNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Validator's bond not found"))]
     BondNotFound = 18,
     /// Unable to create purse.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(19, Error::CreatePurseFailed as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Unable to create purse"))]
     CreatePurseFailed = 19,
     /// Attempted to unbond an amount which was too large.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(20, Error::UnbondTooLarge as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Unbond is too large"))]
     UnbondTooLarge = 20,
     /// Attempted to bond with a stake which was too small.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(21, Error::BondTooSmall as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Bond is too small"))]
     BondTooSmall = 21,
     /// Raised when rewards are to be distributed to delegators, but the validator has no
     /// delegations.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(22, Error::MissingDelegations as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Validators has not received any delegations"))]
     MissingDelegations = 22,
     /// The validators returned by the consensus component should match
     /// current era validators when distributing rewards.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(23, Error::MismatchedEraValidators as u8);
+    /// ```
     #[cfg_attr(
         feature = "std",
         error("Mismatched era validator sets to distribute rewards")
     )]
     MismatchedEraValidators = 23,
     /// Failed to mint reward tokens.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(24, Error::MintReward as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to mint rewards"))]
     MintReward = 24,
     /// Invalid number of validator slots.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(25, Error::InvalidValidatorSlotsValue as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid number of validator slots"))]
     InvalidValidatorSlotsValue = 25,
     /// Failed to reduce total supply.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(26, Error::MintReduceTotalSupply as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to reduce total supply"))]
     MintReduceTotalSupply = 26,
     /// Triggered when contract was unable to transfer desired amount of tokens into a delegators
     /// purse.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(27, Error::TransferToDelegatorPurse as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Transfer to delegators purse error"))]
     TransferToDelegatorPurse = 27,
     /// Triggered when contract was unable to perform a transfer to distribute validators reward.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(28, Error::ValidatorRewardTransfer as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Reward transfer to validator error"))]
     ValidatorRewardTransfer = 28,
     /// Triggered when contract was unable to perform a transfer to distribute delegators rewards.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(29, Error::DelegatorRewardTransfer as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Rewards transfer to delegator error"))]
     DelegatorRewardTransfer = 29,
     /// Failed to transfer desired amount while withdrawing delegators reward.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(30, Error::WithdrawDelegatorReward as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Withdraw delegator reward error"))]
     WithdrawDelegatorReward = 30,
     /// Failed to transfer desired amount while withdrawing validators reward.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(31, Error::WithdrawValidatorReward as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Withdraw validator reward error"))]
     WithdrawValidatorReward = 31,
     /// Failed to transfer desired amount into unbonding purse.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(32, Error::TransferToUnbondingPurse as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Transfer to unbonding purse error"))]
     TransferToUnbondingPurse = 32,
     /// Failed to record era info.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(33, Error::RecordEraInfo as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Record era info error"))]
     RecordEraInfo = 33,
     /// Failed to create a [`crate::CLValue`].
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(34, Error::CLValue as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("CLValue error"))]
     CLValue = 34,
     /// Missing seigniorage recipients for given era.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(35, Error::MissingSeigniorageRecipients as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Missing seigniorage recipients for given era"))]
     MissingSeigniorageRecipients = 35,
     /// Failed to transfer funds.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(36, Error::Transfer as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Transfer error"))]
     Transfer = 36,
     /// Delegation rate exceeds rate.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(37, Error::DelegationRateTooLarge as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Delegation rate too large"))]
     DelegationRateTooLarge = 37,
     /// Raised whenever a delegator's funds are still locked in but an attempt to undelegate was
     /// made.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(38, Error::DelegatorFundsLocked as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Delegator's funds are locked"))]
     DelegatorFundsLocked = 38,
     /// An arithmetic overflow has occurred.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(39, Error::ArithmeticOverflow as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
     ArithmeticOverflow = 39,
     // NOTE: These variants below and related plumbing will be removed once support for WASM

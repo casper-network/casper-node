@@ -45,27 +45,83 @@ pub enum Error {
     /// Attempt to override an existing or previously existing version with a
     /// new header (this is not allowed to ensure immutability of a given
     /// version).
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(1, Error::PreviouslyUsedVersion as u8);
+    /// ```
     PreviouslyUsedVersion = 1,
     /// Attempted to disable a contract that does not exist.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(2, Error::ContractNotFound as u8);
+    /// ```
     ContractNotFound = 2,
     /// Attempted to create a user group which already exists (use the update
     /// function to change an existing user group).
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(3, Error::GroupAlreadyExists as u8);
+    /// ```
     GroupAlreadyExists = 3,
     /// Attempted to add a new user group which exceeds the allowed maximum
     /// number of groups.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(4, Error::MaxGroupsExceeded as u8);
+    /// ```
     MaxGroupsExceeded = 4,
     /// Attempted to add a new URef to a group, which resulted in the total
     /// number of URefs across all user groups to exceed the allowed maximum.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(5, Error::MaxTotalURefsExceeded as u8);
+    /// ```
     MaxTotalURefsExceeded = 5,
     /// Attempted to remove a URef from a group, which does not exist in the
     /// group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(6, Error::GroupDoesNotExist as u8);
+    /// ```
     GroupDoesNotExist = 6,
     /// Attempted to remove unknown URef from the group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(7, Error::UnableToRemoveURef as u8);
+    /// ```
     UnableToRemoveURef = 7,
     /// Group is use by at least one active contract.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(8, Error::GroupInUse as u8);
+    /// ```
     GroupInUse = 8,
     /// URef already exists in given group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(9, Error::URefAlreadyExists as u8);
+    /// ```
     URefAlreadyExists = 9,
+}
+
+impl TryFrom<u8> for Error {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let error = match value {
+            v if v == Self::PreviouslyUsedVersion as u8 => Self::PreviouslyUsedVersion,
+            v if v == Self::ContractNotFound as u8 => Self::ContractNotFound,
+            v if v == Self::GroupAlreadyExists as u8 => Self::GroupAlreadyExists,
+            v if v == Self::MaxGroupsExceeded as u8 => Self::MaxGroupsExceeded,
+            v if v == Self::MaxTotalURefsExceeded as u8 => Self::MaxTotalURefsExceeded,
+            v if v == Self::GroupDoesNotExist as u8 => Self::GroupDoesNotExist,
+            v if v == Self::UnableToRemoveURef as u8 => Self::UnableToRemoveURef,
+            v if v == Self::GroupInUse as u8 => Self::GroupInUse,
+            v if v == Self::URefAlreadyExists as u8 => Self::URefAlreadyExists,
+            _ => return Err(()),
+        };
+        Ok(error)
+    }
 }
 
 /// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.

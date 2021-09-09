@@ -14,13 +14,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::{
-    core::engine_state::{BalanceResult, GetBidsResult, QueryResult},
-    shared::stored_value::StoredValue as DomainStoredValue,
-};
+use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
 use casper_types::{
     bytesrepr::ToBytes, check_summed_hex, CLValue, Key, ProtocolVersion, PublicKey, SecretKey,
-    URef, U512,
+    StoredValue as DomainStoredValue, URef, U512,
 };
 
 use super::{

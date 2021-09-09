@@ -15,11 +15,9 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{
-        motes::Motes, newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig,
-    },
+    shared::{newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
@@ -50,6 +48,7 @@ pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 6234
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
+pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 pub const DEFAULT_GAS_PRICE: u64 = 1;
 pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);

@@ -3,10 +3,10 @@ use std::{
     convert::TryInto,
 };
 
-use casper_execution_engine::shared::{newtypes::Blake2bHash, stored_value::StoredValue};
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{
     bytesrepr::ToBytes, check_summed_hex, system::auction::SeigniorageRecipientsSnapshot, Key,
-    PublicKey,
+    PublicKey, StoredValue,
 };
 
 /// Parses a Blake2bHash from a string. Panics if parsing fails.

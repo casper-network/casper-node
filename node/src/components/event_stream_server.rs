@@ -194,6 +194,11 @@ where
                 block_hash: Box::new(block_hash),
                 execution_result,
             }),
+            Event::DeploysExpired(deploy_hashes) => deploy_hashes
+                .into_iter()
+                .map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
+                .flatten()
+                .collect(),
             Event::Fault {
                 era_id,
                 public_key,

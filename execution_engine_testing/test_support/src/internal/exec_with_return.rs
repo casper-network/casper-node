@@ -11,12 +11,12 @@ use casper_execution_engine::{
         runtime::{self, Runtime},
         runtime_context::RuntimeContext,
     },
-    shared::{gas::Gas, newtypes::CorrelationId, wasm_prep::Preprocessor},
+    shared::{newtypes::CorrelationId, wasm_prep::Preprocessor},
     storage::global_state::StateProvider,
 };
 use casper_types::{
     account::AccountHash, bytesrepr::FromBytes, system::CallStackElement, BlockTime, CLTyped,
-    DeployHash, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};

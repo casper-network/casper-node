@@ -864,7 +864,7 @@ mod tests {
         let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
-        let id_a = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1074,9 +1074,9 @@ mod tests {
         // We use `addr_b` as an unforgettable address, which does not mean it cannot be blocked!
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
         let addr_c: SocketAddr = "9.0.1.2:9012".parse().unwrap();
-        let id_a = NodeId::random_tls(&mut rng);
-        let id_b = NodeId::random_tls(&mut rng);
-        let id_c = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
+        let id_b = NodeId::random(&mut rng);
+        let id_c = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1214,8 +1214,8 @@ mod tests {
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
 
-        let id_a = NodeId::random_tls(&mut rng);
-        let id_b = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
+        let id_b = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1251,7 +1251,7 @@ mod tests {
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
 
-        let id_a = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 

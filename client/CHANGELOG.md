@@ -13,9 +13,12 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* RPM package build and publish.
+
 ### Changed
 * Support building and testing using stable Rust.
-
+* Support `URef`, `PublicKey` and `AccountHash` as transfer targets for `transfer` and `make-transfer`.
 
 
 ## [1.3.0] - 2021-07-21

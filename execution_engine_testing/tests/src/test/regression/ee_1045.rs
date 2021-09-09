@@ -9,14 +9,11 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
-    shared::motes::Motes,
-};
+use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
     runtime_args,
     system::auction::{DelegationRate, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
 
