@@ -1,7 +1,6 @@
 //! Unit tests for the storage component.
 
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
@@ -10,7 +9,7 @@ use std::{
 
 use lmdb::{Cursor, Transaction};
 use rand::{prelude::SliceRandom, Rng};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
@@ -26,10 +25,7 @@ use crate::{
         storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
     },
     crypto::{hash::Digest, AsymmetricKeyExt},
-    effect::{
-        requests::{StateStoreRequest, StorageRequest},
-        Multiple,
-    },
+    effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, Deploy,
@@ -144,27 +140,23 @@ fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
 
 // TODO: This is deprecated (we will never make this request in the actual reactors!)
 /// Requests block header at a specific height from a storage component.
-fn get_block_header_at_height(
-    _harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    height: u64,
-) -> Option<BlockHeader> {
+fn get_block_header_at_height(storage: &mut Storage, height: u64) -> Option<BlockHeader> {
     storage
         .read_block_header_by_height(height)
         .expect("should get block")
 }
 
 /// Requests block at a specific height from a storage component.
-fn get_block_at_height(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    height: u64,
-) -> Option<Block> {
-    let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetBlockAtHeight { height, responder }.into()
-    });
-    assert!(harness.is_idle());
-    response
+fn get_block_at_height(storage: &mut Storage, height: u64) -> Option<Block> {
+    storage
+        .get_block_by_height(
+            &mut storage
+                .env()
+                .begin_ro_txn()
+                .expect("could not get transaction"),
+            height,
+        )
+        .expect("could not get block by height")
 }
 
 /// Loads a block from a storage component.
@@ -173,12 +165,9 @@ fn get_block(
     storage: &mut Storage,
     block_hash: BlockHash,
 ) -> Option<Block> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetBlock {
-            block_hash,
-            responder,
-        }
-        .into()
+    let response = harness.send_request(storage, move |responder| StorageRequest::GetBlock {
+        block_hash,
+        responder,
     });
     assert!(harness.is_idle());
     response
@@ -195,7 +184,6 @@ fn get_block_signatures(
             block_hash,
             responder,
         }
-        .into()
     });
     assert!(harness.is_idle());
     response
@@ -207,12 +195,9 @@ fn get_deploys(
     storage: &mut Storage,
     deploy_hashes: Multiple<DeployHash>,
 ) -> Vec<Option<Deploy>> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetDeploys {
-            deploy_hashes: deploy_hashes.to_vec(),
-            responder,
-        }
-        .into()
+    let response = harness.send_request(storage, move |responder| StorageRequest::GetDeploys {
+        deploy_hashes: deploy_hashes.to_vec(),
+        responder,
     });
     assert!(harness.is_idle());
     response
@@ -224,13 +209,11 @@ fn get_deploy_and_metadata(
     storage: &mut Storage,
     deploy_hash: DeployHash,
 ) -> Option<(Deploy, DeployMetadata)> {
-    let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetDeployAndMetadata {
+    let response =
+        harness.send_request(storage, |responder| StorageRequest::GetDeployAndMetadata {
             deploy_hash,
             responder,
-        }
-        .into()
-    });
+        });
     assert!(harness.is_idle());
     response
 }
@@ -240,30 +223,11 @@ fn get_highest_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
 ) -> Option<Block> {
-    let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetHighestBlock { responder }.into()
+    let response = harness.send_request(storage, |responder| StorageRequest::GetHighestBlock {
+        responder,
     });
     assert!(harness.is_idle());
     response
-}
-
-/// Loads state from the storage component.
-#[cfg(test)]
-fn load_state<T>(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    key: Cow<'static, [u8]>,
-) -> Option<T>
-where
-    T: DeserializeOwned,
-{
-    let response: Option<Vec<u8>> = harness.send_request(storage, move |responder| {
-        StateStoreRequest::Load { key, responder }.into()
-    });
-    assert!(harness.is_idle());
-
-    // NOTE: Unfortunately, the deserialization logic is duplicated here from the effect builder.
-    response.map(|raw| bincode::deserialize(&raw).expect("deserialization failed"))
 }
 
 /// Stores a block in a storage component.
@@ -272,8 +236,9 @@ fn put_block(
     storage: &mut Storage,
     block: Box<Block>,
 ) -> bool {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutBlock { block, responder }.into()
+    let response = harness.send_request(storage, move |responder| StorageRequest::PutBlock {
+        block,
+        responder,
     });
     assert!(harness.is_idle());
     response
@@ -290,7 +255,6 @@ fn put_block_signatures(
             signatures,
             responder,
         }
-        .into()
     });
     assert!(harness.is_idle());
     response
@@ -302,8 +266,9 @@ fn put_deploy(
     storage: &mut Storage,
     deploy: Box<Deploy>,
 ) -> bool {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutDeploy { deploy, responder }.into()
+    let response = harness.send_request(storage, move |responder| StorageRequest::PutDeploy {
+        deploy,
+        responder,
     });
     assert!(harness.is_idle());
     response
@@ -322,32 +287,9 @@ fn put_execution_results(
             execution_results,
             responder,
         }
-        .into()
     });
     assert!(harness.is_idle());
     response
-}
-
-/// Saves state from the storage component.
-fn save_state<T>(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    key: Cow<'static, [u8]>,
-    value: &T,
-) where
-    T: Serialize,
-{
-    // NOTE: Unfortunately, the serialization logic is duplicated here from the effect builder.
-    let data = bincode::serialize(value).expect("serialization failed");
-    harness.send_request(storage, move |responder| {
-        StateStoreRequest::Save {
-            key,
-            responder,
-            data,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
 }
 
 #[test]
@@ -384,12 +326,9 @@ fn can_put_and_get_block() {
     assert_eq!(response.as_ref(), Some(&*block));
 
     // Also ensure we can retrieve just the header.
-    let response = harness.send_request(&mut storage, |responder| {
-        StorageRequest::GetBlockHeader {
-            block_hash: *block.hash(),
-            responder,
-        }
-        .into()
+    let response = harness.send_request(&mut storage, |responder| StorageRequest::GetBlockHeader {
+        block_hash: *block.hash(),
+        responder,
     });
 
     assert_eq!(response.as_ref(), Some(block.header()));
@@ -576,15 +515,15 @@ fn can_retrieve_block_by_height() {
     ));
 
     // Both block at ID and highest block should return `None` initially.
-    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert!(get_highest_block(&mut harness, &mut storage).is_none());
-    assert!(get_block_at_height(&mut harness, &mut storage, 14).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 14).is_none());
-    assert!(get_block_at_height(&mut harness, &mut storage, 33).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 33).is_none());
-    assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_at_height(&mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut storage, 14).is_none());
+    assert!(get_block_at_height(&mut storage, 33).is_none());
+    assert!(get_block_header_at_height(&mut storage, 33).is_none());
+    assert!(get_block_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting 33 changes this.
     let was_new = put_block(&mut harness, &mut storage, block_33.clone());
@@ -594,20 +533,20 @@ fn can_retrieve_block_by_height() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
-    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
-    assert!(get_block_at_height(&mut harness, &mut storage, 14).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 14).is_none());
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut storage, 14).is_none());
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
+        get_block_at_height(&mut storage, 33).as_ref(),
         Some(&*block_33)
     );
     assert_eq!(
-        get_block_header_at_height(&mut harness, &mut storage, 33).as_ref(),
+        get_block_header_at_height(&mut storage, 33).as_ref(),
         Some(block_33.header())
     );
-    assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting block with height 14, no change in highest.
     let was_new = put_block(&mut harness, &mut storage, block_14.clone());
@@ -617,26 +556,26 @@ fn can_retrieve_block_by_height() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
-    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
+        get_block_at_height(&mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
-        get_block_header_at_height(&mut harness, &mut storage, 14).as_ref(),
+        get_block_header_at_height(&mut storage, 14).as_ref(),
         Some(block_14.header())
     );
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
+        get_block_at_height(&mut storage, 33).as_ref(),
         Some(&*block_33)
     );
     assert_eq!(
-        get_block_header_at_height(&mut harness, &mut storage, 33).as_ref(),
+        get_block_header_at_height(&mut storage, 33).as_ref(),
         Some(block_33.header())
     );
-    assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting block with height 99, changes highest.
     let was_new = put_block(&mut harness, &mut storage, block_99.clone());
@@ -646,30 +585,30 @@ fn can_retrieve_block_by_height() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_99)
     );
-    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
+        get_block_at_height(&mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
-        get_block_header_at_height(&mut harness, &mut storage, 14).as_ref(),
+        get_block_header_at_height(&mut storage, 14).as_ref(),
         Some(block_14.header())
     );
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
+        get_block_at_height(&mut storage, 33).as_ref(),
         Some(&*block_33)
     );
     assert_eq!(
-        get_block_header_at_height(&mut harness, &mut storage, 33).as_ref(),
+        get_block_header_at_height(&mut storage, 33).as_ref(),
         Some(block_33.header())
     );
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 99).as_ref(),
+        get_block_at_height(&mut storage, 99).as_ref(),
         Some(&*block_99)
     );
     assert_eq!(
-        get_block_header_at_height(&mut harness, &mut storage, 99).as_ref(),
+        get_block_header_at_height(&mut storage, 99).as_ref(),
         Some(block_99.header())
     );
 }
@@ -750,7 +689,6 @@ fn can_retrieve_store_and_load_deploys() {
                 deploy_hash: *deploy.id(),
                 responder,
             }
-            .into()
         })
         .expect("no deploy with metadata returned");
 
@@ -986,79 +924,6 @@ struct StateData {
 }
 
 #[test]
-fn store_and_load_state_data() {
-    let key1 = b"sample-key-1".to_vec();
-    let key2 = b"exkey-2".to_vec();
-
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    // Initially, both keys should return nothing.
-    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
-    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
-
-    assert!(load1.is_none());
-    assert!(load2.is_none());
-
-    let data1 = StateData { a: vec![1], b: -1 };
-    let data2 = StateData { a: vec![], b: 2 };
-
-    // Store one after another.
-    save_state(&mut harness, &mut storage, key1.clone().into(), &data1);
-    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
-    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
-
-    assert_eq!(load1, Some(data1.clone()));
-    assert!(load2.is_none());
-
-    save_state(&mut harness, &mut storage, key2.clone().into(), &data2);
-    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
-    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
-
-    assert_eq!(load1, Some(data1));
-    assert_eq!(load2, Some(data2.clone()));
-
-    // Overwrite `data1` in store.
-    save_state(&mut harness, &mut storage, key1.clone().into(), &data2);
-    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.into());
-    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.into());
-
-    assert_eq!(load1, Some(data2.clone()));
-    assert_eq!(load2, Some(data2));
-}
-
-#[test]
-fn persist_state_data() {
-    let key = b"sample-key-1".to_vec();
-
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let load = load_state::<StateData>(&mut harness, &mut storage, key.clone().into());
-    assert!(load.is_none());
-
-    let data = StateData {
-        a: vec![1, 2, 3, 4, 5, 6],
-        b: -1,
-    };
-
-    // Store one after another.
-    save_state(&mut harness, &mut storage, key.clone().into(), &data);
-    let load = load_state::<StateData>(&mut harness, &mut storage, key.clone().into());
-    assert_eq!(load, Some(data.clone()));
-
-    let (on_disk, rng) = harness.into_parts();
-    let mut harness = ComponentHarness::builder()
-        .on_disk(on_disk)
-        .rng(rng)
-        .build();
-    let mut storage = storage_fixture(&harness);
-
-    let load = load_state::<StateData>(&mut harness, &mut storage, key.into());
-    assert_eq!(load, Some(data));
-}
-
-#[test]
 fn test_legacy_interface() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
@@ -1095,7 +960,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
 
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 42).expect("block not indexed properly"),
+        get_block_at_height(&mut storage, 42).expect("block not indexed properly"),
         *block
     );
 
@@ -1123,7 +988,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     assert_eq!(execution_results[block.hash()], execution_result);
 
     assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 42).expect("block index was not restored"),
+        get_block_at_height(&mut storage, 42).expect("block index was not restored"),
         *block
     );
 }
@@ -1560,7 +1425,7 @@ fn can_put_and_get_blocks_v2() {
 
     for (i, expected_block) in blocks.into_iter().enumerate() {
         assert_eq!(
-            get_block_at_height(&mut harness, &mut storage, height + i as u64),
+            get_block_at_height(&mut storage, height + i as u64),
             Some(expected_block)
         );
     }

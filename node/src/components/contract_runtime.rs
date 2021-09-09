@@ -83,11 +83,6 @@ impl ExecutionPreState {
             parent_seed,
         }
     }
-
-    /// Get the next block height according that will succeed the block specified by `parent_hash`.
-    pub(crate) fn next_block_height(&self) -> u64 {
-        self.next_block_height
-    }
 }
 
 impl From<&BlockHeader> for ExecutionPreState {
@@ -252,19 +247,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            ContractRuntimeRequest::CommitGenesis {
-                chainspec,
-                responder,
-            } => {
-                let result = self.commit_genesis(&chainspec);
-                responder.respond(result).ignore()
-            }
-            ContractRuntimeRequest::Upgrade {
-                upgrade_config,
-                responder,
-            } => responder
-                .respond(self.commit_upgrade(*upgrade_config))
-                .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,

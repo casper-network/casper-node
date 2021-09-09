@@ -29,12 +29,16 @@ All notable changes to this project will be documented in this file.  The format
 * Major rewrite of the contract runtime component.
 * More node modules are now `pub(crate)`.
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
+* Asymmetric connections are now swept regularly again.
 
+### Deprecated
+* Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
 
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
-* Removed dead code revealed by making modules `pub(crate)`.
+* Remove dead code revealed by making modules `pub(crate)`.
+* Remove legacy synchronization from genesis in favor of fast sync.
 
 
 
@@ -80,8 +84,6 @@ All notable changes to this project will be documented in this file.  The format
 * Limit the maximum number of clients connected to the event stream server via the `[event_stream_server][max_concurrent_subscribers]` config option.
 * Avoid emitting duplicate events in the event stream.
 * Change `BlockIdentifier` params in the Open-RPC schema to be optional.
-* Asymmetric connections are now swept regularly again.
-
 
 
 ## [1.2.0] - 2021-05-27

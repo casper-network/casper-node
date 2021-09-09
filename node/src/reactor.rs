@@ -666,7 +666,6 @@ where
         };
         if let Err(error) = self.scheduler.debug_dump(&mut file).await {
             warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
-            return;
         }
     }
 

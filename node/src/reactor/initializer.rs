@@ -27,8 +27,7 @@ use crate::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
         requests::{
-            ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest,
-            StateStoreRequest, StorageRequest,
+            ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -50,14 +49,10 @@ pub(crate) enum Event {
     /// Storage event.
 
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event),
+    Storage(#[serde(skip_serializing)] StorageRequest),
 
     /// Contract runtime event.
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
-
-    /// Request for state storage.
-    #[from]
-    StateStoreRequest(StateStoreRequest),
 
     /// Control announcement
     #[from]
@@ -77,12 +72,6 @@ impl ReactorEvent for Event {
         } else {
             None
         }
-    }
-}
-
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(storage::Event::StorageRequest(request))
     }
 }
 
@@ -128,9 +117,6 @@ impl Display for Event {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {:?}", event),
-            Event::StateStoreRequest(request) => {
-                write!(formatter, "state store request: {}", request)
-            }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
         }
     }
@@ -292,15 +278,12 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, *event),
             ),
-            Event::StateStoreRequest(request) => {
-                self.dispatch_event(effect_builder, rng, Event::Storage(request.into()))
-            }
             Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
         }
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.chainspec_loader.reactor_exit()
+        Some(self.chainspec_loader.reactor_exit())
     }
 }
 

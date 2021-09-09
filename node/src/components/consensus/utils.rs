@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use casper_types::{PublicKey, U512};
 use num::rational::Ratio;
 
-use crate::{components::linear_chain_sync::FinalitySignatureError, types::BlockSignatures};
+use crate::{components::consensus::error::FinalitySignatureError, types::BlockSignatures};
 
 /// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold. Returns an
 /// error if it doesn't, or if one of the signatures does not belong to a validator.

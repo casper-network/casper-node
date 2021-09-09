@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
@@ -15,16 +15,13 @@ use crate::{
         consensus::check_sufficient_finality_signatures,
         contract_runtime::ExecutionPreState,
         fetcher::{FetchedData, FetcherError},
-        linear_chain_sync::error::{FinalitySignatureError, LinearChainSyncError},
+        linear_chain_sync::error::{LinearChainSyncError, SignatureValidationError},
     },
-    effect::{
-        announcements::BlocklistAnnouncement,
-        requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest},
-        EffectBuilder,
-    },
+    effect::{requests::FetcherRequest, EffectBuilder},
+    reactor::joiner::JoinerEvent,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, Timestamp,
+        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeId, Timestamp,
     },
 };
 
@@ -33,14 +30,13 @@ const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 /// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
 /// necessary for the item. Not suited to fetching a block header or block by height, which require
 /// verification with finality signatures.
-async fn fetch_retry_forever<T, REv, I>(
-    effect_builder: EffectBuilder<REv>,
+async fn fetch_retry_forever<T>(
+    effect_builder: EffectBuilder<JoinerEvent>,
     id: T::Id,
-) -> Result<Box<T>, FetcherError<T, I>>
+) -> Result<Box<T>, FetcherError<T, NodeId>>
 where
     T: Item + 'static,
-    REv: From<FetcherRequest<I, T>> + From<NetworkInfoRequest<I>>,
-    I: Eq + Debug + Clone + Send + 'static,
+    JoinerEvent: From<FetcherRequest<NodeId, T>>,
 {
     loop {
         for peer in effect_builder.get_peers_in_random_order().await {
@@ -50,7 +46,7 @@ where
                 id,
                 peer
             );
-            match effect_builder.fetch::<T, I>(id, peer.clone()).await {
+            match effect_builder.fetch::<T, NodeId>(id, peer).await {
                 Ok(FetchedData::FromStorage { item }) => {
                     trace!(
                         "Did not get {:?} with id {:?} from {:?}, got from storage instead",
@@ -79,8 +75,6 @@ where
                         ?peer,
                         "Peer timed out",
                     );
-                    // Peer timed out fetching the item, continue with the next peer
-                    continue;
                 }
                 Err(error) => return Err(error),
             }
@@ -89,17 +83,18 @@ where
     }
 }
 
-/// Fetches and stores a block header from the network
-async fn fetch_and_store_block_header<REv, I>(
-    effect_builder: EffectBuilder<REv>,
+/// Fetches and stores a block header from the network.
+async fn fetch_and_store_block_header(
+    effect_builder: EffectBuilder<JoinerEvent>,
     block_hash: BlockHash,
-) -> Result<Box<BlockHeader>, FetcherError<BlockHeader, I>>
-where
-    REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
-    I: Eq + Debug + Clone + Send + 'static,
-{
-    let block_header =
-        fetch_retry_forever::<BlockHeader, REv, I>(effect_builder, block_hash).await?;
+) -> Result<Box<BlockHeader>, LinearChainSyncError> {
+    // Only genesis should have this as previous hash, so no block should ever have it...
+    if block_hash == BlockHash::default() {
+        return Err(LinearChainSyncError::NoSuchBlockHash {
+            bogus_block_hash: block_hash,
+        });
+    }
+    let block_header = fetch_retry_forever::<BlockHeader>(effect_builder, block_hash).await?;
     effect_builder
         .put_block_header_to_storage(block_header.clone())
         .await;
@@ -107,16 +102,11 @@ where
 }
 
 /// Fetches and stores a deploy.
-async fn fetch_and_store_deploy<REv, I>(
-    effect_builder: EffectBuilder<REv>,
+async fn fetch_and_store_deploy(
+    effect_builder: EffectBuilder<JoinerEvent>,
     deploy_or_transfer_hash: DeployHash,
-) -> Result<Box<Deploy>, FetcherError<Deploy, I>>
-where
-    REv: From<FetcherRequest<I, Deploy>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
-    I: Eq + Debug + Clone + Send + 'static,
-{
-    let deploy =
-        fetch_retry_forever::<Deploy, REv, I>(effect_builder, deploy_or_transfer_hash).await?;
+) -> Result<Box<Deploy>, FetcherError<Deploy, NodeId>> {
+    let deploy = fetch_retry_forever::<Deploy>(effect_builder, deploy_or_transfer_hash).await?;
     effect_builder.put_deploy_to_storage(deploy.clone()).await;
     Ok(deploy)
 }
@@ -127,12 +117,12 @@ fn validate_finality_signatures(
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,
     block_signatures: &BlockSignatures,
-) -> Result<(), FinalitySignatureError> {
+) -> Result<(), SignatureValidationError> {
     // Check the signatures' block hash is the header's block hash
     let block_hash = block_header.hash();
     if block_signatures.block_hash != block_hash {
         return Err(
-            FinalitySignatureError::SignaturesDoNotCorrespondToBlockHeader {
+            SignatureValidationError::SignaturesDoNotCorrespondToBlockHeader {
                 block_header: Box::new(block_header.clone()),
                 block_hash: Box::new(block_hash),
                 block_signatures: Box::new(block_signatures.clone()),
@@ -148,25 +138,19 @@ fn validate_finality_signatures(
         finality_threshold_fraction,
         block_signatures,
     )
+    .map_err(Into::into)
 }
 
 /// Fetches a block header from the network by height.
-async fn fetch_and_store_block_header_by_height<REv, I>(
-    effect_builder: EffectBuilder<REv>,
+async fn fetch_and_store_block_header_by_height(
+    effect_builder: EffectBuilder<JoinerEvent>,
     height: u64,
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,
-) -> Result<Option<Box<BlockHeaderWithMetadata>>, FetcherError<BlockHeaderWithMetadata, I>>
-where
-    REv: From<FetcherRequest<I, BlockHeaderWithMetadata>>
-        + From<NetworkInfoRequest<I>>
-        + From<StorageRequest>
-        + From<BlocklistAnnouncement<I>>,
-    I: Eq + Debug + Clone + Send + 'static,
-{
+) -> Result<Option<Box<BlockHeaderWithMetadata>>, FetcherError<BlockHeaderWithMetadata, NodeId>> {
     for peer in effect_builder.get_peers_in_random_order().await {
         match effect_builder
-            .fetch::<BlockHeaderWithMetadata, I>(height, peer.clone())
+            .fetch::<BlockHeaderWithMetadata, NodeId>(height, peer)
             .await
         {
             Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
@@ -249,15 +233,11 @@ impl KeyBlockInfo {
 
 /// Get trusted switch block.
 /// Returns an error if we are still in the first era, or the era after an emergency restart.
-async fn get_trusted_key_block_info<REv, I>(
-    effect_builder: EffectBuilder<REv>,
+async fn get_trusted_key_block_info(
+    effect_builder: EffectBuilder<JoinerEvent>,
     chainspec: &Chainspec,
     trusted_header: &BlockHeader,
-) -> Result<KeyBlockInfo, LinearChainSyncError<I>>
-where
-    REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
-    I: Eq + Debug + Clone + Send + 'static,
-{
+) -> Result<KeyBlockInfo, LinearChainSyncError> {
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
     let mut current_header_to_walk_back_from = trusted_header.clone();
@@ -297,22 +277,15 @@ where
 }
 
 /// Fetches a block from the network by height.
-async fn fetch_and_store_block_by_height<REv, I>(
-    effect_builder: EffectBuilder<REv>,
+async fn fetch_and_store_block_by_height(
+    effect_builder: EffectBuilder<JoinerEvent>,
     height: u64,
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,
-) -> Result<Option<Box<BlockWithMetadata>>, FetcherError<BlockWithMetadata, I>>
-where
-    REv: From<FetcherRequest<I, BlockWithMetadata>>
-        + From<NetworkInfoRequest<I>>
-        + From<BlocklistAnnouncement<I>>
-        + From<StorageRequest>,
-    I: Eq + Debug + Clone + Send + 'static,
-{
+) -> Result<Option<Box<BlockWithMetadata>>, FetcherError<BlockWithMetadata, NodeId>> {
     for peer in effect_builder.get_peers_in_random_order().await {
         match effect_builder
-            .fetch::<BlockWithMetadata, I>(height, peer.clone())
+            .fetch::<BlockWithMetadata, NodeId>(height, peer)
             .await
         {
             Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
@@ -338,9 +311,9 @@ where
                 }
 
                 // Store the block
-                // effect_builder
-                //     .put_block_to_storage(Box::new(block.clone()))
-                //     .await;
+                effect_builder
+                    .put_block_to_storage(Box::new(block.clone()))
+                    .await;
 
                 // Store the finality signatures
                 effect_builder
@@ -377,42 +350,33 @@ where
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
 /// returns any outstanding descendant tries.
-async fn fetch_trie_and_insert_into_trie_store<REv, I>(
-    effect_builder: EffectBuilder<REv>,
+async fn fetch_trie_and_insert_into_trie_store(
+    effect_builder: EffectBuilder<JoinerEvent>,
     trie_key: Blake2bHash,
-) -> Result<Vec<Blake2bHash>, LinearChainSyncError<I>>
-where
-    REv: From<ContractRuntimeRequest>
-        + From<FetcherRequest<I, Trie<Key, StoredValue>>>
-        + From<NetworkInfoRequest<I>>,
-    I: Eq + Clone + Debug + Send + 'static,
-{
-    let trie =
-        fetch_retry_forever::<Trie<Key, StoredValue>, REv, I>(effect_builder, trie_key).await?;
+) -> Result<Vec<Blake2bHash>, LinearChainSyncError> {
+    let trie = fetch_retry_forever::<Trie<Key, StoredValue>>(effect_builder, trie_key).await?;
     let outstanding_tries = effect_builder
         .put_trie_and_find_missing_descendant_trie_keys(trie)
         .await?;
     Ok(outstanding_tries)
 }
 
+/// Downloads and stores a block.
+async fn fetch_and_store_block_by_hash(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    block_hash: BlockHash,
+) -> Result<Box<Block>, FetcherError<Block, NodeId>> {
+    let block = fetch_retry_forever::<Block>(effect_builder, block_hash).await?;
+    effect_builder.put_block_to_storage(block.clone()).await;
+    Ok(block)
+}
+
 /// Runs the fast synchronization task.
-pub(crate) async fn run_fast_sync_task<REv, I>(
-    effect_builder: EffectBuilder<REv>,
+pub(crate) async fn run_fast_sync_task(
+    effect_builder: EffectBuilder<JoinerEvent>,
     trusted_hash: BlockHash,
     chainspec: Chainspec,
-) -> Result<BlockHeader, LinearChainSyncError<I>>
-where
-    REv: From<ContractRuntimeRequest>
-        + From<FetcherRequest<I, BlockHeader>>
-        + From<FetcherRequest<I, BlockHeaderWithMetadata>>
-        + From<FetcherRequest<I, BlockWithMetadata>>
-        + From<FetcherRequest<I, Deploy>>
-        + From<FetcherRequest<I, Trie<Key, StoredValue>>>
-        + From<NetworkInfoRequest<I>>
-        + From<BlocklistAnnouncement<I>>
-        + From<StorageRequest>,
-    I: Eq + Debug + Clone + Send + 'static,
-{
+) -> Result<BlockHeader, LinearChainSyncError> {
     // Fetch the trusted header
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
@@ -482,6 +446,21 @@ where
             // Otherwise keep trying to fetch until we get a block with our version
             None => tokio::time::sleep(TIMEOUT_DURATION).await,
         }
+    }
+
+    // Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
+    // replay detection.
+    let mut current_header = most_recent_block_header.clone();
+    while trusted_key_block_info
+        .era_start
+        .saturating_diff(current_header.timestamp())
+        < chainspec.deploy_config.max_ttl
+        && !current_header.is_genesis_child()
+    {
+        current_header =
+            fetch_and_store_block_by_hash(effect_builder, *current_header.parent_hash())
+                .await?
+                .take_header();
     }
 
     // The era supervisor needs validator information from previous eras.

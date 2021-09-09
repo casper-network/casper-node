@@ -4,7 +4,6 @@
 //! top-level module documentation for details.
 
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     mem,
@@ -12,7 +11,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use serde::Serialize;
 use static_assertions::const_assert;
 
@@ -21,9 +19,7 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        genesis::GenesisSuccess,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
-        upgrade::{UpgradeConfig, UpgradeSuccess},
     },
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
@@ -49,16 +45,14 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::DisplayIter,
 };
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const _STATE_REQUEST_SIZE: usize = mem::size_of::<StateStoreRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 89);
-const_assert!(_STATE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -231,13 +225,6 @@ pub(crate) enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
-    /// Retrieve block with given height.
-    GetBlockAtHeight {
-        /// Height of the block.
-        height: BlockHeight,
-        /// Responder.
-        responder: Responder<Option<Block>>,
-    },
     /// Retrieve highest block.
     GetHighestBlock {
         /// Responder.
@@ -383,9 +370,6 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
-            StorageRequest::GetBlockAtHeight { height, .. } => {
-                write!(formatter, "get block at height {}", height)
-            }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block header at era id {}", era_id)
@@ -461,44 +445,6 @@ impl Display for StorageRequest {
                     "get block and sufficient finality signatures by height: {}",
                     block_height
                 )
-            }
-        }
-    }
-}
-
-/// State store request.
-#[derive(DataSize, Debug, Serialize)]
-#[repr(u8)]
-pub(crate) enum StateStoreRequest {
-    /// Stores a piece of state to storage.
-    Save {
-        /// Key to store under.
-        key: Cow<'static, [u8]>,
-        /// Value to store, already serialized.
-        #[serde(skip_serializing)]
-        data: Vec<u8>,
-        /// Notification when storing is complete.
-        responder: Responder<()>,
-    },
-    #[cfg(test)]
-    /// Loads a piece of state from storage.
-    Load {
-        /// Key to load from.
-        key: Cow<'static, [u8]>,
-        /// Responder for value, if found, returning the previously passed in serialization form.
-        responder: Responder<Option<Vec<u8>>>,
-    },
-}
-
-impl Display for StateStoreRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            StateStoreRequest::Save { key, data, .. } => {
-                write!(f, "save data under {} ({} bytes)", HexFmt(key), data.len())
-            }
-            #[cfg(test)]
-            StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", HexFmt(key))
             }
         }
     }
@@ -733,22 +679,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// The transfers for that `FinalizedBlock`
         transfers: Vec<Deploy>,
     },
-
-    /// Commit genesis chainspec.
-    CommitGenesis {
-        /// The chainspec.
-        chainspec: Arc<Chainspec>,
-        /// Responder to call with the result.
-        responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
-    },
-    /// A request to run upgrade.
-    Upgrade {
-        /// Upgrade config.
-        #[serde(skip_serializing)]
-        upgrade_config: Box<UpgradeConfig>,
-        /// Responder to call with the upgrade result.
-        responder: Responder<Result<UpgradeSuccess, engine_state::Error>>,
-    },
     /// A query request.
     Query {
         /// Query request.
@@ -837,17 +767,6 @@ impl Display for ContractRuntimeRequest {
                 transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
-            }
-            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
-                write!(
-                    formatter,
-                    "commit genesis {}",
-                    chainspec.protocol_config.version
-                )
-            }
-
-            ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
-                write!(formatter, "upgrade request: {:?}", upgrade_config)
             }
 
             ContractRuntimeRequest::Query { query_request, .. } => {

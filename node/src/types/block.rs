@@ -595,21 +595,18 @@ pub struct EraEnd {
 }
 
 impl EraEnd {
-    pub fn new(
-        era_report: EraReport,
-        next_era_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Self {
+    fn new(era_report: EraReport, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
         EraEnd {
             era_report,
             next_era_validator_weights,
         }
     }
 
-    pub fn era_report(&self) -> &EraReport {
+    fn era_report(&self) -> &EraReport {
         &self.era_report
     }
 
-    pub fn hash(&self) -> Digest {
+    fn hash(&self) -> Digest {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let EraEnd {
             next_era_validator_weights,

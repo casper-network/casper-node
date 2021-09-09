@@ -5,7 +5,7 @@ use uint::FromDecStrErr;
 
 use crate::utils::ReadFileError;
 
-/// Error returned by the ChainspecLoader.
+/// Error returned by the `ChainspecLoader`.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error while decoding the chainspec from TOML format.

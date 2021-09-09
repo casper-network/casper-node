@@ -46,14 +46,12 @@ use std::collections::BTreeSet;
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
-    fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use datasize::DataSize;
-use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
@@ -68,14 +66,13 @@ use tracing::{debug, error, info, warn};
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{EraId, ExecutionResult, PublicKey, Transfer, Transform};
 
+pub(crate) use crate::effect::requests::StorageRequest; // Needed by reactor! macro in fetcher tests...
+
 use crate::{
-    components::{consensus, linear_chain_sync::FinalitySignatureError, Component},
+    components::{consensus, consensus::error::FinalitySignatureError, Component},
     crypto,
     crypto::hash::{self, Digest},
-    effect::{
-        requests::{StateStoreRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
-    },
+    effect::{EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::ReactorEvent,
     types::{
@@ -119,7 +116,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 /// Mac OS X exhibits performance regressions when `WRITE_MAP` is used.
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
-const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
+const _STORAGE_EVENT_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
 const STORAGE_FILES: [&str; 5] = [
@@ -129,17 +126,6 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
-
-#[derive(Debug, From, Serialize)]
-#[repr(u8)]
-pub(crate) enum Event {
-    /// Incoming storage request.
-    #[from]
-    StorageRequest(StorageRequest),
-    /// Incoming state storage request.
-    #[from]
-    StateStoreRequest(StateStoreRequest),
-}
 
 /// A storage component error.
 #[derive(Debug, Error)]
@@ -362,7 +348,7 @@ impl<REv> Component<REv> for Storage
 where
     REv: ReactorEvent,
 {
-    type Event = Event;
+    type Event = StorageRequest;
     type ConstructionError = Error;
 
     fn handle_event(
@@ -371,17 +357,10 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
-            Event::StateStoreRequest(req) => {
-                self.handle_state_store_request::<REv>(effect_builder, req)
-            }
-        };
-
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
         // we are dropping a lot of responders this way, but since we are crashing with fatal
         // anyway, it should not matter.
-        match result {
+        match self.handle_storage_request::<REv>(event) {
             Ok(effects) => effects,
             Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
@@ -585,79 +564,16 @@ impl Storage {
         })
     }
 
-    /// Handles a state store request.
-    fn handle_state_store_request<REv>(
-        &mut self,
-        _effect_builder: EffectBuilder<REv>,
-        req: StateStoreRequest,
-    ) -> Result<Effects<Event>, Error>
-    where
-        Self: Component<REv>,
-    {
-        // Incoming requests are fairly simple database write. Errors are handled one level above on
-        // the call stack, so all we have to do is load or store a value.
-        match req {
-            StateStoreRequest::Save {
-                key,
-                data,
-                responder,
-            } => {
-                let mut txn = self.env.begin_rw_txn()?;
-                txn.put(self.state_store_db, &key, &data, WriteFlags::default())?;
-                txn.commit()?;
-                Ok(responder.respond(()).ignore())
-            }
-            #[cfg(test)]
-            StateStoreRequest::Load { key, responder } => {
-                let txn = self.env.begin_ro_txn()?;
-                let bytes = match txn.get(self.state_store_db, &key) {
-                    Ok(slice) => Some(slice.to_owned()),
-                    Err(lmdb::Error::NotFound) => None,
-                    Err(err) => return Err(err.into()),
-                };
-                Ok(responder.respond(bytes).ignore())
-            }
-        }
-    }
-
-    /// Reads from the state storage DB.
-    /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
-    /// May also fail with storage errors.
-    pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
-    where
-        K: AsRef<[u8]>,
-    {
-        let txn = self.env.begin_ro_txn()?;
-        let bytes = match txn.get(self.state_store_db, &key) {
-            Ok(slice) => Some(slice.to_owned()),
-            Err(lmdb::Error::NotFound) => None,
-            Err(err) => return Err(err.into()),
-        };
-        Ok(bytes)
-    }
-
-    /// Deletes value living under the key from the state storage DB.
-    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
-    where
-        K: AsRef<[u8]>,
-    {
-        let mut txn = self.env.begin_rw_txn()?;
-        let result = match txn.del(self.state_store_db, &key, None) {
-            Ok(_) => Ok(true),
-            Err(lmdb::Error::NotFound) => Ok(false),
-            Err(err) => Err(err),
-        }?;
-        txn.commit()?;
-        Ok(result)
-    }
-
     /// Returns the path to the storage folder.
     pub(crate) fn root_path(&self) -> &Path {
         &self.root
     }
 
     /// Handles a storage request.
-    fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
+    fn handle_storage_request<REv>(
+        &mut self,
+        req: StorageRequest,
+    ) -> Result<Effects<StorageRequest>, Error>
     where
         Self: Component<REv>,
     {
@@ -672,9 +588,6 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder.respond(self.read_block(&block_hash)?).ignore(),
-            StorageRequest::GetBlockAtHeight { height, responder } => responder
-                .respond(self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)?)
-                .ignore(),
             StorageRequest::GetHighestBlock { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
@@ -1731,15 +1644,6 @@ impl Config {
     }
 }
 
-impl Display for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::StorageRequest(req) => req.fmt(f),
-            Event::StateStoreRequest(req) => req.fmt(f),
-        }
-    }
-}
-
 // Testing code. The functions below allow direct inspection of the storage component and should
 // only ever be used when writing tests.
 #[cfg(test)]
@@ -1779,6 +1683,10 @@ impl Storage {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
             .collect()
+    }
+
+    pub fn env(&self) -> &Environment {
+        &self.env
     }
 }
 
