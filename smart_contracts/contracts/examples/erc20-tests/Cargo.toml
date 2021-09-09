@@ -1,0 +1,12 @@
+[package]
+name = "erc20-tests"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+edition = "2018"
+
+[dependencies]
+casper-types = { path = "../../../../types", default-features=false,features = ["std"] }
+casper-engine-test-support = { path = "../../../../execution_engine_testing/test_support" }
+hex = "0.4.3"
+blake2 = "0.9.2"
+base64 = "0.13.0"
