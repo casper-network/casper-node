@@ -1,4 +1,3 @@
-use base16;
 use casper_types::check_summed_hex::{decode, encode, encode_iter};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

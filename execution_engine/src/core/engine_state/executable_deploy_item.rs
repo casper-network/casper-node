@@ -8,6 +8,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use hex_buffer_serde::{Hex, HexForm};
 use parity_wasm::elements::Module;
 use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
@@ -54,11 +55,8 @@ const TRANSFER_TAG: u8 = 5;
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
-        #[serde(with = "CheckSummedHexForm")]
-        #[schemars(
-            with = "String",
-            description = "Check-summed hex-encoded raw Wasm bytes."
-        )]
+        #[serde(with = "HexForm")]
+        #[schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")]
         module_bytes: Bytes,
         // assumes implicit `call` noarg entrypoint
         args: RuntimeArgs,

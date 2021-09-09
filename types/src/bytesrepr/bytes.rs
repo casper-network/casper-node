@@ -10,6 +10,7 @@ use core::{
     slice,
 };
 
+use base16;
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
@@ -21,7 +22,7 @@ use serde::{
 };
 
 use super::{Error, FromBytes, ToBytes};
-use crate::{check_summed_hex, CLType, CLTyped};
+use crate::{CLType, CLTyped};
 
 /// A newtype wrapper for bytes that has efficient serialization routines.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Default, Hash)]
@@ -274,7 +275,7 @@ impl<'de> Deserialize<'de> for Bytes {
     {
         if deserializer.is_human_readable() {
             let hex_string = String::deserialize(deserializer)?;
-            check_summed_hex::decode(&hex_string)
+            base16::decode(&hex_string)
                 .map(Bytes)
                 .map_err(SerdeError::custom)
         } else {
@@ -290,7 +291,7 @@ impl Serialize for Bytes {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            check_summed_hex::encode(&self.0).serialize(serializer)
+            base16::encode_lower(&self.0).serialize(serializer)
         } else {
             serializer.serialize_bytes(&self.0)
         }

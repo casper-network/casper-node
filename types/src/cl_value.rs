@@ -14,7 +14,7 @@ use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    check_summed_hex, CLType, CLTyped,
+    CLType, CLTyped,
 };
 
 mod jsonrepr;
@@ -192,7 +192,7 @@ impl Serialize for CLValue {
         if serializer.is_human_readable() {
             CLValueJson {
                 cl_type: self.cl_type.clone(),
-                bytes: check_summed_hex::encode(&self.bytes),
+                bytes: base16::encode_lower(&self.bytes),
                 parsed: jsonrepr::cl_value_to_json(self),
             }
             .serialize(serializer)
@@ -208,7 +208,7 @@ impl<'de> Deserialize<'de> for CLValue {
             let json = CLValueJson::deserialize(deserializer)?;
             (
                 json.cl_type.clone(),
-                check_summed_hex::decode(&json.bytes).map_err(D::Error::custom)?,
+                base16::decode(&json.bytes).map_err(D::Error::custom)?,
             )
         } else {
             <(CLType, Vec<u8>)>::deserialize(deserializer)?

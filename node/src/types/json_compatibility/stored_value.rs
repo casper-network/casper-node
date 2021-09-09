@@ -6,13 +6,13 @@
 
 use std::convert::TryFrom;
 
+use base16;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    check_summed_hex,
     system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, DeployInfo, Transfer,
 };
@@ -56,7 +56,7 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
             ExecutionEngineStoredValue::CLValue(cl_value) => StoredValue::CLValue(cl_value.clone()),
             ExecutionEngineStoredValue::Account(account) => StoredValue::Account(account.into()),
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
-                StoredValue::ContractWasm(check_summed_hex::encode(&contract_wasm.to_bytes()?))
+                StoredValue::ContractWasm(base16::encode_lower(&contract_wasm.to_bytes()?))
             }
             ExecutionEngineStoredValue::Contract(contract) => {
                 StoredValue::Contract(contract.into())

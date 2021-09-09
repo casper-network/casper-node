@@ -676,6 +676,7 @@ dependencies = [
  "cbindgen",
  "clap",
  "futures",
+ "hex",
  "humantime",
  "hyper",
  "jsonrpc-lite",
@@ -764,6 +765,9 @@ dependencies = [
  "chrono",
  "criterion",
  "datasize",
+ "hex",
+ "hex-buffer-serde",
+ "hex_fmt",
  "hostname",
  "itertools 0.10.1",
  "libc",
@@ -2531,6 +2535,16 @@ version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "hex-buffer-serde"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "310e9578ff64e65a3a18e0624609f6833ee4a20503ef38eebb48430cf8ac3ab8"
+dependencies = [
+ "hex",
  "serde",
 ]
 

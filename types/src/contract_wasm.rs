@@ -238,14 +238,10 @@ impl Debug for ContractWasm {
             write!(
                 f,
                 "ContractWasm(0x{}...)",
-                check_summed_hex::encode(&self.bytes[..CONTRACT_WASM_MAX_DISPLAY_LEN])
+                base16::encode_lower(&self.bytes[..CONTRACT_WASM_MAX_DISPLAY_LEN])
             )
         } else {
-            write!(
-                f,
-                "ContractWasm(0x{})",
-                check_summed_hex::encode(&self.bytes)
-            )
+            write!(f, "ContractWasm(0x{})", base16::encode_lower(&self.bytes))
         }
     }
 }

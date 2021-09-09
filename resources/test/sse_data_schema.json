@@ -539,7 +539,7 @@
               ],
               "properties": {
                 "module_bytes": {
-                  "description": "Check-summed hex-encoded raw Wasm bytes.",
+                  "description": "Hex-encoded raw Wasm bytes.",
                   "type": "string"
                 },
                 "args": {
