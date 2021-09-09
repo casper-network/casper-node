@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2018"
 
 [[bin]]
-name = "erc20"
+name = "erc20_token"
 path = "src/main.rs"
 test = false
 

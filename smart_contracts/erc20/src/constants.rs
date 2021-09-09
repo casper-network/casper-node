@@ -7,7 +7,7 @@ pub(crate) const SYMBOL_KEY: &str = "symbol";
 /// Named constant of `decimals`
 pub(crate) const DECIMALS_KEY: &str = "decimals";
 /// Named constant of `contract`
-pub const CONTRACT_KEY: &str = "contract";
+pub const ERC20_TOKEN_CONTRACT_KEY: &str = "erc20_token_contract";
 /// Named constant of `balances`
 pub(crate) const BALANCES_KEY: &str = "balances";
 /// Named constant of `allowances`

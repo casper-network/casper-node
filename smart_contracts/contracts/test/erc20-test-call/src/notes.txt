@@ -1,0 +1,17 @@
+- u256 or u512 -> u256
+- the errors
+- struct
+- key
+
+enum Address {
+    Account(AccountHash),
+    Contract(ContractHash)
+}
+
+cl_Type() { CLType::Key }
+
+fromBytes for Address {
+    Key
+}
+
+todo: send tokens as stored session

@@ -425,9 +425,11 @@ dependencies = [
 name = "casper-erc20"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "casper-contract",
  "casper-types",
  "hex",
+ "once_cell",
 ]
 
 [[package]]

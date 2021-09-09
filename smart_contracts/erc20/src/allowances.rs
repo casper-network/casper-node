@@ -1,42 +1,44 @@
 //! Implementation of allowances.
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, URef, U512};
+use casper_types::{bytesrepr::ToBytes, URef, U256};
 
-use crate::{constants::ALLOWANCES_KEY, detail};
-
-static mut ALLOWANCES_UREF: Option<URef> = None;
+use crate::{constants::ALLOWANCES_KEY, detail, Address};
 
 #[inline]
-fn get_allowances_uref() -> &'static URef {
-    unsafe { ALLOWANCES_UREF.get_or_insert_with(|| detail::get_uref(ALLOWANCES_KEY)) }
+pub fn get_allowances_uref() -> URef {
+    detail::get_uref(ALLOWANCES_KEY)
 }
 
 /// Creates a dictionary item key for a (owner, spender) pair.
-fn make_dictionary_item_key(owner: &AccountHash, spender: &AccountHash) -> String {
-    let mut preimage = [0; 64];
-    preimage[..32].copy_from_slice(owner.as_bytes());
-    preimage[32..].copy_from_slice(spender.as_bytes());
+fn make_dictionary_item_key(owner: &Address, spender: &Address) -> String {
+    let mut preimage = Vec::new();
+    preimage.append(&mut owner.to_bytes().unwrap_or_revert());
+    preimage.append(&mut spender.to_bytes().unwrap_or_revert());
+
     let key_bytes = runtime::blake2b(&preimage);
     hex::encode(&key_bytes)
 }
 
 /// Writes an allowance for owner and spender for a specific amount.
-pub fn write_allowance(owner: &AccountHash, spender: &AccountHash, amount: U512) {
-    let allowance_uref = get_allowances_uref();
+pub fn write_allowance_to(
+    allowances_uref: &URef,
+    owner: &Address,
+    spender: &Address,
+    amount: U256,
+) {
     let dictionary_item_key = make_dictionary_item_key(owner, spender);
-    storage::dictionary_put(*allowance_uref, &dictionary_item_key, amount)
+    storage::dictionary_put(*allowances_uref, &dictionary_item_key, amount)
 }
 
 /// Reads an allowance for a owner and spender
-pub fn read_allowance(owner: &AccountHash, spender: &AccountHash) -> U512 {
-    let allowance_uref = get_allowances_uref();
+pub fn read_allowance_from(allowances_uref: &URef, owner: &Address, spender: &Address) -> U256 {
     let dictionary_item_key = make_dictionary_item_key(owner, spender);
-    storage::dictionary_get(*allowance_uref, &dictionary_item_key)
+    storage::dictionary_get(*allowances_uref, &dictionary_item_key)
         .unwrap_or_revert()
         .unwrap_or_default()
 }

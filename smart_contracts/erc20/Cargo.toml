@@ -14,10 +14,12 @@ license-file = "../../LICENSE"
 casper-contract = { version = "1.0.0", path = "../contract" }
 casper-types = { version = "1.0.0", path = "../../types" }
 hex = { version = "0.4.3", default-features = false }
+once_cell = { version = "1.8.0", default-features = false }
+base64 = { version = "0.13.0", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["no-std", "provide-allocator"]
 no-std = ["casper-contract/no-std", "casper-types/no-std"]
 provide-allocator = ["casper-contract/provide-allocator"]
-std = ["casper-types/std"]
+std = ["casper-types/std", "base64/std"]
 test-support = ["casper-contract/test-support"]
