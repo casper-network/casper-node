@@ -5,7 +5,7 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    check_summed_hex::{CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{CheckSummedHex, CheckSummedHexForm},
     ProtocolVersion,
 };
 

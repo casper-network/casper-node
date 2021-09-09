@@ -5,13 +5,13 @@ use std::{
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{
-    bytesrepr::ToBytes, check_summed_hex, system::auction::SeigniorageRecipientsSnapshot, Key,
+    bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshot, Key,
     PublicKey, StoredValue,
 };
 
 /// Parses a Blake2bHash from a string. Panics if parsing fails.
 pub fn hash_from_str(hex_str: &str) -> Blake2bHash {
-    (&check_summed_hex::decode(hex_str).unwrap()[..])
+    (&checksummed_hex::decode(hex_str).unwrap()[..])
         .try_into()
         .unwrap()
 }

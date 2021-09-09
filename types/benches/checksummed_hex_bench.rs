@@ -1,4 +1,4 @@
-use casper_types::check_summed_hex::{decode, encode, encode_iter};
+use casper_types::checksummed_hex::{decode, encode, encode_iter};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn encode_and_print_first_5(input: &[u8]) {

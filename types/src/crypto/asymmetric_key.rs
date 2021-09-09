@@ -31,7 +31,7 @@ use crate::{
     account::AccountHash,
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    check_summed_hex,
+    checksummed_hex,
     crypto::Error,
     CLType, CLTyped, Tagged,
 };
@@ -73,7 +73,7 @@ where
         let bytes = iter::once(self.tag())
             .chain(self.into())
             .collect::<Vec<u8>>();
-        check_summed_hex::encode(&bytes)
+        checksummed_hex::encode(&bytes)
     }
 
     /// Tries to decode `Self` from its hex-representation.  The hex format should be as produced
@@ -83,7 +83,7 @@ where
             return Err(Error::AsymmetricKey("too short".to_string()));
         }
 
-        let bytes = check_summed_hex::decode(&input)?;
+        let bytes = checksummed_hex::decode(&input)?;
         let (tag, key_bytes) = bytes.split_at(1);
 
         match tag[0] {
@@ -266,7 +266,7 @@ impl Debug for PublicKey {
             formatter,
             "PublicKey::{}({})",
             self.variant_name(),
-            check_summed_hex::encode(&Into::<Vec<u8>>::into(self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -277,7 +277,7 @@ impl Display for PublicKey {
             formatter,
             "PubKey::{}({:10})",
             self.variant_name(),
-            check_summed_hex::encode(&Into::<Vec<u8>>::into(self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -497,7 +497,7 @@ impl Debug for Signature {
             formatter,
             "Signature::{}({})",
             self.variant_name(),
-            check_summed_hex::encode(&Into::<Vec<u8>>::into(*self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(*self))
         )
     }
 }
@@ -508,7 +508,7 @@ impl Display for Signature {
             formatter,
             "Sig::{}({:10})",
             self.variant_name(),
-            check_summed_hex::encode(&Into::<Vec<u8>>::into(*self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(*self))
         )
     }
 }

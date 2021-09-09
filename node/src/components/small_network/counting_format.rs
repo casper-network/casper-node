@@ -30,7 +30,7 @@ use crate::{
     types::NodeId,
     utils,
 };
-use casper_types::check_summed_hex;
+use casper_types::checksummed_hex;
 
 /// Lazily-evaluated network message ID generator.
 ///
@@ -40,7 +40,7 @@ struct TraceId([u8; 8]);
 
 impl Display for TraceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&check_summed_hex::encode(&self.0))
+        f.write_str(&checksummed_hex::encode(&self.0))
     }
 }
 

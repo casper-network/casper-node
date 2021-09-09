@@ -16,7 +16,7 @@ use casper_node::{
         json_compatibility, Block, BlockHeader, BlockValidationError, JsonBlock, JsonBlockHeader,
     },
 };
-use casper_types::{bytesrepr, check_summed_hex, Key, StoredValue, U512};
+use casper_types::{bytesrepr, checksummed_hex, Key, StoredValue, U512};
 
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
@@ -96,7 +96,7 @@ pub(crate) fn validate_get_era_info_response(
             stored_value,
             ..
         }) => {
-            let proof_bytes = check_summed_hex::decode(&merkle_proof)
+            let proof_bytes = checksummed_hex::decode(&merkle_proof)
                 .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
             let proofs: Vec<TrieMerkleProof<Key, StoredValue>> =
                 bytesrepr::deserialize(proof_bytes)?;
@@ -144,7 +144,7 @@ pub(crate) fn validate_query_response(
         let proof_str = proof
             .as_str()
             .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
-        let proof_bytes = check_summed_hex::decode(proof_str)
+        let proof_bytes = checksummed_hex::decode(proof_str)
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
         bytesrepr::deserialize(proof_bytes)?
     };
@@ -204,7 +204,7 @@ pub(crate) fn validate_query_global_state(
         let proof_str = proof
             .as_str()
             .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
-        let proof_bytes = check_summed_hex::decode(proof_str)
+        let proof_bytes = checksummed_hex::decode(proof_str)
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
         bytesrepr::deserialize(proof_bytes)?
     };
@@ -264,7 +264,7 @@ pub(crate) fn validate_get_balance_response(
         let proof_str = proof
             .as_str()
             .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
-        let proof_bytes = check_summed_hex::decode(proof_str)
+        let proof_bytes = checksummed_hex::decode(proof_str)
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
         bytesrepr::deserialize(proof_bytes)?
     };

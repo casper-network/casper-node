@@ -55,7 +55,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 use crate::utils::read_file;
-use casper_types::check_summed_hex;
+use casper_types::checksummed_hex;
 
 // This is inside a private module so that the generated `BigArray` does not form part of this
 // crate's public API, and hence also doesn't appear in the rustdocs.
@@ -138,7 +138,7 @@ impl Debug for CertFingerprint {
         write!(
             f,
             "CertFingerprint({:10})",
-            check_summed_hex::encode(self.0.bytes())
+            checksummed_hex::encode(self.0.bytes())
         )
     }
 }
@@ -163,7 +163,7 @@ impl Debug for KeyFingerprint {
         write!(
             f,
             "KeyFingerprint({:10})",
-            check_summed_hex::encode(self.0.bytes())
+            checksummed_hex::encode(self.0.bytes())
         )
     }
 }
@@ -189,7 +189,7 @@ struct Signature(Vec<u8>);
 
 impl Debug for Signature {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Signature({:10})", check_summed_hex::encode(&self.0))
+        write!(f, "Signature({:10})", checksummed_hex::encode(&self.0))
     }
 }
 
@@ -746,13 +746,13 @@ impl PartialOrd for Sha512 {
 
 impl Debug for Sha512 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", check_summed_hex::encode(&self.0[..]))
+        write!(f, "{}", checksummed_hex::encode(&self.0[..]))
     }
 }
 
 impl Display for Sha512 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", check_summed_hex::encode(&self.0[..]))
+        write!(f, "{:10}", checksummed_hex::encode(&self.0[..]))
     }
 }
 
@@ -764,13 +764,13 @@ impl Display for CertFingerprint {
 
 impl Display for KeyFingerprint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", check_summed_hex::encode(self.0.bytes()))
+        write!(f, "{:10}", checksummed_hex::encode(self.0.bytes()))
     }
 }
 
 impl Display for Signature {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", check_summed_hex::encode(&self.0[..]))
+        write!(f, "{:10}", checksummed_hex::encode(&self.0[..]))
     }
 }
 

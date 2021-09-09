@@ -424,7 +424,7 @@ mod tests {
     }"#;
     // This intentionally has awkward indentation. It was formatted with serde::to_string_pretty.
     // It is used in serialization tests.
-    const CHECK_SUMMED_SAMPLE_DEPLOY: &str = r#"{
+    const CHECKSUMMED_SAMPLE_DEPLOY: &str = r#"{
   "hash": "4858bBD79Ab7B825244c4e6959Cbcd588A05608168eF36518BC6590937191d55",
   "header": {
     "account": "01f60bcE2bb1059C41910eac1E7EE6c3eF4C8Fcc63a901Eb9603C1524cadfB0c18",
@@ -601,11 +601,11 @@ mod tests {
     }
 
     #[test]
-    fn should_round_trip_check_summed_sample_deploy_json() {
-        let deploy: Deploy = serde_json::from_str(CHECK_SUMMED_SAMPLE_DEPLOY).unwrap();
+    fn should_round_trip_checksummed_sample_deploy_json() {
+        let deploy: Deploy = serde_json::from_str(CHECKSUMMED_SAMPLE_DEPLOY).unwrap();
         let casper_case_json_string = serde_json::to_string_pretty(&deploy).unwrap();
 
-        assert_eq!(CHECK_SUMMED_SAMPLE_DEPLOY, casper_case_json_string);
+        assert_eq!(CHECKSUMMED_SAMPLE_DEPLOY, casper_case_json_string);
     }
 
     #[test]

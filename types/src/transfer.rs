@@ -20,7 +20,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    check_summed_hex, CLType, CLTyped, URef, U512,
+    checksummed_hex, CLType, CLTyped, URef, U512,
 };
 
 /// The length of a deploy hash.
@@ -85,7 +85,7 @@ impl FromBytes for DeployHash {
 impl Serialize for DeployHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            check_summed_hex::encode(&self.0).serialize(serializer)
+            checksummed_hex::encode(&self.0).serialize(serializer)
         } else {
             self.0.serialize(serializer)
         }
@@ -97,7 +97,7 @@ impl<'de> Deserialize<'de> for DeployHash {
         let bytes = if deserializer.is_human_readable() {
             let hex_string = String::deserialize(deserializer)?;
             let vec_bytes =
-                check_summed_hex::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
+                checksummed_hex::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
             <[u8; DEPLOY_HASH_LENGTH]>::try_from(vec_bytes.as_ref()).map_err(SerdeError::custom)?
         } else {
             <[u8; DEPLOY_HASH_LENGTH]>::deserialize(deserializer)?
@@ -274,7 +274,7 @@ impl TransferAddr {
         format!(
             "{}{}",
             TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
-            check_summed_hex::encode(&self.0),
+            checksummed_hex::encode(&self.0),
         )
     }
 
@@ -284,7 +284,7 @@ impl TransferAddr {
             .strip_prefix(TRANSFER_ADDR_FORMATTED_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes =
-            <[u8; TRANSFER_ADDR_LENGTH]>::try_from(check_summed_hex::decode(remainder)?.as_ref())?;
+            <[u8; TRANSFER_ADDR_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(TransferAddr(bytes))
     }
 }
@@ -348,13 +348,13 @@ impl<'de> Deserialize<'de> for TransferAddr {
 
 impl Display for TransferAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", check_summed_hex::encode(&self.0))
+        write!(f, "{}", checksummed_hex::encode(&self.0))
     }
 }
 
 impl Debug for TransferAddr {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "TransferAddr({})", check_summed_hex::encode(&self.0))
+        write!(f, "TransferAddr({})", checksummed_hex::encode(&self.0))
     }
 }
 

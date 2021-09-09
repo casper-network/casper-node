@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    check_summed_hex::{self, CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{self, CheckSummedHex, CheckSummedHexForm},
 };
 
 use super::Error;
@@ -70,7 +70,7 @@ impl Digest {
 
     /// Returns a `Digest` parsed from a hex-encoded `Digest`.
     pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self, Error> {
-        let bytes = check_summed_hex::decode(&hex_input)?;
+        let bytes = checksummed_hex::decode(&hex_input)?;
         let slice: [u8; Self::LENGTH] =
             bytes.try_into().map_err(|_| Error::DigestMustBe32Bytes {
                 actual_byte_length: hex_input.as_ref().len(),
@@ -107,13 +107,13 @@ impl TryFrom<&[u8]> for Digest {
 
 impl Debug for Digest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}", check_summed_hex::encode(&self.0))
+        write!(formatter, "{}", checksummed_hex::encode(&self.0))
     }
 }
 
 impl Display for Digest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{:10}", check_summed_hex::encode(&self.0))
+        write!(formatter, "{:10}", checksummed_hex::encode(&self.0))
     }
 }
 

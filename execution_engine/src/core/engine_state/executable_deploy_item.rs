@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    check_summed_hex::{self, CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{self, CheckSummedHex, CheckSummedHexForm},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -577,7 +577,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-contract-by-hash: {:10}, entry-point: {}",
-                check_summed_hex::encode(hash),
+                checksummed_hex::encode(hash),
                 entry_point,
             ),
             ExecutableDeployItem::StoredContractByName {
@@ -595,7 +595,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-versioned-contract-by-hash: {:10}, version: {}, entry-point: {}",
-                check_summed_hex::encode(hash),
+                checksummed_hex::encode(hash),
                 ver,
                 entry_point,
             ),
@@ -604,7 +604,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-versioned-contract-by-hash: {:10}, version: latest, entry-point: {}",
-                check_summed_hex::encode(hash),
+                checksummed_hex::encode(hash),
                 entry_point,
             ),
             ExecutableDeployItem::StoredVersionedContractByName {
@@ -643,7 +643,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredContractByHash")
-                .field("hash", &check_summed_hex::encode(hash))
+                .field("hash", &checksummed_hex::encode(hash))
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
@@ -664,7 +664,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredVersionedContractByHash")
-                .field("hash", &check_summed_hex::encode(hash))
+                .field("hash", &checksummed_hex::encode(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
                 .field("args", args)

@@ -29,7 +29,7 @@ use casper_execution_engine::{
 };
 
 use casper_types::{
-    check_summed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
     PublicKey, StoredValue, Transfer, URef,
 };
 
@@ -457,13 +457,13 @@ impl Display for StateStoreRequest {
                 write!(
                     f,
                     "save data under {} ({} bytes)",
-                    check_summed_hex::encode(key),
+                    checksummed_hex::encode(key),
                     data.len()
                 )
             }
             #[cfg(test)]
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", check_summed_hex::encode(key))
+                write!(f, "load data from key {}", checksummed_hex::encode(key))
             }
         }
     }

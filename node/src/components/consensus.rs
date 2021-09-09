@@ -27,7 +27,7 @@ use derive_more::From;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::{check_summed_hex, EraId, PublicKey, U512};
+use casper_types::{checksummed_hex, EraId, PublicKey, U512};
 
 use crate::{
     components::Component,
@@ -157,7 +157,7 @@ impl Display for ConsensusMessage {
                 write!(
                     f,
                     "protocol message {:10} in {}",
-                    check_summed_hex::encode(payload),
+                    checksummed_hex::encode(payload),
                     era_id
                 )
             }

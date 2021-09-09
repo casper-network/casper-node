@@ -94,7 +94,7 @@ mod tests {
 
     use openssl::pkey::{PKey, Private, Public};
 
-    use casper_types::{bytesrepr, check_summed_hex, AsymmetricType, Tagged};
+    use casper_types::{bytesrepr, checksummed_hex, AsymmetricType, Tagged};
 
     use super::*;
     use crate::{crypto::AsymmetricKeyExt, testing::TestRng};
@@ -189,7 +189,7 @@ mod tests {
     }
 
     fn known_public_key_to_pem(known_key_hex: &str, known_key_pem: &str) {
-        let key_bytes = check_summed_hex::decode(known_key_hex).unwrap();
+        let key_bytes = checksummed_hex::decode(known_key_hex).unwrap();
         let decoded = PublicKey::from_pem(known_key_pem.as_bytes()).unwrap();
         assert_eq!(key_bytes, Into::<Vec<u8>>::into(decoded));
     }
@@ -270,7 +270,7 @@ mod tests {
     mod ed25519 {
         use rand::Rng;
 
-        use casper_types::{check_summed_hex, ED25519_TAG};
+        use casper_types::{checksummed_hex, ED25519_TAG};
 
         use super::*;
         use crate::crypto::AsymmetricKeyExt;
@@ -314,7 +314,7 @@ mod tests {
             const KNOWN_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
 MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 -----END PRIVATE KEY-----"#;
-            let key_bytes = check_summed_hex::decode(
+            let key_bytes = checksummed_hex::decode(
                 "d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a88f44755842",
             )
             .unwrap();
@@ -563,7 +563,7 @@ MHQCAQEEIL3fqaMKAfXSK1D2PnVVbZlZ7jTv133nukq4+95s6kmcoAcGBSuBBAAK
 oUQDQgAEQI6VJjFv0fje9IDdRbLMcv/XMnccnOtdkv+kBR5u4ISEAkuc2TFWQHX0
 Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 -----END EC PRIVATE KEY-----"#;
-            let key_bytes = check_summed_hex::decode(
+            let key_bytes = checksummed_hex::decode(
                 "bddfa9a30a01f5d22b50f63e75556d9959ee34efd77de7ba4ab8fbde6cea499c",
             )
             .unwrap();
@@ -822,12 +822,12 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         let uncompressed_hex = {
             let mut bytes = vec![0x02u8];
             bytes.extend_from_slice(secp256k1_public_key.to_encoded_point(false).as_bytes());
-            check_summed_hex::encode(&bytes)
+            checksummed_hex::encode(&bytes)
         };
 
         format!(
             "02{}",
-            check_summed_hex::encode(secp256k1_public_key.to_encoded_point(false).as_bytes())
+            checksummed_hex::encode(secp256k1_public_key.to_encoded_point(false).as_bytes())
                 .to_lowercase()
         );
         let from_uncompressed_hex = PublicKey::from_hex(&uncompressed_hex).unwrap();

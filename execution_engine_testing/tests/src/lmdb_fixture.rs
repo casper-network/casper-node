@@ -14,7 +14,7 @@ use casper_execution_engine::{
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
-    check_summed_hex::{CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{CheckSummedHex, CheckSummedHexForm},
     ProtocolVersion,
 };
 

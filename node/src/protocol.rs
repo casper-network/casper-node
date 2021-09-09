@@ -13,7 +13,7 @@ use crate::{
     },
     types::{Deploy, FinalitySignature, Item, SharedObject, Tag},
 };
-use casper_types::check_summed_hex;
+use casper_types::checksummed_hex;
 
 /// Reactor message.
 #[derive(Clone, From, Serialize, Deserialize)]
@@ -151,7 +151,7 @@ impl Display for Message {
                     f,
                     "GetRequest({}-{:10})",
                     tag,
-                    check_summed_hex::encode(serialized_id)
+                    checksummed_hex::encode(serialized_id)
                 )
             }
             Message::GetResponse {
@@ -161,7 +161,7 @@ impl Display for Message {
                 f,
                 "GetResponse({}-{:10})",
                 tag,
-                check_summed_hex::encode(serialized_item)
+                checksummed_hex::encode(serialized_item)
             ),
             Message::FinalitySignature(fs) => {
                 write!(f, "FinalitySignature::({})", fs)

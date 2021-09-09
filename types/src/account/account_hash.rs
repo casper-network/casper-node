@@ -15,7 +15,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use super::{blake2b, FromStrError};
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
-    check_summed_hex, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+    checksummed_hex, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// The length in bytes of a [`AccountHash`].
@@ -50,7 +50,7 @@ impl AccountHash {
         format!(
             "{}{}",
             ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
-            check_summed_hex::encode(&self.0),
+            checksummed_hex::encode(&self.0),
         )
     }
 
@@ -60,7 +60,7 @@ impl AccountHash {
             .strip_prefix(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes =
-            <[u8; ACCOUNT_HASH_LENGTH]>::try_from(check_summed_hex::decode(remainder)?.as_ref())?;
+            <[u8; ACCOUNT_HASH_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(AccountHash(bytes))
     }
 
@@ -159,13 +159,13 @@ impl From<&PublicKey> for AccountHash {
 
 impl Display for AccountHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", check_summed_hex::encode(&self.0))
+        write!(f, "{}", checksummed_hex::encode(&self.0))
     }
 }
 
 impl Debug for AccountHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "AccountHash({})", check_summed_hex::encode(&self.0))
+        write!(f, "AccountHash({})", checksummed_hex::encode(&self.0))
     }
 }
 

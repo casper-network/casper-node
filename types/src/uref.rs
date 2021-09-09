@@ -21,7 +21,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     bytesrepr,
     bytesrepr::{Error, FromBytes},
-    check_summed_hex, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+    checksummed_hex, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
 
 /// The number of bytes in a [`URef`] address.
@@ -175,7 +175,7 @@ impl URef {
         format!(
             "{}{}-{:03o}",
             UREF_FORMATTED_STRING_PREFIX,
-            check_summed_hex::encode(&self.addr()),
+            checksummed_hex::encode(&self.addr()),
             access_rights_bits
         )
     }
@@ -189,7 +189,7 @@ impl URef {
         if parts.len() != 2 {
             return Err(FromStrError::MissingSuffix);
         }
-        let addr = URefAddr::try_from(check_summed_hex::decode(parts[0])?.as_ref())?;
+        let addr = URefAddr::try_from(checksummed_hex::decode(parts[0])?.as_ref())?;
         let access_rights_value = u8::from_str_radix(parts[1], 8)?;
         let access_rights = AccessRights::from_bits(access_rights_value)
             .ok_or(FromStrError::InvalidAccessRights)?;
@@ -219,7 +219,7 @@ impl Display for URef {
         write!(
             f,
             "URef({}, {})",
-            check_summed_hex::encode(&addr),
+            checksummed_hex::encode(&addr),
             access_rights
         )
     }

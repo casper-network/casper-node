@@ -74,5 +74,5 @@ name = "bytesrepr_bench"
 harness = false
 
 [[bench]]
-name = "check_summed_hex_bench"
+name = "checksummed_hex_bench"
 harness = false

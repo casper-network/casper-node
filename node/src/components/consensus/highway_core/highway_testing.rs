@@ -39,7 +39,7 @@ use crate::{
     types::Timestamp,
     NodeRng,
 };
-use casper_types::check_summed_hex;
+use casper_types::checksummed_hex;
 
 type ConsensusValue = Vec<u8>;
 
@@ -1005,7 +1005,7 @@ pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", check_summed_hex::encode(&self.0.to_le_bytes()))
+        write!(f, "{:10}", checksummed_hex::encode(&self.0.to_le_bytes()))
     }
 }
 
@@ -1016,7 +1016,7 @@ pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", check_summed_hex::encode(&self.0.to_le_bytes()))
+        write!(f, "{:10}", checksummed_hex::encode(&self.0.to_le_bytes()))
     }
 }
 

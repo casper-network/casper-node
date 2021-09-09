@@ -12,7 +12,7 @@ use casper_node::{
 };
 use casper_types::{
     bytesrepr,
-    check_summed_hex::{CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{CheckSummedHex, CheckSummedHexForm},
     AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs, SecretKey,
     UIntParseError, U512,
 };

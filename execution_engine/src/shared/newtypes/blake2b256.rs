@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    check_summed_hex,
+    checksummed_hex,
 };
 
 /// Represents a 32-byte BLAKE2b hash digest
@@ -42,7 +42,7 @@ impl Blake2bHash {
 
 impl core::fmt::Display for Blake2bHash {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "Blake2bHash({})", check_summed_hex::encode(self))
+        write!(f, "Blake2bHash({})", checksummed_hex::encode(self))
     }
 }
 
