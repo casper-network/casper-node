@@ -69,15 +69,6 @@ impl StoredValue {
         }
     }
 
-    /// Returns a [`CLValue`] object if this is a `CLValue` variant.
-    pub fn try_into_cl_value(self) -> Result<CLValue, Self> {
-        if let Self::CLValue(v) = self {
-            Ok(v)
-        } else {
-            Err(self)
-        }
-    }
-
     /// Returns a wrapped [`Account`] if this is an `Account` variant.
     pub fn as_account(&self) -> Option<&Account> {
         match self {

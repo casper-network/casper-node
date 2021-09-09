@@ -367,15 +367,6 @@ impl Key {
         }
     }
 
-    /// Returns a reference to the inner [`HashAddr`] of `self` if `self` is of type [`Key::Hash`],
-    /// otherwise returns `None`.
-    pub fn as_hash(&self) -> Option<&HashAddr> {
-        match self {
-            Key::Hash(hash) => Some(hash),
-            _ => None,
-        }
-    }
-
     /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
     /// returns `None`.
     pub fn as_uref(&self) -> Option<&URef> {

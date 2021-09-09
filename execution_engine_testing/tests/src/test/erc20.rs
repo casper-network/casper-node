@@ -151,22 +151,22 @@ fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
     let erc20_token = account
         .named_keys()
         .get(ERC20_TOKEN_CONTRACT_KEY)
-        .and_then(Key::as_hash)
-        .map(|hash| ContractHash::new(*hash))
+        .and_then(|key| key.into_hash())
+        .map(ContractHash::new)
         .expect("should have contract hash");
 
     let test_contract = account
         .named_keys()
         .get(TEST_CONTRACT_KEY)
-        .and_then(Key::as_hash)
-        .map(|hash| ContractHash::new(*hash))
+        .and_then(|key| key.into_hash())
+        .map(ContractHash::new)
         .expect("should have contract hash");
 
     let erc20_test_call = account
         .named_keys()
         .get(ERC20_TEST_CALL_KEY)
-        .and_then(Key::as_hash)
-        .map(|hash| ContractHash::new(*hash))
+        .and_then(|key| key.into_hash())
+        .map(ContractHash::new)
         .expect("should have contract hash");
 
     let test_context = TestContext {
@@ -231,14 +231,14 @@ fn erc20_check_balance_of(builder: &mut InMemoryWasmTestBuilder, address: Key) -
     let erc20_contract_hash = account
         .named_keys()
         .get(ERC20_TOKEN_CONTRACT_KEY)
-        .and_then(Key::as_hash)
-        .map(|hash| ContractHash::new(*hash))
+        .and_then(|key| key.into_hash())
+        .map(ContractHash::new)
         .expect("should have test contract hash");
     let erc20_test_contract_hash = account
         .named_keys()
         .get(ERC20_TEST_CALL_KEY)
-        .and_then(Key::as_hash)
-        .map(|hash| ContractHash::new(*hash))
+        .and_then(|key| key.into_hash())
+        .map(ContractHash::new)
         .expect("should have test contract hash");
 
     let check_balance_args = runtime_args! {
@@ -268,14 +268,14 @@ fn erc20_check_allowance_of(
     let erc20_contract_hash = account
         .named_keys()
         .get(ERC20_TOKEN_CONTRACT_KEY)
-        .and_then(Key::as_hash)
-        .map(|hash| ContractHash::new(*hash))
+        .and_then(|key| key.into_hash())
+        .map(ContractHash::new)
         .expect("should have test contract hash");
     let erc20_test_contract_hash = account
         .named_keys()
         .get(ERC20_TEST_CALL_KEY)
-        .and_then(Key::as_hash)
-        .map(|hash| ContractHash::new(*hash))
+        .and_then(|key| key.into_hash())
+        .map(ContractHash::new)
         .expect("should have test contract hash");
 
     let check_balance_args = runtime_args! {
