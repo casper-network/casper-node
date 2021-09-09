@@ -27,11 +27,12 @@ use crate::{
     },
     shared::{
         additive_map::AdditiveMap,
-        newtypes::{Blake2bHash, CorrelationId},
+        newtypes::CorrelationId,
         transform::{self, Transform},
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
+use casper_hashing::Digest;
 
 use super::engine_state::EngineConfig;
 
@@ -618,7 +619,7 @@ impl From<bytesrepr::Error> for ValidationError {
 }
 
 pub fn validate_query_proof(
-    hash: &Blake2bHash,
+    hash: &Digest,
     proofs: &[TrieMerkleProof<Key, StoredValue>],
     expected_first_key: &Key,
     path: &[String],
@@ -674,7 +675,7 @@ pub fn validate_query_proof(
 }
 
 pub fn validate_balance_proof(
-    hash: &Blake2bHash,
+    hash: &Digest,
     balance_proof: &TrieMerkleProof<Key, StoredValue>,
     expected_purse_key: Key,
     expected_motes: &U512,

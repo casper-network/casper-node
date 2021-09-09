@@ -7,6 +7,7 @@ use std::{
     fs::{self, File},
 };
 
+use casper_hashing::Digest;
 use lmdb::{Cursor, Transaction};
 use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -21,7 +22,7 @@ use super::{
 };
 use crate::{
     components::storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,

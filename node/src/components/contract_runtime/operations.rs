@@ -15,6 +15,7 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
+use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::{
@@ -25,12 +26,9 @@ use crate::{
             BlockAndExecutionEffects, ContractRuntimeMetrics, ExecutionPreState,
         },
     },
-    crypto::hash::Digest,
     types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
-use casper_execution_engine::{
-    core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
-};
+use casper_execution_engine::core::engine_state::GetEraValidatorsRequest;
 
 pub(super) fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
@@ -63,7 +61,7 @@ pub(super) fn execute_finalized_block(
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
-            state_root_hash.into(),
+            state_root_hash,
             block_time,
             vec![DeployItem::from(deploy)],
             protocol_version,
@@ -106,10 +104,10 @@ pub(super) fn execute_finalized_block(
                 finalized_block.timestamp().millis(),
                 finalized_block.era_id().successor(),
             )?;
-            state_root_hash = Digest::from(post_state_hash);
+            state_root_hash = post_state_hash;
             let upcoming_era_validators = engine_state.get_era_validators(
                 CorrelationId::new(),
-                GetEraValidatorsRequest::new(Blake2bHash::from(state_root_hash), protocol_version),
+                GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
             Some(StepEffectAndUpcomingEraValidators {
                 step_execution_effect: execution_effect,
@@ -208,7 +206,7 @@ fn commit_transforms(
     trace!(?state_root_hash, ?effects, "commit");
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.apply_effect(correlation_id, state_root_hash.into(), effects);
+    let result = engine_state.apply_effect(correlation_id, state_root_hash, effects);
     metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     trace!(?result, "commit result");
     result.map(Digest::from)
@@ -258,7 +256,7 @@ fn commit_step(
         .collect();
 
     let step_request = StepRequest {
-        pre_state_hash: pre_state_root_hash.into(),
+        pre_state_hash: pre_state_root_hash,
         protocol_version,
         reward_items,
         // Note: The Casper Network does not slash, but another network could

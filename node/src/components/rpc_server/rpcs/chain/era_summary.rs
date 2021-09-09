@@ -7,8 +7,9 @@ use casper_types::{
     AsymmetricType, EraId, PublicKey, U512,
 };
 
+use casper_hashing::Digest;
+
 use crate::{
-    crypto::hash::Digest,
     rpcs::{common::MERKLE_PROOF, docs::DocExample},
     types::{json_compatibility::StoredValue, Block, BlockHash, Item},
 };

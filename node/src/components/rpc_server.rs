@@ -28,6 +28,7 @@ use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
     QueryResult,
 };
+use casper_hashing::Digest;
 use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
@@ -35,7 +36,6 @@ use self::rpcs::chain::BlockIdentifier;
 use super::Component;
 use crate::{
     components::contract_runtime::EraValidatorsRequest,
-    crypto::hash::Digest,
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
@@ -123,7 +123,7 @@ impl RpcServer {
         path: Vec<String>,
         responder: Responder<Result<QueryResult, engine_state::Error>>,
     ) -> Effects<Event> {
-        let query = QueryRequest::new(state_root_hash.into(), base_key, path);
+        let query = QueryRequest::new(state_root_hash, base_key, path);
         effect_builder
             .query_global_state(query)
             .event(move |result| Event::QueryGlobalStateResult {
@@ -139,7 +139,7 @@ impl RpcServer {
         protocol_version: ProtocolVersion,
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     ) -> Effects<Event> {
-        let request = EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+        let request = EraValidatorsRequest::new(state_root_hash, protocol_version);
         effect_builder
             .get_era_validators_from_contract_runtime(request)
             .event(move |result| Event::QueryEraValidatorsResult {
@@ -155,7 +155,7 @@ impl RpcServer {
         purse_uref: URef,
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     ) -> Effects<Event> {
-        let query = BalanceRequest::new(state_root_hash.into(), purse_uref);
+        let query = BalanceRequest::new(state_root_hash, purse_uref);
         effect_builder
             .get_balance(query)
             .event(move |result| Event::GetBalanceResult {
@@ -242,7 +242,7 @@ where
                 state_root_hash,
                 responder,
             }) => {
-                let get_bids_request = GetBidsRequest::new(state_root_hash.into());
+                let get_bids_request = GetBidsRequest::new(state_root_hash);
                 effect_builder
                     .get_bids(get_bids_request)
                     .event(move |result| Event::GetBidsResult {

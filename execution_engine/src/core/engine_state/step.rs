@@ -5,13 +5,11 @@ use casper_types::{
     StoredValueTypeMismatch,
 };
 
-use crate::{
-    core::{
-        engine_state::{execution_effect::ExecutionEffect, Error},
-        execution,
-    },
-    shared::newtypes::Blake2bHash,
+use crate::core::{
+    engine_state::{execution_effect::ExecutionEffect, Error},
+    execution,
 };
+use casper_hashing::Digest;
 
 #[derive(Debug)]
 pub struct SlashItem {
@@ -52,7 +50,7 @@ impl EvictItem {
 
 #[derive(Debug)]
 pub struct StepRequest {
-    pub pre_state_hash: Blake2bHash,
+    pub pre_state_hash: Digest,
     pub protocol_version: ProtocolVersion,
     pub slash_items: Vec<SlashItem>,
     pub reward_items: Vec<RewardItem>,
@@ -65,7 +63,7 @@ pub struct StepRequest {
 impl StepRequest {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
@@ -108,7 +106,7 @@ impl StepRequest {
 #[derive(Debug, thiserror::Error)]
 pub enum StepError {
     #[error("Root not found: {0:?}")]
-    RootNotFound(Blake2bHash),
+    RootNotFound(Digest),
     #[error("Get protocol data error: {0}")]
     GetProtocolDataError(Error),
     #[error("Tracking copy error: {0}")]
@@ -143,6 +141,6 @@ pub enum StepError {
 
 #[derive(Debug)]
 pub struct StepSuccess {
-    pub post_state_hash: Blake2bHash,
+    pub post_state_hash: Digest,
     pub execution_effect: ExecutionEffect,
 }

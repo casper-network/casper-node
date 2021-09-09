@@ -87,7 +87,8 @@ mod partial_tries {
 }
 
 mod full_tries {
-    use crate::shared::newtypes::{Blake2bHash, CorrelationId};
+    use crate::shared::newtypes::CorrelationId;
+    use casper_hashing::Digest;
 
     use crate::storage::{
         transaction_source::{Transaction, TransactionSource},
@@ -105,7 +106,7 @@ mod full_tries {
     fn in_memory_keys_from_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (state_index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();
@@ -147,7 +148,8 @@ mod full_tries {
 
 #[cfg(debug_assertions)]
 mod keys_iterator {
-    use crate::shared::newtypes::{Blake2bHash, CorrelationId};
+    use crate::shared::newtypes::CorrelationId;
+    use casper_hashing::Digest;
     use casper_types::bytesrepr;
 
     use crate::storage::{
@@ -162,8 +164,7 @@ mod keys_iterator {
         },
     };
 
-    fn create_invalid_extension_trie(
-    ) -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+    fn create_invalid_extension_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
         let leaves = hash_test_tries(&TEST_LEAVES[2..3])?;
         let ext_1 = HashedTrie::new(Trie::extension(
             vec![0u8, 0],
@@ -178,7 +179,7 @@ mod keys_iterator {
         Ok((root_hash, tries))
     }
 
-    fn create_invalid_path_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+    fn create_invalid_path_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
         let leaves = hash_test_tries(&TEST_LEAVES[..1])?;
 
         let root = HashedTrie::new(Trie::node(&[(1, Pointer::NodePointer(leaves[0].hash))]))?;
@@ -189,7 +190,7 @@ mod keys_iterator {
         Ok((root_hash, tries))
     }
 
-    fn create_invalid_hash_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+    fn create_invalid_hash_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
         let leaves = hash_test_tries(&TEST_LEAVES[..2])?;
 
         let root = HashedTrie::new(Trie::node(&[(0, Pointer::NodePointer(leaves[1].hash))]))?;
@@ -211,7 +212,7 @@ mod keys_iterator {
         };
     }
 
-    fn test_trie(root_hash: Blake2bHash, tries: Vec<HashedTestTrie>) {
+    fn test_trie(root_hash: Digest, tries: Vec<HashedTestTrie>) {
         let correlation_id = CorrelationId::new();
         let context = return_on_err!(InMemoryTestContext::new(&tries));
         let txn = return_on_err!(context.environment.create_read_txn());

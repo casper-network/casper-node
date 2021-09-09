@@ -11,7 +11,8 @@ use std::{collections::HashMap, convert};
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
-use crate::shared::newtypes::{Blake2bHash, CorrelationId};
+use crate::shared::newtypes::CorrelationId;
+use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::storage::{
@@ -89,14 +90,14 @@ type HashedTestTrie = HashedTrie<TestKey, TestValue>;
 /// A pairing of a trie element and its hash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HashedTrie<K, V> {
-    hash: Blake2bHash,
+    hash: Digest,
     trie: Trie<K, V>,
 }
 
 impl<K: ToBytes, V: ToBytes> HashedTrie<K, V> {
     pub fn new(trie: Trie<K, V>) -> Result<Self, bytesrepr::Error> {
         let trie_bytes = trie.to_bytes()?;
-        let hash = Blake2bHash::new(&trie_bytes);
+        let hash = Digest::hash(&trie_bytes);
         Ok(HashedTrie { hash, trie })
     }
 }
@@ -215,7 +216,7 @@ const TEST_LEAVES_ADJACENTS: [TestTrie; TEST_LEAVES_LENGTH] = [
     },
 ];
 
-type TrieGenerator<K, V> = fn() -> Result<(Blake2bHash, Vec<HashedTrie<K, V>>), bytesrepr::Error>;
+type TrieGenerator<K, V> = fn() -> Result<(Digest, Vec<HashedTrie<K, V>>), bytesrepr::Error>;
 
 const TEST_TRIE_GENERATORS_LENGTH: usize = 7;
 
@@ -236,10 +237,10 @@ fn hash_test_tries(tries: &[TestTrie]) -> Result<Vec<HashedTestTrie>, bytesrepr:
         .collect()
 }
 
-fn create_0_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_0_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let root = HashedTrie::new(Trie::node(&[]))?;
 
-    let root_hash: Blake2bHash = root.hash;
+    let root_hash: Digest = root.hash;
 
     let parents: Vec<HashedTestTrie> = vec![root];
 
@@ -252,12 +253,12 @@ fn create_0_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
-fn create_1_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_1_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let leaves = hash_test_tries(&TEST_LEAVES[..1])?;
 
     let root = HashedTrie::new(Trie::node(&[(0, Pointer::LeafPointer(leaves[0].hash))]))?;
 
-    let root_hash: Blake2bHash = root.hash;
+    let root_hash: Digest = root.hash;
 
     let parents: Vec<HashedTestTrie> = vec![root];
 
@@ -271,7 +272,7 @@ fn create_1_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
-fn create_2_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_2_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let leaves = hash_test_tries(&TEST_LEAVES[..2])?;
 
     let node = HashedTrie::new(Trie::node(&[
@@ -300,7 +301,7 @@ fn create_2_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
-fn create_3_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_3_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let leaves = hash_test_tries(&TEST_LEAVES[..3])?;
 
     let node_1 = HashedTrie::new(Trie::node(&[
@@ -339,7 +340,7 @@ fn create_3_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
-fn create_4_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_4_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let leaves = hash_test_tries(&TEST_LEAVES[..4])?;
 
     let node_1 = HashedTrie::new(Trie::node(&[
@@ -383,7 +384,7 @@ fn create_4_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
-fn create_5_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_5_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let leaves = hash_test_tries(&TEST_LEAVES[..5])?;
 
     let node_1 = HashedTrie::new(Trie::node(&[
@@ -432,7 +433,7 @@ fn create_5_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
-fn create_6_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_6_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let leaves = hash_test_tries(&TEST_LEAVES)?;
 
     let node_1 = HashedTrie::new(Trie::node(&[
@@ -481,7 +482,7 @@ fn create_6_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
-fn create_6_leaf_corrupt_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+fn create_6_leaf_corrupt_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
     let leaves = hash_test_tries(&TEST_LEAVES)?;
 
     let node_1 = HashedTrie::new(Trie::node(&[
@@ -519,7 +520,7 @@ fn create_6_leaf_corrupt_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), by
     let root_hash = root.hash;
 
     let mut corrupt_node_3: HashedTestTrie = HashedTrie::new(Trie::node(&[
-        (0, Pointer::NodePointer(Blake2bHash::new(b"yep"))),
+        (0, Pointer::NodePointer(Digest::hash(b"yep"))),
         (2, Pointer::LeafPointer(leaves[2].hash)),
     ]))?;
 
@@ -633,7 +634,7 @@ fn check_leaves_exist<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     leaves: &[Trie<K, V>],
 ) -> Result<Vec<bool>, E>
 where
@@ -663,7 +664,7 @@ fn check_merkle_proofs<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     leaves: &[Trie<K, V>],
 ) -> Result<Vec<bool>, E>
 where
@@ -701,7 +702,7 @@ fn check_keys<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     leaves: &[Trie<K, V>],
 ) -> bool
 where
@@ -735,7 +736,7 @@ fn check_leaves<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     present: &[Trie<K, V>],
     absent: &[Trie<K, V>],
 ) -> Result<(), E>
@@ -789,7 +790,7 @@ fn write_leaves<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
-    root_hash: &Blake2bHash,
+    root_hash: &Digest,
     leaves: &[Trie<K, V>],
 ) -> Result<Vec<WriteResult>, E>
 where
@@ -831,7 +832,7 @@ fn check_pairs_proofs<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
-    root_hashes: &[Blake2bHash],
+    root_hashes: &[Digest],
     pairs: &[(K, V)],
 ) -> Result<bool, E>
 where
@@ -866,7 +867,7 @@ fn check_pairs<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
-    root_hashes: &[Blake2bHash],
+    root_hashes: &[Digest],
     pairs: &[(K, V)],
 ) -> Result<bool, E>
 where
@@ -912,9 +913,9 @@ fn write_pairs<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
-    root_hash: &Blake2bHash,
+    root_hash: &Digest,
     pairs: &[(K, V)],
-) -> Result<Vec<Blake2bHash>, E>
+) -> Result<Vec<Digest>, E>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
@@ -948,9 +949,9 @@ fn writes_to_n_leaf_empty_trie_had_expected_results<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
-    states: &[Blake2bHash],
+    states: &[Digest],
     test_leaves: &[Trie<K, V>],
-) -> Result<Vec<Blake2bHash>, E>
+) -> Result<Vec<Digest>, E>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy + Ord,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy,
@@ -974,7 +975,7 @@ where
         WriteResult::Written(root_hash) => root_hash,
         _ => panic!("write_leaves resulted in non-write"),
     })
-    .collect::<Vec<Blake2bHash>>();
+    .collect::<Vec<Digest>>();
 
     states.extend(hashes);
 
@@ -992,7 +993,7 @@ impl InMemoryEnvironment {
     pub fn dump<K, V>(
         &self,
         maybe_name: Option<&str>,
-    ) -> Result<HashMap<Blake2bHash, Trie<K, V>>, in_memory::Error>
+    ) -> Result<HashMap<Digest, Trie<K, V>>, in_memory::Error>
     where
         K: FromBytes,
         V: FromBytes,
@@ -1003,11 +1004,11 @@ impl InMemoryEnvironment {
         let data = self.data(Some(&name))?.unwrap();
         data.into_iter()
             .map(|(hash_bytes, trie_bytes)| {
-                let hash: Blake2bHash = bytesrepr::deserialize(hash_bytes.to_vec())?;
+                let hash: Digest = bytesrepr::deserialize(hash_bytes.to_vec())?;
                 let trie: Trie<K, V> = bytesrepr::deserialize(trie_bytes.to_vec())?;
                 Ok((hash, trie))
             })
-            .collect::<Result<HashMap<Blake2bHash, Trie<K, V>>, bytesrepr::Error>>()
+            .collect::<Result<HashMap<Digest, Trie<K, V>>, bytesrepr::Error>>()
             .map_err(Into::into)
     }
 }

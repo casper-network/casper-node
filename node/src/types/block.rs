@@ -11,10 +11,6 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
 use datasize::DataSize;
 use derive_more::Into;
 use hex::FromHexError;
@@ -27,6 +23,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::system::auction::BLOCK_REWARD;
 use casper_types::{
@@ -40,11 +37,7 @@ use crate::crypto::generate_ed25519_keypair;
 use crate::testing::TestRng;
 use crate::{
     components::consensus,
-    crypto::{
-        self,
-        hash::{self, Digest},
-        AsymmetricKeyExt,
-    },
+    crypto::{self, AsymmetricKeyExt},
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockValidationError},
@@ -417,9 +410,10 @@ impl FinalizedBlock {
         is_switch: bool,
     ) -> Self {
         let deploy_count = rng.gen_range(0..11);
-        let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
-            .take(deploy_count)
-            .collect();
+        let deploy_hashes =
+            iter::repeat_with(|| DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()))
+                .take(deploy_count)
+                .collect();
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
@@ -542,7 +536,7 @@ impl BlockHash {
     /// Creates a random block hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let hash = Digest::random(rng);
+        let hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         BlockHash(hash)
     }
 }
@@ -622,15 +616,15 @@ impl EraEnd {
             .sorted_by_key(|(_, weight)| Reverse(**weight))
             .map(|(validator_id, weight)| {
                 let validator_hash =
-                    hash::hash(validator_id.to_bytes().expect("Could not hash validator"));
-                let weight_hash = hash::hash(weight.to_bytes().expect("Could not hash weight"));
-                hash::hash_pair(&validator_hash, &weight_hash)
+                    Digest::hash(validator_id.to_bytes().expect("Could not hash validator"));
+                let weight_hash = Digest::hash(weight.to_bytes().expect("Could not hash weight"));
+                Digest::hash_pair(&validator_hash, &weight_hash)
             })
             .collect();
         let hashed_next_era_validator_weights =
-            hash::hash_vec_merkle_tree(descending_validator_weight_hashed_pairs);
+            Digest::hash_vec_merkle_tree(descending_validator_weight_hashed_pairs);
         let hashed_era_report: Digest = era_report.hash();
-        hash::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
+        Digest::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
     }
 }
 
@@ -791,7 +785,7 @@ impl BlockHeader {
     fn hash_v1(&self) -> BlockHash {
         let serialized_header = Self::serialize(self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        BlockHash::new(hash::hash(&serialized_header))
+        BlockHash::new(Digest::hash(&serialized_header))
     }
 
     fn hash_v2(&self) -> BlockHash {
@@ -810,26 +804,26 @@ impl BlockHeader {
         } = self;
 
         let hashed_era_end = match era_end {
-            None => hash::SENTINEL0,
+            None => Digest::SENTINEL0,
             Some(era_end) => era_end.hash(),
         };
 
-        let hashed_era_id = hash::hash(era_id.to_bytes().expect("Could not serialize era_id"));
-        let hashed_height = hash::hash(height.to_bytes().expect("Could not serialize height"));
+        let hashed_era_id = Digest::hash(era_id.to_bytes().expect("Could not serialize era_id"));
+        let hashed_height = Digest::hash(height.to_bytes().expect("Could not serialize height"));
         let hashed_timestamp =
-            hash::hash(timestamp.to_bytes().expect("Could not serialize timestamp"));
-        let hashed_protocol_version = hash::hash(
+            Digest::hash(timestamp.to_bytes().expect("Could not serialize timestamp"));
+        let hashed_protocol_version = Digest::hash(
             protocol_version
                 .to_bytes()
                 .expect("Could not serialize protocol version"),
         );
-        let hashed_random_bit = hash::hash(
+        let hashed_random_bit = Digest::hash(
             random_bit
                 .to_bytes()
                 .expect("Could not serialize protocol version"),
         );
 
-        hash::hash_slice_rfold(&[
+        Digest::hash_slice_rfold(&[
             hashed_protocol_version,
             parent_hash.0,
             hashed_era_end,
@@ -999,7 +993,7 @@ impl<'a, T> MerkleBlockBodyPart<'a, T> {
                 value,
                 merkle_proof_of_rest,
             },
-            merkle_linked_list_node_hash: hash::hash_pair(&value_hash, &merkle_proof_of_rest),
+            merkle_linked_list_node_hash: Digest::hash_pair(&value_hash, &merkle_proof_of_rest),
         }
     }
 
@@ -1124,7 +1118,7 @@ impl BlockBody {
         let serialized_body = self
             .to_bytes()
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        hash::hash(&serialized_body)
+        Digest::hash(&serialized_body)
     }
 
     /// Constructs the block body hashes for the block body.
@@ -1138,19 +1132,21 @@ impl BlockBody {
 
         let proposer = MerkleBlockBodyPart::new(
             proposer,
-            hash::hash(&proposer.to_bytes().expect("Could not serialize proposer")),
-            hash::SENTINEL1,
+            Digest::hash(&proposer.to_bytes().expect("Could not serialize proposer")),
+            Digest::SENTINEL1,
         );
 
         let transfer_hashes = MerkleBlockBodyPart::new(
             transfer_hashes,
-            hash::hash_vec_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from).collect()),
+            Digest::hash_vec_merkle_tree(
+                transfer_hashes.iter().cloned().map(Digest::from).collect(),
+            ),
             proposer.merkle_linked_list_node_hash,
         );
 
         let deploy_hashes = MerkleBlockBodyPart::new(
             deploy_hashes,
-            hash::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
+            Digest::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
             transfer_hashes.merkle_linked_list_node_hash,
         );
 
@@ -1345,21 +1341,14 @@ impl Block {
             }
         };
 
-        let mut accumulated_seed = [0; Digest::LENGTH];
-
-        let mut hasher = VarBlake2b::new(Digest::LENGTH)?;
-        hasher.update(parent_seed);
-        hasher.update([finalized_block.random_bit as u8]);
-        hasher.finalize_variable(|slice| {
-            accumulated_seed.copy_from_slice(slice);
-        });
+        let accumulated_seed = Digest::hash_pair(parent_seed, [finalized_block.random_bit as u8]);
 
         let header = BlockHeader {
             parent_hash,
             state_root_hash,
             body_hash,
             random_bit: finalized_block.random_bit,
-            accumulated_seed: accumulated_seed.into(),
+            accumulated_seed,
             era_end,
             timestamp: finalized_block.timestamp,
             era_id: finalized_block.era_id,
@@ -1496,10 +1485,10 @@ impl Block {
         protocol_version: ProtocolVersion,
         is_switch: bool,
     ) -> Self {
-        let parent_hash = BlockHash::new(Digest::random(rng));
-        let state_root_hash = Digest::random(rng);
+        let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
+        let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
-        let parent_seed = Digest::random(rng);
+        let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = finalized_block
             .era_report
             .as_ref()
@@ -2044,7 +2033,7 @@ mod tests {
         let mut rng = TestRng::from_seed([2u8; 16]);
         let mut block = Block::random(&mut rng);
 
-        let bogus_block_body_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
+        let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_body_hash;
         block.hash = block.header.hash();
         let bogus_block_hash = block.hash;
@@ -2067,7 +2056,7 @@ mod tests {
         let mut rng = TestRng::from_seed([3u8; 16]);
         let mut block = Block::random(&mut rng);
 
-        let bogus_block_hash: BlockHash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+        let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
         block.hash = bogus_block_hash;
 
         // No Eq trait for BlockValidationError, so pattern match
@@ -2134,7 +2123,7 @@ mod tests {
 
         assert_eq!(
             *block.header().body_hash(),
-            hash::hash_slice_rfold(&hashes[..])
+            Digest::hash_slice_rfold(&hashes[..])
         );
     }
 }

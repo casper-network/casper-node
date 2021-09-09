@@ -4,10 +4,8 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::{debug, warn};
 
-use crate::{
-    crypto::hash::Digest,
-    types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
-};
+use crate::types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature};
+use casper_hashing::Digest;
 use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{

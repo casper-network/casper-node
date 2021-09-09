@@ -1,6 +1,6 @@
 use proptest::{arbitrary, array, collection, prop_oneof, strategy::Strategy};
 
-use crate::{make_array_newtype, newtypes::Blake2bHash};
+use crate::{make_array_newtype, newtypes::Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     gens, URef,
@@ -263,11 +263,10 @@ const TEST_LEAVES: [TestTrie; TEST_LEAVES_LENGTH] = [
     },
 ];
 
-fn create_0_leaf_trie(
-) -> Result<(Blake2bHash, Vec<HashedTrie<TestKey, TestValue>>), bytesrepr::Error> {
+fn create_0_leaf_trie() -> Result<(Digest, Vec<HashedTrie<TestKey, TestValue>>), bytesrepr::Error> {
     let root = HashedTrie::new(Trie::node(&[]))?;
 
-    let root_hash: Blake2bHash = root.hash;
+    let root_hash: Digest = root.hash;
 
     let parents: Vec<HashedTrie<TestKey, TestValue>> = vec![root];
 
