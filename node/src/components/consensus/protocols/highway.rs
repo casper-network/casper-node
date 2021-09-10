@@ -15,6 +15,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
+use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -579,7 +580,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 ))]
 pub(crate) enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
-    RequestDependency(Dependency<C>),
+    // A dependency request. u64 is a random UUID identifying the request.
+    RequestDependency(u64, Dependency<C>),
     LatestStateRequest(Panorama<C>),
 }
 
@@ -691,8 +693,8 @@ where
                     }
                 }
             }
-            Ok(HighwayMessage::RequestDependency(dep)) => {
-                trace!(dependency=?dep, "received a request for a dependency");
+            Ok(HighwayMessage::RequestDependency(uuid, dep)) => {
+                trace!(?uuid, dependency=?dep, "received a request for a dependency");
                 match self.highway.get_dependency(&dep) {
                     GetDepOutcome::None => {
                         info!(?dep, ?sender, "requested dependency doesn't exist");
@@ -726,11 +728,19 @@ where
                         }),
 
                         (_, Observation::Faulty) => {
-                            Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                            let uuid = thread_rng().next_u64();
+                            trace!(?uuid, "requesting evidence");
+                            Some(HighwayMessage::RequestDependency(
+                                uuid,
+                                Dependency::Evidence(vid),
+                            ))
                         }
 
                         (Observation::None, Observation::Correct(hash)) => {
-                            Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                            let uuid = thread_rng().next_u64();
+                            let dependency = Dependency::Unit(*hash);
+                            trace!(?uuid, ?dependency, "requesting dependency");
+                            Some(HighwayMessage::RequestDependency(uuid, dependency))
                         }
 
                         (Observation::Correct(hash), Observation::None) => state
@@ -745,9 +755,10 @@ where
                                     .wire_unit(our_hash, *self.highway.instance_id())
                                     .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
                             } else if !state.has_unit(their_hash) {
-                                Some(HighwayMessage::RequestDependency(Dependency::Unit(
-                                    *their_hash,
-                                )))
+                                let uuid = thread_rng().next_u64();
+                                let dependency = Dependency::Unit(*their_hash);
+                                trace!(?uuid, ?dependency, "requesting dependency");
+                                Some(HighwayMessage::RequestDependency(uuid, dependency))
                             } else {
                                 None
                             }

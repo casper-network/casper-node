@@ -6,6 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use rand::{thread_rng, RngCore};
 use tracing::{debug, info};
 
 use crate::{
@@ -329,7 +330,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Pops and returns the next entry from `vertices_to_be_added` that is not yet in the protocol
     /// state. Also returns a `ProtocolOutcome` that schedules the next action to add a vertex,
     /// unless the queue is empty, and `ProtocolOutcome`s to request missing dependencies.
-    pub(crate) fn pop_vertex_to_add(
+    pub(crate) fn pop_vertex_to_add<'a>(
         &mut self,
         highway: &Highway<C>,
         pending_values: &HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
@@ -409,8 +410,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
-                debug!(dependency = ?transitive_dependency, %sender, "requesting dependency");
-                let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
+                let uuid = thread_rng().next_u64();
+                debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
+                let ser_msg =
+                    HighwayMessage::RequestDependency(uuid, transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
             }
