@@ -334,10 +334,6 @@ impl reactor::Reactor for Reactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(_)) => {
                 unreachable!("should not receive announcements of type GossipOurAddress");
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
-                // We do not care about new peers in the gossiper test.
-                Effects::new()
-            }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
                 responder,

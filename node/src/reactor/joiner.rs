@@ -551,9 +551,6 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_id)) => {
-                Effects::new()
-            }
             JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
                 gossiped_address,
             )) => {

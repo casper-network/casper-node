@@ -130,10 +130,6 @@ impl Reactor for TestReactor {
             )) => {
                 unreachable!();
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
-                // We do not care about the announcement of new peers in this test.
-                Effects::new()
-            }
         }
     }
 

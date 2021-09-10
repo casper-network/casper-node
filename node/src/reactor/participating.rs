@@ -1011,10 +1011,6 @@ impl reactor::Reactor for Reactor {
                     ParticipatingEvent::AddressGossiper(event),
                 )
             }
-            ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_peer_id)) => {
-                trace!("new peer announcement not handled in the participating reactor");
-                Effects::new()
-            }
             ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
                 responder,

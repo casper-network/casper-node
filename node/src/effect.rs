@@ -610,19 +610,6 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announces that a new peer has connected.
-    pub(crate) async fn announce_new_peer<I, P>(self, peer_id: I)
-    where
-        REv: From<NetworkAnnouncement<I, P>>,
-    {
-        self.0
-            .schedule(
-                NetworkAnnouncement::NewPeer(peer_id),
-                QueueKind::NetworkIncoming,
-            )
-            .await;
-    }
-
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
     pub(crate) async fn announce_complete_item_received_via_gossip<T: Item>(self, item: T::Id)
     where

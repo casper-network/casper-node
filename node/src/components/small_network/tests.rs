@@ -221,10 +221,6 @@ impl Reactor for TestReactor {
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
-                // We do not care about the announcement of new peers in this test.
-                Effects::new()
-            }
             Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
             )) => {

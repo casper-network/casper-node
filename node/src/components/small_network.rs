@@ -416,7 +416,6 @@ where
     #[allow(clippy::redundant_clone)]
     fn handle_incoming_connection(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         incoming: Box<IncomingConnection<P>>,
         span: Span,
     ) -> Effects<Event<P>> {
@@ -471,7 +470,7 @@ where
                     .or_default()
                     .add_incoming(peer_addr, Instant::now())
                 {
-                    effects.extend(self.connection_completed(effect_builder, peer_id));
+                    self.connection_completed(peer_id);
                 }
 
                 // Now we can start the message reader.
@@ -555,7 +554,6 @@ where
     #[allow(clippy::redundant_clone)]
     fn handle_outgoing_connection(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         outgoing: OutgoingConnection<P>,
         span: Span,
     ) -> Effects<Event<P>> {
@@ -624,7 +622,7 @@ where
                     .or_default()
                     .mark_outgoing(now)
                 {
-                    effects.extend(self.connection_completed(effect_builder, peer_id));
+                    self.connection_completed(peer_id);
                 }
 
                 effects.extend(
@@ -728,14 +726,9 @@ where
     }
 
     /// Emits an announcement that a connection has been completed.
-    fn connection_completed(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        peer_id: NodeId,
-    ) -> Effects<Event<P>> {
+    fn connection_completed(&self, peer_id: NodeId) {
         trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
         self.net_metrics.peers.set(self.peers().len() as i64);
-        effect_builder.announce_new_peer(peer_id).ignore()
     }
 
     /// Returns the set of connected nodes.
@@ -814,7 +807,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::IncomingConnection { incoming, span } => {
-                self.handle_incoming_connection(effect_builder, incoming, span)
+                self.handle_incoming_connection(incoming, span)
             }
             Event::IncomingMessage { peer_id, msg, span } => {
                 self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
@@ -827,7 +820,7 @@ where
             } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
             Event::OutgoingConnection { outgoing, span } => {
-                self.handle_outgoing_connection(effect_builder, *outgoing, span)
+                self.handle_outgoing_connection(*outgoing, span)
             }
 
             Event::OutgoingDropped { peer_id, peer_addr } => {

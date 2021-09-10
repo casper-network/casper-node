@@ -324,8 +324,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let _ = self.peers.insert(peer_id, endpoint);
 
         self.net_metrics.peers.set(self.peers.len() as i64);
-        // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
-        effect_builder.announce_new_peer(peer_id).ignore()
+        Effects::new()
     }
 
     /// Queues a message to be sent to a specific node.

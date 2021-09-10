@@ -70,12 +70,6 @@ pub(crate) enum NetworkAnnouncement<I, P> {
     },
     /// Our public listening address should be gossiped across the network.
     GossipOurAddress(GossipedAddress),
-    /// A new peer connection was established.
-    ///
-    /// IMPORTANT NOTE: This announcement is a work-around for some short-term functionality. Do
-    ///                 not rely on or use this for anything without asking anyone that has written
-    ///                 this section of the code first!
-    NewPeer(I),
 }
 
 impl<I, P> Display for NetworkAnnouncement<I, P>
@@ -89,9 +83,6 @@ where
                 write!(formatter, "received from {}: {}", sender, payload)
             }
             NetworkAnnouncement::GossipOurAddress(_) => write!(formatter, "gossip our address"),
-            NetworkAnnouncement::NewPeer(id) => {
-                write!(formatter, "new peer connection established to {}", id)
-            }
         }
     }
 }
