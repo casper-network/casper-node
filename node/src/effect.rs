@@ -59,6 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
+pub(crate) mod incoming;
 pub(crate) mod requests;
 
 use std::{

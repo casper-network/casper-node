@@ -14,6 +14,11 @@ use crate::{
         gossiper,
         small_network::{GossipedAddress, MessageKind, Payload},
     },
+    effect::incoming::{
+        AddressGossiperIncoming, ConsensusMessageIncoming, DeployGossiperIncoming,
+        FinalitySignatureIncoming, NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming,
+        TrieResponseIncoming,
+    },
     types::{Deploy, FinalitySignature, Item, Tag},
 };
 
@@ -90,6 +95,63 @@ impl Message {
             tag: T::TAG,
             serialized_item: bincode::serialize(item)?,
         })
+    }
+
+    #[inline]
+    pub(crate) fn into_event<REv>(self) -> REv
+    where
+        REv: From<ConsensusMessageIncoming>
+            + From<DeployGossiperIncoming>
+            + From<AddressGossiperIncoming>
+            + From<NetRequestIncoming>
+            + From<NetResponseIncoming>
+            + From<TrieRequestIncoming>
+            + From<TrieResponseIncoming>
+            + From<FinalitySignatureIncoming>,
+    {
+        match self {
+            Message::Consensus(inner) => ConsensusMessageIncoming(inner).into(),
+            Message::DeployGossiper(inner) => DeployGossiperIncoming(inner).into(),
+            Message::AddressGossiper(inner) => AddressGossiperIncoming(inner).into(),
+            Message::GetRequest { tag, serialized_id } => match tag {
+                Tag::Deploy => NetRequestIncoming::Deploy(serialized_id).into(),
+                Tag::Block => NetRequestIncoming::Block(serialized_id).into(),
+                Tag::GossipedAddress => NetRequestIncoming::GossipedAddress(serialized_id).into(),
+                Tag::BlockAndMetadataByHeight => {
+                    NetRequestIncoming::BlockAndMetadataByHeight(serialized_id).into()
+                }
+                Tag::BlockHeaderByHash => {
+                    NetRequestIncoming::BlockHeaderByHash(serialized_id).into()
+                }
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                    NetRequestIncoming::BlockHeaderAndFinalitySignaturesByHeight(serialized_id)
+                        .into()
+                }
+                Tag::Trie => TrieRequestIncoming(serialized_id).into(),
+            },
+            Message::GetResponse {
+                tag,
+                serialized_item,
+            } => match tag {
+                Tag::Deploy => NetResponseIncoming::Deploy(serialized_item).into(),
+                Tag::Block => NetResponseIncoming::Block(serialized_item).into(),
+                Tag::GossipedAddress => {
+                    NetResponseIncoming::GossipedAddress(serialized_item).into()
+                }
+                Tag::BlockAndMetadataByHeight => {
+                    NetResponseIncoming::BlockAndMetadataByHeight(serialized_item).into()
+                }
+                Tag::BlockHeaderByHash => {
+                    NetResponseIncoming::BlockHeaderByHash(serialized_item).into()
+                }
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                    NetResponseIncoming::BlockHeaderAndFinalitySignaturesByHeight(serialized_item)
+                        .into()
+                }
+                Tag::Trie => TrieResponseIncoming(serialized_item).into(),
+            },
+            Message::FinalitySignature(inner) => FinalitySignatureIncoming(inner).into(),
+        }
     }
 }
 
