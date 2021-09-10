@@ -8,6 +8,7 @@ mod era_summary;
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
+use hex_fmt::HexFmt;
 use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
@@ -16,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::{checksummed_hex, Key, ProtocolVersion, Transfer};
+use casper_types::{Key, ProtocolVersion, Transfer};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -423,7 +424,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                     era_id,
                     stored_value,
                     state_root_hash,
-                    merkle_proof: checksummed_hex::encode(&proof_bytes),
+                    merkle_proof: format!("{}", HexFmt(proof_bytes)),
                 }),
             };
 

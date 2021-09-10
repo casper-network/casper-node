@@ -4,6 +4,7 @@ use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use fmt::Debug;
+use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +14,6 @@ use crate::{
     },
     types::{Deploy, FinalitySignature, Item, SharedObject, Tag},
 };
-use casper_types::checksummed_hex;
 
 /// Reactor message.
 #[derive(Clone, From, Serialize, Deserialize)]
@@ -147,22 +147,12 @@ impl Display for Message {
                 write!(f, "AddressGossiper::({})", gossiped_address)
             }
             Message::GetRequest { tag, serialized_id } => {
-                write!(
-                    f,
-                    "GetRequest({}-{:10})",
-                    tag,
-                    checksummed_hex::encode(serialized_id)
-                )
+                write!(f, "GetRequest({}-{:10})", tag, HexFmt(serialized_id))
             }
             Message::GetResponse {
                 tag,
                 serialized_item,
-            } => write!(
-                f,
-                "GetResponse({}-{:10})",
-                tag,
-                checksummed_hex::encode(serialized_item)
-            ),
+            } => write!(f, "GetResponse({}-{:10})", tag, HexFmt(serialized_item)),
             Message::FinalitySignature(fs) => {
                 write!(f, "FinalitySignature::({})", fs)
             }

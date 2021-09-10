@@ -14,6 +14,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use itertools::Itertools;
 #[cfg(test)]
 use rand::Rng;
@@ -113,7 +114,7 @@ impl Debug for Digest {
 
 impl Display for Digest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{:10}", checksummed_hex::encode(&self.0))
+        write!(formatter, "{:10}", HexFmt(&self.0))
     }
 }
 

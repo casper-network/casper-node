@@ -19,6 +19,7 @@ use ed25519_dalek::{
     ed25519::signature::Signature as _Signature, PUBLIC_KEY_LENGTH as ED25519_PUBLIC_KEY_LENGTH,
     SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
 };
+use hex_fmt::HexFmt;
 use k256::ecdsa::{
     Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
     VerifyingKey as Secp256k1PublicKey,
@@ -277,7 +278,7 @@ impl Display for PublicKey {
             formatter,
             "PubKey::{}({:10})",
             self.variant_name(),
-            checksummed_hex::encode(&Into::<Vec<u8>>::into(self))
+            HexFmt(&Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -508,7 +509,7 @@ impl Display for Signature {
             formatter,
             "Sig::{}({:10})",
             self.variant_name(),
-            checksummed_hex::encode(&Into::<Vec<u8>>::into(*self))
+            HexFmt(&Into::<Vec<u8>>::into(*self))
         )
     }
 }
