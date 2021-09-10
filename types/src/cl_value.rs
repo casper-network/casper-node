@@ -14,11 +14,13 @@ use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    CLType, CLTyped,
+    checksummed_hex, CLType, CLTyped,
 };
 
 mod jsonrepr;
 
+// TODO: Replace with node config.
+const MAX_CHECKSUM_HEX_BYTES: usize = 75;
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct CLTypeMismatch {
@@ -190,9 +192,14 @@ struct CLValueJson {
 impl Serialize for CLValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
+            let bytes = if self.bytes.len() < MAX_CHECKSUM_HEX_BYTES {
+                checksummed_hex::encode(&self.bytes)
+            } else {
+                base16::encode_lower(&self.bytes)
+            };
             CLValueJson {
                 cl_type: self.cl_type.clone(),
-                bytes: base16::encode_lower(&self.bytes),
+                bytes,
                 parsed: jsonrepr::cl_value_to_json(self),
             }
             .serialize(serializer)
@@ -208,7 +215,7 @@ impl<'de> Deserialize<'de> for CLValue {
             let json = CLValueJson::deserialize(deserializer)?;
             (
                 json.cl_type.clone(),
-                base16::decode(&json.bytes).map_err(D::Error::custom)?,
+                checksummed_hex::decode(&json.bytes).map_err(D::Error::custom)?,
             )
         } else {
             <(CLType, Vec<u8>)>::deserialize(deserializer)?
