@@ -407,6 +407,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         if self.highway.has_vertex(vv.inner()) {
             return vec![];
         }
+        if !vv.inner().is_proposal() {
+            if let Some(hash) = vv.inner().unit_hash() {
+                trace!(?hash, "adding unit to the protocol state");
+            } else {
+                trace!(vertex=?vv.inner(), "adding vertex to the protocol state");
+            }
+        }
         self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
@@ -531,11 +538,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return true;
         };
         info!(
-            %hash,
+            ?hash,
             ?creator,
             creator_index = wire_unit.creator.0,
             timestamp = %wire_unit.timestamp,
             round_exp = wire_unit.round_exp,
+            seq_number = wire_unit.seq_number,
             "{}", msg
         );
         true
@@ -658,14 +666,33 @@ where
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         if !self.log_proposal(pvv.inner(), "received a proposal") {
-                            trace!("received a valid vertex");
+                            if let Some(swu) = pvv.inner().unit() {
+                                let wire_unit = swu.wire_unit();
+                                let hash = swu.hash();
+
+                                if let Some(creator) =
+                                    self.highway.validators().id(wire_unit.creator)
+                                {
+                                    trace!(
+                                        ?hash,
+                                        ?creator,
+                                        creator_index = wire_unit.creator.0,
+                                        timestamp = %wire_unit.timestamp,
+                                        round_exp = wire_unit.round_exp,
+                                        seq_number = wire_unit.seq_number,
+                                        "received a valid vertex"
+                                    );
+                                } else {
+                                    error!(?wire_unit, "invalid creator");
+                                };
+                            }
                         }
                         self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
             }
             Ok(HighwayMessage::RequestDependency(dep)) => {
-                trace!("received a request for a dependency");
+                trace!(dependency=?dep, "received a request for a dependency");
                 match self.highway.get_dependency(&dep) {
                     GetDepOutcome::None => {
                         info!(?dep, ?sender, "requested dependency doesn't exist");
