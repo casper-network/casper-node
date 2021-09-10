@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.  The format
 * Long running events now log their event type.
 * Individual weights for traffic throttling can now be set through the configuration value
   `network.estimator_weights`.
+* Added `consensus.highway.max_request_batch_size` configuration parameter. Defaults to 20.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
