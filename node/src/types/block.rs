@@ -17,6 +17,7 @@ use blake2::{
 };
 use datasize::DataSize;
 use derive_more::Into;
+use hex_fmt::HexList;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 #[cfg(test)]
@@ -264,8 +265,8 @@ impl Display for BlockPayload {
         write!(
             formatter,
             "block payload: deploys {}, transfers {}, accusations {:?}, random bit {}",
-            format!("[{}]", itertools::join(&self.deploy_hashes, ", ")),
-            format!("[{}]", itertools::join(&self.transfer_hashes, ", ")),
+            HexList(&self.deploy_hashes),
+            HexList(&self.transfer_hashes),
             self.accusations,
             self.random_bit,
         )
