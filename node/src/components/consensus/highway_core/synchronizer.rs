@@ -542,7 +542,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     fn remove_expired<T: Ord + Clone>(
         map: &mut BTreeMap<T, PendingVertices<I, C>>,
         oldest: Timestamp,
-    )-> Vec<C::Hash> {
+    ) -> Vec<C::Hash> {
         let mut expired = vec![];
         for pvs in map.values_mut() {
             expired.extend(pvs.remove_expired(oldest));
