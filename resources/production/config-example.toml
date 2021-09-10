@@ -127,9 +127,15 @@ max_addr_pending_time = '1min'
 # A value of `0` means unlimited.
 max_outgoing_byte_rate_non_validators = 6553600
 
-# The maximum amount of requests from validating peers per second answered.
+# The maximum allowed impact of requests from non-validating peers per second answered.
 # A value of `0` means unlimited.
 max_incoming_message_rate_non_validators = 3000
+
+# Weights for impact estimation of incoming messages, used in combination with
+# `max_incoming_message_rate_non_validators`.
+#
+# Any weight set to 0 means that the category of traffic is exempt from throttling.
+estimator_weights = { consensus=0, deploy_requests=1 }
 
 
 # ==================================================
