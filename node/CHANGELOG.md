@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added `archival_sync` to `[node]` config section
+
 ### Changed
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
