@@ -9,6 +9,7 @@ use std::{
 
 use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
+use hex_fmt::HexFmt;
 use parity_wasm::elements::Module;
 use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
@@ -577,7 +578,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-contract-by-hash: {:10}, entry-point: {}",
-                checksummed_hex::encode(hash),
+                HexFmt(hash),
                 entry_point,
             ),
             ExecutableDeployItem::StoredContractByName {
@@ -595,7 +596,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-versioned-contract-by-hash: {:10}, version: {}, entry-point: {}",
-                checksummed_hex::encode(hash),
+                HexFmt(hash),
                 ver,
                 entry_point,
             ),
@@ -604,7 +605,7 @@ impl Display for ExecutableDeployItem {
             } => write!(
                 f,
                 "stored-versioned-contract-by-hash: {:10}, version: latest, entry-point: {}",
-                checksummed_hex::encode(hash),
+                HexFmt(hash),
                 entry_point,
             ),
             ExecutableDeployItem::StoredVersionedContractByName {
