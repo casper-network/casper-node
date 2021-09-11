@@ -21,7 +21,7 @@ use crate::{
     components::{fetcher::FetchedOrNotFound, Component},
     effect::{
         announcements::GossiperAnnouncement,
-        requests::{NetworkRequest, StorageRequest},
+        requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message as NodeMessage,
@@ -530,6 +530,16 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let effects = match event {
+            Event::BeginGossipRequest(BeginGossipRequest {
+                item_id,
+                source,
+                responder,
+            }) => {
+                let mut effects = self.handle_item_received(effect_builder, item_id, source);
+                effects.extend(responder.respond(()).ignore());
+                effects
+            }
+
             Event::ItemReceived { item_id, source } => {
                 self.handle_item_received(effect_builder, item_id, source)
             }

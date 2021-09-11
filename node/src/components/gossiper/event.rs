@@ -3,17 +3,22 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use derive_more::From;
 use serde::Serialize;
 
 use super::{Item, Message};
 use crate::{
+    effect::requests::BeginGossipRequest,
     types::NodeId,
     utils::{DisplayIter, Source},
 };
 
 /// `Gossiper` events.
-#[derive(Debug, Serialize)]
+#[derive(Debug, From, Serialize)]
 pub enum Event<T: Item> {
+    /// A request to gossip an item has been made.
+    #[from]
+    BeginGossipRequest(BeginGossipRequest<T>),
     /// A new item has been received to be gossiped.
     ItemReceived {
         item_id: T::Id,
@@ -45,6 +50,15 @@ pub enum Event<T: Item> {
 impl<T: Item> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::BeginGossipRequest(BeginGossipRequest {
+                item_id, source, ..
+            }) => {
+                write!(
+                    formatter,
+                    "begin gossping new item {} received from {}",
+                    item_id, source
+                )
+            }
             Event::ItemReceived { item_id, source } => {
                 write!(formatter, "new item {} received from {}", item_id, source)
             }

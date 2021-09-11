@@ -120,12 +120,12 @@ use crate::{
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
         BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        FinalitySignature, FinalizedBlock, Item, TimeDiff, Timestamp,
+        FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::Source,
 };
 
-use self::announcements::BlocklistAnnouncement;
+use self::{announcements::BlocklistAnnouncement, requests::BeginGossipRequest};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -731,6 +731,23 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Regular,
             )
             .await
+    }
+
+    /// Begins gossiping an item.
+    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source<NodeId>)
+    where
+        T: Item,
+        REv: From<BeginGossipRequest<T>>,
+    {
+        self.make_request(
+            |responder| BeginGossipRequest {
+                item_id,
+                source,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Puts the given block into the linear block store.

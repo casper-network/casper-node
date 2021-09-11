@@ -48,7 +48,7 @@ use crate::{
         BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
         FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
-    utils::DisplayIter,
+    utils::{DisplayIter, Source},
 };
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
@@ -201,6 +201,36 @@ where
                 write!(formatter, "get peers in random order")
             }
         }
+    }
+}
+
+/// A gossip request.
+///
+/// This request usually initiates gossiping process of the specifed item. Note that the gossiper
+/// will fetch the item itself, so only the ID is needed.
+///
+/// The responder will be called as soon as the gossiper has initiated the process.
+// Note: This request should eventually entirely replace `ItemReceived`.
+#[derive(Debug, Serialize)]
+#[must_use]
+pub struct BeginGossipRequest<T>
+where
+    T: Item,
+{
+    /// The ID of the item received.
+    pub(crate) item_id: T::Id,
+    /// The origin of this request.
+    pub(crate) source: Source<NodeId>,
+    /// Responder to notify that gossiping is complete.
+    pub(crate) responder: Responder<()>,
+}
+
+impl<T> Display for BeginGossipRequest<T>
+where
+    T: Item,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "begin gossip of {} from {}", self.item_id, self.source)
     }
 }
 
