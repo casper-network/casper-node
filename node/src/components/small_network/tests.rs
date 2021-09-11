@@ -28,7 +28,8 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            BeginGossipRequest, ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -40,7 +41,6 @@ use crate::{
         ConditionCheckReactor,
     },
     types::NodeId,
-    utils::Source,
     NodeRng,
 };
 
@@ -59,6 +59,8 @@ enum Event {
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
+    #[from]
+    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
 }
 
 impl ReactorEvent for Event {
@@ -214,13 +216,6 @@ impl Reactor for TestReactor {
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
-                let event = gossiper::Event::ItemReceived {
-                    item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
-                };
-                self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
-            }
             Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
             )) => {
@@ -232,6 +227,11 @@ impl Reactor for TestReactor {
                 // We do not care about the announcement of gossiping finished in this test.
                 Effects::new()
             }
+            Event::BeginAddressGossipRequest(ev) => reactor::wrap_effects(
+                Event::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, ev.into()),
+            ),
         }
     }
 

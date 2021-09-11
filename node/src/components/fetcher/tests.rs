@@ -182,7 +182,6 @@ impl Reactor {
                 }
                 msg => panic!("should not get {}", msg),
             },
-            ann => panic!("should not received any network announcements: {:?}", ann),
         }
     }
 }

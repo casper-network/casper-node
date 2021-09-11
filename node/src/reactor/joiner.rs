@@ -45,8 +45,9 @@ use crate::{
             LinearChainAnnouncement, NetworkAnnouncement,
         },
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, StorageRequest,
+            BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
+            FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
@@ -63,7 +64,7 @@ use crate::{
         Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, NodeId, Tag,
         Timestamp,
     },
-    utils::{Source, WithDir},
+    utils::WithDir,
     NodeRng,
 };
 
@@ -176,6 +177,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
 
+    /// Address gossip request.
+    #[from]
+    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
+
     // Announcements
     /// A control announcement.
     #[from]
@@ -271,6 +276,9 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)
+            }
+            JoinerEvent::BeginAddressGossipRequest(request) => {
+                write!(f, "begin address gossip request: {}", request)
             }
             JoinerEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
             JoinerEvent::BlockByHeightFetcherRequest(request) => {
@@ -551,15 +559,6 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
-                gossiped_address,
-            )) => {
-                let event = gossiper::Event::ItemReceived {
-                    item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
-                };
-                self.dispatch_event(effect_builder, rng, JoinerEvent::AddressGossiper(event))
-            }
             JoinerEvent::BlocklistAnnouncement(ann) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::SmallNetwork(ann.into()))
             }
@@ -750,6 +749,11 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::DeployFetcherRequest(request) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::DeployFetcher(request.into()))
             }
+            JoinerEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
+                JoinerEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
             JoinerEvent::BlockByHeightFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,

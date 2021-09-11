@@ -331,9 +331,6 @@ impl reactor::Reactor for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(_)) => {
-                unreachable!("should not receive announcements of type GossipOurAddress");
-            }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
                 responder,

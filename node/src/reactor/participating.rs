@@ -56,9 +56,10 @@ use crate::{
             RpcServerAnnouncement,
         },
         requests::{
-            BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, RpcRequest, StorageRequest,
+            BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -151,6 +152,9 @@ pub(crate) enum ParticipatingEvent {
     /// Storage request.
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    /// Address gossip request.
+    #[from]
+    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
 
     // Announcements
     /// Control announcement.
@@ -270,8 +274,12 @@ impl Display for ParticipatingEvent {
                 write!(f, "chainspec loader request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
+
             ParticipatingEvent::DeployFetcherRequest(req) => {
                 write!(f, "deploy fetcher request: {}", req)
+            }
+            ParticipatingEvent::BeginAddressGossipRequest(request) => {
+                write!(f, "begin address gossip request: {}", request)
             }
             ParticipatingEvent::BlockProposerRequest(req) => {
                 write!(f, "block proposer request: {}", req)
@@ -891,6 +899,11 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::StorageRequest,
                 self.storage.handle_event(effect_builder, rng, req),
             ),
+            ParticipatingEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
 
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
@@ -997,19 +1010,6 @@ impl reactor::Reactor for Reactor {
                     ),
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
-                gossiped_address,
-            )) => {
-                let event = gossiper::Event::ItemReceived {
-                    item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
-                };
-                self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    ParticipatingEvent::AddressGossiper(event),
-                )
             }
             ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,

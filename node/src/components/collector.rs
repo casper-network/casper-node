@@ -71,7 +71,6 @@ where
                 debug!("collected {}", payload);
                 self.payloads.insert(payload.into_collectable());
             }
-            _ => {}
         }
         Effects::new()
     }

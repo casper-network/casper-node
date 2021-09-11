@@ -13,9 +13,7 @@ use serde::Serialize;
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
 
 use crate::{
-    components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, small_network::GossipedAddress,
-    },
+    components::{chainspec_loader::NextUpgrade, deploy_acceptor::Error},
     effect::Responder,
     types::{
         Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, Timestamp,
@@ -68,8 +66,6 @@ pub(crate) enum NetworkAnnouncement<I, P> {
         /// The message payload
         payload: P,
     },
-    /// Our public listening address should be gossiped across the network.
-    GossipOurAddress(GossipedAddress),
 }
 
 impl<I, P> Display for NetworkAnnouncement<I, P>
@@ -82,7 +78,6 @@ where
             NetworkAnnouncement::MessageReceived { sender, payload } => {
                 write!(formatter, "received from {}: {}", sender, payload)
             }
-            NetworkAnnouncement::GossipOurAddress(_) => write!(formatter, "gossip our address"),
         }
     }
 }

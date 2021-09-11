@@ -113,7 +113,6 @@ use crate::{
         },
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::GossipedAddress,
     },
     crypto::hash::Digest,
     reactor::{EventQueueHandle, QueueKind},
@@ -593,19 +592,6 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 NetworkAnnouncement::MessageReceived { sender, payload },
                 QueueKind::NetworkIncoming,
-            )
-            .await;
-    }
-
-    /// Announces that we should gossip our own public listening address.
-    pub(crate) async fn announce_gossip_our_address<I, P>(self, our_address: GossipedAddress)
-    where
-        REv: From<NetworkAnnouncement<I, P>>,
-    {
-        self.0
-            .schedule(
-                NetworkAnnouncement::GossipOurAddress(our_address),
-                QueueKind::Regular,
             )
             .await;
     }

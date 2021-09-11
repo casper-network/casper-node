@@ -91,13 +91,15 @@ use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
         announcements::{BlocklistAnnouncement, LinearChainAnnouncement, NetworkAnnouncement},
-        requests::{ChainspecLoaderRequest, NetworkInfoRequest, NetworkRequest},
+        requests::{
+            BeginGossipRequest, ChainspecLoaderRequest, NetworkInfoRequest, NetworkRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{self, display_error, WithDir},
+    utils::{self, display_error, Source, WithDir},
     NodeRng,
 };
 use chain_info::ChainInfo;
@@ -662,14 +664,6 @@ where
         self.process_dial_requests(requests)
     }
 
-    /// Gossips our public listening address, and schedules the next such gossip round.
-    fn gossip_our_address(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        let our_address = GossipedAddress::new(self.context.public_addr);
-        effect_builder
-            .announce_gossip_our_address(our_address)
-            .ignore()
-    }
-
     /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
     fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
     where
@@ -793,7 +787,8 @@ where
     REv: ReactorEvent
         + From<Event<P>>
         + From<NetworkAnnouncement<NodeId, P>>
-        + From<ChainspecLoaderRequest>,
+        + From<ChainspecLoaderRequest>
+        + From<BeginGossipRequest<GossipedAddress>>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -895,7 +890,11 @@ where
             }
 
             Event::GossipOurAddress => {
-                let mut effects = self.gossip_our_address(effect_builder);
+                let our_address = GossipedAddress::new(self.context.public_addr);
+
+                let mut effects = effect_builder
+                    .begin_gossip(our_address, Source::Ourself)
+                    .ignore();
                 effects.extend(
                     effect_builder
                         .set_timeout(self.cfg.gossip_interval.into())
