@@ -441,7 +441,7 @@ async fn test_archival_sync() {
             false,
             joiner_node_secret_key,
             Some(switch_block_hash),
-            false,
+            true,
             &mut rng,
         )
         .await;

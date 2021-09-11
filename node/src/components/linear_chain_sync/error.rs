@@ -7,7 +7,7 @@ use casper_execution_engine::{
     shared::stored_value::StoredValue,
     storage::trie::Trie,
 };
-use casper_types::{system::auction::EraValidators, EraId, Key, ProtocolVersion};
+use casper_types::{EraId, Key, ProtocolVersion};
 
 use crate::{
     components::{
@@ -123,15 +123,8 @@ pub(crate) enum LinearChainSyncError {
         trusted_block_header: Box<BlockHeader>,
     },
 
-    #[error(
-        "Genesis block global state did not contain genesis validators. \
-         Genesis block header: {genesis_block_header} \
-         Genesis era validators: {era_validators:?}"
-    )]
-    GenesisGlobalStateDidNotHaveGenesisValidators {
-        genesis_block_header: Box<BlockHeader>,
-        era_validators: EraValidators,
-    },
+    #[error("Hit genesis block trying to get trusted era validators.")]
+    HitGenesisBlockTryingToGetTrustedEraValidators { trusted_header: BlockHeader },
 
     /// Error getting era validators from the execution engine.
     #[error(transparent)]

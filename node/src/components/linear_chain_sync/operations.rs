@@ -13,7 +13,7 @@ use crate::{
     components::{
         consensus,
         consensus::check_sufficient_finality_signatures,
-        contract_runtime::{EraValidatorsRequest, ExecutionPreState},
+        contract_runtime::ExecutionPreState,
         fetcher::{FetchedData, FetcherError},
         linear_chain_sync::error::{LinearChainSyncError, SignatureValidationError},
     },
@@ -257,48 +257,6 @@ impl KeyBlockInfo {
     }
 }
 
-/// Get the trusted key block info for genesis.
-async fn get_genesis_trusted_key_block_info(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    mut trusted_header: BlockHeader,
-) -> Result<KeyBlockInfo, LinearChainSyncError> {
-    // Get the genesis block header
-    while trusted_header.height() != 0 {
-        let block =
-            fetch_and_store_block_by_hash(effect_builder, *trusted_header.parent_hash()).await?;
-        trusted_header = block.take_header();
-    }
-
-    // Otherwise, sync the global trie state under genesis to get the genesis validators
-    let state_root_hash = trusted_header.state_root_hash();
-    sync_trie_store(effect_builder, *state_root_hash).await?;
-    let mut era_validators = effect_builder
-        .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
-            Blake2bHash::from(*state_root_hash),
-            trusted_header.protocol_version(),
-        ))
-        .await?;
-    let genesis_validators = match era_validators.remove(&EraId::new(0)) {
-        Some(genesis_validators) => genesis_validators,
-        None => {
-            return Err(
-                LinearChainSyncError::GenesisGlobalStateDidNotHaveGenesisValidators {
-                    genesis_block_header: Box::new(trusted_header),
-                    era_validators,
-                },
-            )
-        }
-    };
-
-    Ok(KeyBlockInfo {
-        key_block_hash: trusted_header.hash(),
-        validator_weights: genesis_validators,
-        era_start: trusted_header.timestamp(),
-        height: 0,
-        era_id: EraId::new(0),
-    })
-}
-
 /// Get the trusted key block info for a trusted block header.
 async fn get_trusted_key_block_info(
     effect_builder: EffectBuilder<JoinerEvent>,
@@ -331,11 +289,11 @@ async fn get_trusted_key_block_info(
         }
 
         if current_header_to_walk_back_from.height() == 0 {
-            return get_genesis_trusted_key_block_info(
-                effect_builder,
-                current_header_to_walk_back_from,
-            )
-            .await;
+            break Err(
+                LinearChainSyncError::HitGenesisBlockTryingToGetTrustedEraValidators {
+                    trusted_header: trusted_header.clone(),
+                },
+            );
         }
 
         current_header_to_walk_back_from = *fetch_and_store_block_header(
@@ -599,15 +557,30 @@ async fn archival_sync(
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
 ) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
+    // Get the trusted block info. This will fail if we are trying to join with a trusted hash in era 0.
     let mut trusted_key_block_info =
-        get_genesis_trusted_key_block_info(effect_builder, trusted_block_header.clone()).await?;
+        get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
 
-    let genesis_block =
-        *fetch_and_store_block_by_hash(effect_builder, trusted_key_block_info.key_block_hash)
+    let trusted_block =
+        *fetch_and_store_block_by_hash(effect_builder, trusted_block_header.hash()).await?;
+
+    // Sync to genesis
+    let mut walkback_block = trusted_block.clone();
+    loop {
+        sync_deploys_and_transfers_and_state(effect_builder, &walkback_block).await?;
+        if walkback_block.height() == 0 {
+            break;
+        } else {
+            walkback_block = *fetch_and_store_block_by_hash(
+                effect_builder,
+                *walkback_block.header().parent_hash(),
+            )
             .await?;
-    sync_deploys_and_transfers_and_state(effect_builder, &genesis_block).await?;
+        }
+    }
 
-    let mut most_recent_block = genesis_block;
+    // Sync forward until we are at the current version.
+    let mut most_recent_block = trusted_block;
     while most_recent_block.header().protocol_version() < chainspec.protocol_config.version {
         let maybe_fetched_block_with_metadata = fetch_and_store_block_by_height(
             effect_builder,
