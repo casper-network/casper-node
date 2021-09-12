@@ -17,7 +17,7 @@ blake2 = "0.9.0"
 casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std", "gens"] }
 chrono = "0.4.10"
 datasize = "0.2.4"
-hex = "0.4.2"
+hex = { version = "0.4.2", default-features = false, features = ["serde"] }
 hex-buffer-serde = "0.2.1"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
