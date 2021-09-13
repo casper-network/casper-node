@@ -393,7 +393,7 @@ impl<C: Context> Highway<C> {
                 }
                 Some(Fault::Indirect) => match self.validators.id(vid) {
                     Some(vid) => GetDepOutcome::Evidence(vid.clone()),
-                    None => return GetDepOutcome::None,
+                    None => GetDepOutcome::None,
                 },
             },
             Observation::Correct(last_seen) => self
