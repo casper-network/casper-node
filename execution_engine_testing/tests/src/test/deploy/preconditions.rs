@@ -34,13 +34,13 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let transfer_result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = context
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -65,13 +65,13 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let transfer_result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = context
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -103,13 +103,13 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let transfer_result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = context
         .get_exec_result(0)
         .expect("there should be a response");
 

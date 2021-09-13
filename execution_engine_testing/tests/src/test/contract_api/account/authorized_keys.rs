@@ -67,14 +67,13 @@ fn should_raise_auth_failure_with_invalid_key() {
     };
 
     // Basic deploy with single key
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let deploy_result = result
-        .builder()
+    let deploy_result = context
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
@@ -117,14 +116,13 @@ fn should_raise_auth_failure_with_invalid_keys() {
     };
 
     // Basic deploy with single key
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let deploy_result = result
-        .builder()
+    let deploy_result = context
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
@@ -177,7 +175,8 @@ fn should_raise_deploy_authorization_failure() {
     )
     .build();
     // Basic deploy with single key
-    let result1 = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
@@ -193,8 +192,7 @@ fn should_raise_deploy_authorization_failure() {
         // thresholds.
         .exec(exec_request_4)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let exec_request_5 = {
         let deploy = DeployItemBuilder::new()
@@ -216,14 +214,10 @@ fn should_raise_deploy_authorization_failure() {
 
     // With deploy threshold == 3 using single secondary key
     // with weight == 2 should raise deploy authorization failure.
-    let result2 = InMemoryWasmTestContext::from_result(result1)
-        .exec(exec_request_5)
-        .commit()
-        .finish();
+    context.clear_results().exec(exec_request_5).commit();
 
     {
-        let deploy_result = result2
-            .builder()
+        let deploy_result = context
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
@@ -254,11 +248,11 @@ fn should_raise_deploy_authorization_failure() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
     // identity key (w: 1) and KEY_1 (w: 2) passes threshold of 3
-    let result3 = InMemoryWasmTestContext::from_result(result2)
+    context
+        .clear_results()
         .exec(exec_request_6)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let exec_request_7 = {
         let deploy = DeployItemBuilder::new()
@@ -280,14 +274,11 @@ fn should_raise_deploy_authorization_failure() {
 
     // deployment threshold is now 4
     // failure: KEY_2 weight + KEY_1 weight < deployment threshold
-    let result4 = InMemoryWasmTestContext::from_result(result3)
-        .exec(exec_request_7)
-        .commit()
-        .finish();
+    // let result4 = context.clear_results()
+    context.clear_results().exec(exec_request_7).commit();
 
     {
-        let deploy_result = result4
-            .builder()
+        let deploy_result = context
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
@@ -321,11 +312,11 @@ fn should_raise_deploy_authorization_failure() {
 
     // success: identity key weight + KEY_1 weight + KEY_2 weight >= deployment
     // threshold
-    InMemoryWasmTestContext::from_result(result4)
+    context
+        .clear_results()
         .exec(exec_request_8)
         .commit()
-        .expect_success()
-        .finish();
+        .expect_success();
 }
 
 #[ignore]
@@ -349,7 +340,8 @@ fn should_authorize_deploy_with_multiple_keys() {
     )
     .build();
     // Basic deploy with single key
-    let result1 = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
@@ -357,8 +349,7 @@ fn should_authorize_deploy_with_multiple_keys() {
         .commit()
         .exec(exec_request_2)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     // KEY_1 (w: 2) KEY_2 (w: 2) each passes default threshold of 1
 
@@ -379,10 +370,7 @@ fn should_authorize_deploy_with_multiple_keys() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    InMemoryWasmTestContext::from_result(result1)
-        .exec(exec_request_3)
-        .expect_success()
-        .commit();
+    context.exec(exec_request_3).expect_success().commit();
 }
 
 #[ignore]
@@ -410,7 +398,8 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     )
     .build();
     // Basic deploy with single key
-    let result1 = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
@@ -418,8 +407,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
         .commit()
         .exec(exec_request_2)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let exec_request_3 = {
         let deploy = DeployItemBuilder::new()
@@ -441,12 +429,8 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
-    let final_result = InMemoryWasmTestContext::from_result(result1)
-        .exec(exec_request_3)
-        .commit()
-        .finish();
-    let deploy_result = final_result
-        .builder()
+    context.clear_results().exec(exec_request_3).commit();
+    let deploy_result = context
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)

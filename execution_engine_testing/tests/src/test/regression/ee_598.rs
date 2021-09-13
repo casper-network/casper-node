@@ -80,18 +80,14 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&run_genesis_request);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&run_genesis_request);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
-    let result = builder.exec(exec_request_2).commit().finish();
+    context.exec(exec_request_2).commit();
 
-    let response = result
-        .builder()
-        .get_exec_result(1)
-        .expect("should have a response")
-        .to_owned();
+    let response = context.get_exec_result(1).expect("should have a response");
     let error_message = utils::get_error_message(response);
 
     // Error::UnbondTooLarge,

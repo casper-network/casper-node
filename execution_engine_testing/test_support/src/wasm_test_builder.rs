@@ -1066,4 +1066,12 @@ where
             .get_standard_payment_hash(correlation_id, state_root_hash)
             .expect("should have standard payment hash")
     }
+
+    /// Resets the `exec_results`, `upgrade_results` and `transform` fields.
+    pub fn clear_results(&mut self) -> &mut Self {
+        self.exec_results = Vec::new();
+        self.upgrade_results = Vec::new();
+        self.transforms = Vec::new();
+        self
+    }
 }

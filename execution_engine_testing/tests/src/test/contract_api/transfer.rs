@@ -48,18 +48,18 @@ fn should_transfer_to_account() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
-    let initial_account_balance = builder.get_purse_balance(default_account_purse);
+    let initial_account_balance = context.get_purse_balance(default_account_purse);
 
     // Exec transfer contract
 
@@ -70,29 +70,29 @@ fn should_transfer_to_account() {
     )
     .build();
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
     // Check genesis account balance
 
-    let modified_balance = builder.get_purse_balance(default_account_purse);
+    let modified_balance = context.get_purse_balance(default_account_purse);
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     assert_eq!(
         modified_balance,
         initial_account_balance - transaction_fee - transfer_amount
     );
 
-    let handle_payment = builder.get_handle_payment_contract();
+    let handle_payment = context.get_handle_payment_contract();
     let payment_purse = (*handle_payment
         .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap())
     .into_uref()
     .unwrap();
-    assert_eq!(builder.get_purse_balance(payment_purse), U512::zero());
+    assert_eq!(context.get_purse_balance(payment_purse), U512::zero());
 }
 
 #[ignore]
@@ -101,18 +101,18 @@ fn should_transfer_to_public_key() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
-    let initial_account_balance = builder.get_purse_balance(default_account_purse);
+    let initial_account_balance = context.get_purse_balance(default_account_purse);
 
     // Exec transfer contract
 
@@ -123,29 +123,29 @@ fn should_transfer_to_public_key() {
     )
     .build();
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
     // Check genesis account balance
 
-    let modified_balance = builder.get_purse_balance(default_account_purse);
+    let modified_balance = context.get_purse_balance(default_account_purse);
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     assert_eq!(
         modified_balance,
         initial_account_balance - transaction_fee - transfer_amount
     );
 
-    let handle_payment = builder.get_handle_payment_contract();
+    let handle_payment = context.get_handle_payment_contract();
     let payment_purse = (*handle_payment
         .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap())
     .into_uref()
     .unwrap();
-    assert_eq!(builder.get_purse_balance(payment_purse), U512::zero());
+    assert_eq!(context.get_purse_balance(payment_purse), U512::zero());
 }
 
 #[ignore]
@@ -154,18 +154,18 @@ fn should_transfer_from_purse_to_public_key() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
-    let initial_account_balance = builder.get_purse_balance(default_account_purse);
+    let initial_account_balance = context.get_purse_balance(default_account_purse);
 
     // Exec transfer contract
 
@@ -180,29 +180,29 @@ fn should_transfer_from_purse_to_public_key() {
     )
     .build();
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
     // Check genesis account balance
 
-    let modified_balance = builder.get_purse_balance(default_account_purse);
+    let modified_balance = context.get_purse_balance(default_account_purse);
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     assert_eq!(
         modified_balance,
         initial_account_balance - transaction_fee - transfer_amount
     );
 
-    let handle_payment = builder.get_handle_payment_contract();
+    let handle_payment = context.get_handle_payment_contract();
     let payment_purse = (*handle_payment
         .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap())
     .into_uref()
     .unwrap();
-    assert_eq!(builder.get_purse_balance(payment_purse), U512::zero());
+    assert_eq!(context.get_purse_balance(payment_purse), U512::zero());
 }
 
 #[ignore]
@@ -213,18 +213,18 @@ fn should_transfer_from_account_to_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let context = context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
-    let genesis_balance = builder.get_purse_balance(default_account_purse);
+    let genesis_balance = context.get_purse_balance(default_account_purse);
 
     assert_eq!(genesis_balance, initial_genesis_amount,);
 
@@ -237,25 +237,25 @@ fn should_transfer_from_account_to_account() {
     )
     .build();
 
-    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_1 = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
-    let modified_balance = builder.get_purse_balance(default_account_purse);
+    let modified_balance = context.get_purse_balance(default_account_purse);
 
     let transaction_fee_1 =
-        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
+        context.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     let expected_balance = initial_genesis_amount - transaction_fee_1 - transfer_1_amount;
 
     assert_eq!(modified_balance, expected_balance);
 
     // Check account 1 balance
-    let account_1 = builder
+    let account_1 = context
         .get_account(*ACCOUNT_1_ADDR)
         .expect("should have account 1");
     let account_1_purse = account_1.main_purse();
-    let account_1_balance = builder.get_purse_balance(account_1_purse);
+    let account_1_balance = context.get_purse_balance(account_1_purse);
 
     assert_eq!(account_1_balance, transfer_1_amount,);
 
@@ -268,14 +268,14 @@ fn should_transfer_from_account_to_account() {
     )
     .build();
 
-    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_2 = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    context.exec(exec_request_2).expect_success().commit();
 
     let transaction_fee_2 =
-        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
+        context.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let account_2 = builder
+    let account_2 = context
         .get_account(*ACCOUNT_2_ADDR)
         .expect("should have account 2");
 
@@ -283,14 +283,14 @@ fn should_transfer_from_account_to_account() {
 
     // Check account 1 balance
 
-    let account_1_balance = builder.get_purse_balance(account_1_purse);
+    let account_1_balance = context.get_purse_balance(account_1_purse);
 
     assert_eq!(
         account_1_balance,
         transfer_1_amount - transaction_fee_2 - transfer_2_amount
     );
 
-    let account_2_balance = builder.get_purse_balance(account_2_purse);
+    let account_2_balance = context.get_purse_balance(account_2_purse);
 
     assert_eq!(account_2_balance, transfer_2_amount,);
 }
@@ -303,18 +303,18 @@ fn should_transfer_to_existing_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let context = context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
-    let genesis_balance = builder.get_purse_balance(default_account_purse);
+    let genesis_balance = context.get_purse_balance(default_account_purse);
 
     assert_eq!(genesis_balance, initial_genesis_amount,);
 
@@ -327,13 +327,13 @@ fn should_transfer_to_existing_account() {
     )
     .build();
 
-    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_1 = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
     // Exec transfer contract
 
-    let account_1 = builder
+    let account_1 = context
         .get_account(*ACCOUNT_1_ADDR)
         .expect("should get account");
 
@@ -341,10 +341,10 @@ fn should_transfer_to_existing_account() {
 
     // Check genesis account balance
 
-    let genesis_balance = builder.get_purse_balance(default_account_purse);
+    let genesis_balance = context.get_purse_balance(default_account_purse);
 
     let transaction_fee_1 =
-        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
+        context.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     assert_eq!(
         genesis_balance,
@@ -353,7 +353,7 @@ fn should_transfer_to_existing_account() {
 
     // Check account 1 balance
 
-    let account_1_balance = builder.get_purse_balance(account_1_purse);
+    let account_1_balance = context.get_purse_balance(account_1_purse);
 
     assert_eq!(account_1_balance, transfer_1_amount,);
 
@@ -366,11 +366,11 @@ fn should_transfer_to_existing_account() {
     )
     .build();
 
-    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_2 = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    context.exec(exec_request_2).expect_success().commit();
 
-    let account_2 = builder
+    let account_2 = context
         .get_account(*ACCOUNT_2_ADDR)
         .expect("should get account");
 
@@ -378,10 +378,10 @@ fn should_transfer_to_existing_account() {
 
     // Check account 1 balance
 
-    let account_1_balance = builder.get_purse_balance(account_1_purse);
+    let account_1_balance = context.get_purse_balance(account_1_purse);
 
     let transaction_fee_2 =
-        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
+        context.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
     assert_eq!(
         account_1_balance,
@@ -390,7 +390,7 @@ fn should_transfer_to_existing_account() {
 
     // Check account 2 balance
 
-    let account_2_balance_transform = builder.get_purse_balance(account_2_purse);
+    let account_2_balance_transform = context.get_purse_balance(account_2_purse);
 
     assert_eq!(account_2_balance_transform, transfer_2_amount);
 }
@@ -420,7 +420,8 @@ fn should_fail_when_insufficient_funds() {
     )
     .build();
 
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Exec transfer contract
         .exec(exec_request_1)
@@ -432,11 +433,9 @@ fn should_fail_when_insufficient_funds() {
         .commit()
         // Exec transfer contract
         .exec(exec_request_3)
-        .commit()
-        .finish();
+        .commit();
 
-    let exec_results = result
-        .builder()
+    let exec_results = context
         .get_exec_result(2)
         .expect("should have exec response");
     assert_eq!(exec_results.len(), 1);
@@ -448,7 +447,7 @@ fn should_fail_when_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_transfer_total_amount() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -463,13 +462,12 @@ fn should_transfer_total_amount() {
         runtime_args! { "target" => *ACCOUNT_2_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE },
     )
     .build();
-    builder
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
         .commit()
         .exec(exec_request_2)
         .commit()
-        .expect_success()
-        .finish();
+        .expect_success();
 }

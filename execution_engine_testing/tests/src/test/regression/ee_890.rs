@@ -50,12 +50,12 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
-        .commit()
-        .finish();
-    let message = result.builder().exec_error_message(0).expect("should fail");
+        .commit();
+    let message = context.exec_error_message(0).expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),
         "Error message {:?} does not contain expected pattern",
@@ -78,12 +78,12 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
-        .commit()
-        .finish();
-    let message = result.builder().exec_error_message(0).expect("should fail");
+        .commit();
+    let message = context.exec_error_message(0).expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),
         "Error message {:?} does not contain expected pattern",

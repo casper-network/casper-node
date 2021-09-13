@@ -18,10 +18,10 @@ fn should_run_ee_536_get_uref_regression_test() {
     )
     .build();
 
-    let _result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 }

@@ -31,15 +31,15 @@ fn should_insert_account_into_named_keys() {
     )
     .build();
 
-    let mut builder = WasmTestContext::default();
+    let mut context = WasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    context.exec(exec_request_2).expect_success().commit();
 
-    let account_1 = builder
+    let account_1 = context
         .get_account(ACCOUNT_1_ADDR)
         .expect("should have account");
 
@@ -65,18 +65,17 @@ fn should_create_usable_purse() {
         runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
     )
     .build();
-    let result = WasmTestContext::default()
+    let mut context = WasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
         .commit()
         .exec(exec_request_2)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
-    let account_1 = result
-        .builder()
+    let account_1 = context
         .get_account(ACCOUNT_1_ADDR)
         .expect("should have account");
 
@@ -87,7 +86,7 @@ fn should_create_usable_purse() {
         .into_uref()
         .expect("should have uref");
 
-    let purse_balance = result.builder().get_purse_balance(purse);
+    let purse_balance = context.get_purse_balance(purse);
     assert!(
         purse_balance.is_zero(),
         "when created directly a purse has 0 balance"

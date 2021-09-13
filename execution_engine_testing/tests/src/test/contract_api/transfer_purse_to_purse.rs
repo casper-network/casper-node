@@ -30,15 +30,14 @@ fn should_run_purse_to_purse_transfer() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
@@ -46,7 +45,7 @@ fn should_run_purse_to_purse_transfer() {
     let purse_transfer_result_key =
         default_account.named_keys()["purse_transfer_result"].normalize();
     let purse_transfer_result = CLValue::try_from(
-        builder
+        context
             .query(None, purse_transfer_result_key, &[])
             .expect("should have purse transfer result"),
     )
@@ -61,7 +60,7 @@ fn should_run_purse_to_purse_transfer() {
 
     let main_purse_balance_key = default_account.named_keys()["main_purse_balance"].normalize();
     let main_purse_balance = CLValue::try_from(
-        builder
+        context
             .query(None, main_purse_balance_key, &[])
             .expect("should have main purse balance"),
     )
@@ -72,7 +71,7 @@ fn should_run_purse_to_purse_transfer() {
     // Assert secondary purse value after successful transfer
     let purse_secondary_key = default_account.named_keys()["purse:secondary"];
     let purse_secondary_uref = purse_secondary_key.into_uref().unwrap();
-    let purse_secondary_balance = builder.get_purse_balance(purse_secondary_uref);
+    let purse_secondary_balance = context.get_purse_balance(purse_secondary_uref);
 
     // Final balance of the destination purse
     assert_eq!(purse_secondary_balance, U512::from(PURSE_TO_PURSE_AMOUNT));
@@ -95,15 +94,14 @@ fn should_run_purse_to_purse_transfer_with_error() {
         runtime_args! { ARG_SOURCE => source, ARG_TARGET => target, ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE + 1) },
     )
         .build();
-    let mut builder = InMemoryWasmTestContext::default();
-    builder
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
@@ -111,7 +109,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
     let purse_transfer_result_key =
         default_account.named_keys()["purse_transfer_result"].normalize();
     let purse_transfer_result = CLValue::try_from(
-        builder
+        context
             .query(None, purse_transfer_result_key, &[])
             .expect("should have purse transfer result"),
     )
@@ -130,7 +128,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
     // Obtain main purse's balance
     let main_purse_balance_key = default_account.named_keys()["main_purse_balance"].normalize();
     let main_purse_balance = CLValue::try_from(
-        builder
+        context
             .query(None, main_purse_balance_key, &[])
             .expect("should have main purse balance"),
     )
@@ -141,7 +139,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
     // Assert secondary purse value after successful transfer
     let purse_secondary_key = default_account.named_keys()["purse:secondary"];
     let purse_secondary_uref = purse_secondary_key.into_uref().unwrap();
-    let purse_secondary_balance = builder.get_purse_balance(purse_secondary_uref);
+    let purse_secondary_balance = context.get_purse_balance(purse_secondary_uref);
 
     // Final balance of the destination purse equals to 0 as this purse is created
     // as new.

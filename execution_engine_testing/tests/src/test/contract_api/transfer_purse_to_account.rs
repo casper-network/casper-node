@@ -24,12 +24,12 @@ static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + 42);
 #[ignore]
 #[test]
 fn should_run_purse_to_account_transfer() {
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
     assert!(
-        builder.get_account(account_1_account_hash).is_none(),
+        context.get_account(account_1_account_hash).is_none(),
         "new account shouldn't exist yet"
     );
 
@@ -40,13 +40,13 @@ fn should_run_purse_to_account_transfer() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
-    let new_account = builder
+    let new_account = context
         .get_account(account_1_account_hash)
         .expect("new account should exist now");
 
-    let balance = builder.get_purse_balance(new_account.main_purse());
+    let balance = context.get_purse_balance(new_account.main_purse());
 
     assert_eq!(
         balance, *ACCOUNT_1_INITIAL_FUND,
@@ -66,24 +66,23 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     // Get transforms output for genesis account
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Obtain main purse's balance
     let final_balance_key = default_account.named_keys()["final_balance"].normalize();
     let final_balance = CLValue::try_from(
-        builder
+        context
             .query(None, final_balance_key, &[])
             .expect("should have final balance"),
     )
@@ -100,7 +99,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     // Get the `transfer_result` for a given account
     let transfer_result_key = default_account.named_keys()["transfer_result"].normalize();
     let transfer_result = CLValue::try_from(
-        builder
+        context
             .query(None, transfer_result_key, &[])
             .expect("should have transfer result"),
     )

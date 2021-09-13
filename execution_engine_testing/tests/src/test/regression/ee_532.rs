@@ -20,14 +20,13 @@ fn should_run_ee_532_get_uref_regression_test() {
     )
     .build();
 
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let deploy_result = result
-        .builder()
+    let deploy_result = context
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)

@@ -39,21 +39,21 @@ fn should_charge_gas_for_subcall() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(do_nothing_request).expect_success().commit();
+    context.exec(do_nothing_request).expect_success().commit();
 
-    builder.exec(do_something_request).expect_success().commit();
+    context.exec(do_something_request).expect_success().commit();
 
-    builder.exec(no_subcall_request).expect_success().commit();
+    context.exec(no_subcall_request).expect_success().commit();
 
-    let do_nothing_cost = builder.exec_costs(0)[0];
+    let do_nothing_cost = context.exec_costs(0)[0];
 
-    let do_something_cost = builder.exec_costs(1)[0];
+    let do_something_cost = context.exec_costs(1)[0];
 
-    let no_subcall_cost = builder.exec_costs(2)[0];
+    let no_subcall_cost = context.exec_costs(2)[0];
 
     assert_ne!(
         do_nothing_cost, do_something_cost,
@@ -128,32 +128,31 @@ fn should_add_all_gas_for_subcall() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder
+    context
         .exec(add_zero_gas_from_session_request)
         .expect_success()
         .commit();
-    builder
+    context
         .exec(add_some_gas_from_session_request)
         .expect_success()
         .commit();
-    builder
+    context
         .exec(add_zero_gas_via_subcall_request)
         .expect_success()
         .commit();
-    builder
+    context
         .exec(add_some_gas_via_subcall_request)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
-    let add_zero_gas_from_session_cost = builder.exec_costs(0)[0];
-    let add_some_gas_from_session_cost = builder.exec_costs(1)[0];
-    let add_zero_gas_via_subcall_cost = builder.exec_costs(2)[0];
-    let add_some_gas_via_subcall_cost = builder.exec_costs(3)[0];
+    let add_zero_gas_from_session_cost = context.exec_costs(0)[0];
+    let add_some_gas_from_session_cost = context.exec_costs(1)[0];
+    let add_zero_gas_via_subcall_cost = context.exec_costs(2)[0];
+    let add_some_gas_via_subcall_cost = context.exec_costs(3)[0];
 
     assert!(add_some_gas_from_session_cost.value() > gas_to_add);
     assert_eq!(
@@ -188,23 +187,22 @@ fn expensive_subcall_should_cost_more() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
     // store the contracts first
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder
+    context
         .exec(store_do_nothing_request)
         .expect_success()
         .commit();
 
-    builder
+    context
         .exec(store_calculation_request)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
-    let account = builder
+    let account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
@@ -234,19 +232,19 @@ fn expensive_subcall_should_cost_more() {
     )
     .build();
 
-    builder
+    context
         .exec(call_do_nothing_request)
         .expect_success()
         .commit();
 
-    builder
+    context
         .exec(call_expensive_calculation_request)
         .expect_success()
         .commit();
 
-    let do_nothing_cost = builder.exec_costs(2)[0];
+    let do_nothing_cost = context.exec_costs(2)[0];
 
-    let expensive_calculation_cost = builder.exec_costs(3)[0];
+    let expensive_calculation_cost = context.exec_costs(3)[0];
 
     assert!(
         do_nothing_cost < expensive_calculation_cost,

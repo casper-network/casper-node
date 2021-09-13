@@ -20,10 +20,10 @@ fn should_run_ee_539_serialize_action_thresholds_regression() {
     )
         .build();
 
-    let _result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 }

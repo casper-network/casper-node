@@ -40,7 +40,7 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
 }
 
 fn store_payment_to_account_context(
-    builder: &mut WasmTestContext<InMemoryGlobalState>,
+    context: &mut WasmTestContext<InMemoryGlobalState>,
 ) -> (Account, ContractHash) {
     // store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
@@ -50,9 +50,9 @@ fn store_payment_to_account_context(
     )
     .build();
 
-    builder.exec_commit_finish(exec_request);
+    context.exec_commit_finish(exec_request);
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
@@ -98,19 +98,19 @@ fn should_exec_non_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    context.exec(exec_request).expect_success().commit();
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
-    let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
+    let modified_balance: U512 = context.get_purse_balance(default_account.main_purse());
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
 
@@ -133,22 +133,22 @@ fn should_exec_stored_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
-    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_alpha = context.get_proposer_purse_balance();
 
-    let (default_account, hash) = store_payment_to_account_context(&mut builder);
+    let (default_account, hash) = store_payment_to_account_context(&mut context);
 
     // verify stored contract functions as expected by checking all the maths
 
     let (motes_alpha, modified_balance_alpha) = {
         // get modified balance
-        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
+        let modified_balance_alpha: U512 = context.get_purse_balance(default_account.main_purse());
 
         let transaction_fee_alpha =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
+            context.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
         (transaction_fee_alpha, modified_balance_alpha)
     };
 
@@ -156,7 +156,7 @@ fn should_exec_stored_code_by_hash() {
 
     // next make another deploy that USES stored payment logic
 
-    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_bravo = context.get_proposer_purse_balance();
 
     {
         let exec_request_stored_payment = {
@@ -182,14 +182,14 @@ fn should_exec_stored_code_by_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec_commit_finish(exec_request_stored_payment);
+        context.exec_commit_finish(exec_request_stored_payment);
     }
 
     let (motes_bravo, modified_balance_bravo) = {
-        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
+        let modified_balance_bravo: U512 = context.get_purse_balance(default_account.main_purse());
 
         let transaction_fee_bravo =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
+            context.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
         (transaction_fee_bravo, modified_balance_bravo)
     };
@@ -220,23 +220,23 @@ fn should_exec_stored_code_by_named_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
-    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_alpha = context.get_proposer_purse_balance();
 
-    let (default_account, _) = store_payment_to_account_context(&mut builder);
+    let (default_account, _) = store_payment_to_account_context(&mut context);
 
     // verify stored contract functions as expected by checking all the maths
 
     let (motes_alpha, modified_balance_alpha) = {
         // get modified balance
-        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
+        let modified_balance_alpha: U512 = context.get_purse_balance(default_account.main_purse());
 
         // get cost
         let transaction_fee_alpha =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
+            context.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
 
         (transaction_fee_alpha, modified_balance_alpha)
     };
@@ -244,7 +244,7 @@ fn should_exec_stored_code_by_named_hash() {
     let transferred_amount = 1;
 
     // next make another deploy that USES stored payment logic
-    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_bravo = context.get_proposer_purse_balance();
 
     {
         let exec_request_stored_payment = {
@@ -270,14 +270,14 @@ fn should_exec_stored_code_by_named_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec_commit_finish(exec_request_stored_payment);
+        context.exec_commit_finish(exec_request_stored_payment);
     }
 
     let (motes_bravo, modified_balance_bravo) = {
-        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
+        let modified_balance_bravo: U512 = context.get_purse_balance(default_account.main_purse());
 
         let transaction_fee_bravo =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
+            context.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
         (transaction_fee_bravo, modified_balance_bravo)
     };
@@ -315,12 +315,12 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request);
+    context.exec_commit_finish(exec_request);
 
-    let query_result = builder
+    let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query default account");
     let default_account = query_result
@@ -344,8 +344,8 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+    context
+        .upgrade_with_upgrade_request(*context.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // next make another deploy that USES stored payment logic
@@ -370,13 +370,13 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    context.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        context.is_error(),
         "calling a payment module with increased major protocol version should be error"
     );
-    let error_message = builder
+    let error_message = context
         .exec_error_message(1)
         .expect("should have exec error");
     assert!(
@@ -399,12 +399,12 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request);
+    context.exec_commit_finish(exec_request);
 
-    let query_result = builder
+    let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query default account");
     let default_account = query_result
@@ -427,8 +427,8 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+    context
+        .upgrade_with_upgrade_request(*context.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // next make another deploy that USES stored payment logic
@@ -451,13 +451,13 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    context.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        context.is_error(),
         "calling a payment module with increased major protocol version should be error"
     );
-    let error_message = builder
+    let error_message = context
         .exec_error_message(1)
         .expect("should have exec error");
     assert!(error_message.contains(EXPECTED_ERROR_MESSAGE));
@@ -476,12 +476,12 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request_1);
+    context.exec_commit_finish(exec_request_1);
 
-    let query_result = builder
+    let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query default account");
     let default_account = query_result
@@ -503,8 +503,8 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+    context
+        .upgrade_with_upgrade_request(*context.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -533,13 +533,13 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    context.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        context.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error_message = builder
+    let error_message = context
         .exec_error_message(1)
         .expect("should have exec error");
     assert!(
@@ -562,12 +562,12 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request_1);
+    context.exec_commit_finish(exec_request_1);
 
-    let query_result = builder
+    let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query default account");
     let default_account = query_result
@@ -589,8 +589,8 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+    context
+        .upgrade_with_upgrade_request(*context.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -620,13 +620,13 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    context.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        context.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error_message = builder
+    let error_message = context
         .exec_error_message(1)
         .expect("should have exec error");
     assert!(
@@ -649,10 +649,10 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request_1);
+    context.exec_commit_finish(exec_request_1);
 
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -663,8 +663,8 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+    context
+        .upgrade_with_upgrade_request(*context.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -693,13 +693,13 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    context.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        context.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error_message = builder
+    let error_message = context
         .exec_error_message(1)
         .expect("should have exec error");
     assert!(
@@ -714,8 +714,8 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestContext::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -726,8 +726,8 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+    context
+        .upgrade_with_upgrade_request(*context.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
     // first, store payment contract for v2.0.0
@@ -749,17 +749,12 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     .build();
 
     // store both contracts
-    builder.exec(exec_request_1).expect_success().commit();
+    context.exec(exec_request_1).expect_success().commit();
 
-    let test_result = builder
-        .exec(exec_request_2)
-        .expect_success()
-        .commit()
-        .finish();
+    context.exec(exec_request_2).expect_success().commit();
 
     // query both stored contracts by their named keys
-    let query_result = test_result
-        .builder()
+    let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query default account");
     let default_account = query_result
@@ -796,7 +791,8 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
             .build()
     };
 
-    InMemoryWasmTestContext::from_result(test_result)
+    context
+        .clear_results()
         .exec(exec_request_stored_payment)
         .expect_success()
         .commit();

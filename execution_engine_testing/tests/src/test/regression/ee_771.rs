@@ -16,17 +16,13 @@ fn should_run_ee_771_regression() {
     )
     .build();
 
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let response = result
-        .builder()
-        .get_exec_result(0)
-        .expect("should have a response")
-        .to_owned();
+    let response = context.get_exec_result(0).expect("should have a response");
 
     let error = response[0].as_error().expect("should have error");
     assert_eq!(

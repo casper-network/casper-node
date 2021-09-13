@@ -34,22 +34,21 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    let _response = builder
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
         .commit()
         .get_exec_result(0)
-        .expect("there should be a response")
-        .to_owned();
+        .expect("there should be a response");
 
     let account_1_request =
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, REVERT_WASM, RuntimeArgs::default())
             .build();
 
-    let account_1_response = builder
+    let account_1_response = context
         .exec(account_1_request)
         .commit()
         .get_exec_result(1)
@@ -64,7 +63,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     );
 
     let expected_transfers_count = 0;
-    let transforms = builder.get_transforms();
+    let transforms = context.get_transforms();
     let transform = &transforms[1];
 
     assert_eq!(
@@ -95,20 +94,20 @@ fn should_forward_payment_execution_runtime_error() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit().finish();
+    context.exec(exec_request).commit();
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
     let expected_reward_balance = *MAX_PAYMENT;
 
-    let modified_balance = builder.get_purse_balance(
-        builder
+    let modified_balance = context.get_purse_balance(
+        context
             .get_account(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
@@ -131,7 +130,7 @@ fn should_forward_payment_execution_runtime_error() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let response = builder
+    let response = context
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -149,9 +148,9 @@ fn should_forward_payment_execution_gas_limit_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
@@ -168,16 +167,16 @@ fn should_forward_payment_execution_gas_limit_error() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit().finish();
+    context.exec(exec_request).commit();
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
     let expected_reward_balance = *MAX_PAYMENT;
 
-    let modified_balance = builder.get_purse_balance(
-        builder
+    let modified_balance = context.get_purse_balance(
+        context
             .get_account(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
@@ -200,7 +199,7 @@ fn should_forward_payment_execution_gas_limit_error() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let response = builder
+    let response = context
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -238,16 +237,14 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    let transfer_result = builder
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = context
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -280,18 +277,17 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
-    let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
+    let modified_balance: U512 = context.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
 
     assert_ne!(
@@ -299,7 +295,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         "balance should be less than initial balance"
     );
 
-    let response = builder
+    let response = context
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -348,18 +344,18 @@ fn should_correctly_charge_when_session_code_fails() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit().finish();
+    context.exec(exec_request).commit();
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
-    let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
+    let modified_balance: U512 = context.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
 
     assert_ne!(
@@ -367,7 +363,7 @@ fn should_correctly_charge_when_session_code_fails() {
         "balance should be less than initial balance"
     );
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let tally = transaction_fee + modified_balance;
 
     assert_eq!(
@@ -398,22 +394,18 @@ fn should_correctly_charge_when_session_code_succeeds() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance_1 = context.get_proposer_purse_balance();
 
-    builder
-        .exec(exec_request)
-        .expect_success()
-        .commit()
-        .finish();
+    context.exec(exec_request).expect_success().commit();
 
-    let default_account = builder
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
-    let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
+    let modified_balance: U512 = context.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
 
     assert_ne!(
@@ -422,7 +414,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
     );
 
     let transaction_fee_1 =
-        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
+        context.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     let total = transaction_fee_1 + U512::from(transferred_amount);
     let tally = total + modified_balance;
@@ -459,15 +451,15 @@ fn should_finalize_to_rewards_purse() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    context.exec(exec_request).expect_success().commit();
 
-    let modified_reward_starting_balance = builder.get_proposer_purse_balance();
+    let modified_reward_starting_balance = context.get_proposer_purse_balance();
 
     assert!(
         modified_reward_starting_balance > proposer_reward_starting_balance,
@@ -482,7 +474,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transfer_amount = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
     let setup_exec_request = {
         let deploy = DeployItemBuilder::new()
@@ -500,7 +492,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     };
 
     // create another account via transfer
-    builder
+    context
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(setup_exec_request)
         .expect_success()
@@ -531,7 +523,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     };
 
     // run two independent deploys
-    builder
+    context
         .exec(exec_request_from_genesis)
         .expect_success()
         .commit()
@@ -539,7 +531,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .expect_success()
         .commit();
 
-    let transforms = builder.get_transforms();
+    let transforms = context.get_transforms();
     let transforms_from_genesis = &transforms[1];
     let transforms_from_account_1 = &transforms[2];
 

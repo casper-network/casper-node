@@ -22,22 +22,18 @@ const COMMAND_INCREASE_UREF2: &str = "increase-uref2";
 const COMMAND_OVERWRITE_UREF2: &str = "overwrite-uref2";
 const ARG_COMMAND: &str = "command";
 
-fn run_command(builder: &mut InMemoryWasmTestContext, command: &str) {
+fn run_command(context: &mut InMemoryWasmTestContext, command: &str) {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_NAMED_KEYS,
         runtime_args! { ARG_COMMAND => command },
     )
     .build();
-    builder
-        .exec(exec_request)
-        .commit()
-        .expect_success()
-        .finish();
+    context.exec(exec_request).commit().expect_success();
 }
 
-fn read_value<T: CLTyped + FromBytes>(builder: &mut InMemoryWasmTestContext, key: Key) -> T {
-    CLValue::try_from(builder.query(None, key, &[]).expect("should have value"))
+fn read_value<T: CLTyped + FromBytes>(context: &mut InMemoryWasmTestContext, key: Key) -> T {
+    CLValue::try_from(context.query(None, key, &[]).expect("should have value"))
         .expect("should have CLValue")
         .into_t()
         .expect("should convert successfully")
@@ -46,63 +42,63 @@ fn read_value<T: CLTyped + FromBytes>(builder: &mut InMemoryWasmTestContext, key
 #[ignore]
 #[test]
 fn should_run_named_keys_contract() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut context = InMemoryWasmTestContext::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    run_command(&mut builder, COMMAND_CREATE_UREF1);
+    run_command(&mut context, COMMAND_CREATE_UREF1);
 
-    let account = builder
+    let account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     assert!(account.named_keys().contains_key(KEY1));
     assert!(!account.named_keys().contains_key(KEY2));
 
-    run_command(&mut builder, COMMAND_CREATE_UREF2);
+    run_command(&mut context, COMMAND_CREATE_UREF2);
 
-    let account = builder
+    let account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let uref1 = *account.named_keys().get(KEY1).expect("should have key");
     let uref2 = *account.named_keys().get(KEY2).expect("should have key");
-    let value1: String = read_value(&mut builder, uref1);
-    let value2: U512 = read_value(&mut builder, uref2);
+    let value1: String = read_value(&mut context, uref1);
+    let value2: U512 = read_value(&mut context, uref2);
     assert_eq!(value1, "Hello, world!");
     assert_eq!(value2, U512::max_value());
 
-    run_command(&mut builder, COMMAND_TEST_READ_UREF1);
+    run_command(&mut context, COMMAND_TEST_READ_UREF1);
 
-    run_command(&mut builder, COMMAND_REMOVE_UREF1);
+    run_command(&mut context, COMMAND_REMOVE_UREF1);
 
-    let account = builder
+    let account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     assert!(!account.named_keys().contains_key(KEY1));
     assert!(account.named_keys().contains_key(KEY2));
 
-    run_command(&mut builder, COMMAND_TEST_READ_UREF2);
+    run_command(&mut context, COMMAND_TEST_READ_UREF2);
 
-    run_command(&mut builder, COMMAND_INCREASE_UREF2);
+    run_command(&mut context, COMMAND_INCREASE_UREF2);
 
-    let account = builder
+    let account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let uref2 = *account.named_keys().get(KEY2).expect("should have key");
-    let value2: U512 = read_value(&mut builder, uref2);
+    let value2: U512 = read_value(&mut context, uref2);
     assert_eq!(value2, U512::zero());
 
-    run_command(&mut builder, COMMAND_OVERWRITE_UREF2);
+    run_command(&mut context, COMMAND_OVERWRITE_UREF2);
 
-    let account = builder
+    let account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let uref2 = *account.named_keys().get(KEY2).expect("should have key");
-    let value2: U512 = read_value(&mut builder, uref2);
+    let value2: U512 = read_value(&mut context, uref2);
     assert_eq!(value2, U512::from(EXPECTED_UREF_VALUE));
 
-    run_command(&mut builder, COMMAND_REMOVE_UREF2);
+    run_command(&mut context, COMMAND_REMOVE_UREF2);
 
-    let account = builder
+    let account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     assert!(!account.named_keys().contains_key(KEY1));

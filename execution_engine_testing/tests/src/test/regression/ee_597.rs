@@ -41,17 +41,13 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
     )
     .build();
 
-    let result = InMemoryWasmTestContext::default()
+    let mut context = InMemoryWasmTestContext::default();
+    context
         .run_genesis(&run_genesis_request)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let response = result
-        .builder()
-        .get_exec_result(0)
-        .expect("should have a response")
-        .to_owned();
+    let response = context.get_exec_result(0).expect("should have a response");
 
     let error_message = utils::get_error_message(response);
 
