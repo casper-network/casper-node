@@ -15,6 +15,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
+use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -407,6 +408,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         if self.highway.has_vertex(vv.inner()) {
             return vec![];
         }
+        if !vv.inner().is_proposal() {
+            if let Some(hash) = vv.inner().unit_hash() {
+                trace!(?hash, "adding unit to the protocol state");
+            } else {
+                trace!(vertex=?vv.inner(), "adding vertex to the protocol state");
+            }
+        }
         self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
@@ -531,14 +539,60 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return true;
         };
         info!(
-            %hash,
+            ?hash,
             ?creator,
             creator_index = wire_unit.creator.0,
             timestamp = %wire_unit.timestamp,
             round_exp = wire_unit.round_exp,
+            seq_number = wire_unit.seq_number,
             "{}", msg
         );
         true
+    }
+
+    // Logs the details about the received vertex.
+    fn log_received_vertex(&self, vertex: &Vertex<C>) {
+        let creator = if let Some(creator) = vertex
+            .creator()
+            .and_then(|vid| self.highway.validators().id(vid))
+        {
+            creator
+        } else {
+            error!(?vertex, "invalid creator");
+            return;
+        };
+
+        match vertex {
+            Vertex::Unit(swu) => {
+                let wire_unit = swu.wire_unit();
+                let hash = swu.hash();
+
+                if vertex.is_proposal() {
+                    info!(
+                        ?hash,
+                        ?creator,
+                        creator_index = wire_unit.creator.0,
+                        timestamp = %wire_unit.timestamp,
+                        round_exp = wire_unit.round_exp,
+                        seq_number = wire_unit.seq_number,
+                        "received a proposal"
+                    );
+                } else {
+                    trace!(
+                        ?hash,
+                        ?creator,
+                        creator_index = wire_unit.creator.0,
+                        timestamp = %wire_unit.timestamp,
+                        round_exp = wire_unit.round_exp,
+                        seq_number = wire_unit.seq_number,
+                        "received a non-proposal unit"
+                    );
+                };
+            }
+            Vertex::Evidence(evidence) => trace!(?evidence, "received an evidence"),
+            Vertex::Endorsements(endorsement) => trace!(?endorsement, "received an endorsement"),
+            Vertex::Ping(ping) => trace!(?ping, "received ping"),
+        }
     }
 
     /// Prevalidates the vertex but checks the cache for previously validated vertices.
@@ -571,7 +625,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 ))]
 pub(crate) enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
-    RequestDependency(Dependency<C>),
+    // A dependency request. u64 is a random UUID identifying the request.
+    RequestDependency(u64, Dependency<C>),
     LatestStateRequest(Panorama<C>),
 }
 
@@ -657,15 +712,13 @@ where
                     _ => {
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
-                        if !self.log_proposal(pvv.inner(), "received a proposal") {
-                            trace!("received a valid vertex");
-                        }
+                        self.log_received_vertex(pvv.inner());
                         self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
             }
-            Ok(HighwayMessage::RequestDependency(dep)) => {
-                trace!("received a request for a dependency");
+            Ok(HighwayMessage::RequestDependency(uuid, dep)) => {
+                trace!(?uuid, dependency=?dep, "received a request for a dependency");
                 match self.highway.get_dependency(&dep) {
                     GetDepOutcome::None => {
                         info!(?dep, ?sender, "requested dependency doesn't exist");
@@ -699,11 +752,19 @@ where
                         }),
 
                         (_, Observation::Faulty) => {
-                            Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                            let uuid = thread_rng().next_u64();
+                            trace!(?uuid, "requesting evidence");
+                            Some(HighwayMessage::RequestDependency(
+                                uuid,
+                                Dependency::Evidence(vid),
+                            ))
                         }
 
                         (Observation::None, Observation::Correct(hash)) => {
-                            Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                            let uuid = thread_rng().next_u64();
+                            let dependency = Dependency::Unit(*hash);
+                            trace!(?uuid, ?dependency, "requesting dependency");
+                            Some(HighwayMessage::RequestDependency(uuid, dependency))
                         }
 
                         (Observation::Correct(hash), Observation::None) => state
@@ -718,9 +779,10 @@ where
                                     .wire_unit(our_hash, *self.highway.instance_id())
                                     .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
                             } else if !state.has_unit(their_hash) {
-                                Some(HighwayMessage::RequestDependency(Dependency::Unit(
-                                    *their_hash,
-                                )))
+                                let uuid = thread_rng().next_u64();
+                                let dependency = Dependency::Unit(*their_hash);
+                                trace!(?uuid, ?dependency, "requesting dependency");
+                                Some(HighwayMessage::RequestDependency(uuid, dependency))
                             } else {
                                 None
                             }
