@@ -19,7 +19,7 @@ use super::{
 use crate::{
     components::{network::NetworkIdentity, Component},
     effect::{
-        announcements::{ControlAnnouncement, NetworkAnnouncement},
+        announcements::{ControlAnnouncement, MessageReceivedAnnouncement},
         requests::NetworkRequest,
         EffectBuilder, Effects,
     },
@@ -44,7 +44,7 @@ enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, String>),
+    NetworkAnnouncement(#[serde(skip_serializing)] MessageReceivedAnnouncement<NodeId, String>),
 }
 
 impl ReactorEvent for Event {
@@ -119,10 +119,7 @@ impl Reactor for TestReactor {
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => {
+            Event::NetworkAnnouncement(MessageReceivedAnnouncement { sender, payload }) => {
                 todo!("{} -- {}", sender, payload);
             }
         }

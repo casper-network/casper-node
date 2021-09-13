@@ -30,7 +30,7 @@ use crate::{
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            GossiperAnnouncement, MessageReceivedAnnouncement, RpcServerAnnouncement,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
@@ -65,7 +65,9 @@ enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, NodeMessage>),
+    NetworkAnnouncement(
+        #[serde(skip_serializing)] MessageReceivedAnnouncement<NodeId, NodeMessage>,
+    ),
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
@@ -246,10 +248,7 @@ impl reactor::Reactor for Reactor {
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => {
+            Event::NetworkAnnouncement(MessageReceivedAnnouncement { sender, payload }) => {
                 let reactor_event = match payload {
                     NodeMessage::GetRequest {
                         tag: Tag::Deploy,

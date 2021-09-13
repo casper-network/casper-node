@@ -90,7 +90,9 @@ use super::consensus;
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, LinearChainAnnouncement, NetworkAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, LinearChainAnnouncement, MessageReceivedAnnouncement,
+        },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, NetworkInfoRequest, NetworkRequest,
         },
@@ -192,7 +194,7 @@ where
     P: Payload + 'static,
     REv: ReactorEvent
         + From<Event<P>>
-        + From<NetworkAnnouncement<NodeId, P>>
+        + From<MessageReceivedAnnouncement<NodeId, P>>
         + From<ChainspecLoaderRequest>,
 {
     /// Creates a new small network component instance.
@@ -703,7 +705,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: From<NetworkAnnouncement<NodeId, P>>,
+        REv: From<MessageReceivedAnnouncement<NodeId, P>>,
     {
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
@@ -786,7 +788,7 @@ impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: ReactorEvent
         + From<Event<P>>
-        + From<NetworkAnnouncement<NodeId, P>>
+        + From<MessageReceivedAnnouncement<NodeId, P>>
         + From<ChainspecLoaderRequest>
         + From<BeginGossipRequest<GossipedAddress>>,
     P: Payload,

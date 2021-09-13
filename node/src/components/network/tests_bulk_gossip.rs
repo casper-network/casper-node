@@ -55,7 +55,7 @@ reactor!(LoadTestingReactor {
   }
 
   announcements: {
-      NetworkAnnouncement<NodeId, DummyPayload> -> [collector];
+      MessageReceivedAnnouncement<NodeId, DummyPayload> -> [collector];
   }
 });
 

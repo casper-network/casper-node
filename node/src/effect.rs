@@ -82,7 +82,7 @@ use tracing::error;
 use announcements::{
     ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    NetworkAnnouncement, RpcServerAnnouncement,
+    MessageReceivedAnnouncement, RpcServerAnnouncement,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -586,11 +586,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
-        REv: From<NetworkAnnouncement<I, P>>,
+        REv: From<MessageReceivedAnnouncement<I, P>>,
     {
         self.0
             .schedule(
-                NetworkAnnouncement::MessageReceived { sender, payload },
+                MessageReceivedAnnouncement { sender, payload },
                 QueueKind::NetworkIncoming,
             )
             .await;

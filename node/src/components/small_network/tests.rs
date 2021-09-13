@@ -26,7 +26,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
+        announcements::{ControlAnnouncement, GossiperAnnouncement, MessageReceivedAnnouncement},
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest,
             StorageRequest,
@@ -56,7 +56,7 @@ enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] MessageReceivedAnnouncement<NodeId, Message>),
     #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
     #[from]
@@ -205,10 +205,7 @@ impl Reactor for TestReactor {
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => {
+            Event::NetworkAnnouncement(MessageReceivedAnnouncement { sender, payload }) => {
                 let reactor_event = match payload {
                     Message::AddressGossiper(message) => {
                         Event::AddressGossiper(gossiper::Event::MessageReceived { sender, message })

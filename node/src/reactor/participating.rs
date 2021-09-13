@@ -52,8 +52,8 @@ use crate::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock,
+            MessageReceivedAnnouncement, RpcServerAnnouncement,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -162,7 +162,7 @@ pub(crate) enum ParticipatingEvent {
     ControlAnnouncement(ControlAnnouncement),
     /// Network announcement.
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] MessageReceivedAnnouncement<NodeId, Message>),
     /// API server announcement.
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
@@ -909,7 +909,7 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+            ParticipatingEvent::NetworkAnnouncement(MessageReceivedAnnouncement {
                 sender,
                 payload,
             }) => {

@@ -42,7 +42,7 @@ use crate::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, NetworkAnnouncement,
+            LinearChainAnnouncement, MessageReceivedAnnouncement,
         },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -188,7 +188,7 @@ pub(crate) enum JoinerEvent {
 
     /// Network announcement.
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] MessageReceivedAnnouncement<NodeId, Message>),
 
     /// Blocklist announcement.
     #[from]
@@ -562,7 +562,7 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::BlocklistAnnouncement(ann) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::SmallNetwork(ann.into()))
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+            JoinerEvent::NetworkAnnouncement(MessageReceivedAnnouncement {
                 sender,
                 payload,
             }) => match payload {

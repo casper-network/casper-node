@@ -12,7 +12,7 @@ use super::*;
 use crate::{
     components::{deploy_acceptor, in_memory_network::NetworkController, storage},
     effect::{
-        announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
+        announcements::{DeployAcceptorAnnouncement, MessageReceivedAnnouncement},
         Responder,
     },
     fatal,
@@ -98,7 +98,7 @@ reactor!(Reactor {
     announcements: {
         // The deploy fetcher needs to be notified about new deploys.
         DeployAcceptorAnnouncement<NodeId> -> [deploy_fetcher];
-        NetworkAnnouncement<NodeId, Message> -> [fn handle_message];
+        MessageReceivedAnnouncement<NodeId, Message> -> [fn handle_message];
         // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
         RpcServerAnnouncement -> [deploy_acceptor];
@@ -111,12 +111,12 @@ impl Reactor {
         &mut self,
         effect_builder: EffectBuilder<ReactorEvent>,
         rng: &mut NodeRng,
-        network_announcement: NetworkAnnouncement<NodeId, Message>,
+        network_announcement: MessageReceivedAnnouncement<NodeId, Message>,
     ) -> Effects<ReactorEvent> {
         // TODO: Make this manual routing disappear and supply appropriate
         // announcements.
         match network_announcement {
-            NetworkAnnouncement::MessageReceived { sender, payload } => match payload {
+            MessageReceivedAnnouncement { sender, payload } => match payload {
                 Message::GetRequest { serialized_id, .. } => {
                     let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id) {
                         Ok(hash) => hash,

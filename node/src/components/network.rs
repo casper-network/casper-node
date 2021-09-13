@@ -52,7 +52,7 @@ pub(crate) use self::{config::Config, error::Error, event::Event};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::NetworkAnnouncement,
+        announcements::MessageReceivedAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -84,14 +84,18 @@ impl<P> PayloadT for P where
 /// A helper trait whose bounds represent the requirements for a reactor event that `Network` can
 /// work with.
 pub(crate) trait ReactorEventT<P: PayloadT>:
-    ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static
+    ReactorEvent + From<Event<P>> + From<MessageReceivedAnnouncement<NodeId, P>> + Send + 'static
 {
 }
 
 impl<REv, P> ReactorEventT<P> for REv
 where
     P: PayloadT,
-    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<MessageReceivedAnnouncement<NodeId, P>>
+        + Send
+        + 'static,
 {
 }
 
@@ -660,7 +664,7 @@ async fn handle_one_way_messaging_event<REv: ReactorEventT<P>, P: PayloadT>(
                     debug!(%sender, %payload, "{}: incoming one-way message received", our_id(swarm));
                     event_queue
                         .schedule(
-                            NetworkAnnouncement::MessageReceived { sender, payload },
+                            MessageReceivedAnnouncement { sender, payload },
                             QueueKind::NetworkIncoming,
                         )
                         .await;
@@ -745,7 +749,7 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                     debug!(%sender, %payload, "{}: libp2p gossiped message received", our_id(swarm));
                     event_queue
                         .schedule(
-                            NetworkAnnouncement::MessageReceived { sender, payload },
+                            MessageReceivedAnnouncement { sender, payload },
                             QueueKind::NetworkIncoming,
                         )
                         .await;

@@ -296,8 +296,8 @@ use tracing::{debug, error, info, warn};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
-        Effects,
+        announcements::MessageReceivedAnnouncement, requests::NetworkRequest, EffectBuilder,
+        EffectExt, Effects,
     },
     logging,
     reactor::{EventQueueHandle, QueueKind},
@@ -393,7 +393,7 @@ where
         rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: From<MessageReceivedAnnouncement<NodeId, P>> + Send,
     {
         ACTIVE_NETWORK.with(|active_network| {
             active_network
@@ -436,7 +436,7 @@ where
         rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: From<MessageReceivedAnnouncement<NodeId, P>> + Send,
     {
         InMemoryNetwork::new_with_data(event_queue, NodeId::random(rng), self.nodes.clone())
     }
@@ -461,7 +461,7 @@ where
     /// This function is an alias of `NetworkController::create_node_local`.
     pub(crate) fn new<REv>(event_queue: EventQueueHandle<REv>, rng: &mut NodeRng) -> Self
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: From<MessageReceivedAnnouncement<NodeId, P>> + Send,
     {
         NetworkController::create_node(event_queue, rng)
     }
@@ -473,7 +473,7 @@ where
         nodes: Network<P>,
     ) -> Self
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: From<MessageReceivedAnnouncement<NodeId, P>> + Send,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
 
@@ -598,11 +598,11 @@ async fn receiver_task<REv, P>(
     event_queue: EventQueueHandle<REv>,
     mut receiver: mpsc::UnboundedReceiver<(NodeId, P)>,
 ) where
-    REv: From<NetworkAnnouncement<NodeId, P>>,
+    REv: From<MessageReceivedAnnouncement<NodeId, P>>,
     P: 'static + Send,
 {
     while let Some((sender, payload)) = receiver.recv().await {
-        let announce = NetworkAnnouncement::MessageReceived { sender, payload };
+        let announce = MessageReceivedAnnouncement { sender, payload };
 
         event_queue
             .schedule(announce, QueueKind::NetworkIncoming)

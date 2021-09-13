@@ -10,7 +10,7 @@ use serde::Serialize;
 use tracing::debug;
 
 use crate::{
-    effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
+    effect::{announcements::MessageReceivedAnnouncement, EffectBuilder, Effects},
     types::NodeId,
     NodeRng,
 };
@@ -38,7 +38,7 @@ impl<P: Collectable> Collector<P> {
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event<P> {
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, P>),
+    NetworkAnnouncement(MessageReceivedAnnouncement<NodeId, P>),
 }
 
 impl<P> Display for Event<P>
@@ -65,9 +65,7 @@ where
     ) -> Effects<Self::Event> {
         #[allow(clippy::single_match)]
         match event {
-            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                payload, ..
-            }) => {
+            Event::NetworkAnnouncement(MessageReceivedAnnouncement { payload, .. }) => {
                 debug!("collected {}", payload);
                 self.payloads.insert(payload.into_collectable());
             }
