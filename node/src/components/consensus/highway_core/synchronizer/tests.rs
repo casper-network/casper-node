@@ -318,17 +318,32 @@ fn transitive_proposal_dependency() {
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(maybe_pv.is_none());
     match &*outcomes {
-        [ProtocolOutcome::CreatedTargetedMessage(msg0, p0), ProtocolOutcome::CreatedTargetedMessage(_msg1, p1)] =>
+        [ProtocolOutcome::CreatedTargetedMessage(msg0, p0), ProtocolOutcome::CreatedTargetedMessage(msg1, p1)] =>
         {
             assert_eq!(
                 vec![&peer0, &peer1],
-                vec![p0, p1].into_iter().sorted().collect_vec()
+                vec![p0, p1].into_iter().sorted().collect_vec(),
+                "expected to request dependency from exactly two different peers",
             );
-            let msg: HighwayMessage<TestContext> =
+            let msg0_parsed: HighwayMessage<TestContext> =
                 bincode::deserialize(msg0.as_slice()).expect("deserialization to pass");
-            match msg {
-                HighwayMessage::RequestDependency::<TestContext>(_, dep) => {
-                    assert_eq!(dep, Dependency::Unit(c0))
+            let msg1_parsed =
+                bincode::deserialize(msg1.as_slice()).expect("deserialization to pass");
+
+            match (msg0_parsed, msg1_parsed) {
+                (
+                    HighwayMessage::RequestDependency(_, dep0),
+                    HighwayMessage::RequestDependency(_, dep1),
+                ) => {
+                    assert_eq!(
+                        dep0,
+                        Dependency::Unit(c0),
+                        "unexpected dependency requested"
+                    );
+                    assert_eq!(
+                        dep0, dep1,
+                        "we should have requested the same dependency from two different peers"
+                    );
                 }
                 other => panic!("unexpected HighwayMessage variant {:?}", other),
             }
