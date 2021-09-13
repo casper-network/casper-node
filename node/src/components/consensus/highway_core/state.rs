@@ -728,8 +728,8 @@ impl<C: Context> State<C> {
 
     /// Returns the ancestor of the block with the given `hash`, on the specified `height`, or
     /// `None` if the block's height is lower than that.
-    /// NOTE: Panics if used on unit hashes. For those use [`find_ancestor_unit`].
-    pub(crate) fn find_ancestor<'a>(
+    /// NOTE: Panics if used on non-proposal hashes. For those use [`find_ancestor_unit`].
+    pub(crate) fn find_ancestor_proposal<'a>(
         &'a self,
         hash: &'a C::Hash,
         height: u64,
@@ -748,7 +748,7 @@ impl<C: Context> State<C> {
         // A block at height > 0 always has at least its parent entry in skip_idx.
         #[allow(clippy::integer_arithmetic)]
         let i = max_i.min(block.skip_idx.len() - 1);
-        self.find_ancestor(&block.skip_idx[i], height)
+        self.find_ancestor_proposal(&block.skip_idx[i], height)
     }
 
     /// Returns the ancestor of the unit with the given `hash`, on the specified `height`, or
