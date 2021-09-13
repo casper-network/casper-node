@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::components::consensus::{
     highway_core::{
@@ -42,11 +43,13 @@ impl IndexPanorama {
         for (vid, obs) in panorama.enumerate() {
             let index_obs = match obs {
                 Observation::None => IndexObservation::None,
-                Observation::Correct(hash) => state
-                    .maybe_unit(hash)
-                    .map_or(IndexObservation::None, |unit| {
-                        IndexObservation::Correct(unit.seq_number)
-                    }),
+                Observation::Correct(hash) => state.maybe_unit(hash).map_or_else(
+                    || {
+                        error!(?hash, "expected unit to exist in the local protocol state");
+                        IndexObservation::None
+                    },
+                    |unit| IndexObservation::Correct(unit.seq_number),
+                ),
                 Observation::Faulty => IndexObservation::Faulty,
             };
             validator_map[vid] = index_obs;
