@@ -11,7 +11,7 @@ pub const INTEGRATION_TESTS_RS_CONTENTS: &str =
 pub const TEST_FIXTURE_RS_CONTENTS: &str = include_str!("../resources/erc20/test_fixture.rs.in");
 pub const MAKEFILE_CONTENTS: &str = include_str!("../resources/erc20/Makefile.in");
 
-static CL_ERC20: Lazy<Dependency> = Lazy::new(|| Dependency::new("casper-erc20", "0.1.0"));
+static CL_ERC20: Lazy<Dependency> = Lazy::new(|| Dependency::new("casper-erc20", "0.2.0"));
 
 pub static CONTRACT_DEPENDENCIES: Lazy<String> = Lazy::new(|| {
     format!(
