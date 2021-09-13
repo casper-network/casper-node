@@ -318,7 +318,7 @@ fn transitive_proposal_dependency() {
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(maybe_pv.is_none());
     match &*outcomes {
-        [ProtocolOutcome::CreatedTargetedMessage(msg0, p0), ProtocolOutcome::CreatedTargetedMessage(msg1, p1)] =>
+        [ProtocolOutcome::CreatedTargetedMessage(msg0, p0), ProtocolOutcome::CreatedTargetedMessage(_msg1, p1)] =>
         {
             assert_eq!(
                 vec![&peer0, &peer1],
