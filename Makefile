@@ -10,6 +10,7 @@ CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
 CARGO := $(CARGO) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
+LEGACY = RUSTFLAGS='--cfg feature="casper-mainnet"'
 
 # Rust Contracts
 ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
@@ -71,7 +72,7 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 
 .PHONY: test-rs
 test-rs: resources/local/chainspec.toml
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS)
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS)
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-types
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-types --no-default-features --features=std
 	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS)
@@ -110,6 +111,7 @@ lint-contracts-rs:
 .PHONY: lint
 lint: lint-contracts-rs
 	$(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
+	$(LEGACY) $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
 	$(CARGO) clippy --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
 	$(CARGO) clippy --no-default-features --features=no-std --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
@@ -151,11 +153,15 @@ clean:
 
 .PHONY: build-for-packaging
 build-for-packaging: build-client-contracts
-	$(CARGO) build --release
+	$(LEGACY) $(CARGO) build --release
 
 .PHONY: deb
-deb: setup build-for-packaging
-	cd client && $(CARGO) deb -p casper-client --no-build
+deb: setup-rs build-for-packaging
+	cd client && $(LEGACY) $(CARGO) deb -p casper-client --no-build
+
+.PHONY: rpm
+rpm: setup-rs
+	cd client && $(CARGO) rpm build
 
 .PHONY: package
 package:

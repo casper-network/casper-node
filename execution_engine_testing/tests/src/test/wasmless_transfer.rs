@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
@@ -24,7 +26,8 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, ApiError, EraId, Gas, Key, Motes, ProtocolVersion, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
+    SecretKey, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -33,13 +36,26 @@ const TRANSFER_RESULT_NAMED_KEY: &str = "transfer_result";
 const TEST_PURSE_NAME: &str = "test_purse";
 const ARG_PURSE_NAME: &str = "purse_name";
 
-const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
-const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
+static ACCOUNT_1_SK: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
+static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SK));
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PK.to_account_hash());
+
+static ACCOUNT_2_SK: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[210u8; 32]).unwrap());
+static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SK));
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PK.to_account_hash());
 
 #[ignore]
 #[test]
 fn should_transfer_wasmless_account_to_purse() {
     transfer_wasmless(WasmlessTransfer::AccountMainPurseToPurse);
+}
+
+#[ignore]
+#[test]
+fn should_transfer_wasmless_account_to_public_key() {
+    transfer_wasmless(WasmlessTransfer::AccountMainPurseToPublicKeyMainPurse);
 }
 
 #[ignore]
@@ -62,6 +78,12 @@ fn should_transfer_wasmless_purse_to_purse() {
 
 #[ignore]
 #[test]
+fn should_transfer_wasmless_purse_to_public_key() {
+    transfer_wasmless(WasmlessTransfer::PurseToPublicKey);
+}
+
+#[ignore]
+#[test]
 fn should_transfer_wasmless_amount_as_u64() {
     transfer_wasmless(WasmlessTransfer::AmountAsU64);
 }
@@ -69,7 +91,9 @@ fn should_transfer_wasmless_amount_as_u64() {
 enum WasmlessTransfer {
     AccountMainPurseToPurse,
     AccountMainPurseToAccountMainPurse,
+    AccountMainPurseToPublicKeyMainPurse,
     PurseToPurse,
+    PurseToPublicKey,
     AccountToAccountByKey,
     AmountAsU64,
 }
@@ -81,12 +105,12 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     let id: Option<u64> = None;
 
     let account_1_purse = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_account(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     let account_2_purse = builder
-        .get_account(ACCOUNT_2_ADDR)
+        .get_account(*ACCOUNT_2_ADDR)
         .expect("should get account 2")
         .main_purse();
 
@@ -103,14 +127,21 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         }
         WasmlessTransfer::AccountMainPurseToAccountMainPurse => {
             runtime_args! {
-                mint::ARG_TARGET => ACCOUNT_2_ADDR,
+                mint::ARG_TARGET => *ACCOUNT_2_ADDR,
+                mint::ARG_AMOUNT => transfer_amount,
+                mint::ARG_ID => id
+            }
+        }
+        WasmlessTransfer::AccountMainPurseToPublicKeyMainPurse => {
+            runtime_args! {
+                mint::ARG_TARGET => ACCOUNT_2_PK.clone(),
                 mint::ARG_AMOUNT => transfer_amount,
                 mint::ARG_ID => id
             }
         }
         WasmlessTransfer::AccountToAccountByKey => {
             runtime_args! {
-                mint::ARG_TARGET => Key::Account(ACCOUNT_2_ADDR),
+                mint::ARG_TARGET => Key::Account(*ACCOUNT_2_ADDR),
                 mint::ARG_AMOUNT => transfer_amount,
                 mint::ARG_ID => id
             }
@@ -119,6 +150,14 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
             runtime_args! {
                 mint::ARG_SOURCE => account_1_purse,
                 mint::ARG_TARGET => account_2_purse,
+                mint::ARG_AMOUNT => transfer_amount,
+                mint::ARG_ID => id
+            }
+        }
+        WasmlessTransfer::PurseToPublicKey => {
+            runtime_args! {
+                mint::ARG_SOURCE => account_1_purse,
+                mint::ARG_TARGET => ACCOUNT_2_PK.clone(),
                 mint::ARG_AMOUNT => transfer_amount,
                 mint::ARG_ID => id
             }
@@ -135,10 +174,10 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
 
     let no_wasm_transfer_request = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
+            .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -287,9 +326,9 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         InvalidWasmlessTransfer::TransferToSelfByAddr => {
             // same source and target purse is invalid
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
-                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_TARGET => *ACCOUNT_1_ADDR,
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id,
                 },
@@ -299,9 +338,9 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         InvalidWasmlessTransfer::TransferToSelfByKey => {
             // same source and target purse is invalid
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
-                    mint::ARG_TARGET => Key::Account(ACCOUNT_1_ADDR),
+                    mint::ARG_TARGET => Key::Account(*ACCOUNT_1_ADDR),
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id
                 },
@@ -310,12 +349,12 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         }
         InvalidWasmlessTransfer::TransferToSelfByURef => {
             let account_1_purse = builder
-                .get_account(ACCOUNT_1_ADDR)
+                .get_account(*ACCOUNT_1_ADDR)
                 .expect("should get account 1")
                 .main_purse();
             // same source and target purse is invalid
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
                     mint::ARG_TARGET => account_1_purse,
                     mint::ARG_AMOUNT => transfer_amount,
@@ -327,10 +366,10 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         InvalidWasmlessTransfer::OtherSourceAccountByAddr => {
             // passes another account's addr as source
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
-                    mint::ARG_SOURCE => ACCOUNT_2_ADDR,
-                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_SOURCE => *ACCOUNT_2_ADDR,
+                    mint::ARG_TARGET => *ACCOUNT_1_ADDR,
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id
                 },
@@ -340,10 +379,10 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         InvalidWasmlessTransfer::OtherSourceAccountByKey => {
             // passes another account's Key::Account as source
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
-                    mint::ARG_SOURCE => Key::Account(ACCOUNT_2_ADDR),
-                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_SOURCE => Key::Account(*ACCOUNT_2_ADDR),
+                    mint::ARG_TARGET => *ACCOUNT_1_ADDR,
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id
                 },
@@ -352,15 +391,15 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         }
         InvalidWasmlessTransfer::OtherSourceAccountByURef => {
             let account_2_purse = builder
-                .get_account(ACCOUNT_2_ADDR)
+                .get_account(*ACCOUNT_2_ADDR)
                 .expect("should get account 1")
                 .main_purse();
             // passes another account's purse as source
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
                     mint::ARG_SOURCE => account_2_purse,
-                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_TARGET => *ACCOUNT_1_ADDR,
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id
                 },
@@ -370,7 +409,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         InvalidWasmlessTransfer::MissingTarget => {
             // does not pass target
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id
@@ -381,9 +420,9 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         InvalidWasmlessTransfer::MissingAmount => {
             // does not pass amount
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
-                    mint::ARG_TARGET => ACCOUNT_2_ADDR,
+                    mint::ARG_TARGET => *ACCOUNT_2_ADDR,
                     mint::ARG_ID => id
                 },
                 CoreError::Exec(ExecError::Revert(ApiError::MissingArgument)),
@@ -397,7 +436,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
                 *DEFAULT_ACCOUNT_ADDR,
                 runtime_args! {
                     mint::ARG_SOURCE => not_purse_uref,
-                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_TARGET => *ACCOUNT_1_ADDR,
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id
                 },
@@ -424,10 +463,10 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // a caller passes a uref as source they are claiming it is a purse and that they have
             // write access to it / are allowed to take funds from it.
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
                     mint::ARG_SOURCE => nonexistent_purse,
-                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_TARGET => *ACCOUNT_1_ADDR,
                     mint::ARG_AMOUNT => transfer_amount,
                     mint::ARG_ID => id
                 },
@@ -438,7 +477,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             let nonexistent_purse = URef::new([255; 32], AccessRights::READ_ADD_WRITE);
             // passes a nonexistent uref as target
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
                     mint::ARG_TARGET => nonexistent_purse,
                     mint::ARG_AMOUNT => transfer_amount,
@@ -449,17 +488,17 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         }
         InvalidWasmlessTransfer::OtherPurseToSelfPurse => {
             let account_1_purse = builder
-                .get_account(ACCOUNT_1_ADDR)
+                .get_account(*ACCOUNT_1_ADDR)
                 .expect("should get account 1")
                 .main_purse();
             let account_2_purse = builder
-                .get_account(ACCOUNT_2_ADDR)
+                .get_account(*ACCOUNT_2_ADDR)
                 .expect("should get account 1")
                 .main_purse();
 
             // attempts to take from an unowned purse
             (
-                ACCOUNT_1_ADDR,
+                *ACCOUNT_1_ADDR,
                 runtime_args! {
                     mint::ARG_SOURCE => account_2_purse,
                     mint::ARG_TARGET => account_1_purse,
@@ -482,7 +521,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     };
 
     let account_1_purse = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_account(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
@@ -546,12 +585,12 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let transfer_amount: U512 = U512::from(1000);
 
     let account_1_purse = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_account(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     assert_eq!(
-        builder.get_account(ACCOUNT_2_ADDR),
+        builder.get_account(*ACCOUNT_2_ADDR),
         None,
         "account 2 should not exist"
     );
@@ -559,17 +598,17 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
     let runtime_args = runtime_args! {
-       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
        mint::ARG_AMOUNT => transfer_amount,
        mint::ARG_ID => <Option<u64>>::None
     };
 
     let no_wasm_transfer_request = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
+            .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -580,7 +619,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
         .commit();
 
     let account_2 = builder
-        .get_account(ACCOUNT_2_ADDR)
+        .get_account(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
@@ -618,7 +657,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestCo
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
+            mint::ARG_TARGET => *ACCOUNT_1_ADDR,
             mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
             mint::ARG_ID => id
         },
@@ -639,7 +678,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestCo
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_2_ADDR,
+            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
             mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
             mint::ARG_ID => id
         },
@@ -670,12 +709,12 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     let account_2_to_account_1_amount: U512 = U512::one();
 
     let account_1_purse = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_account(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     assert_eq!(
-        builder.get_account(ACCOUNT_2_ADDR),
+        builder.get_account(*ACCOUNT_2_ADDR),
         None,
         "account 2 should not exist"
     );
@@ -683,17 +722,17 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
     let runtime_args = runtime_args! {
-       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
        mint::ARG_AMOUNT => account_1_to_account_2_amount,
        mint::ARG_ID => <Option<u64>>::None
     };
 
     let no_wasm_transfer_request_1 = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
+            .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -704,7 +743,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
         .commit();
 
     let account_2 = builder
-        .get_account(ACCOUNT_2_ADDR)
+        .get_account(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
@@ -722,17 +761,17 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     // Another transfer but this time created account tries to do a transfer
     assert!(account_2_to_account_1_amount < wasmless_transfer_cost.value());
     let runtime_args = runtime_args! {
-       mint::ARG_TARGET => ACCOUNT_1_ADDR,
+       mint::ARG_TARGET => *ACCOUNT_1_ADDR,
        mint::ARG_AMOUNT => account_2_to_account_1_amount,
        mint::ARG_ID => <Option<u64>>::None
     };
 
     let no_wasm_transfer_request_2 = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_2_ADDR)
+            .with_address(*ACCOUNT_2_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[ACCOUNT_2_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_2_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -768,12 +807,12 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     let account_2_to_account_1_amount: U512 = U512::one();
 
     let account_1_purse = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_account(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     assert_eq!(
-        builder.get_account(ACCOUNT_2_ADDR),
+        builder.get_account(*ACCOUNT_2_ADDR),
         None,
         "account 2 should not exist"
     );
@@ -781,17 +820,17 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
     let runtime_args = runtime_args! {
-       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
        mint::ARG_AMOUNT => account_1_to_account_2_amount,
        mint::ARG_ID => <Option<u64>>::None
     };
 
     let no_wasm_transfer_request_1 = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
+            .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -802,7 +841,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
         .commit();
 
     let account_2 = builder
-        .get_account(ACCOUNT_2_ADDR)
+        .get_account(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
@@ -820,17 +859,17 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     // Another transfer but this time created account tries to do a transfer
     assert!(account_2_to_account_1_amount <= wasmless_transfer_cost.value());
     let runtime_args = runtime_args! {
-       mint::ARG_TARGET => ACCOUNT_1_ADDR,
+       mint::ARG_TARGET => *ACCOUNT_1_ADDR,
        mint::ARG_AMOUNT => account_2_to_account_1_amount,
        mint::ARG_ID => <Option<u64>>::None
     };
 
     let no_wasm_transfer_request_2 = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_2_ADDR)
+            .with_address(*ACCOUNT_2_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[ACCOUNT_2_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_2_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -849,7 +888,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
     let account_1_to_account_2_amount: U512 = U512::from(1000);
 
     let create_purse_request = ExecuteRequestBuilder::standard(
-        ACCOUNT_1_ADDR,
+        *ACCOUNT_1_ADDR,
         CONTRACT_CREATE_PURSE_01,
         runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
     )
@@ -857,7 +896,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
     builder.exec(create_purse_request).commit().expect_success();
 
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_account(*ACCOUNT_1_ADDR)
         .expect("should get account 1");
 
     let account_1_purse = account_1
@@ -874,17 +913,17 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 
     let runtime_args = runtime_args! {
        mint::ARG_SOURCE => account_1_purse,
-       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
        mint::ARG_AMOUNT => account_1_to_account_2_amount,
        mint::ARG_ID => <Option<u64>>::None
     };
 
     let no_wasm_transfer_request_1 = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
+            .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -965,7 +1004,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let no_wasm_transfer_request_1 = {
         let wasmless_transfer_args = runtime_args! {
-        mint::ARG_TARGET => ACCOUNT_2_ADDR,
+        mint::ARG_TARGET => *ACCOUNT_2_ADDR,
         mint::ARG_AMOUNT => transfer_amount,
         mint::ARG_ID => <Option<u64>>::None
         };

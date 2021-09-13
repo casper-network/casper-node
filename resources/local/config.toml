@@ -44,7 +44,7 @@ unit_hashes_folder = "../node-storage"
 pending_vertex_timeout = '1min'
 
 # If the current era's protocol state has not progressed for this long, shut down.
-standstill_timeout = '10min'
+# standstill_timeout = '10min'
 
 # Request the latest protocol state from a random peer periodically, with this interval.
 request_state_interval = '20sec'
@@ -127,9 +127,15 @@ max_addr_pending_time = '1min'
 # A value of `0` means unlimited.
 max_outgoing_byte_rate_non_validators = 0
 
-# The maximum amount of requests from validating peers per second answered.
+# The maximum allowed impact of requests from non-validating peers per second answered.
 # A value of `0` means unlimited.
 max_incoming_message_rate_non_validators = 0
+
+# Weights for impact estimation of incoming messages, used in combination with
+# `max_incoming_message_rate_non_validators`.
+#
+# Any weight set to 0 means that the category of traffic is exempt from throttling.
+estimator_weights = { consensus=0, deploy_requests=1 }
 
 
 # ==================================================
@@ -316,7 +322,6 @@ verify_accounts = true
 #
 # If unset, defaults to true.
 #enable_manual_sync = true
-
 
 
 # ========================================================

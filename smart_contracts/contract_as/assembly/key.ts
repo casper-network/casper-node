@@ -7,8 +7,9 @@ import {Error, ErrorCode} from "./error";
 import {checkTypedArrayEqual, typedToArray, encodeUTF8} from "./utils";
 import {Ref} from "./ref";
 import {Result, Error as BytesreprError} from "./bytesrepr";
-
-const BLAKE2B_DIGEST_LENGTH: usize = 32;
+import {PublicKey} from "./public_key";
+import {RuntimeArgs} from "./runtime_args";
+import * as runtime from "./runtime";
 
 /**
  * Enum representing a variant of a [[Key]] - Account, Hash or URef.
@@ -43,31 +44,25 @@ export class AccountHash {
         return !this.equalsTo(other);
     }
 
-    static fromPublicKey(publicKey:PublicKey) : AccountHash{
-
-        let algorithmName:string = publicKey.getAlgorithmName();
-        let algorithmNameBytes = encodeUTF8 (algorithmName);
+    static fromPublicKey(publicKey: PublicKey) : AccountHash {
+        let algorithmName = publicKey.getAlgorithmName();
+        let algorithmNameBytes = encodeUTF8(algorithmName);
         let publicKeyBytes = publicKey.getRawBytes();
-        let dataLength = algorithmNameBytes.length + publicKeyBytes.length +1;
+        let dataLength = algorithmNameBytes.length + publicKeyBytes.length + 1;
         
         let data = new Array<u8>(dataLength);
-        for(let i=0;i<algorithmNameBytes.length;i++){
+        for (let i=0; i < algorithmNameBytes.length; i++){
             data[i]=algorithmNameBytes[i];
         }
 
-        data[algorithmNameBytes.length]=0;
+        data[algorithmNameBytes.length] = 0;
 
-        for(let i=algorithmNameBytes.length+1;i<dataLength;i++){
-            data[i]=publicKeyBytes[i];
+        for (let i=0; i < publicKeyBytes.length; i++) {
+            data[algorithmNameBytes.length + 1 + i] = publicKeyBytes[i];
         }
-
-        let ret = new Uint8Array(BLAKE2B_DIGEST_LENGTH);
-        let error = Error.fromResult( externals.casper_blake2b(data.dataStart, data.length, ret.dataStart, ret.length));
-
-        if(error != null){
-            error.revert();
-        }
-        return new AccountHash(ret);
+        
+        const accountHashBytes = runtime.blake2b(data);
+        return new AccountHash(accountHashBytes);
     }
 
 

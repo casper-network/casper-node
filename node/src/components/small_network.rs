@@ -84,7 +84,7 @@ use self::{
 pub(crate) use self::{
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{Message, MessageKind, Payload},
+    message::{Message, MessageKind, Payload, PayloadWeights},
 };
 use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
@@ -282,6 +282,7 @@ where
             chain_info: chain_info_source.into(),
             public_addr,
             consensus_keys,
+            payload_weights: cfg.estimator_weights.clone(),
         });
 
         // Run the server task.

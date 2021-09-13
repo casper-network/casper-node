@@ -116,6 +116,27 @@
       "additionalProperties": false
     },
     {
+      "description": "The given deploy has expired.",
+      "type": "object",
+      "required": [
+        "DeployExpired"
+      ],
+      "properties": {
+        "DeployExpired": {
+          "type": "object",
+          "required": [
+            "deploy_hash"
+          ],
+          "properties": {
+            "deploy_hash": {
+              "$ref": "#/definitions/DeployHash"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "Generic representation of validator's fault in an era.",
       "type": "object",
       "required": [
