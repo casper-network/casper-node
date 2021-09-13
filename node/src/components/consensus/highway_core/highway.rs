@@ -379,12 +379,12 @@ impl<C: Context> Highway<C> {
         &self,
         vid: ValidatorIndex,
         unit_seq: u64,
-    ) -> Result<GetDepOutcome<C>, ()> {
+    ) -> GetDepOutcome<C> {
         let obs = match self.state.panorama().get(vid) {
             Some(obs) => obs,
-            None => return Err(()),
+            None => return GetDepOutcome::None,
         };
-        Ok(match obs {
+        match obs {
             Observation::None => GetDepOutcome::None,
             Observation::Faulty => match self.state.maybe_fault(vid) {
                 None | Some(Fault::Banned) => GetDepOutcome::None,
@@ -393,7 +393,7 @@ impl<C: Context> Highway<C> {
                 }
                 Some(Fault::Indirect) => match self.validators.id(vid) {
                     Some(vid) => GetDepOutcome::Evidence(vid.clone()),
-                    None => return Err(()),
+                    None => return GetDepOutcome::None,
                 },
             },
             Observation::Correct(last_seen) => self
@@ -402,7 +402,7 @@ impl<C: Context> Highway<C> {
                 .and_then(|req_hash| self.state.wire_unit(req_hash, self.instance_id))
                 .map(|swunit| GetDepOutcome::Vertex(ValidVertex(Vertex::Unit(swunit))))
                 .unwrap_or_else(|| GetDepOutcome::None),
-        })
+        }
     }
 
     pub(crate) fn handle_timer(&mut self, timestamp: Timestamp) -> Vec<Effect<C>> {

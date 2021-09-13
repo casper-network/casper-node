@@ -808,32 +808,24 @@ where
                     "received a request for a dependency"
                 );
                 match self.highway.get_dependency_by_index(vid, unit_seq_number) {
-                    Ok(index_dep) => {
-                        match index_dep {
-                            GetDepOutcome::None => {
-                                info!(
-                                    ?vid,
-                                    ?unit_seq_number,
-                                    ?sender,
-                                    "requested dependency doesn't exist"
-                                );
-                                vec![]
-                            }
-                            GetDepOutcome::Evidence(vid) => {
-                                vec![ProtocolOutcome::SendEvidence(sender, vid)]
-                            }
-                            // TODO: Should this be done via a gossip service?
-                            GetDepOutcome::Vertex(vv) => {
-                                vec![ProtocolOutcome::CreatedTargetedMessage(
-                                    HighwayMessage::NewVertex(vv.into()).serialize(),
-                                    sender,
-                                )]
-                            }
-                        }
+                    GetDepOutcome::None => {
+                        info!(
+                            ?vid,
+                            ?unit_seq_number,
+                            ?sender,
+                            "requested dependency doesn't exist"
+                        );
+                        vec![]
                     }
-                    Err(_) => {
-                        error!(?sender, "received an invalid RequestDependencyByHeight message from the sender. Disconnecting");
-                        return vec![ProtocolOutcome::Disconnect(sender)];
+                    GetDepOutcome::Evidence(vid) => {
+                        vec![ProtocolOutcome::SendEvidence(sender, vid)]
+                    }
+                    // TODO: Should this be done via a gossip service?
+                    GetDepOutcome::Vertex(vv) => {
+                        vec![ProtocolOutcome::CreatedTargetedMessage(
+                            HighwayMessage::NewVertex(vv.into()).serialize(),
+                            sender,
+                        )]
                     }
                 }
             }
