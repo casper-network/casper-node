@@ -200,7 +200,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
@@ -218,7 +218,9 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor = DeployAcceptor::new(
             super::Config::new(VERIFY_ACCOUNTS),
             &Chainspec::from_resources("local"),
-        );
+            registry,
+        )
+        .unwrap();
 
         let reactor = Reactor {
             storage,

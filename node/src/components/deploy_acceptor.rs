@@ -1,9 +1,11 @@
 mod config;
 mod event;
+mod metrics;
 mod tests;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::fmt::Debug;
 
+use prometheus::{Registry};
 use thiserror::Error;
 use tracing::{debug, error, info};
 
@@ -16,7 +18,9 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{chainspec::DeployConfig, Chainspec, Deploy, DeployValidationFailure, NodeId},
+    types::{
+        chainspec::DeployConfig, Chainspec, Deploy, DeployValidationFailure, NodeId, Timestamp,
+    },
     utils::Source,
     NodeRng,
 };
@@ -67,15 +71,21 @@ pub struct DeployAcceptor {
     chain_name: String,
     deploy_config: DeployConfig,
     verify_accounts: bool,
+    metrics: metrics::Metrics,
 }
 
 impl DeployAcceptor {
-    pub(crate) fn new(config: Config, chainspec: &Chainspec) -> Self {
-        DeployAcceptor {
+    pub(crate) fn new(
+        config: Config,
+        chainspec: &Chainspec,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(DeployAcceptor {
             chain_name: chainspec.network_config.name.clone(),
             deploy_config: chainspec.deploy_config,
             verify_accounts: config.verify_accounts(),
-        }
+            metrics: metrics::Metrics::new(registry)?,
+        })
     }
 
     /// Handles receiving a new `Deploy` from a peer or client.
@@ -89,6 +99,7 @@ impl DeployAcceptor {
         source: Source<NodeId>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
+        let verification_start_timestamp = Timestamp::now();
         let mut cloned_deploy = deploy.clone();
         let mut effects = Effects::new();
         let is_acceptable = cloned_deploy.is_acceptable(&self.chain_name, &self.deploy_config);
@@ -118,6 +129,7 @@ impl DeployAcceptor {
                     account_key,
                     verified,
                     maybe_responder,
+                    verification_start_timestamp,
                 });
         }
 
@@ -129,9 +141,11 @@ impl DeployAcceptor {
                 account_key,
                 verified: Some(true),
                 maybe_responder,
+                verification_start_timestamp,
             })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn account_verification<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -140,6 +154,7 @@ impl DeployAcceptor {
         account_key: Key,
         verified: Option<bool>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
 
@@ -151,6 +166,7 @@ impl DeployAcceptor {
                         source,
                         is_new,
                         maybe_responder,
+                        verification_start_timestamp,
                     },
                 ));
 
@@ -158,6 +174,7 @@ impl DeployAcceptor {
             }
 
             Some(false) => {
+                self.metrics.observe_rejected(verification_start_timestamp);
                 info! {
                     "Received deploy from account {} that does not have minimum balance required", account_key
                 };
@@ -169,6 +186,7 @@ impl DeployAcceptor {
             }
 
             None => {
+                self.metrics.observe_rejected(verification_start_timestamp);
                 // The client has submitted an invalid deploy. Return an error message to the RPC
                 // component via the responder.
                 info! {
@@ -195,7 +213,9 @@ impl DeployAcceptor {
         source: Source<NodeId>,
         is_new: bool,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
+        self.metrics.observe_accepted(verification_start_timestamp);
         let mut effects = Effects::new();
         if is_new {
             effects.extend(
@@ -214,7 +234,7 @@ impl DeployAcceptor {
 
 impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
-    type ConstructionError = Infallible;
+    type ConstructionError = prometheus::Error;
 
     fn handle_event(
         &mut self,
@@ -234,15 +254,22 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 source,
                 is_new,
                 maybe_responder,
-            } => {
-                self.handle_put_to_storage(effect_builder, deploy, source, is_new, maybe_responder)
-            }
+                verification_start_timestamp,
+            } => self.handle_put_to_storage(
+                effect_builder,
+                deploy,
+                source,
+                is_new,
+                maybe_responder,
+                verification_start_timestamp,
+            ),
             Event::AccountVerificationResult {
                 deploy,
                 source,
                 account_key,
                 verified,
                 maybe_responder,
+                verification_start_timestamp,
             } => self.account_verification(
                 effect_builder,
                 deploy,
@@ -250,6 +277,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 account_key,
                 verified,
                 maybe_responder,
+                verification_start_timestamp,
             ),
         }
     }
