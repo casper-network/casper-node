@@ -568,7 +568,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 let hash = swu.hash();
 
                 if vertex.is_proposal() {
-                    trace!(
+                    info!(
                         ?hash,
                         ?creator,
                         creator_index = wire_unit.creator.0,

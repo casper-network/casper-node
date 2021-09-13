@@ -427,7 +427,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 }
                 // Otherwise request the missing dependency from the sender.
                 let uuid = thread_rng().next_u64();
-                trace!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
+                debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
                 let ser_msg =
                     HighwayMessage::RequestDependency(uuid, transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
