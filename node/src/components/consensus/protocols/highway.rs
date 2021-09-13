@@ -550,6 +550,51 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         true
     }
 
+    // Logs the details about the received vertex.
+    fn log_received_vertex(&self, vertex: &Vertex<C>) {
+        let creator = if let Some(creator) = vertex
+            .creator()
+            .and_then(|vid| self.highway.validators().id(vid))
+        {
+            creator
+        } else {
+            error!(?vertex, "invalid creator");
+            return;
+        };
+
+        match vertex {
+            Vertex::Unit(swu) => {
+                let wire_unit = swu.wire_unit();
+                let hash = swu.hash();
+
+                if vertex.is_proposal() {
+                    trace!(
+                        ?hash,
+                        ?creator,
+                        creator_index = wire_unit.creator.0,
+                        timestamp = %wire_unit.timestamp,
+                        round_exp = wire_unit.round_exp,
+                        seq_number = wire_unit.seq_number,
+                        "received a proposal"
+                    );
+                } else {
+                    trace!(
+                        ?hash,
+                        ?creator,
+                        creator_index = wire_unit.creator.0,
+                        timestamp = %wire_unit.timestamp,
+                        round_exp = wire_unit.round_exp,
+                        seq_number = wire_unit.seq_number,
+                        "received a non-proposal unit"
+                    );
+                };
+            }
+            Vertex::Evidence(evidence) => trace!(?evidence, "received an evidence"),
+            Vertex::Endorsements(endorsement) => trace!(?endorsement, "received an endorsement"),
+            Vertex::Ping(ping) => trace!(?ping, "received ping"),
+        }
+    }
+
     /// Prevalidates the vertex but checks the cache for previously validated vertices.
     /// Avoids multiple validation of the same vertex.
     fn pre_validate_vertex(
@@ -667,28 +712,7 @@ where
                     _ => {
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
-                        if !self.log_proposal(pvv.inner(), "received a proposal") {
-                            if let Some(swu) = pvv.inner().unit() {
-                                let wire_unit = swu.wire_unit();
-                                let hash = swu.hash();
-
-                                if let Some(creator) =
-                                    self.highway.validators().id(wire_unit.creator)
-                                {
-                                    trace!(
-                                        ?hash,
-                                        ?creator,
-                                        creator_index = wire_unit.creator.0,
-                                        timestamp = %wire_unit.timestamp,
-                                        round_exp = wire_unit.round_exp,
-                                        seq_number = wire_unit.seq_number,
-                                        "received a valid vertex"
-                                    );
-                                } else {
-                                    error!(?wire_unit, "invalid creator");
-                                };
-                            }
-                        }
+                        self.log_received_vertex(pvv.inner());
                         self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
