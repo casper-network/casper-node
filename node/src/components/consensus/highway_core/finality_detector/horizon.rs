@@ -41,7 +41,9 @@ impl<'a, C: Context> Horizon<'a, C> {
         let to_lvl0unit = |&maybe_vhash: &Option<&'a C::Hash>| {
             state
                 .swimlane(maybe_vhash?)
-                .take_while(|(_, unit)| state.find_ancestor(&unit.block, height) == Some(candidate))
+                .take_while(|(_, unit)| {
+                    state.find_ancestor_proposal(&unit.block, height) == Some(candidate)
+                })
                 .last()
                 .map(|(_, unit)| unit.seq_number)
         };
