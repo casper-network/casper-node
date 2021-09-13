@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
 
-use crate::{common, erc20, simple, ProjectKind, ARGS};
+use crate::{
+    common::{self, PATCH_SECTION},
+    erc20, simple, ProjectKind, ARGS,
+};
 
 const PACKAGE_NAME: &str = "tests";
 
@@ -30,11 +33,13 @@ name = "integration-tests"
 path = "src/integration_tests.rs"
 bench = false
 doctest = false
-"#,
+
+{}"#,
         match ARGS.project_kind() {
             ProjectKind::Simple => &*simple::TEST_DEPENDENCIES,
             ProjectKind::Erc20 => &*erc20::TEST_DEPENDENCIES,
         },
+        &*PATCH_SECTION
     )
 });
 

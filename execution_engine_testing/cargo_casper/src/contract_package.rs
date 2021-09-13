@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
 
-use crate::{common, erc20, simple, ProjectKind, ARGS};
+use crate::{
+    common::{self, PATCH_SECTION},
+    erc20, simple, ProjectKind, ARGS,
+};
 
 static PACKAGE_NAME: Lazy<&'static str> = Lazy::new(|| match ARGS.project_kind() {
     ProjectKind::Simple => "contract",
@@ -41,13 +44,15 @@ test = false
 [profile.release]
 codegen-units = 1
 lto = true
-"#,
+
+{}"#,
         *PACKAGE_NAME,
         match ARGS.project_kind() {
             ProjectKind::Simple => &*simple::CONTRACT_DEPENDENCIES,
             ProjectKind::Erc20 => &*erc20::CONTRACT_DEPENDENCIES,
         },
         PACKAGE_NAME.replace("-", "_"),
+        &*PATCH_SECTION
     )
 });
 

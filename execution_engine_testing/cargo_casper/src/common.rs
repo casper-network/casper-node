@@ -3,18 +3,25 @@ use std::{fs, path::Path, process, str};
 use colour::e_red;
 use once_cell::sync::Lazy;
 
-use crate::{dependency::Dependency, FAILURE_EXIT_CODE};
+use crate::{dependency::Dependency, ARGS, FAILURE_EXIT_CODE};
 
 pub static CL_CONTRACT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-contract", "1.3.2", "smart_contracts/contract"));
-pub static CL_TYPES: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-types", "1.3.2", "types"));
-pub static CL_ENGINE_TEST_SUPPORT: Lazy<Dependency> = Lazy::new(|| {
-    Dependency::new(
-        "casper-engine-test-support",
-        "1.3.2",
-        "execution_engine_testing/test_support",
-    )
+    Lazy::new(|| Dependency::new("casper-contract", "1.3.2"));
+pub static CL_TYPES: Lazy<Dependency> = Lazy::new(|| Dependency::new("casper-types", "1.3.2"));
+pub static CL_ENGINE_TEST_SUPPORT: Lazy<Dependency> =
+    Lazy::new(|| Dependency::new("casper-engine-test-support", "1.3.2"));
+pub static PATCH_SECTION: Lazy<String> = Lazy::new(|| match ARGS.workspace_path() {
+    Some(workspace_path) => {
+        format!(
+            r#"[patch.crates-io]
+casper-engine-test-support = {{ path = "{0}/execution_engine_testing/test_support" }}
+casper-contract = {{ path = "{0}/smart_contracts/contract" }}
+casper-types = {{ path = "{0}/types" }}
+"#,
+            workspace_path.display()
+        )
+    }
+    None => String::new(),
 });
 
 pub fn print_error_and_exit(msg: &str) -> ! {
