@@ -3,7 +3,7 @@ name = "cargo-casper"
 version = "1.3.2"
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
-description = "Command line tool for creating a Wasm smart contract and tests for use on the Casper network."
+description = "A command line tool for creating a Wasm smart contract and tests for use on the Casper network."
 readme = "README.md"
 documentation = "https://docs.rs/cargo-casper"
 homepage = "https://casper.network"
@@ -13,14 +13,15 @@ include = [
     "src/*.rs",
     "Cargo.lock",
     "Cargo.toml",
+    "resources/*"
 ]
 
 [dependencies]
-clap = "2"
+clap = "3.0.0-beta.4"
 colour = "0.6"
-once_cell = "1.5.2"
+once_cell = "1"
 
 [dev-dependencies]
 assert_cmd = "1"
 tempfile = "3"
-toml = "0.5.7"
+toml = "0.5.8"

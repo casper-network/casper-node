@@ -35,15 +35,17 @@ fn output_from_command(mut command: Command) -> Output {
         Ok(output) => output,
         Err(error) => {
             panic!(
-                "\nFailed to execute {:?}\n===== stderr begin =====\n{}\n===== stderr end =====\n",
+                "\nFailed to execute {:?}\n===== stderr begin =====\n{}\n===== stderr end \
+                =====\n===== stdout begin =====\n{}\n===== stdout end =====\n",
                 command,
-                String::from_utf8_lossy(&error.as_output().unwrap().stderr)
+                String::from_utf8_lossy(&error.as_output().unwrap().stderr),
+                String::from_utf8_lossy(&error.as_output().unwrap().stdout)
             );
         }
     }
 }
 
-fn run_tool_and_resulting_tests() {
+fn run_tool_and_resulting_tests(maybe_extra_flag: Option<&str>) {
     let temp_dir = tempfile::tempdir().unwrap().into_path();
 
     // Run 'cargo-casper <test dir>/<subdir> --workspace-path=<path to casper-node root>'
@@ -51,6 +53,9 @@ fn run_tool_and_resulting_tests() {
     let test_dir = temp_dir.join(subdir);
     let mut tool_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
     tool_cmd.arg(&test_dir);
+    if let Some(extra_flag) = maybe_extra_flag {
+        tool_cmd.arg(extra_flag);
+    }
     tool_cmd.arg(&*WORKSPACE_PATH_ARG);
 
     // The CI environment doesn't have a Git user configured, so we can set the env var `USER` for
@@ -59,10 +64,22 @@ fn run_tool_and_resulting_tests() {
     let tool_output = output_from_command(tool_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, tool_output.status.code().unwrap());
 
-    // Run 'cargo test' in the 'tests' folder of the generated project.  This builds the Wasm
-    // contract as well as the tests.
-    let mut test_cmd = Command::new(env!("CARGO"));
-    test_cmd.arg("test").current_dir(test_dir.join("tests"));
+    // Run 'make test' in the root of the generated project.  This builds the Wasm contract as well
+    // as the tests.  This requires the use of a nightly version of Rust, so we use rustup to
+    // execute the appropriate cargo version.
+    let mut test_cmd = Command::new("rustup");
+    let nightly_version = fs::read_to_string(format!(
+        "{}/../../rust-toolchain",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    test_cmd
+        .arg("run")
+        .arg(nightly_version.trim())
+        .arg("make")
+        .arg("test")
+        .current_dir(test_dir);
+
     let test_output = output_from_command(test_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, test_output.status.code().unwrap());
 
@@ -71,6 +88,11 @@ fn run_tool_and_resulting_tests() {
 }
 
 #[test]
-fn should_run_casperlabs_node() {
-    run_tool_and_resulting_tests();
+fn should_run_cargo_casper_for_simple_example() {
+    run_tool_and_resulting_tests(None);
+}
+
+#[test]
+fn should_run_cargo_casper_for_erc20_example() {
+    run_tool_and_resulting_tests(Some("--erc20"));
 }

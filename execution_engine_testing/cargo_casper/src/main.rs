@@ -7,44 +7,49 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{crate_version, App, Arg};
+use clap::{crate_description, crate_name, crate_version, App, Arg};
 use once_cell::sync::Lazy;
 
 pub mod common;
 mod contract_package;
 pub mod dependency;
+mod erc20;
+mod makefile;
+mod rust_toolchain;
+mod simple;
 mod tests_package;
 mod travis_yml;
 
-const APP_NAME: &str = "cargo-casper";
-const ABOUT: &str =
-    "A command line tool for creating a Wasm contract and tests at <path> for use on the \
-     Casper Platform.";
-const TOOLCHAIN: &str = "nightly-2021-06-17";
+const USAGE: &str = r#"cargo casper [FLAGS] <path>
+    cd <path>
+    make prepare
+    make test"#;
+const AFTER_HELP: &str = r#"NOTE:
+    If no other flag is provided, a trivial example contract and tests are created"#;
+
+const ERC20_ARG_NAME: &str = "erc20";
+const ERC20_ARG_ABOUT: &str = "Create a basic ERC-20 contract and tests";
 
 const ROOT_PATH_ARG_NAME: &str = "path";
 const ROOT_PATH_ARG_VALUE_NAME: &str = "path";
-const ROOT_PATH_ARG_HELP: &str = "Path to new folder for contract and tests";
+const ROOT_PATH_ARG_ABOUT: &str = "Path to new folder for contract and tests";
 
 const WORKSPACE_PATH_ARG_NAME: &str = "workspace-path";
 const WORKSPACE_PATH_ARG_LONG: &str = "workspace-path";
 
 const FAILURE_EXIT_CODE: i32 = 101;
 
-static USAGE: Lazy<String> = Lazy::new(|| {
-    format!(
-        r#"cargo casper [FLAGS] <path>
-    rustup install {0}
-    rustup target add --toolchain {0} wasm32-unknown-unknown
-    cd <path>/tests
-    cargo test"#,
-        TOOLCHAIN
-    )
-});
 static ARGS: Lazy<Args> = Lazy::new(Args::new);
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum ProjectKind {
+    Simple,
+    Erc20,
+}
 
 #[derive(Debug)]
 struct Args {
+    project_kind: ProjectKind,
     root_path: PathBuf,
     workspace_path: Option<PathBuf>,
 }
@@ -68,23 +73,36 @@ impl Args {
             }
         });
 
-        let root_path_arg = Arg::with_name(ROOT_PATH_ARG_NAME)
+        let project_kind_arg = Arg::new(ERC20_ARG_NAME)
+            .takes_value(false)
+            .long(ERC20_ARG_NAME)
+            .about(ERC20_ARG_ABOUT);
+
+        let root_path_arg = Arg::new(ROOT_PATH_ARG_NAME)
             .required(true)
             .value_name(ROOT_PATH_ARG_VALUE_NAME)
-            .help(ROOT_PATH_ARG_HELP);
+            .about(ROOT_PATH_ARG_ABOUT);
 
-        let workspace_path_arg = Arg::with_name(WORKSPACE_PATH_ARG_NAME)
+        let workspace_path_arg = Arg::new(WORKSPACE_PATH_ARG_NAME)
             .long(WORKSPACE_PATH_ARG_LONG)
             .takes_value(true)
             .hidden(true);
 
-        let arg_matches = App::new(APP_NAME)
+        let arg_matches = App::new(crate_name!())
             .version(crate_version!())
-            .about(ABOUT)
-            .usage(USAGE.as_str())
+            .about(crate_description!())
+            .override_usage(USAGE)
+            .after_help(AFTER_HELP)
+            .arg(project_kind_arg)
             .arg(root_path_arg)
             .arg(workspace_path_arg)
             .get_matches_from(filtered_args_iter);
+
+        let project_kind = if arg_matches.is_present(ERC20_ARG_NAME) {
+            ProjectKind::Erc20
+        } else {
+            ProjectKind::Simple
+        };
 
         let root_path = arg_matches
             .value_of(ROOT_PATH_ARG_NAME)
@@ -96,9 +114,14 @@ impl Args {
             .map(PathBuf::from);
 
         Args {
+            project_kind,
             root_path,
             workspace_path,
         }
+    }
+
+    pub fn project_kind(&self) -> ProjectKind {
+        self.project_kind
     }
 
     pub fn root_path(&self) -> &Path {
@@ -119,49 +142,9 @@ fn main() {
     }
 
     common::create_dir_all(ARGS.root_path());
-
-    contract_package::run_cargo_new();
-    contract_package::update_cargo_toml();
-    contract_package::add_rust_toolchain();
-    contract_package::update_main_rs();
-    contract_package::add_config_toml();
-
-    tests_package::run_cargo_new();
-    tests_package::update_cargo_toml();
-    tests_package::add_rust_toolchain();
-    tests_package::add_build_rs();
-    tests_package::replace_main_rs();
-
+    contract_package::create();
+    tests_package::create();
+    rust_toolchain::create();
+    makefile::create();
     travis_yml::create();
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{env, fs};
-
-    use super::TOOLCHAIN;
-
-    const PATH_PREFIX: &str = "/execution_engine_testing/cargo_casper";
-
-    #[test]
-    fn check_toolchain_version() {
-        let mut toolchain_path = env::current_dir().unwrap().display().to_string();
-        let index = toolchain_path.find(PATH_PREFIX).unwrap_or_else(|| {
-            panic!(
-                "test should be run from within casper-node workspace: {}",
-                toolchain_path
-            )
-        });
-        toolchain_path.replace_range(index.., "/rust-toolchain");
-
-        let toolchain_contents =
-            fs::read(&toolchain_path).unwrap_or_else(|_| panic!("should read {}", toolchain_path));
-        let expected_toolchain_value = String::from_utf8_lossy(&toolchain_contents)
-            .trim()
-            .to_string();
-
-        // If this fails, ensure `TOOLCHAIN` is updated to match the value in
-        // "casper-node/rust-toolchain".
-        assert_eq!(&*expected_toolchain_value, TOOLCHAIN);
-    }
 }
