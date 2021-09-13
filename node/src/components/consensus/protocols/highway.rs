@@ -884,12 +884,11 @@ where
                     .enumerate()
                     .zip(&their_index_panorama)
                     .map(create_message)
-                    .map(|msgs| {
+                    .flat_map(|msgs| {
                         msgs.into_iter().map(|msg| {
                             ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender.clone())
                         })
                     })
-                    .flatten()
                     .collect()
             }
         }
