@@ -7,7 +7,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::{thread_rng, RngCore};
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 use crate::{
     components::consensus::{
@@ -210,16 +210,16 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn purge_vertices(&mut self, oldest: Timestamp) {
         info!("purging synchronizer queues");
         let no_deps_expired = self.vertices_no_deps.remove_expired(oldest);
-        debug!(?no_deps_expired, "expired no dependencies");
+        trace!(?no_deps_expired, "expired no dependencies");
         self.requests_sent.clear();
         let to_be_added_later_expired =
             Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
-        debug!(
+        trace!(
             ?to_be_added_later_expired,
             "expired to be added later dependencies"
         );
         let awaiting_deps_expired = Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
-        debug!(?awaiting_deps_expired, "expired awaiting dependencies");
+        trace!(?awaiting_deps_expired, "expired awaiting dependencies");
     }
 
     // Returns number of elements in the `vertices_to_be_added_later` queue.
@@ -427,7 +427,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 }
                 // Otherwise request the missing dependency from the sender.
                 let uuid = thread_rng().next_u64();
-                debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
+                trace!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
                 let ser_msg =
                     HighwayMessage::RequestDependency(uuid, transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
