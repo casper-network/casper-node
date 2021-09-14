@@ -208,7 +208,9 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor = DeployAcceptor::new(
             deploy_acceptor::Config::new(false),
             &Chainspec::from_resources("local"),
-        );
+            registry,
+        )
+        .unwrap();
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
