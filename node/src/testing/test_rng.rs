@@ -47,7 +47,7 @@ impl TestRng {
         let mut seed = Seed::default();
         match env::var(CL_TEST_SEED) {
             Ok(seed_as_hex) => {
-                hex::decode_to_slice(&seed_as_hex, &mut seed).unwrap_or_else(|error| {
+                base16::decode_slice(&seed_as_hex, &mut seed).unwrap_or_else(|error| {
                     THIS_THREAD_HAS_RNG.with(|flag| {
                         *flag.borrow_mut() = false;
                     });

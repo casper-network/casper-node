@@ -21,6 +21,8 @@ use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
 
+use casper_types::checksummed_hex;
+
 use super::{tls::KeyFingerprint, Message, Payload};
 #[cfg(test)]
 use crate::testing::TestRng;
@@ -30,7 +32,6 @@ use crate::{
     types::NodeId,
     utils,
 };
-use casper_types::checksummed_hex;
 
 /// Lazily-evaluated network message ID generator.
 ///

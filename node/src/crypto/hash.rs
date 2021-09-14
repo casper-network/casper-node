@@ -48,7 +48,7 @@ use std::collections::BTreeMap;
     JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Check-summed hex-encoded hash digest.")]
+#[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
 pub struct Digest(
     #[serde(with = "CheckSummedHexForm::<[u8; Digest::LENGTH]>")]
     #[schemars(skip, with = "String")]
@@ -327,7 +327,17 @@ mod test {
     }
 
     #[test]
-    fn should_print_digest_hex() {
+    fn should_print_digest_lower_hex() {
+        let hash = Digest([10u8; 32]);
+        let hash_lower_hex = format!("{:x}", hash);
+        assert_eq!(
+            hash_lower_hex,
+            "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        )
+    }
+
+    #[test]
+    fn should_print_digest_upper_hex() {
         let hash = Digest([10u8; 32]);
         let hash_upper_hex = format!("{:X}", hash);
         assert_eq!(

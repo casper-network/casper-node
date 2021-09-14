@@ -501,10 +501,10 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
                 "279cace6fdaf3945e3837df474b28646143747632bede93e7a66f5ca291d2c24978512ca0cb8827c8c\
                 322685bd605503a5ec94dbae61bbdcae1e49650602bc07";
 
-            let secret_key_bytes = hex::decode(secret_key_hex).unwrap();
-            let public_key_bytes = hex::decode(public_key_hex).unwrap();
-            let message_bytes = hex::decode(message_hex).unwrap();
-            let signature_bytes = hex::decode(signature_hex).unwrap();
+            let secret_key_bytes = base16::decode(secret_key_hex).unwrap();
+            let public_key_bytes = base16::decode(public_key_hex).unwrap();
+            let message_bytes = base16::decode(message_hex).unwrap();
+            let signature_bytes = base16::decode(signature_hex).unwrap();
 
             let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes).unwrap();
             let public_key = PublicKey::ed25519_from_bytes(public_key_bytes).unwrap();
@@ -725,10 +725,10 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let message_hex = "616263";
             let signature_hex = "8016162860f0795154643d15c5ab5bb840d8c695d6de027421755579ea7f2a4629b7e0c88fc3428669a6a89496f426181b73f10c6c8a05ac8f49d6cb5032eb89";
 
-            let secret_key_bytes = hex::decode(secret_key_hex).unwrap();
-            let public_key_bytes = hex::decode(public_key_hex).unwrap();
-            let message_bytes = hex::decode(message_hex).unwrap();
-            let signature_bytes = hex::decode(signature_hex).unwrap();
+            let secret_key_bytes = base16::decode(secret_key_hex).unwrap();
+            let public_key_bytes = base16::decode(public_key_hex).unwrap();
+            let message_bytes = base16::decode(message_hex).unwrap();
+            let signature_bytes = base16::decode(signature_hex).unwrap();
 
             let secret_key = SecretKey::secp256k1_from_bytes(secret_key_bytes).unwrap();
             let public_key = PublicKey::secp256k1_from_bytes(public_key_bytes).unwrap();

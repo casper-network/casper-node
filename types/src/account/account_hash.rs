@@ -104,7 +104,7 @@ impl JsonSchema for AccountHash {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description =
-            Some("Check-summed hex-encoded account hash.".to_string());
+            Some("Checksummed hex-encoded account hash.".to_string());
         schema_object.into()
     }
 }

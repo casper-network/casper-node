@@ -61,7 +61,7 @@ pub enum ExecutableDeployItem {
     },
     StoredContractByHash {
         #[serde(with = "CheckSummedHexForm")]
-        #[schemars(with = "String", description = "Check-summed hex-encoded hash.")]
+        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractHash,
         entry_point: String,
         args: RuntimeArgs,
@@ -73,7 +73,7 @@ pub enum ExecutableDeployItem {
     },
     StoredVersionedContractByHash {
         #[serde(with = "CheckSummedHexForm")]
-        #[schemars(with = "String", description = "Check-summed hex-encoded hash.")]
+        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractPackageHash,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
