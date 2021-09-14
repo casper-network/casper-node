@@ -1,4 +1,8 @@
 //! A library providing hashing functionality including Merkle Proof utilities.
+mod blake2b_hash;
+mod chunk_with_proof;
+mod indexed_merkle_proof;
+mod util;
 
 #![doc(html_root_url = "https://docs.rs/casper-hashing/1.0.0")]
 #![doc(

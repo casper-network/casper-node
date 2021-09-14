@@ -438,7 +438,7 @@ dependencies = [
  "criterion",
  "datasize",
  "hex",
- "hex-buffer-serde 0.2.2",
+ "hex-buffer-serde",
  "hex_fmt",
  "hostname",
  "itertools",
@@ -479,13 +479,16 @@ dependencies = [
  "criterion",
  "datasize",
  "hex",
- "hex-buffer-serde 0.3.0",
+ "hex-buffer-serde",
  "itertools",
  "proptest",
  "proptest-attr-macro",
+ "rand 0.8.4",
  "schemars",
  "serde",
+ "serde_json",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -518,7 +521,7 @@ dependencies = [
  "futures-io",
  "getrandom 0.2.3",
  "hex",
- "hex-buffer-serde 0.2.2",
+ "hex-buffer-serde",
  "hex_fmt",
  "hostname",
  "http",
@@ -2090,16 +2093,6 @@ name = "hex-buffer-serde"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "310e9578ff64e65a3a18e0624609f6833ee4a20503ef38eebb48430cf8ac3ab8"
-dependencies = [
- "hex",
- "serde",
-]
-
-[[package]]
-name = "hex-buffer-serde"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08f52012c160668b4494727f3588045aa00429849fcae51de70d68fa98228039"
 dependencies = [
  "hex",
  "serde",
@@ -4149,18 +4142,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.26"
+version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93119e4feac1cbe6c798c34d3a53ea0026b0b1de6a120deef895137c0529bfe2"
+checksum = "602eca064b2d83369e2b2f34b09c70b605402801927c65c11071ac911d299b88"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.26"
+version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "060d69a0afe7796bf42e9e2ff91f5ee691fb15c53d38b4b62a9a53eb23164745"
+checksum = "bad553cc2c78e8de258400763a647e80e6d1b31ee237275d756f6836d204494c"
 dependencies = [
  "proc-macro2",
  "quote",

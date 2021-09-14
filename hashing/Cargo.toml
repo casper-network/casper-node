@@ -13,16 +13,34 @@ license-file = "../LICENSE"
 blake2 = "0.9.0"
 base16 = "0.2.1"
 casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std", "gens"] }
-datasize = "0.2.9"
+datasize = { version = "0.2.9", default-features = false, optional = true}
 hex = { version = "0.4.2", default-features = false, features = ["serde"] }
-hex-buffer-serde = "0.3.0"
 itertools = "0.10.1"
-schemars = "0.8.3"
-serde = "1.0.130"
+schemars = { version  = "0.8.3", optional = true }
+serde = { version = "1", default-features = false, features = ["derive"], optional = true}
+thiserror = "1.0.28"
+hex-buffer-serde = { version = "0.2.1", optional = true }
 
 [dev-dependencies]
 assert_matches = "1.3.0"
 criterion = "0.3.5"
 proptest = "1.0.0"
 proptest-attr-macro = "1.0.0"
+rand = "0.8.4"
 tempfile = "3.1.0"
+serde_json = "1.0"
+
+[features]
+default = ["std"]
+std = [
+    "itertools/use_std",
+    "base16/std",
+    "hex/std",
+    "hex-buffer-serde",
+    "schemars",
+    "serde",
+    "datasize",
+]
+alloc = [
+    "itertools/use_alloc"
+]
