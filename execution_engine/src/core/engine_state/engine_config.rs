@@ -4,6 +4,7 @@ use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
+/// Default value for maximum max associated keys configuration option.
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 
 /// The runtime configuration of the execution engine
@@ -48,6 +49,7 @@ impl EngineConfig {
         }
     }
 
+    /// Returns the current max associated keys config.
     pub fn max_associated_keys(&self) -> u32 {
         self.max_associated_keys
     }

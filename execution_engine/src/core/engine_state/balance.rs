@@ -1,3 +1,4 @@
+//! Types for balance queries.
 use casper_types::{Key, StoredValue, URef, U512};
 
 use crate::{shared::newtypes::Blake2bHash, storage::trie::merkle_proof::TrieMerkleProof};

@@ -1,9 +1,7 @@
 use std::{
     collections::HashMap,
     error::Error,
-    fs::{self, File},
-    io::{self, BufReader},
-    iter, str,
+    fs, io, iter, str,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,

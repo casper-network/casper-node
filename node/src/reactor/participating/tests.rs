@@ -262,7 +262,7 @@ impl SwitchBlocks {
         let bids_result = engine_state
             .get_bids(correlation_id, request)
             .expect("get_bids failed");
-        bids_result.bids().expect("no bids returned").clone()
+        bids_result.into_success().expect("no bids returned")
     }
 }
 

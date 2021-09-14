@@ -34,6 +34,7 @@ pub enum Error {
     /// Type mismatch error.
     #[error("{}", _0)]
     TypeMismatch(StoredValueTypeMismatch),
+    /// Invalid access.
     #[error("Invalid access rights: {}", required)]
     InvalidAccess {
         /// Required access rights of the operation.

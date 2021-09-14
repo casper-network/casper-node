@@ -5,8 +5,7 @@
 use std::{collections::BTreeMap, vec::Vec};
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey,
-    StoredValueTypeMismatch,
+    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, ProtocolVersion, PublicKey,
 };
 
 use crate::{
@@ -166,12 +165,6 @@ pub enum StepError {
     /// Invalid protocol version.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
-    #[error("Key not found: {0}")]
-    KeyNotFound(Key),
-    #[error("Type mismatch: {0}")]
-    TypeMismatch(StoredValueTypeMismatch),
-    #[error("Era validators missing: {0}")]
-    EraValidatorsMissing(EraId),
     /// Error while serializing data.
     #[error(transparent)]
     BytesRepr(#[from] bytesrepr::Error),
@@ -179,6 +172,7 @@ pub enum StepError {
     #[error(transparent)]
     CLValueError(#[from] CLValueError),
     #[error("Other engine state error: {0}")]
+    /// Other engine state error.
     OtherEngineStateError(#[from] Error),
     /// Error executing a smart contract.
     #[error(transparent)]

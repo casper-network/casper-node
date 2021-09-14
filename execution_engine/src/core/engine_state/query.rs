@@ -1,3 +1,4 @@
+//! Support for global state queries.
 use casper_types::{Key, StoredValue};
 
 use crate::{
