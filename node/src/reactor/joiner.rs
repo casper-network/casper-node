@@ -21,6 +21,7 @@ use casper_types::Key;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
+use crate::types::BlockHash;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
@@ -426,8 +427,16 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
+        let maybe_trusted_hash = match config.node.trusted_hash {
+            Some(trusted_hash) => Some(trusted_hash),
+            None => storage
+                .read_highest_block_header()
+                .expect("Could not read highest block header")
+                .map(|block_header| block_header.hash()),
+        };
+
         let chainspec = chainspec_loader.chainspec().clone();
-        let linear_chain_sync = match config.node.trusted_hash {
+        let linear_chain_sync = match maybe_trusted_hash {
             None => {
                 if let Some(start_time) = chainspec
                     .protocol_config
