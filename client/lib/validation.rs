@@ -7,7 +7,6 @@ use casper_execution_engine::{
     core, core::ValidationError, storage::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_hashing::Digest;
-
 use casper_node::{
     rpcs::{
         chain::{BlockIdentifier, EraSummary, GetEraInfoResult},

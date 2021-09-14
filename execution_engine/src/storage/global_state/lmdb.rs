@@ -1,19 +1,21 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform};
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
 
-use crate::storage::{
-    error,
-    global_state::{commit, StateProvider, StateReader},
-    store::Store,
-    transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
-    trie_store::{
-        lmdb::LmdbTrieStore,
-        operations::{
-            keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+use crate::{
+    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    storage::{
+        error,
+        global_state::{commit, StateProvider, StateReader},
+        store::Store,
+        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
+        trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
+        trie_store::{
+            lmdb::LmdbTrieStore,
+            operations::{
+                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+            },
         },
     },
 };

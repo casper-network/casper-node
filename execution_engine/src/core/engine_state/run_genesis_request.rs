@@ -4,10 +4,10 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
+use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
 use super::genesis::ExecConfig;
-use casper_hashing::Digest;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {

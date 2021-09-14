@@ -8,11 +8,11 @@ use std::{
     time::Duration,
 };
 
-use casper_hashing::Digest;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion, PublicKey};
 
 use crate::{

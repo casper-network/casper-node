@@ -21,13 +21,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
-// #[cfg(test)]
-// use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
-// #[cfg(test)]
-// use casper_types::bytesrepr::Bytes;
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
@@ -42,7 +39,6 @@ use crate::{
     components::block_proposer::DeployInfo, crypto, crypto::AsymmetricKeyExt,
     rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::DisplayIter,
 };
-use casper_hashing::Digest;
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment_args = runtime_args! {

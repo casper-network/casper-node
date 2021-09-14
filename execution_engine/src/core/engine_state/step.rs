@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, vec::Vec};
 
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey,
     StoredValueTypeMismatch,
@@ -9,7 +10,6 @@ use crate::core::{
     engine_state::{execution_effect::ExecutionEffect, Error},
     execution,
 };
-use casper_hashing::Digest;
 
 #[derive(Debug)]
 pub struct SlashItem {

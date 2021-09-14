@@ -1,8 +1,12 @@
 [package]
-description = "CasperLabs hashing crate."
 name = "casper-hashing"
 version = "1.0.0"
 edition = "2018"
+description = "A library providing hashing functionality including Merkle Proof utilities."
+readme = "README.md"
+documentation = "https://docs.rs/casper-hashing"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/hashing"
 license-file = "../LICENSE"
 
 [dependencies]

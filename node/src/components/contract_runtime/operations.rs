@@ -3,14 +3,14 @@ use std::{
     time::Instant,
 };
 
-use engine_state::ExecuteRequest;
 use itertools::Itertools;
 use tracing::{debug, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, step::EvictItem, DeployItem, EngineState, ExecutionResult as EngineExecutionResult,
-        ExecutionResults, RewardItem, StepError, StepRequest, StepSuccess,
+        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
+        ExecutionResult as EngineExecutionResult, ExecutionResults, GetEraValidatorsRequest,
+        RewardItem, StepError, StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
@@ -28,7 +28,6 @@ use crate::{
     },
     types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
-use casper_execution_engine::core::engine_state::GetEraValidatorsRequest;
 
 pub(super) fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,

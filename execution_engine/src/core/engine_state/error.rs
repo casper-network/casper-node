@@ -1,6 +1,7 @@
 use datasize::DataSize;
 use thiserror::Error;
 
+use casper_hashing::Digest;
 use casper_types::{bytesrepr, system::mint, ApiError, ProtocolVersion};
 
 use crate::{
@@ -12,7 +13,6 @@ use crate::{
     storage,
     storage::global_state::CommitError,
 };
-use casper_hashing::Digest;
 
 #[derive(Clone, Error, Debug)]
 pub enum Error {

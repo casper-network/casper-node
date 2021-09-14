@@ -33,14 +33,15 @@ impl<K, V> TrieStore<K, V> for InMemoryTrieStore {}
 
 #[cfg(test)]
 mod test {
+    use casper_hashing::Digest;
+    use casper_types::bytesrepr::{Bytes, ToBytes};
+
     use crate::storage::{
         store::Store,
         transaction_source::{in_memory::InMemoryEnvironment, Transaction, TransactionSource},
         trie::{Pointer, PointerBlock, Trie},
         trie_store::in_memory::InMemoryTrieStore,
     };
-    use casper_hashing::Digest;
-    use casper_types::bytesrepr::{Bytes, ToBytes};
 
     #[test]
     fn test_in_memory_trie_store() {

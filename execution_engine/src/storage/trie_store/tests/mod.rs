@@ -2,10 +2,10 @@ mod concurrent;
 mod proptests;
 mod simple;
 
+use casper_hashing::Digest;
 use casper_types::bytesrepr::{Bytes, ToBytes};
 
 use crate::storage::trie::{Pointer, PointerBlock, Trie};
-use casper_hashing::Digest;
 
 #[derive(Clone)]
 struct TestData<K, V>(Digest, Trie<K, V>);

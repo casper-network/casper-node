@@ -28,7 +28,6 @@ use casper_execution_engine::{
     storage::trie::Trie,
 };
 use casper_hashing::Digest;
-
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
     StoredValue, Transfer, URef,
