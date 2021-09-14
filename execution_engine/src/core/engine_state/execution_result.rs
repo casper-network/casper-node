@@ -83,7 +83,7 @@ impl Default for ExecutionResult {
 /// A type alias that represents multiple execution results.
 pub type ExecutionResults = VecDeque<ExecutionResult>;
 
-/// Indicates the forced payme
+/// Indicates outcome of a transfer payment check.
 pub enum ForcedTransferResult {
     /// Payment code ran out of gas during execution
     InsufficientPayment,
