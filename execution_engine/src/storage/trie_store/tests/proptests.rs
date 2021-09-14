@@ -4,8 +4,8 @@ use lmdb::DatabaseFlags;
 use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
-use crate::shared::{newtypes::Blake2bHash, stored_value::StoredValue};
-use casper_types::{bytesrepr::ToBytes, Key};
+use crate::shared::newtypes::Blake2bHash;
+use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
 use crate::storage::{
     store::tests as store_tests,
@@ -53,6 +53,7 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
         &tmp_dir.path().to_path_buf(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
+        true,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();

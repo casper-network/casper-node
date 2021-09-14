@@ -1,9 +1,7 @@
-//! Support for global state queries.
-use casper_types::Key;
+use casper_types::{Key, StoredValue};
 
 use crate::{
-    core::tracking_copy::TrackingCopyQueryResult,
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    core::tracking_copy::TrackingCopyQueryResult, shared::newtypes::Blake2bHash,
     storage::trie::merkle_proof::TrieMerkleProof,
 };
 

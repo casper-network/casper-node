@@ -28,7 +28,11 @@ use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_node::{rpcs::state::DictionaryIdentifier, types::Deploy};
+use casper_node::{
+    crypto::hash::Digest,
+    rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
+    types::{BlockHash, Deploy},
+};
 use casper_types::Key;
 
 pub use cl_type::help;
@@ -186,8 +190,9 @@ pub async fn send_deploy_file(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
@@ -225,8 +230,9 @@ pub async fn transfer(
 ///
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
@@ -381,14 +387,21 @@ pub async fn get_state_root_hash(
 ///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
 ///   take one of the following forms:
 /// ```text
-/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c           # PublicKey
+/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c             # PublicKey
 /// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
-/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::Hash
-/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007    # Key::URef
-/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Transfer
-/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::DeployInfo
+/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20          # Key::Hash
+/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007      # Key::URef
+/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Transfer
+/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::DeployInfo
+/// era-1                                                                          # Key::EraInfo
+/// bid-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20           # Key::Bid
+/// withdraw-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Withdraw
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Dictionary
+/// The Key::SystemContractRegistry variant is unique and can only take the following value:
+/// system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000
 /// ```
 /// * `path` is comprised of components starting from the `key`, separated by `/`s.
+#[deprecated(note = "Users should use `casper_client::query_global_state` instead.")]
 pub async fn get_item(
     maybe_rpc_id: &str,
     node_address: &str,
@@ -510,6 +523,51 @@ pub async fn get_account_info(
         .await
 }
 
+/// Retrieves information from global state using either a Block hash or a state root hash.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+/// * `global_state_str_params` contains global state identifier related options for this query. See
+///   [`GlobalStateStrParams`](struct.GlobalStateStrParams.html) for more details.
+/// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
+///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.Key.html). This will take one
+///   of the following forms:
+/// ```text
+/// 01c9e33693951aaac23c49bee44ad6f863eedcd38c084a3a8f11237716a3df9c2c             # PublicKey
+/// account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20  # Key::Account
+/// hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20          # Key::Hash
+/// uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007      # Key::URef
+/// transfer-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Transfer
+/// deploy-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20        # Key::DeployInfo
+/// era-1                                                                          # Key::EraInfo
+/// bid-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20           # Key::Bid
+/// withdraw-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20      # Key::Withdraw
+/// dictionary-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20    # Key::Dictionary
+/// The Key::SystemContractRegistry variant is unique and can only take the following value:
+/// system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000
+/// ```
+/// * `path` is comprised of components starting from the `key`, separated by `/`s.
+pub async fn query_global_state(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+    global_state_str_params: GlobalStateStrParams<'_>,
+    key: &str,
+    path: &str,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .query_global_state(global_state_str_params, key, path)
+        .await
+}
+
 /// Retrieves information and examples for all currently supported RPCs.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
@@ -532,7 +590,7 @@ pub async fn list_rpcs(
         .await
 }
 
-/// Retrieves a stored value from the network.
+/// Retrieves a stored value from a dictionary.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
 ///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
@@ -546,7 +604,7 @@ pub async fn list_rpcs(
 ///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
 /// * `dictionary_str_params` contains options to query a dictionary item.
-pub async fn get_dictionary(
+pub async fn get_dictionary_item(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -1084,6 +1142,33 @@ impl<'a> TryInto<DictionaryIdentifier> for DictionaryItemStrParams<'a> {
                     dictionary_key.to_formatted_string(),
                 ))
             }
+        }
+    }
+}
+
+/// The two ways to construct a query to global state.
+#[derive(Default, Debug)]
+pub struct GlobalStateStrParams<'a> {
+    /// Identifier to mark the hash as either a Block hash or `state_root_hash`
+    /// When true, the hash provided is a Block hash.
+    pub is_block_hash: bool,
+    /// The hex-encoded hash value.
+    pub hash_value: &'a str,
+}
+
+impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> Result<GlobalStateIdentifier> {
+        let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
+            context: "global_state_identifier",
+            error,
+        })?;
+
+        if self.is_block_hash {
+            Ok(GlobalStateIdentifier::BlockHash(BlockHash::new(hash)))
+        } else {
+            Ok(GlobalStateIdentifier::StateRootHash(hash))
         }
     }
 }

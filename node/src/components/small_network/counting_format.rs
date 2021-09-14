@@ -20,7 +20,7 @@ use pin_project::pin_project;
 use rand::RngCore;
 use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
-use tracing::{error, trace, warn};
+use tracing::{trace, warn};
 
 use super::{tls::KeyFingerprint, Message, Payload};
 #[cfg(test)]
@@ -233,23 +233,8 @@ impl ConnectionId {
         // We XOR in a hashes of server and client fingerprint, to ensure that in the case of an
         // accidental collision (e.g. when `server_random` and `client_random` turn out to be all
         // zeros), we still have a chance of producing a reasonable ID.
-        if let Some(our_id_bytes) = our_id.hash_bytes() {
-            utils::xor(&mut id, &our_id_bytes[0..Digest::LENGTH]);
-        } else {
-            error!(
-                ?our_id,
-                "small_network attempted to retrieve bytes of ID, but seems to be libp2p ID?"
-            )
-        }
-
-        if let Some(their_id_bytes) = their_id.hash_bytes() {
-            utils::xor(&mut id, &their_id_bytes[0..Digest::LENGTH]);
-        } else {
-            error!(
-                ?their_id,
-                "small_network attempted to retrieve bytes of ID, but seems to be libp2p ID?"
-            )
-        }
+        utils::xor(&mut id, &our_id.hash_bytes()[0..Digest::LENGTH]);
+        utils::xor(&mut id, &their_id.hash_bytes()[0..Digest::LENGTH]);
 
         ConnectionId(id)
     }

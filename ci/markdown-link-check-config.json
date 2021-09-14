@@ -1,0 +1,19 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^http://localhost.*"
+    }
+  ],
+  "httpHeaders": [
+    {
+      "urls": ["https://crates.io"],
+      "headers": {
+        "Accept": "text/html"
+      }
+    }
+  ],
+  "timeout": "10s",
+  "retryOn429": true,
+  "retryCount": 5,
+  "fallbackRetryDelay": "2s"
+}

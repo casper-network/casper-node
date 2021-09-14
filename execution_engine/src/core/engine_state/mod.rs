@@ -31,7 +31,7 @@ use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::{
@@ -45,7 +45,8 @@ use casper_types::{
         CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef,
+    U512,
 };
 
 pub use self::{
@@ -78,16 +79,15 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::Account,
         additive_map::AdditiveMap,
-        gas::Gas,
-        motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         transform::Transform,
         wasm_prep::Preprocessor,
     },
-    storage::{global_state::StateProvider, trie::Trie},
+    storage::{
+        global_state::{lmdb::LmdbGlobalState, StateProvider},
+        trie::Trie,
+    },
 };
 
 /// A maximum amount of gas a paymnet code can use as expressed in `u64`.
@@ -112,6 +112,16 @@ pub struct EngineState<S> {
     config: EngineConfig,
     system_contract_cache: SystemContractCache,
     state: S,
+}
+
+impl EngineState<LmdbGlobalState> {
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
+    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+        if self.state.environment.is_manual_sync_enabled() {
+            self.state.environment.sync()?
+        }
+        Ok(())
+    }
 }
 
 impl<S> EngineState<S>
@@ -2123,29 +2133,8 @@ where
             )
             .map_err(Into::into)?;
 
-        let next_era_validators = {
-            let mut era_validators = match self.get_era_validators(
-                correlation_id,
-                GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
-            ) {
-                Ok(era_validators) => era_validators,
-                Err(error) => {
-                    return Err(StepError::GetEraValidatorsError(error));
-                }
-            };
-
-            let era_id = &step_request.next_era_id;
-            match era_validators.remove(era_id) {
-                Some(validator_weights) => validator_weights,
-                None => {
-                    return Err(StepError::EraValidatorsMissing(*era_id));
-                }
-            }
-        };
-
         Ok(StepSuccess {
             post_state_hash,
-            next_era_validators,
             execution_effect,
         })
     }

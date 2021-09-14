@@ -9,7 +9,6 @@ mod tests;
 
 use datasize::DataSize;
 use prometheus::Registry;
-use smallvec::smallvec;
 use std::{
     collections::HashSet,
     convert::Infallible,
@@ -74,7 +73,7 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
     sender: NodeId,
 ) -> Effects<Event<Deploy>> {
     effect_builder
-        .get_deploys_from_storage(smallvec![deploy_hash])
+        .get_deploys_from_storage(vec![deploy_hash])
         .event(move |mut results| {
             let result = if results.len() == 1 {
                 results
@@ -137,8 +136,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Ok(Gossiper {
             table: GossipTable::new(config),
-            gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            gossip_timeout: config.gossip_request_timeout().into(),
+            get_from_peer_timeout: config.get_remainder_timeout().into(),
             get_from_holder: Box::new(get_from_holder),
             metrics: GossiperMetrics::new(name, registry)?,
         })
@@ -160,8 +159,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Ok(Gossiper {
             table: GossipTable::new(config),
-            gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            gossip_timeout: config.gossip_request_timeout().into(),
+            get_from_peer_timeout: config.get_remainder_timeout().into(),
             get_from_holder: Box::new(|_, item, _| {
                 panic!("gossiper should never try to get {}", item)
             }),

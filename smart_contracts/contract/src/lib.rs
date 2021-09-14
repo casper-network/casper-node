@@ -48,7 +48,7 @@
 
 #![cfg_attr(feature = "no-std", no_std)]
 #![cfg_attr(
-    all(feature = "no-std", not(any(test, doc))),
+    all(feature = "provide-allocator", not(any(test, doc))),
     feature(alloc_error_handler, core_intrinsics, lang_items)
 )]
 #![doc(html_root_url = "https://docs.rs/casper-contract/1.0.0")]
@@ -63,7 +63,7 @@ extern crate alloc;
 
 pub mod contract_api;
 pub mod ext_ffi;
-#[cfg(all(feature = "no-std", not(any(test, doc))))]
+#[cfg(all(feature = "provide-allocator", not(any(test, doc))))]
 mod no_std_handlers;
 pub mod unwrap_or_revert;
 

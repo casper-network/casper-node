@@ -21,15 +21,18 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
-use casper_execution_engine::{
-    core::engine_state::{executable_deploy_item::ExecutableDeployItem, DeployItem},
-    shared::motes::Motes,
+// #[cfg(test)]
+// use casper_execution_engine::core::engine_state::MAX_PAYMENT;
+use casper_execution_engine::core::engine_state::{
+    executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
+// #[cfg(test)]
+// use casper_types::bytesrepr::Bytes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    AsymmetricType, ExecutionResult, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    AsymmetricType, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -49,7 +52,7 @@ use crate::{
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment_args = runtime_args! {
-        "quantity" => 1000
+        "amount" => 1000
     };
     let payment = ExecutableDeployItem::StoredContractByName {
         name: String::from("casper-example"),
@@ -139,6 +142,10 @@ pub enum DeployValidationFailure {
     #[error("the provided hash does not match the actual hash of the deploy")]
     InvalidDeployHash,
 
+    /// The deploy has no approvals.
+    #[error("the deploy has no approvals")]
+    EmptyApprovals,
+
     /// Invalid approval.
     #[error("the approval at index {index} is invalid: {error_msg}")]
     InvalidApproval {
@@ -164,6 +171,23 @@ pub enum DeployValidationFailure {
         max_length: usize,
         /// The received length of payment arguments.
         got: usize,
+    },
+
+    /// Missing payment amount.
+    #[error("missing payment argument amount")]
+    MissingPaymentAmount,
+
+    /// Failed to parse payment amount.
+    #[error("failed to parse payment amount as U512")]
+    FailedToParsePaymentAmount,
+
+    /// The payment amount associated with the deploy exceeds the block gas limit.
+    #[error("payment amount of {got} exceeds the block gas limit of {block_gas_limit}")]
+    ExceededBlockGasLimit {
+        /// Configured block gas limit.
+        block_gas_limit: u64,
+        /// The payment amount received.
+        got: U512,
     },
 
     /// Missing transfer amount.
@@ -258,6 +282,12 @@ impl DeployHash {
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = Digest::random(rng);
         DeployHash(hash)
+    }
+}
+
+impl From<DeployHash> for Digest {
+    fn from(deploy_hash: DeployHash) -> Self {
+        deploy_hash.0
     }
 }
 
@@ -685,6 +715,7 @@ impl Deploy {
     /// Returns true if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
+    ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
     pub fn is_valid(&mut self) -> Result<(), DeployValidationFailure> {
         match self.is_valid.as_ref() {
@@ -750,6 +781,31 @@ impl Deploy {
             });
         }
 
+        // Transfers have a fixed cost and won't blow the block gas limit.
+        // Other deploys can, therefore, statically check the payment amount
+        // associated with the deploy.
+        if !self.session().is_transfer() {
+            let value = self
+                .payment()
+                .args()
+                .get(ARG_AMOUNT)
+                .ok_or(DeployValidationFailure::MissingPaymentAmount)?;
+            let payment_amount = value
+                .clone()
+                .into_t::<U512>()
+                .map_err(|_| DeployValidationFailure::FailedToParsePaymentAmount)?;
+            if payment_amount > U512::from(config.block_gas_limit) {
+                info!(
+                    amount = %payment_amount,
+                    block_gas_limit = %config.block_gas_limit, "payment amount exceeds block gas limit"
+                );
+                return Err(DeployValidationFailure::ExceededBlockGasLimit {
+                    block_gas_limit: config.block_gas_limit,
+                    got: payment_amount,
+                });
+            }
+        }
+
         let payment_args_length = self.payment().args().serialized_length();
         if payment_args_length > config.payment_args_max_length as usize {
             info!(
@@ -797,11 +853,17 @@ impl Deploy {
         self.is_valid()
     }
 
-    /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let timestamp = Timestamp::random(rng);
-        let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+    pub(crate) fn invalidate(&mut self) {
+        self.header.chain_name.clear();
+    }
+
+    #[cfg(test)]
+    pub fn random_with_timestamp_and_ttl(
+        rng: &mut TestRng,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
         let gas_price = rng.gen_range(1..100);
 
         let dependencies = vec![
@@ -811,7 +873,17 @@ impl Deploy {
         ];
         let chain_name = String::from("casper-example");
 
-        let payment = rng.gen();
+        // We need "amount" in order to be able to
+        // get correct info via `deploy_info()`
+        let payment_args = runtime_args! {
+            "amount" => U512::from(10),
+        };
+        let payment = ExecutableDeployItem::StoredContractByName {
+            name: String::from("casper-example"),
+            entry_point: String::from("example-entry-point"),
+            args: payment_args,
+        };
+
         let session = rng.gen();
 
         let secret_key = SecretKey::random(rng);
@@ -827,6 +899,14 @@ impl Deploy {
             &secret_key,
             None,
         )
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let timestamp = Timestamp::random(rng);
+        let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+        Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
     }
 }
 
@@ -857,6 +937,10 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 // Computationally expensive validity check for a given deploy instance, including
 // asymmetric_key signing verification.
 fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
+    if deploy.approvals.is_empty() {
+        warn!(?deploy, "deploy has no approvals");
+        return Err(DeployValidationFailure::EmptyApprovals);
+    }
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
     let body_hash = hash::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
@@ -871,9 +955,6 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
         return Err(DeployValidationFailure::InvalidDeployHash);
     }
 
-    // We don't need to check for an empty set here. EE checks that the correct number and weight of
-    // signatures are provided when executing the deploy, so all we need to do here is check that
-    // any provided signatures are valid.
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(&deploy.hash, &approval.signature, &approval.signer) {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
@@ -1124,6 +1205,15 @@ mod tests {
     }
 
     #[test]
+    fn not_valid_due_to_empty_approvals() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+        deploy.approvals = vec![];
+        assert!(deploy.approvals.is_empty());
+        check_is_not_valid(deploy, DeployValidationFailure::EmptyApprovals)
+    }
+
+    #[test]
     fn not_valid_due_to_invalid_approval() {
         let mut rng = crate::new_rng();
         let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
@@ -1244,5 +1334,92 @@ mod tests {
             deploy.is_valid.is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
+    }
+
+    #[test]
+    fn not_acceptable_due_to_excessive_payment_amount() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let amount = U512::from(deploy_config.block_gas_limit + 1);
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => amount
+            },
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+
+        deploy.payment = payment;
+        deploy.session = session;
+
+        let expected_error = DeployValidationFailure::ExceededBlockGasLimit {
+            block_gas_limit: deploy_config.block_gas_limit,
+            got: amount,
+        };
+
+        assert_eq!(
+            deploy.is_acceptable(chain_name, &deploy_config),
+            Err(expected_error)
+        );
+        assert!(
+            deploy.is_valid.is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
+    }
+
+    #[test]
+    fn transfer_acceptable_regardless_of_excessive_payment_amount() {
+        let mut rng = crate::new_rng();
+        let secret_key = SecretKey::random(&mut rng);
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let amount = U512::from(deploy_config.block_gas_limit + 1);
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => amount
+            },
+        };
+
+        let transfer_args = {
+            let mut transfer_args = RuntimeArgs::new();
+            let value =
+                CLValue::from_t(U512::from(MAX_PAYMENT_AMOUNT)).expect("should create CLValue");
+            transfer_args.insert_cl_value(ARG_AMOUNT, value);
+            transfer_args
+        };
+
+        let mut deploy = Deploy::new(
+            Timestamp::now(),
+            deploy_config.max_ttl,
+            1,
+            vec![],
+            chain_name.to_string(),
+            payment,
+            ExecutableDeployItem::Transfer {
+                args: transfer_args,
+            },
+            &secret_key,
+            None,
+        );
+
+        assert_eq!(Ok(()), deploy.is_acceptable(chain_name, &deploy_config))
     }
 }

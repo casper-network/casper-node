@@ -5,12 +5,13 @@
 use std::{collections::BTreeMap, vec::Vec};
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, ProtocolVersion, PublicKey, U512,
+    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey,
+    StoredValueTypeMismatch,
 };
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, Error, GetEraValidatorsError},
+        engine_state::{execution_effect::ExecutionEffect, Error},
         execution,
     },
     shared::newtypes::Blake2bHash,
@@ -165,7 +166,10 @@ pub enum StepError {
     /// Invalid protocol version.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
-    /// Error reading era validators.
+    #[error("Key not found: {0}")]
+    KeyNotFound(Key),
+    #[error("Type mismatch: {0}")]
+    TypeMismatch(StoredValueTypeMismatch),
     #[error("Era validators missing: {0}")]
     EraValidatorsMissing(EraId),
     /// Error while serializing data.
@@ -174,10 +178,6 @@ pub enum StepError {
     /// Error converting `CLValue`.
     #[error(transparent)]
     CLValueError(#[from] CLValueError),
-    /// Error getting era validators.
-    #[error(transparent)]
-    GetEraValidatorsError(#[from] GetEraValidatorsError),
-    /// Engine state error.
     #[error("Other engine state error: {0}")]
     OtherEngineStateError(#[from] Error),
     /// Error executing a smart contract.
@@ -190,8 +190,6 @@ pub enum StepError {
 pub struct StepSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Blake2bHash,
-    /// Next set of era validators as specified by [`StepRequest::next_era_id`].
-    pub next_era_validators: BTreeMap<PublicKey, U512>,
     /// Effects of executing a step request.
     pub execution_effect: ExecutionEffect,
 }

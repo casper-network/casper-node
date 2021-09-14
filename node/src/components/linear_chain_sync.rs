@@ -45,16 +45,18 @@ use super::{
     Component,
 };
 use crate::{
-    components::contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
+    components::contract_runtime::{
+        BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState,
+    },
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::ControlAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
     fatal,
     types::{
         ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, Deploy,
-        DeployHash, FinalizedBlock, TimeDiff,
+        FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
@@ -63,7 +65,6 @@ use event::BlockByHeightResult;
 pub(crate) use event::Event;
 pub(crate) use metrics::LinearChainSyncMetrics;
 pub(crate) use peers::PeersState;
-use smallvec::SmallVec;
 pub(crate) use state::State;
 pub(crate) use traits::ReactorEventT;
 
@@ -137,7 +138,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
                 }
                 None if after_upgrade => {
-                    info!("No synchronization of the linear chain will be done.");
+                    info!(
+                        "No synchronization of the linear chain will be done because the node \
+                        was started right after an upgrade without a trusted hash."
+                    );
                     // Right after upgrade, no linear chain to synchronize.
                     State::Done(highest_block.map(Box::new))
                 }
@@ -149,7 +153,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         // still be trusted – i.e. it's within the unbonding period.
                         State::sync_descendants(*highest_block.hash(), highest_block, None)
                     } else {
-                        info!("No synchronization of the linear chain will be done.");
+                        info!(
+                            "No synchronization of the linear chain will be done because there \
+                            is neither a trusted hash nor a highest block present."
+                        );
                         State::Done(None)
                     }
                 }
@@ -189,7 +196,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             chainspec.core_config.era_duration,
         );
         if matches!(state, State::None | State::Done(_)) {
-            info!("No synchronization of the linear chain will be done.");
+            info!(
+                "No synchronization of the linear chain will be done because the component is \
+                already in State::Done or in State::None."
+            );
         }
         Ok(LinearChainSync {
             peers: PeersState::new(),
@@ -1024,9 +1034,10 @@ async fn execute_block<REv>(
 
     // Get the deploy hashes for the block.
     let deploy_hashes = finalized_block
-        .deploys_and_transfers_iter()
-        .map(DeployHash::from)
-        .collect::<SmallVec<_>>();
+        .deploy_hashes()
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
 
     // Get all deploys in order they appear in the finalized block.
     let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
@@ -1043,16 +1054,44 @@ async fn execute_block<REv>(
             return;
         }
     }
+
+    // Get the transfer hashes for the block.
+    let transfer_hashes = finalized_block
+        .transfer_hashes()
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());
+    for maybe_transfer in effect_builder
+        .get_deploys_from_storage(transfer_hashes)
+        .await
+    {
+        if let Some(transfer) = maybe_transfer {
+            transfers.push(transfer)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
+
     let BlockAndExecutionEffects {
         block,
         execution_results,
-        maybe_step_execution_effect: _,
+        ..
     } = match effect_builder
         .execute_finalized_block(
             protocol_version,
             execution_pre_state,
             finalized_block,
             deploys,
+            transfers,
         )
         .await
     {

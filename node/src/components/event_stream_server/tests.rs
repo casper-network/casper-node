@@ -11,12 +11,13 @@ use std::{
     time::Duration,
 };
 
-use assert_json_diff::assert_json_include;
+use assert_json_diff::assert_json_eq;
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
 use schemars::schema_for;
+use serde_json::Value;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -201,6 +202,8 @@ struct TestFixture {
 impl TestFixture {
     /// Constructs a new `TestFixture` including `EVENT_COUNT` random events ready to be served.
     fn new(rng: &mut TestRng) -> Self {
+        const DISTINCT_EVENTS_COUNT: u32 = 7;
+
         let _ = logging::init();
         let storage_dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(&storage_dir).unwrap();
@@ -208,7 +211,7 @@ impl TestFixture {
 
         let mut deploys = HashMap::new();
         let events = (0..EVENT_COUNT)
-            .map(|i| match i % 6 {
+            .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
                     let (event, deploy) = SseData::random_deploy_accepted(rng);
@@ -216,9 +219,10 @@ impl TestFixture {
                     event
                 }
                 2 => SseData::random_deploy_processed(rng),
-                3 => SseData::random_fault(rng),
-                4 => SseData::random_step(rng),
-                5 => SseData::random_finality_signature(rng),
+                3 => SseData::random_deploy_expired(rng),
+                4 => SseData::random_fault(rng),
+                5 => SseData::random_step(rng),
+                6 => SseData::random_finality_signature(rng),
                 _ => unreachable!(),
             })
             .collect();
@@ -1173,14 +1177,10 @@ fn schema() {
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    let expected_schema: serde_json::Value = {
-        let schema_file = File::open(&schema_path)
-            .unwrap_or_else(|error| panic!("should open schema at {}: {}", schema_path, error));
-        let schema_reader = BufReader::new(schema_file);
-        serde_json::from_reader(schema_reader).expect("should read a json file with schema")
-    };
-
-    let current_schema = schema_for!(SseData);
-
-    assert_json_include!(actual: current_schema, expected: expected_schema);
+    let expected_schema = fs::read_to_string(schema_path).unwrap();
+    let schema = schema_for!(SseData);
+    let actual_schema = serde_json::to_string_pretty(&schema).unwrap();
+    let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+    let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
+    assert_json_eq!(actual_schema, expected_schema);
 }

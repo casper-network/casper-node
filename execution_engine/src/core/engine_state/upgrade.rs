@@ -10,15 +10,12 @@ use casper_types::{
         auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion,
+    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
-    },
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::global_state::StateProvider,
 };
 

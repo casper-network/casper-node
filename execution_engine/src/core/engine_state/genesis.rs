@@ -2,8 +2,8 @@
 use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
 use datasize::DataSize;
+use num::Zero;
 use num_rational::Ratio;
-use num_traits::Zero;
 use parity_wasm::elements::Module;
 use rand::{
     distributions::{Distribution, Standard},
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     runtime_args,
@@ -33,8 +33,8 @@ use casper_types::{
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Gas, Key,
+    Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -45,11 +45,7 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::Account,
-        gas::Gas,
-        motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
     },

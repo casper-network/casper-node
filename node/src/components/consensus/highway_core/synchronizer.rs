@@ -6,15 +6,16 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, info};
+use rand::{thread_rng, RngCore};
+use tracing::{debug, info, trace};
 
 use crate::{
     components::consensus::{
         consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
-        protocols::highway::{HighwayConfig, HighwayMessage, ACTION_ID_VERTEX},
+        protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
         traits::{Context, NodeIdT},
     },
-    types::{TimeDiff, Timestamp},
+    types::Timestamp,
 };
 
 use super::{
@@ -40,11 +41,20 @@ impl<I, C: Context> Default for PendingVertices<I, C> {
 
 impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Removes expired vertices.
-    fn remove_expired(&mut self, oldest: Timestamp) {
+    fn remove_expired(&mut self, oldest: Timestamp) -> Vec<C::Hash> {
+        let mut removed = vec![];
         for time_by_sender in self.0.values_mut() {
             time_by_sender.retain(|_, time_received| *time_received >= oldest);
         }
-        self.0.retain(|_, time_by_peer| !time_by_peer.is_empty())
+        self.0.retain(|pvv, time_by_peer| {
+            if time_by_peer.is_empty() {
+                removed.extend(pvv.inner().unit_hash().into_iter());
+                false
+            } else {
+                true
+            }
+        });
+        removed
     }
 
     /// Adds a vertex, or updates its timestamp.
@@ -170,8 +180,6 @@ where
     /// Vertices that might be ready to add to the protocol state: We are not currently waiting for
     /// a requested dependency.
     vertices_no_deps: PendingVertices<I, C>,
-    /// This node's local Highway protocol configuration.
-    config: HighwayConfig,
     /// Instance ID of an era for which this synchronizer is constructed.
     instance_id: C::InstanceId,
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
@@ -186,16 +194,11 @@ where
 
 impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
-    pub(crate) fn new(
-        config: HighwayConfig,
-        validator_len: usize,
-        instance_id: C::InstanceId,
-    ) -> Self {
+    pub(crate) fn new(validator_len: usize, instance_id: C::InstanceId) -> Self {
         Synchronizer {
             vertices_awaiting_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_no_deps: Default::default(),
-            config,
             oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
             instance_id,
             requests_sent: BTreeMap::new(),
@@ -204,13 +207,19 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     /// Removes expired pending vertices from the queues, and schedules the next purge.
-    pub(crate) fn purge_vertices(&mut self, now: Timestamp) {
+    pub(crate) fn purge_vertices(&mut self, oldest: Timestamp) {
         info!("purging synchronizer queues");
-        let oldest = now.saturating_sub(self.config.pending_vertex_timeout);
-        self.vertices_no_deps.remove_expired(oldest);
+        let no_deps_expired = self.vertices_no_deps.remove_expired(oldest);
+        trace!(?no_deps_expired, "expired no dependencies");
         self.requests_sent.clear();
-        Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
-        Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
+        let to_be_added_later_expired =
+            Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
+        trace!(
+            ?to_be_added_later_expired,
+            "expired to be added later dependencies"
+        );
+        let awaiting_deps_expired = Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
+        trace!(?awaiting_deps_expired, "expired awaiting dependencies");
     }
 
     // Returns number of elements in the `vertices_to_be_added_later` queue.
@@ -341,6 +350,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         &mut self,
         highway: &Highway<C>,
         pending_values: &HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
+        max_requests_for_vertex: usize,
     ) -> (Option<PendingVertex<I, C>>, ProtocolOutcomes<I, C>) {
         let mut outcomes = Vec::new();
         // Get the next vertex to be added; skip the ones that are already in the protocol state,
@@ -394,7 +404,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     .flatten()
                     .find(|(vv, _)| vv.inner().id() == transitive_dependency)
                 {
-                    info!(
+                    debug!(
                         dependency = ?transitive_dependency, %sender,
                         "adding sender as a source for proposal"
                     );
@@ -412,14 +422,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     .requests_sent
                     .entry(transitive_dependency.clone())
                     .or_default();
-                if entry.len() >= self.config.max_requests_for_vertex
-                    || !entry.insert(sender.clone())
-                {
+                if entry.len() >= max_requests_for_vertex || !entry.insert(sender.clone()) {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
-                info!(dependency = ?transitive_dependency, %sender, "requesting dependency");
-                let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
+                let uuid = thread_rng().next_u64();
+                debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
+                let ser_msg =
+                    HighwayMessage::RequestDependency(uuid, transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
             }
@@ -470,11 +480,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Returns `true` if there are any vertices waiting for the specified dependency.
     pub(crate) fn is_dependency(&self, dep: &Dependency<C>) -> bool {
         self.vertices_awaiting_deps.contains_key(dep)
-    }
-
-    /// Returns the timeout for pending vertices: Entries older than this are purged periodically.
-    pub(crate) fn pending_vertex_timeout(&self) -> TimeDiff {
-        self.config.pending_vertex_timeout
     }
 
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and
@@ -537,9 +542,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     fn remove_expired<T: Ord + Clone>(
         map: &mut BTreeMap<T, PendingVertices<I, C>>,
         oldest: Timestamp,
-    ) {
+    ) -> Vec<C::Hash> {
+        let mut expired = vec![];
         for pvs in map.values_mut() {
-            pvs.remove_expired(oldest);
+            expired.extend(pvs.remove_expired(oldest));
         }
         let keys = map
             .iter()
@@ -549,5 +555,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         for key in keys {
             map.remove(&key);
         }
+        expired
     }
 }

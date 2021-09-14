@@ -20,7 +20,7 @@ use tracing::error;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
 use casper_types::{
-    account::{AccountHash, ActionType, Weight},
+    account::{Account, AccountHash, ActionType, Weight},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
@@ -35,9 +35,9 @@ use casper_types::{
         CallStackElement, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, NamedArg, Parameter,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
+    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas, Key, NamedArg,
+    Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
 };
 
 use crate::{
@@ -50,10 +50,7 @@ use crate::{
         Address,
     },
     shared::{
-        account::Account,
-        gas::Gas,
         host_function_costs::{Cost, HostFunction},
-        stored_value::StoredValue,
         wasm_config::WasmConfig,
     },
     storage::global_state::StateReader,

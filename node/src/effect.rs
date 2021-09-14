@@ -85,18 +85,17 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
-        execution_effect::ExecutionEffect,
         genesis::GenesisSuccess,
         upgrade::{UpgradeConfig, UpgradeSuccess},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    Transfer, U512,
+    StoredValue, Transfer, U512,
 };
 
 use crate::{
@@ -119,9 +118,9 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    NetworkAnnouncement, RpcServerAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
 };
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -129,9 +128,9 @@ use requests::{
     NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
-use self::announcements::BlocklistAnnouncement;
+use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
 use crate::components::contract_runtime::{
-    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
+    BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeAnnouncement, ExecutionPreState,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -174,15 +173,24 @@ impl<T: 'static + Send> Responder<T> {
     }
 }
 
-impl<T> Responder<T> {
+impl<T> Responder<T>
+where
+    T: Debug,
+{
     /// Send `data` to the origin of the request.
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.0.take() {
-            if sender.send(data).is_err() {
-                error!("could not send response to request down oneshot channel");
+            if let Err(data) = sender.send(data) {
+                error!(
+                    ?data,
+                    "could not send response to request down oneshot channel"
+                );
             }
         } else {
-            error!("tried to send a value down a responder channel, but it was already used");
+            error!(
+                ?data,
+                "tried to send a value down a responder channel, but it was already used"
+            );
         }
     }
 }
@@ -397,6 +405,14 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder(event_queue_handle)
     }
 
+    /// Schedules a regular event.
+    pub(crate) async fn schedule_regular<E>(self, event: E)
+    where
+        REv: From<E>,
+    {
+        self.0.schedule(event, QueueKind::Regular).await
+    }
+
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
@@ -574,6 +590,32 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the current network peers in a random order.
+    pub async fn get_peers_in_random_order<I>(self) -> Vec<I>
+    where
+        REv: From<NetworkInfoRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetPeersInRandomOrder { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
+    /// Announces which deploys have expired.
+    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
+    where
+        REv: From<BlockProposerAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
     /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
@@ -702,22 +744,6 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce a committed Step success.
-    pub(crate) async fn announce_step_success(
-        self,
-        era_id: EraId,
-        execution_effect: ExecutionEffect,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
                 QueueKind::Regular,
             )
             .await
@@ -965,14 +991,14 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested deploys from the deploy store.
     pub(crate) async fn get_deploys_from_storage(
         self,
-        deploy_hashes: Multiple<DeployHash>,
+        deploy_hashes: Vec<DeployHash>,
     ) -> Vec<Option<Deploy>>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes: deploy_hashes.to_vec(),
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -1164,6 +1190,7 @@ impl<REv> EffectBuilder<REv> {
         execution_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1174,6 +1201,7 @@ impl<REv> EffectBuilder<REv> {
                 execution_pre_state,
                 finalized_block,
                 deploys,
+                transfers,
                 responder,
             },
             QueueKind::Regular,
@@ -1192,6 +1220,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1200,6 +1229,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
+                    transfers,
                 },
                 QueueKind::Regular,
             )

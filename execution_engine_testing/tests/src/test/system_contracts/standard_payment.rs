@@ -12,9 +12,9 @@ use casper_execution_engine::{
         engine_state::{Error, MAX_PAYMENT},
         execution,
     },
-    shared::{gas::Gas, motes::Motes, transform::Transform},
+    shared::transform::Transform,
 };
-use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casper_types::{account::AccountHash, runtime_args, ApiError, Gas, Motes, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";

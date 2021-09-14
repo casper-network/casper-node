@@ -28,6 +28,8 @@ use crate::{
 use super::{
     endorsement::{Endorsement, EndorsementError},
     evidence::Evidence,
+    state::Observation,
+    validators::ValidatorIndex,
 };
 
 /// If a lot of rounds were skipped between two blocks, log at most this many.
@@ -369,6 +371,37 @@ impl<C: Context> Highway<C> {
                 Some(e) => GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(e))),
             },
             Dependency::Ping(_, _) => GetDepOutcome::None, // We don't store ping signatures.
+        }
+    }
+
+    /// Returns a vertex by a validator with the requested sequence number.
+    pub(crate) fn get_dependency_by_index(
+        &self,
+        vid: ValidatorIndex,
+        unit_seq: u64,
+    ) -> GetDepOutcome<C> {
+        let obs = match self.state.panorama().get(vid) {
+            Some(obs) => obs,
+            None => return GetDepOutcome::None,
+        };
+        match obs {
+            Observation::None => GetDepOutcome::None,
+            Observation::Faulty => match self.state.maybe_fault(vid) {
+                None | Some(Fault::Banned) => GetDepOutcome::None,
+                Some(Fault::Direct(ev)) => {
+                    GetDepOutcome::Vertex(ValidVertex(Vertex::Evidence(ev.clone())))
+                }
+                Some(Fault::Indirect) => match self.validators.id(vid) {
+                    Some(vid) => GetDepOutcome::Evidence(vid.clone()),
+                    None => GetDepOutcome::None,
+                },
+            },
+            Observation::Correct(last_seen) => self
+                .state
+                .find_ancestor_unit(last_seen, unit_seq)
+                .and_then(|req_hash| self.state.wire_unit(req_hash, self.instance_id))
+                .map(|swunit| GetDepOutcome::Vertex(ValidVertex(Vertex::Unit(swunit))))
+                .unwrap_or_else(|| GetDepOutcome::None),
         }
     }
 

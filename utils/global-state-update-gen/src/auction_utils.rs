@@ -1,13 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
-use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     system::auction::{
         Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    AsymmetricType, EraId, Key, PublicKey, U512,
+    AsymmetricType, EraId, Key, PublicKey, StoredValue, U512,
 };
 
 use crate::utils::ValidatorsDiff;
