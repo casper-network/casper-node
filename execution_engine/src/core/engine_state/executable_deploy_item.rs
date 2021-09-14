@@ -1,4 +1,4 @@
-//! Ways a smart contract execution can be expressed as.
+//! Smart contract execution parameters.
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
@@ -800,7 +800,7 @@ pub struct DeployMetadata {
     pub account_hash: AccountHash,
     /// Key pointing to the entity we will be running as.
     pub base_key: Key,
-    /// An instance of WASM module.
+    /// An instance of the WASM module.
     pub module: Module,
     /// Contract hash of the running contract.
     pub contract_hash: ContractHash,

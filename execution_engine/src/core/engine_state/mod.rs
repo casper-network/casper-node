@@ -1152,8 +1152,8 @@ where
 
     /// Executes a deploy.
     ///
-    /// A deploy execution consists of running a payment code which is expected to deposit funds
-    /// into a payment purse, and then running a session code with a specific gas limit. For running
+    /// A deploy execution consists of running payment code which is expected to deposit funds
+    /// into a payment purse, and then running session code with a specific gas limit. For running
     /// payment code we let users a [`MAX_PAYMENT`] leash. After successful session code execution
     /// funds are transfered to a proposer of the deploy as specified in the request.
     ///
@@ -1756,7 +1756,7 @@ where
         Ok(missing_descendant_trie_keys)
     }
 
-    /// Looks up for a list of missing root hashes.
+    /// Performs a lookup for a list of missing root hashes.
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,

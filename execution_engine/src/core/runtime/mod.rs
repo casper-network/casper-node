@@ -72,7 +72,7 @@ pub struct Runtime<'a, R> {
 /// This ensures that a memory instance is properly resolved into a pre-allocated memory area, and a
 /// host function resolver is attached to the module.
 ///
-/// WASM module is also validated to not have a "start" section as we currently don't support
+/// The WASM module is also validated to not have a "start" section as we currently don't support
 /// running it.
 ///
 /// Both [`ModuleRef`] and a [`MemoryRef`] are ready to be executed.
@@ -1040,7 +1040,7 @@ where
         &self.call_stack
     }
 
-    /// Returns bytes from WASM memory instance.
+    /// Returns bytes from the WASM memory instance.
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
         self.memory.get(ptr, size).map_err(Into::into)
     }

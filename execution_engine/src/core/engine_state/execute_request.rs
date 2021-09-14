@@ -1,4 +1,4 @@
-//! Code supporting an contract execution request.
+//! Code supporting a contract execution request.
 use std::mem;
 
 use casper_types::{ProtocolVersion, PublicKey, SecretKey};
@@ -6,7 +6,7 @@ use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 use super::deploy_item::DeployItem;
 use crate::shared::newtypes::Blake2bHash;
 
-/// Represents a contract execution request that contains multiple deploys.
+/// Represents a contract execution request that can contain multiple deploys.
 #[derive(Debug)]
 pub struct ExecuteRequest {
     /// State root hash of the global state that the deploys will be executed.

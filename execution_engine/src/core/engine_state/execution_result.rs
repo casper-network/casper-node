@@ -50,7 +50,7 @@ fn make_payment_error_effects(
 pub enum ExecutionResult {
     /// An error condition that happened during execution
     Failure {
-        /// Error condition.
+        /// Error causing this `Failure` variant.
         error: error::Error,
         /// Contains all the effects that occurred during execution up to the point of a failure.
         execution_effect: ExecutionEffect,
