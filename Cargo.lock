@@ -453,7 +453,6 @@ dependencies = [
  "once_cell",
  "parity-wasm",
  "proptest",
- "proptest-attr-macro",
  "pwasm-utils",
  "rand 0.8.4",
  "rand_chacha 0.3.1",

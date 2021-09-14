@@ -31,23 +31,19 @@ use casper_types::{
     EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 
-#[cfg(test)]
-use crate::crypto::generate_ed25519_keypair;
-#[cfg(test)]
-use crate::testing::TestRng;
+use super::{Item, Tag, Timestamp};
 use crate::{
     components::consensus,
     crypto::{self, AsymmetricKeyExt},
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockValidationError},
-        Deploy, DeployHash, DeployOrTransferHash, JsonBlock,
+        Deploy, DeployHash, DeployOrTransferHash, JsonBlock, JsonBlockHeader,
     },
     utils::DisplayIter,
 };
-
-use super::{Item, Tag, Timestamp};
-use crate::types::JsonBlockHeader;
+#[cfg(test)]
+use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();

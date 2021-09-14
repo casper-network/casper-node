@@ -11,6 +11,7 @@ use rand::{
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -46,7 +47,6 @@ use crate::{
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
 };
-use casper_hashing::Digest;
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;

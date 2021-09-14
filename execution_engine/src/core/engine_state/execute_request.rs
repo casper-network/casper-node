@@ -1,9 +1,9 @@
 use std::mem;
 
+use casper_hashing::Digest;
 use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
 use super::deploy_item::DeployItem;
-use casper_hashing::Digest;
 
 #[derive(Debug)]
 pub struct ExecuteRequest {

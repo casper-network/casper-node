@@ -18,7 +18,6 @@ use std::{
 };
 
 use anyhow::Error;
-use casper_hashing::Digest;
 use datasize::DataSize;
 use futures::FutureExt;
 use itertools::Itertools;
@@ -26,8 +25,10 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
+use casper_hashing::Digest;
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
 
+pub use self::era::Era;
 use crate::{
     components::consensus::{
         cl_context::{ClContext, Keypair},
@@ -54,8 +55,6 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
-
-pub use self::era::Era;
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.

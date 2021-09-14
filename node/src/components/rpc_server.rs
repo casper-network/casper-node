@@ -32,7 +32,6 @@ use casper_hashing::Digest;
 use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
-
 use super::Component;
 use crate::{
     components::contract_runtime::EraValidatorsRequest,
@@ -48,7 +47,6 @@ use crate::{
     utils::{self, ListeningError},
     NodeRng,
 };
-
 pub use config::Config;
 pub(crate) use event::Event;
 

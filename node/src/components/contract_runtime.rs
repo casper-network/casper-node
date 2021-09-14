@@ -13,11 +13,6 @@ use std::{
     time::Instant,
 };
 
-pub(crate) use announcements::ContractRuntimeAnnouncement;
-pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError};
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
-
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
@@ -48,6 +43,10 @@ use crate::{
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
+pub(crate) use announcements::ContractRuntimeAnnouncement;
+pub(crate) use config::Config;
+pub(crate) use error::{BlockExecutionError, ConfigError};
+pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.

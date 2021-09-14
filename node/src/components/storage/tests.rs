@@ -7,12 +7,12 @@ use std::{
     fs::{self, File},
 };
 
-use casper_hashing::Digest;
 use lmdb::{Cursor, Transaction};
 use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
+use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
 
 use super::{

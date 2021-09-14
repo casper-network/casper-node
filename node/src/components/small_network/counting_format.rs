@@ -22,11 +22,12 @@ use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
 
+use casper_hashing::Digest;
+
 use super::{tls::KeyFingerprint, Message, Payload};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{components::networking_metrics::NetworkingMetrics, types::NodeId, utils};
-use casper_hashing::Digest;
 
 /// Lazily-evaluated network message ID generator.
 ///

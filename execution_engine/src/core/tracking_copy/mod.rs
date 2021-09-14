@@ -13,6 +13,7 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
@@ -20,6 +21,7 @@ use casper_types::{
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
+use super::engine_state::EngineConfig;
 use crate::{
     core::{
         engine_state::{execution_effect::ExecutionEffect, op::Op},
@@ -32,9 +34,6 @@ use crate::{
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
-use casper_hashing::Digest;
-
-use super::engine_state::EngineConfig;
 
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {

@@ -1,5 +1,6 @@
 use num_traits::{One, Zero};
 
+use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
@@ -18,7 +19,6 @@ use crate::{
         },
     },
 };
-use casper_hashing::Digest;
 
 fn copy_state<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,

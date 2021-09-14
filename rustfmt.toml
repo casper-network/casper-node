@@ -1,5 +1,4 @@
 wrap_comments = true
 comment_width = 100
 imports_granularity = "Crate"
-imports_layout = "Mixed"
 edition = "2018"

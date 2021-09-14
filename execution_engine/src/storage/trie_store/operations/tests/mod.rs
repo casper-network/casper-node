@@ -6,32 +6,33 @@ mod scan;
 mod synchronize;
 mod write;
 
-use std::{collections::HashMap, convert};
+use std::{collections::HashMap, convert, ops::Not};
 
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
-use crate::shared::newtypes::CorrelationId;
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use crate::storage::{
-    error::{self, in_memory},
-    transaction_source::{
-        in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
-        TransactionSource,
+use crate::{
+    shared::newtypes::CorrelationId,
+    storage::{
+        error::{self, in_memory},
+        transaction_source::{
+            in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
+            TransactionSource,
+        },
+        trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
+        trie_store::{
+            self,
+            in_memory::InMemoryTrieStore,
+            lmdb::LmdbTrieStore,
+            operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
+            TrieStore,
+        },
+        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     },
-    trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
-    trie_store::{
-        self,
-        in_memory::InMemoryTrieStore,
-        lmdb::LmdbTrieStore,
-        operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
-        TrieStore,
-    },
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
-use std::ops::Not;
 
 const TEST_KEY_LENGTH: usize = 7;
 
