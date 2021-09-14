@@ -1826,7 +1826,7 @@ fn get_single_block_body_v2<Tx: Transaction>(
         Some(proposer_with_proof) => {
             debug_assert_eq!(
                 *proposer_with_proof.merkle_proof_of_rest(),
-                Digest::SENTINEL1
+                Digest::SENTINEL_RFOLD
             );
             proposer_with_proof
         }
@@ -1869,7 +1869,8 @@ fn garbage_collect_block_body_v2_db(
         }
         let mut current_digest = *body_hash;
         let mut live_digests_index = 1;
-        while current_digest != Digest::SENTINEL1 && !live_digests[0].contains(&current_digest) {
+        while current_digest != Digest::SENTINEL_RFOLD && !live_digests[0].contains(&current_digest)
+        {
             live_digests[0].insert(current_digest);
             let (key_to_part_db, merkle_proof_of_rest): (Digest, Digest) =
                 match txn.get_value_bytesrepr(*block_body_v2_db, &current_digest)? {

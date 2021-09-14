@@ -55,11 +55,11 @@ impl Digest {
     pub const LENGTH: usize = 32;
 
     /// Sentinel hash to be used for hashing options in the case of `None`.
-    pub const SENTINEL0: Digest = Digest([0u8; Digest::LENGTH]);
+    pub const SENTINEL_NONE: Digest = Digest([0u8; Digest::LENGTH]);
     /// Sentinel hash to be used by `hash_slice_rfold`. Terminates the fold.
-    pub const SENTINEL1: Digest = Digest([1u8; Digest::LENGTH]);
+    pub const SENTINEL_RFOLD: Digest = Digest([1u8; Digest::LENGTH]);
     /// Sentinel hash to be used by `hash_vec_merkle_tree` in the case of an empty list.
-    pub const SENTINEL2: Digest = Digest([2u8; Digest::LENGTH]);
+    pub const SENTINEL_MERKLE_TREE: Digest = Digest([2u8; Digest::LENGTH]);
 
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
@@ -93,9 +93,9 @@ impl Digest {
         self.0.to_vec()
     }
 
-    /// Hashes a [`Vec`] of [`Digest`]s into a single [`Digest`] by constructing a [Merkle
-    /// tree][1]. Reduces pairs of elements in the [`Vec`] by repeatedly calling
-    /// [`Digest::hash_pair`]. This hash procedure is suited to hashing `BTree`s.
+    /// Hashes a `Vec` of `Digest`s into a single `Digest` by constructing a [Merkle tree][1].
+    /// Reduces pairs of elements in the `Vec` by repeatedly calling [`Digest::hash_pair`]. This
+    /// hash procedure is suited to hashing `BTree`s.
     ///
     /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
     ///
@@ -111,17 +111,17 @@ impl Digest {
     /// l
     /// ```
     ///
-    /// Returns the [`Digest::SENTINEL2`] when the input is empty.
+    /// Returns [`Digest::SENTINEL_MERKLE_TREE`] when the input is empty.
     ///
     /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
     /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
     pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
         vec.into_iter()
             .tree_fold1(|x, y| Digest::hash_pair(&x, &y))
-            .unwrap_or(Self::SENTINEL2)
+            .unwrap_or(Self::SENTINEL_MERKLE_TREE)
     }
 
-    /// Hashes a [BTreeMap].
+    /// Hashes a `BTreeMap`.
     pub fn hash_btree_map<K, V>(btree_map: &BTreeMap<K, V>) -> Result<Digest, bytesrepr::Error>
     where
         K: ToBytes,
@@ -142,17 +142,17 @@ impl Digest {
     /// This pattern of hashing is as follows:
     ///
     /// ```text
-    /// hash_pair(a, &hash_pair(b, &hash_pair(c, &SENTINEL)))
+    /// hash_pair(a, &hash_pair(b, &hash_pair(c, &SENTINEL_RFOLD)))
     /// ```
     ///
     /// Unlike Merkle trees, this is suited to hashing heterogeneous lists we may wish to extend in
     /// the future (ie, hashes of data structures that may undergo revision).
     ///
-    /// Returns [`Digest::SENTINEL1`] when given an empty [`Vec`] as input.
+    /// Returns [`Digest::SENTINEL_RFOLD`] when given an empty slice as input.
     ///
     /// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
     pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
-        Self::hash_slice_with_proof(slice, Self::SENTINEL1)
+        Self::hash_slice_with_proof(slice, Self::SENTINEL_RFOLD)
     }
 
     /// Hashes a `&[Digest]` using a [right fold][1]. Uses `proof` as a Merkle proof for the

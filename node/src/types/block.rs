@@ -800,7 +800,7 @@ impl BlockHeader {
         } = self;
 
         let hashed_era_end = match era_end {
-            None => Digest::SENTINEL0,
+            None => Digest::SENTINEL_NONE,
             Some(era_end) => era_end.hash(),
         };
 
@@ -1129,7 +1129,7 @@ impl BlockBody {
         let proposer = MerkleBlockBodyPart::new(
             proposer,
             Digest::hash(&proposer.to_bytes().expect("Could not serialize proposer")),
-            Digest::SENTINEL1,
+            Digest::SENTINEL_RFOLD,
         );
 
         let transfer_hashes = MerkleBlockBodyPart::new(
