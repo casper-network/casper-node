@@ -8,7 +8,6 @@ mod era_summary;
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
-use hex_fmt::HexFmt;
 use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
@@ -424,7 +423,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                     era_id,
                     stored_value,
                     state_root_hash,
-                    merkle_proof: format!("{}", HexFmt(proof_bytes)),
+                    merkle_proof: base16::encode_lower(&proof_bytes),
                 }),
             };
 

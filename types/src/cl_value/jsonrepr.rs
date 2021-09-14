@@ -8,9 +8,6 @@ use crate::{
     checksummed_hex, CLType, CLValue, Key, PublicKey, URef, U128, U256, U512,
 };
 
-// TODO: Replace with node config.
-const MAX_CHECKSUM_HEX_BYTES: usize = 75;
-
 /// Returns a best-effort attempt to convert the `CLValue` into a meaningful JSON value.
 pub fn cl_value_to_json(cl_value: &CLValue) -> Option<Value> {
     to_json(cl_value.cl_type(), cl_value.inner_bytes()).and_then(|(json_value, remainder)| {
@@ -58,11 +55,7 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
         }
         CLType::ByteArray(length) => {
             let (bytes, remainder) = bytesrepr::safe_split_at(bytes, *length as usize).ok()?;
-            let hex_encoded_bytes = if bytes.len() < MAX_CHECKSUM_HEX_BYTES {
-                checksummed_hex::encode(&bytes)
-            } else {
-                base16::encode_lower(&bytes)
-            };
+            let hex_encoded_bytes = checksummed_hex::checksum_encode_if_small(&bytes);
             Some((json![hex_encoded_bytes], remainder))
         }
         CLType::Result { ok, err } => {

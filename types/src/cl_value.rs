@@ -19,8 +19,6 @@ use crate::{
 
 mod jsonrepr;
 
-// TODO: Replace with node config.
-const MAX_CHECKSUM_HEX_BYTES: usize = 75;
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct CLTypeMismatch {
@@ -192,14 +190,9 @@ struct CLValueJson {
 impl Serialize for CLValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            let bytes = if self.bytes.len() < MAX_CHECKSUM_HEX_BYTES {
-                checksummed_hex::encode(&self.bytes)
-            } else {
-                base16::encode_lower(&self.bytes)
-            };
             CLValueJson {
                 cl_type: self.cl_type.clone(),
-                bytes,
+                bytes: checksummed_hex::checksum_encode_if_small(&self.bytes),
                 parsed: jsonrepr::cl_value_to_json(self),
             }
             .serialize(serializer)

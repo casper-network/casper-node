@@ -398,7 +398,8 @@ impl JsonSchema for PublicKey {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Check-summed hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
+            "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix."
+                .to_string(),
         );
         schema_object.into()
     }
@@ -650,7 +651,7 @@ impl JsonSchema for Signature {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Check-summed hex-encoded cryptographic signature, including the algorithm tag prefix."
+            "Checksummed hex-encoded cryptographic signature, including the algorithm tag prefix."
                 .to_string(),
         );
         schema_object.into()

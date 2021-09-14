@@ -1,4 +1,4 @@
-//! Check-summed hex encoding following an [EIP-55][1]-like scheme.
+//! Checksummed hex encoding following an [EIP-55][1]-like scheme.
 //!
 //! Contains a [serde] helper trait [CheckSummedHex] which is based on [`hex_buffer_serde::Hex`][2].
 //!
@@ -13,6 +13,15 @@ use serde::{
     de::{Error as DeError, Unexpected, Visitor},
     Deserializer, Serializer,
 };
+
+/// The number of input bytes, at or below which [`checksum_encode_if_small`] will checksum-encode
+/// the output.
+pub const SMALL_BYTES_COUNT: usize = 75;
+
+const HEX_CHARS: [char; 22] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C',
+    'D', 'E', 'F',
+];
 
 /// Takes a slice of bytes and breaks it up into a vector of *nibbles* (ie, 4-bit values)
 /// represented as `u8`s.
@@ -38,11 +47,6 @@ fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-const HEX_CHARS: [char; 22] = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C',
-    'D', 'E', 'F',
-];
-
 /// Encodes bytes as hexadecimal with mixed-case based checksums following a scheme similar to
 /// [EIP-55][1].
 ///
@@ -53,17 +57,7 @@ const HEX_CHARS: [char; 22] = [
 ///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
 pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
-    let input_bytes = input.as_ref();
-    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
-    let mut hex_output_string = String::with_capacity(input_bytes.len() * 2);
-
-    for mut nibble in bytes_to_nibbles(input_bytes) {
-        if nibble >= 10 && hash_bits.next().unwrap_or(true) {
-            nibble += 6;
-        }
-        hex_output_string.push(HEX_CHARS[nibble as usize])
-    }
-    hex_output_string
+    encode_iter(input).collect()
 }
 
 /// `encode` but it returns an iterator.
@@ -78,6 +72,16 @@ pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = 
         }
         HEX_CHARS[nibble as usize]
     })
+}
+
+/// Returns checksummed hex-encoded output (as per [`encode`]) if `input.len()` is less than or
+/// equal to [`SMALL_BYTES_COUNT`], otherwise returns lowercase hex output.
+pub fn checksum_encode_if_small(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
+    if input.as_ref().len() <= SMALL_BYTES_COUNT {
+        encode(input)
+    } else {
+        base16::encode_lower(input)
+    }
 }
 
 /// Returns true if all chars in a string are uppercase or lowercase.
@@ -121,13 +125,13 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
         encode_iter(&bytes)
             .zip(input_string_bytes.iter())
             .enumerate()
-            .try_for_each(|(index, (input_hex_char, &expected_case_hex_char))| {
-                if input_hex_char as u8 == expected_case_hex_char {
+            .try_for_each(|(index, (expected_case_hex_char, &input_hex_char))| {
+                if expected_case_hex_char as u8 == input_hex_char {
                     Ok(())
                 } else {
                     Err(base16::DecodeError::InvalidByte {
                         index,
-                        byte: expected_case_hex_char,
+                        byte: expected_case_hex_char as u8,
                     })
                 }
             })?;
@@ -135,14 +139,14 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
     Ok(bytes)
 }
 
-/// Provides check-summed hex-encoded (de)serialization for `serde`, an following an
-/// [EIP-55][1]-like scheme.
+/// Provides checksummed hex-encoded (de)serialization for `serde` when used with human-readable
+/// (de/en)coders, following an [EIP-55][1]-like scheme.  For non-human-readable (de/en)coders, the
+/// value is (de)serialized as a byte array.
 ///
 /// Note that the trait is automatically implemented for types that implement [`AsRef`]`<[u8]>` and
 /// [`TryFrom`]`<&[u8]>`.
 ///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
-#[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
 pub trait CheckSummedHex<T> {
     /// Error returned on unsuccessful deserialization.
     type Error: fmt::Display;
@@ -181,7 +185,7 @@ pub trait CheckSummedHex<T> {
             type Value = Vec<u8>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("check-summed hex-encoded byte array")
+                formatter.write_str("checksummed hex-encoded byte array")
             }
 
             fn visit_str<E: DeError>(self, value: &str) -> Result<Self::Value, E> {
@@ -240,10 +244,6 @@ where
 }
 
 #[cfg(test)]
-#[allow(renamed_and_removed_lints, clippy::unknown_clippy_lints)]
-// ^ `map_err_ignore` is newer than MSRV, and `clippy::unknown_clippy_lints` is removed
-// since Rust 1.51.
-//
 // Tests taken from https://github.com/slowli/hex-buffer-serde/blob/8ff1523898497d1e4f65781bcb076070109c9df3/src/var_len.rs#L138
 mod tests {
     use super::*;
@@ -317,7 +317,7 @@ mod tests {
                 .unwrap_err()
                 .to_string();
             assert!(
-                err.contains("expected check-summed hex-encoded byte array"),
+                err.contains("expected checksummed hex-encoded byte array"),
                 "{}",
                 err
             );
@@ -417,7 +417,6 @@ mod tests {
 
     #[test]
     fn deserializing_flattened_field() {
-        use serde_cbor;
         // The fields in the flattened structure are somehow read with
         // a human-readable `Deserializer`, even if the original `Deserializer`
         // is not human-readable.
@@ -507,12 +506,62 @@ mod tests {
         assert!(string_is_same_case(input));
     }
 
+    #[test]
+    fn should_checksum_encode_only_if_small() {
+        let input = [255; SMALL_BYTES_COUNT + 1];
+        let small_output = checksum_encode_if_small(&input[..SMALL_BYTES_COUNT]);
+        assert!(!string_is_same_case(&small_output));
+
+        let large_output = checksum_encode_if_small(&input);
+        assert!(string_is_same_case(&large_output));
+    }
+
     #[proptest]
     fn hex_roundtrip(input: Vec<u8>) {
         prop_assert_eq!(
             input.clone(),
             decode(&encode(&input)).expect("Failed to decode input.")
         );
+    }
+
+    #[proptest]
+    fn should_fail_on_invalid_checksum(input: Vec<u8>) {
+        let encoded = encode(&input);
+
+        // Swap the case of the first letter in the checksum hex-encoded value.
+        let mut expected_error = None;
+        let mutated: String = encoded
+            .char_indices()
+            .map(|(index, mut c)| {
+                if expected_error.is_some() || c.is_ascii_digit() {
+                    return c;
+                }
+                expected_error = Some(base16::DecodeError::InvalidByte {
+                    index,
+                    byte: c as u8,
+                });
+                if c.is_ascii_uppercase() {
+                    c.make_ascii_lowercase();
+                } else {
+                    c.make_ascii_uppercase();
+                }
+                c
+            })
+            .collect();
+
+        // If the encoded form is now all the same case or digits, just return.
+        if string_is_same_case(&mutated) {
+            return Ok(());
+        }
+
+        // Assert we can still decode to original input using `base16::decode`.
+        prop_assert_eq!(
+            input,
+            base16::decode(&mutated).expect("Failed to decode input.")
+        );
+
+        // Assert decoding using `checksummed_hex::decode` returns the expected error.
+        prop_assert_eq!(expected_error.unwrap(), decode(&mutated).unwrap_err())
     }
 
     #[proptest]

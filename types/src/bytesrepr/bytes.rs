@@ -10,7 +10,6 @@ use core::{
     slice,
 };
 
-use base16;
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
@@ -23,9 +22,6 @@ use serde::{
 
 use super::{Error, FromBytes, ToBytes};
 use crate::{checksummed_hex, CLType, CLTyped};
-
-// TODO: Replace with node config.
-const MAX_CHECKSUM_HEX_BYTES: usize = 75;
 
 /// A newtype wrapper for bytes that has efficient serialization routines.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Default, Hash)]
@@ -294,12 +290,7 @@ impl Serialize for Bytes {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            let bytes = if self.0.len() < MAX_CHECKSUM_HEX_BYTES {
-                checksummed_hex::encode(&self.0)
-            } else {
-                base16::encode_lower(&self.0)
-            };
-            bytes.serialize(serializer)
+            checksummed_hex::checksum_encode_if_small(&self.0).serialize(serializer)
         } else {
             serializer.serialize_bytes(&self.0)
         }

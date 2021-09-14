@@ -217,7 +217,7 @@
       ]
     },
     "Digest": {
-      "description": "Check-summed hex-encoded hash digest.",
+      "description": "Checksummed hex-encoded hash digest.",
       "type": "string"
     },
     "JsonBlock": {
@@ -355,7 +355,7 @@
       "additionalProperties": false
     },
     "PublicKey": {
-      "description": "Check-summed hex-encoded cryptographic public key, including the algorithm tag prefix.",
+      "description": "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix.",
       "type": "string"
     },
     "Reward": {
@@ -461,7 +461,7 @@
       "additionalProperties": false
     },
     "Signature": {
-      "description": "Check-summed hex-encoded cryptographic signature, including the algorithm tag prefix.",
+      "description": "Checksummed hex-encoded cryptographic signature, including the algorithm tag prefix.",
       "type": "string"
     },
     "Deploy": {
@@ -587,7 +587,7 @@
               ],
               "properties": {
                 "hash": {
-                  "description": "Check-summed hex-encoded hash.",
+                  "description": "Checksummed hex-encoded hash.",
                   "type": "string"
                 },
                 "entry_point": {
@@ -646,7 +646,7 @@
               ],
               "properties": {
                 "hash": {
-                  "description": "Check-summed hex-encoded hash.",
+                  "description": "Checksummed hex-encoded hash.",
                   "type": "string"
                 },
                 "version": {
@@ -1342,7 +1342,7 @@
       ]
     },
     "AccountHash": {
-      "description": "Check-summed hex-encoded account hash.",
+      "description": "Checksummed hex-encoded account hash.",
       "type": "string"
     },
     "DeployInfo": {
@@ -1399,11 +1399,11 @@
       "additionalProperties": false
     },
     "TransferAddr": {
-      "description": "Check-summed hex-encoded transfer address.",
+      "description": "Checksummed hex-encoded transfer address.",
       "type": "string"
     },
     "URef": {
-      "description": "Check-summed hex-encoded, formatted URef.",
+      "description": "Checksummed hex-encoded, formatted URef.",
       "type": "string"
     },
     "EraInfo": {

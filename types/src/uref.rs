@@ -207,7 +207,7 @@ impl JsonSchema for URef {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description =
-            Some("Check-summed hex-encoded, formatted URef.".to_string());
+            Some("Checksummed hex-encoded, formatted URef.".to_string());
         schema_object.into()
     }
 }
