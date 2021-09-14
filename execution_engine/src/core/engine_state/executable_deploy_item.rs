@@ -117,6 +117,13 @@ impl ExecutableDeployItem {
         matches!(self, ExecutableDeployItem::Transfer { .. })
     }
 
+    pub fn is_system_payment(&self) -> bool {
+        match self {
+            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => module_bytes.is_empty(),
+            _ => false,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn get_deploy_metadata<R>(
         &self,

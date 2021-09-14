@@ -832,7 +832,7 @@ impl Deploy {
             });
         }
 
-        if self.session().is_transfer() {
+        if self.session().is_transfer() && !self.payment().is_system_payment() {
             let item = self.session().clone();
             let attempted = item
                 .args()
