@@ -14,7 +14,10 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Added `archival_sync` to `[node]` config section
+* Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
+* Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
+* Added an optional `trusted_hash_time_to_expiration` parameter to the `[node]` section of the
+  config. Follows the humantime convention ('30sec', '120min', etc.)
 
 ### Changed
 * Support building and testing using stable Rust.

@@ -617,6 +617,18 @@ pub(crate) async fn run_fast_sync_task(
     // Fetch the trusted header
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
+    if let Some(trusted_hash_time_to_expiration) = node_config.trusted_hash_time_to_expiration {
+        let current_time = Timestamp::now();
+        if trusted_block_header.timestamp() + trusted_hash_time_to_expiration < current_time {
+            return Err(LinearChainSyncError::TrustedBlockHeaderHasExpired {
+                current_time,
+                trusted_hash_time_to_expiration,
+                trusted_hash,
+                trusted_block_header,
+            });
+        }
+    }
+
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     match maybe_last_emergency_restart_era_id {
         Some(last_emergency_restart_era)

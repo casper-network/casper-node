@@ -5,6 +5,11 @@
 
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
+
+# If set, do not accept a trusted hash (or block from storage) older than this setting when joining.
+#trusted_hash_time_to_expiration = '12hour'
+
+# Whether to synchronize all data back to genesis when joining.
 archival_sync = false
 
 # =================================
