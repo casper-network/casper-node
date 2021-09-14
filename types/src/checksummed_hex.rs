@@ -63,12 +63,14 @@ pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
 /// `encode` but it returns an iterator.
 pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = char> + '_ {
     let input_bytes = input.as_ref();
-    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
     let nibbles = bytes_to_nibbles(input_bytes);
-
+    let mut maybe_hash_bits =
+        (input_bytes.len() <= SMALL_BYTES_COUNT).then(|| bytes_to_bits_cycle(blake2b_hash(input)));
     nibbles.map(move |mut nibble| {
-        if nibble >= 10 && hash_bits.next().unwrap_or(true) {
-            nibble += 6;
+        if let Some(hash_bits) = maybe_hash_bits.as_mut() {
+            if nibble >= 10 && hash_bits.next().unwrap_or(true) {
+                nibble += 6;
+            }
         }
         HEX_CHARS[nibble as usize]
     })
