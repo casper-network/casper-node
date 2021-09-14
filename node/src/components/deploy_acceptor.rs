@@ -5,7 +5,7 @@ mod tests;
 
 use std::fmt::Debug;
 
-use prometheus::{Registry};
+use prometheus::Registry;
 use thiserror::Error;
 use tracing::{debug, error, info};
 
