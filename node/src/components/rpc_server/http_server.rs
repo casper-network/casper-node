@@ -117,9 +117,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     // TODO - we can't catch cases where we should return `warp_json_rpc::Error::INVALID_REQUEST`
     //        (i.e. where the request is JSON, but not valid JSON-RPC).  This will require an
     //        update to or move away from warp_json_rpc.
-    let service = warp_json_rpc::service(
-        service_routes_gzip.or(service_routes)
-    );
+    let service = warp_json_rpc::service(service_routes_gzip.or(service_routes));
 
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =
