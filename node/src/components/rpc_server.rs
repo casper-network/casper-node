@@ -339,17 +339,20 @@ mod tests {
 
     #[test]
     fn schema() {
+        // The expected schema depends on the hashing algorithm
+        // selected by the `casper-mainnet` feature.
+
+        #[cfg(feature = "casper-mainnet")]
         let schema_path = format!(
-            "{}/../resources/test/rpc_schema.json",
+            "{}/../resources/test/rpc_schema_hashing_V1.json",
             env!("CARGO_MANIFEST_DIR")
         );
 
-        // TODO: json atoms at path ".examples[0].methods[6].examples[0].result.value.build_version"
-        // are not equal:
-        //  lhs:
-        //  "1.0.0-c5c489d09@DEBUG"
-        //  rhs:
-        //  "1.0.0-f9d88de2b@DEBUG"
+        #[cfg(not(feature = "casper-mainnet"))]
+        let schema_path = format!(
+            "{}/../resources/test/rpc_schema_hashing_V2.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
 
         let expected_schema = fs::read_to_string(schema_path).unwrap();
         let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
