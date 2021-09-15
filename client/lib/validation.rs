@@ -6,8 +6,8 @@ use thiserror::Error;
 use casper_execution_engine::{
     core, core::ValidationError, storage::trie::merkle_proof::TrieMerkleProof,
 };
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::hash::Digest,
     rpcs::{
         chain::{BlockIdentifier, EraSummary, GetEraInfoResult},
         state::GlobalStateIdentifier,
@@ -111,7 +111,7 @@ pub(crate) fn validate_get_era_info_response(
             };
 
             core::validate_query_proof(
-                &state_root_hash.to_owned().into(),
+                &state_root_hash.to_owned(),
                 &proofs,
                 &key,
                 path,
@@ -173,14 +173,8 @@ pub(crate) fn validate_query_response(
         }
     }
 
-    core::validate_query_proof(
-        &state_root_hash.to_owned().into(),
-        &proofs,
-        key,
-        path,
-        proof_value,
-    )
-    .map_err(Into::into)
+    core::validate_query_proof(&state_root_hash.to_owned(), &proofs, key, path, proof_value)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_query_global_state(
@@ -234,14 +228,8 @@ pub(crate) fn validate_query_global_state(
         (GlobalStateIdentifier::StateRootHash(hash), None) => hash,
     };
 
-    core::validate_query_proof(
-        &state_root_hash.to_owned().into(),
-        &proofs,
-        key,
-        path,
-        proof_value,
-    )
-    .map_err(Into::into)
+    core::validate_query_proof(&state_root_hash.to_owned(), &proofs, key, path, proof_value)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_get_balance_response(
@@ -280,13 +268,8 @@ pub(crate) fn validate_get_balance_response(
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?
     };
 
-    core::validate_balance_proof(
-        &state_root_hash.to_owned().into(),
-        &balance_proof,
-        *key,
-        &balance,
-    )
-    .map_err(Into::into)
+    core::validate_balance_proof(&state_root_hash.to_owned(), &balance_proof, *key, &balance)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_get_block_response(

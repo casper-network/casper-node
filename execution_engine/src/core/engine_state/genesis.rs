@@ -11,6 +11,7 @@ use rand::{
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -24,7 +25,7 @@ use casper_types::{
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::{self},
+        handle_payment,
         mint::{
             self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
@@ -43,11 +44,7 @@ use crate::{
         execution::{AddressGenerator, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
 };
 
@@ -58,7 +55,7 @@ pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
 #[derive(Debug)]
 pub struct GenesisSuccess {
-    pub post_state_hash: Blake2bHash,
+    pub post_state_hash: Digest,
     pub execution_effect: ExecutionEffect,
 }
 
@@ -665,7 +662,7 @@ where
     S: StateProvider,
     S::Error: Into<execution::Error>,
 {
-    genesis_config_hash: Blake2bHash,
+    genesis_config_hash: Digest,
     virtual_system_account: Account,
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
@@ -684,7 +681,7 @@ where
     S::Error: Into<execution::Error>,
 {
     pub(crate) fn new(
-        genesis_config_hash: Blake2bHash,
+        genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         engine_config: EngineConfig,
