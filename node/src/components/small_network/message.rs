@@ -183,6 +183,12 @@ pub(crate) trait Payload:
     }
 }
 
+/// Network message conversion support.
+pub(crate) trait FromIncoming<I, P> {
+    /// Creates a new value from a received payload.
+    fn from_incoming(sender: I, payload: P) -> Self;
+}
+
 #[cfg(test)]
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
