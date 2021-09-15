@@ -12,6 +12,7 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
+use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
 
 use super::{
@@ -21,7 +22,7 @@ use super::{
 };
 use crate::{
     components::storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,

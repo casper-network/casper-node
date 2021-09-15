@@ -13,11 +13,6 @@ use std::{
     time::Instant,
 };
 
-pub(crate) use announcements::ContractRuntimeAnnouncement;
-pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError};
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
-
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
@@ -29,21 +24,17 @@ use casper_execution_engine::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
         GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
         global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
+use casper_hashing::Digest;
 use casper_types::{Key, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
-    crypto::hash::Digest,
     effect::{
         announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
         EffectExt, Effects,
@@ -52,6 +43,10 @@ use crate::{
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
+pub(crate) use announcements::ContractRuntimeAnnouncement;
+pub(crate) use config::Config;
+pub(crate) use error::{BlockExecutionError, ConfigError};
+pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
@@ -319,8 +314,7 @@ where
                 trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                let request =
-                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                let request = GetEraValidatorsRequest::new(state_root_hash, protocol_version);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
@@ -554,7 +548,7 @@ impl ContractRuntime {
         let ee_config = chainspec.into();
         self.engine_state.commit_genesis(
             correlation_id,
-            genesis_config_hash.into(),
+            genesis_config_hash,
             protocol_version,
             &ee_config,
         )
@@ -579,8 +573,8 @@ impl ContractRuntime {
     /// Retrieve trie keys for the integrity check.
     pub(crate) fn trie_store_check(
         &self,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, engine_state::Error> {
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         self.engine_state
             .missing_trie_keys(correlation_id, trie_keys)
@@ -668,7 +662,7 @@ impl ContractRuntime {
     /// Read a [Trie<Key, StoredValue>] from the trie store.
     pub(crate) fn read_trie(
         &self,
-        trie_key: Blake2bHash,
+        trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();

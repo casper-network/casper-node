@@ -19,10 +19,10 @@ backtrace = "0.3.50"
 base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
-blake2 = { version = "0.9.0", default-features = false }
 bytes = "1.0.1"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node-macros = { version = "1.0.0", path = "../node_macros" }
+casper-hashing = { version = "1.0.0", path = "../hashing" }
 casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std", "gens"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }

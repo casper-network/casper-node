@@ -83,7 +83,7 @@ mod empty_tries {
 
     #[test]
     fn in_memory_writes_to_n_leaf_empty_trie_had_expected_store_contents() {
-        let expected_contents: HashMap<Blake2bHash, TestTrie> = {
+        let expected_contents: HashMap<Digest, TestTrie> = {
             let mut ret = HashMap::new();
             for generator in &TEST_TRIE_GENERATORS {
                 let (_, tries) = generator().unwrap();
@@ -94,7 +94,7 @@ mod empty_tries {
             ret
         };
 
-        let actual_contents: HashMap<Blake2bHash, TestTrie> = {
+        let actual_contents: HashMap<Digest, TestTrie> = {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
             let context = InMemoryTestContext::new(&tries).unwrap();
@@ -122,7 +122,7 @@ mod partial_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        states: &[Blake2bHash],
+        states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
@@ -207,7 +207,7 @@ mod partial_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        states: &[Blake2bHash],
+        states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
@@ -317,7 +317,7 @@ mod full_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        states: &[Blake2bHash],
+        states: &[Digest],
         index: usize,
     ) -> Result<(), E>
     where
@@ -370,7 +370,7 @@ mod full_tries {
     fn lmdb_noop_writes_to_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();
@@ -392,7 +392,7 @@ mod full_tries {
     fn in_memory_noop_writes_to_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();
@@ -414,7 +414,7 @@ mod full_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        states: &[Blake2bHash],
+        states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
@@ -450,7 +450,7 @@ mod full_tries {
             WriteResult::Written(root_hash) => *root_hash,
             _ => panic!("write_leaves resulted in non-write"),
         })
-        .collect::<Vec<Blake2bHash>>();
+        .collect::<Vec<Digest>>();
 
         states.extend(hashes);
 
@@ -494,7 +494,7 @@ mod full_tries {
     fn lmdb_update_writes_to_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();
@@ -516,7 +516,7 @@ mod full_tries {
     fn in_memory_update_writes_to_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();
@@ -538,7 +538,7 @@ mod full_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        states: &[Blake2bHash],
+        states: &[Digest],
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
@@ -574,7 +574,7 @@ mod full_tries {
             WriteResult::Written(root_hash) => *root_hash,
             _ => panic!("write_leaves resulted in non-write"),
         })
-        .collect::<Vec<Blake2bHash>>();
+        .collect::<Vec<Digest>>();
 
         states.extend(hashes);
 
@@ -617,7 +617,7 @@ mod full_tries {
     fn lmdb_node_writes_to_5_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for generator in &TEST_TRIE_GENERATORS {
             let (root_hash, tries) = generator().unwrap();
@@ -638,7 +638,7 @@ mod full_tries {
     fn in_memory_node_writes_to_5_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for generator in &TEST_TRIE_GENERATORS {
             let (root_hash, tries) = generator().unwrap();

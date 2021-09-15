@@ -3,11 +3,13 @@
 
 use std::{convert::TryInto, fs, io, path::PathBuf, str::FromStr};
 
+use hex::FromHex;
 use serde::{self, Deserialize};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::{self, AsymmetricKeyExt},
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
@@ -60,7 +62,7 @@ fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
     for value in values {
         let digest = Digest::from_hex(value).map_err(|error| Error::CryptoError {
             context: "dependencies",
-            error,
+            error: crypto::Error::FromHex(error),
         })?;
         hashes.push(DeployHash::new(digest))
     }
@@ -587,7 +589,7 @@ fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
         return Ok(None);
     }
     if let Ok(digest) = Digest::from_hex(value) {
-        return Ok(Some(digest.to_array()));
+        return Ok(Some(digest.value()));
     }
     if let Ok(Key::Hash(hash)) = Key::from_formatted_str(value) {
         return Ok(Some(hash));
