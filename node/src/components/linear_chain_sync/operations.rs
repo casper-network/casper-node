@@ -557,7 +557,8 @@ async fn archival_sync(
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
 ) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
-    // Get the trusted block info. This will fail if we are trying to join with a trusted hash in era 0.
+    // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
+    // era 0.
     let mut trusted_key_block_info =
         get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
 
@@ -643,6 +644,31 @@ pub(crate) async fn run_fast_sync_task(
             );
         }
         _ => {}
+    }
+
+    // If we are at an upgrade:
+    // 1. Sync the trie store
+    // 2. Get the trusted era validators from the last switchblock
+    // 3. Try to get the next block by height; if there is `None` then switch to the participating
+    //    reactor.
+    if trusted_block_header.is_switch_block()
+        && trusted_block_header.era_id().successor()
+            == chainspec.protocol_config.activation_point.era_id()
+    {
+        sync_trie_store(effect_builder, *trusted_block_header.state_root_hash()).await?;
+        let trusted_key_block_info =
+            get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
+        if fetch_and_store_block_by_height(
+            effect_builder,
+            trusted_block_header.height() + 1,
+            &trusted_key_block_info,
+            chainspec.highway_config.finality_threshold_fraction,
+        )
+        .await?
+        .is_none()
+        {
+            return Ok(*trusted_block_header);
+        }
     }
 
     let (mut trusted_key_block_info, mut most_recent_block_header) = if node_config.archival_sync {

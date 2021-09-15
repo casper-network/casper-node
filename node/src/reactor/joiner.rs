@@ -21,7 +21,6 @@ use casper_types::Key;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
-use crate::types::BlockHash;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
