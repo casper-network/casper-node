@@ -5,6 +5,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+use casper_types::{allocate_buffer, bytesrepr::ToBytes};
 use itertools::Itertools;
 
 #[cfg_attr(
@@ -54,6 +55,22 @@ pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
     merkle_proof: Vec<Blake2bHash>,
+}
+
+impl ToBytes for IndexedMerkleProof {
+    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.index.to_bytes()?);
+        result.append(&mut self.count.to_bytes()?);
+        result.append(&mut self.merkle_proof.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.index.serialized_length()
+            + self.count.serialized_length()
+            + self.merkle_proof.serialized_length()
+    }
 }
 
 impl IndexedMerkleProof {
@@ -456,5 +473,51 @@ mod test {
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
         serde_json::from_str::<IndexedMerkleProof>(&json)
             .expect_err("shoud not deserialize correctly");
+    }
+
+    fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
+        let mut rng = rand::thread_rng();
+        let leaf_count: u64 = rng.gen_range(1..100);
+        let index = rng.gen_range(0..leaf_count);
+        let leaves: Vec<Blake2bHash> = (0..leaf_count)
+            .map(|i| blake2b_hash(i.to_le_bytes()))
+            .collect();
+        let indexed_merkle_proof = IndexedMerkleProof::new(leaves.iter().cloned(), index).unwrap();
+
+        IndexedMerkleProof::new(leaves, index).expect("should create indexed merkle proof")
+    }
+
+    #[test]
+    fn bytesrepr_serialization() {
+        let original_indexed_merkle_proof = dummy_indexed_merkle_proof();
+
+        let bytes = original_indexed_merkle_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+
+        // let (deserialized_indexed_merkle_proof, remainder) =
+        //     IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
+
+        // assert_eq!(
+        //     original_indexed_merkle_proof,
+        //     deserialized_indexed_merkle_proof
+        // );
+        // assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn bytesrepr_serialization_with_remainder() {
+        // let original_hash = blake2b_hash("shrimp");
+        // let mut bytes = original_hash
+        //     .to_bytes()
+        //     .expect("should serialize correctly");
+        // bytes.push(0xFF);
+
+        // let (deserialized_hash, remainder) =
+        //     Blake2bHash::from_bytes(&bytes).expect("should deserialize correctly");
+
+        // assert_eq!(original_hash, deserialized_hash);
+        // assert_eq!(remainder.first().unwrap(), &0xFF);
+        // assert_eq!(remainder.len(), 1);
     }
 }
