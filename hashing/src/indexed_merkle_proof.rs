@@ -178,9 +178,7 @@ impl IndexedMerkleProof {
     }
 
     #[cfg(test)]
-    fn inject_merkle_proof(&mut self, merkle_proof: Vec<Blake2bHash>) {
-        use crate::blake2b_hash::Blake2bHash;
-
+    pub(crate) fn inject_merkle_proof(&mut self, merkle_proof: Vec<Blake2bHash>) {
         self.merkle_proof = merkle_proof;
     }
 
