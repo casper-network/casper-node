@@ -235,6 +235,9 @@ fn main() {
     let types = Package::cargo("types", &*regex_data::types::DEPENDENT_FILES);
     types.update();
 
+    let hashing = Package::cargo("hashing", &*regex_data::hashing::DEPENDENT_FILES);
+    hashing.update();
+
     let execution_engine = Package::cargo(
         "execution_engine",
         &*regex_data::execution_engine::DEPENDENT_FILES,

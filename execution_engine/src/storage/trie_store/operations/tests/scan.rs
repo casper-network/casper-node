@@ -1,10 +1,12 @@
-use crate::shared::newtypes::CorrelationId;
 use casper_hashing::Digest;
 
 use super::*;
-use crate::storage::{
-    error::{self, in_memory},
-    trie_store::operations::{scan, TrieScan},
+use crate::{
+    shared::newtypes::CorrelationId,
+    storage::{
+        error::{self, in_memory},
+        trie_store::operations::{scan, TrieScan},
+    },
 };
 
 fn check_scan<'a, R, S, E>(

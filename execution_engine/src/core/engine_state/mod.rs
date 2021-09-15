@@ -28,6 +28,7 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
@@ -84,7 +85,6 @@ use crate::{
         trie::Trie,
     },
 };
-use casper_hashing::Digest;
 
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));

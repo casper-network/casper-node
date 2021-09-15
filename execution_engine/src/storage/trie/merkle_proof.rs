@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
+use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use crate::storage::trie::{Pointer, Trie, RADIX};
-use casper_hashing::Digest;
 
 const TRIE_MERKLE_PROOF_STEP_NODE_ID: u8 = 0;
 const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;

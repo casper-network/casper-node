@@ -4,13 +4,14 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::{debug, warn};
 
-use crate::types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature};
 use casper_hashing::Digest;
 use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
+use crate::types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature};
+
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain {
     /// The most recently added block.

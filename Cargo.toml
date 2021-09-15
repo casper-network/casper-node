@@ -7,13 +7,13 @@ members = [
     "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
+    "hashing",
     "node",
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
     "types",
-    "utils/validation",
     "utils/global-state-update-gen",
-    "hashing",
+    "utils/validation",
 ]
 
 default-members = [
@@ -23,10 +23,10 @@ default-members = [
     "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
+    "hashing",
     "node",
     "utils/global-state-update-gen",
     "utils/validation",
-    "hashing",
 ]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful

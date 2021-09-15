@@ -1,14 +1,15 @@
 mod partial_tries {
-    use crate::shared::newtypes::CorrelationId;
-
-    use crate::storage::{
-        transaction_source::{Transaction, TransactionSource},
-        trie::Trie,
-        trie_store::operations::{
-            self,
-            tests::{
-                InMemoryTestContext, LmdbTestContext, TestKey, TestValue, TEST_LEAVES,
-                TEST_TRIE_GENERATORS,
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::{Transaction, TransactionSource},
+            trie::Trie,
+            trie_store::operations::{
+                self,
+                tests::{
+                    InMemoryTestContext, LmdbTestContext, TestKey, TestValue, TEST_LEAVES,
+                    TEST_TRIE_GENERATORS,
+                },
             },
         },
     };
@@ -87,17 +88,19 @@ mod partial_tries {
 }
 
 mod full_tries {
-    use crate::shared::newtypes::CorrelationId;
     use casper_hashing::Digest;
 
-    use crate::storage::{
-        transaction_source::{Transaction, TransactionSource},
-        trie::Trie,
-        trie_store::operations::{
-            self,
-            tests::{
-                InMemoryTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
-                TEST_TRIE_GENERATORS,
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::{Transaction, TransactionSource},
+            trie::Trie,
+            trie_store::operations::{
+                self,
+                tests::{
+                    InMemoryTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
+                    TEST_TRIE_GENERATORS,
+                },
             },
         },
     };
@@ -148,18 +151,20 @@ mod full_tries {
 
 #[cfg(debug_assertions)]
 mod keys_iterator {
-    use crate::shared::newtypes::CorrelationId;
     use casper_hashing::Digest;
     use casper_types::bytesrepr;
 
-    use crate::storage::{
-        transaction_source::TransactionSource,
-        trie::{Pointer, Trie},
-        trie_store::operations::{
-            self,
-            tests::{
-                hash_test_tries, HashedTestTrie, HashedTrie, InMemoryTestContext, TestKey,
-                TestValue, TEST_LEAVES,
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::TransactionSource,
+            trie::{Pointer, Trie},
+            trie_store::operations::{
+                self,
+                tests::{
+                    hash_test_tries, HashedTestTrie, HashedTrie, InMemoryTestContext, TestKey,
+                    TestValue, TEST_LEAVES,
+                },
             },
         },
     };
@@ -248,14 +253,15 @@ mod keys_iterator {
 }
 
 mod keys_with_prefix_iterator {
-    use crate::shared::newtypes::CorrelationId;
-
-    use crate::storage::{
-        transaction_source::TransactionSource,
-        trie::Trie,
-        trie_store::operations::{
-            self,
-            tests::{create_6_leaf_trie, InMemoryTestContext, TestKey, TestValue, TEST_LEAVES},
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::TransactionSource,
+            trie::Trie,
+            trie_store::operations::{
+                self,
+                tests::{create_6_leaf_trie, InMemoryTestContext, TestKey, TestValue, TEST_LEAVES},
+            },
         },
     };
 

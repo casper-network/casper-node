@@ -2,10 +2,10 @@ use thiserror::Error;
 
 use datasize::DataSize;
 
+use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
 use crate::core::engine_state::error::Error;
-use casper_hashing::Digest;
 
 #[derive(Debug, Error, DataSize)]
 pub enum GetEraValidatorsError {

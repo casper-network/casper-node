@@ -19,6 +19,13 @@ use std::{
     time::Duration,
 };
 
+use datasize::DataSize;
+use derive_more::From;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use tokio::task;
+use tracing::{debug, error, info, trace, warn};
+
 use casper_execution_engine::core::engine_state::{
     self,
     genesis::GenesisSuccess,
@@ -26,12 +33,6 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion, StoredValue};
-use datasize::DataSize;
-use derive_more::From;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use tokio::task;
-use tracing::{debug, error, info, trace, warn};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
