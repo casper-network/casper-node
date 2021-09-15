@@ -155,14 +155,14 @@ fn should_add_all_gas_for_subcall() {
 
     assert!(add_some_gas_from_session_cost > gas_to_add);
     assert_eq!(
-        add_some_gas_from_session_cost,
-        gas_to_add + add_zero_gas_from_session_cost
+        Some(add_some_gas_from_session_cost),
+        gas_to_add.checked_add(&add_zero_gas_from_session_cost)
     );
 
     assert!(add_some_gas_via_subcall_cost > gas_to_add);
     assert_eq!(
-        add_some_gas_via_subcall_cost,
-        gas_to_add + add_zero_gas_via_subcall_cost
+        Some(add_some_gas_via_subcall_cost),
+        gas_to_add.checked_add(&add_zero_gas_via_subcall_cost),
     );
 }
 

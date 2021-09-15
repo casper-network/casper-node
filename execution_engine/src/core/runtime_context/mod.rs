@@ -6,7 +6,6 @@ use std::{
     rc::Rc,
 };
 
-use num::CheckedAdd;
 use tracing::error;
 
 use casper_types::{

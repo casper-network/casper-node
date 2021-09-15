@@ -1521,13 +1521,17 @@ where
         // Create + persist deploy info.
         {
             let transfers = session_result.transfers();
-            let cost = payment_result_cost + session_result.cost();
+            // Since we're storing the cost as a `U512` we can calculate the cost of a payment and a
+            // result as a U512.
+            let cost = U512::from(payment_result_cost)
+                .checked_add(session_result.cost().into())
+                .unwrap_or(U512::MAX);
             let deploy_info = DeployInfo::new(
                 deploy_hash,
                 transfers,
                 account.account_hash(),
                 account.main_purse(),
-                cost.into(),
+                cost,
             );
             session_tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_hash),
@@ -1554,18 +1558,17 @@ where
             let finalization_tc = Rc::new(RefCell::new(post_session_tc.fork()));
 
             let handle_payment_args = {
-                //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
-                let finalize_cost_motes = match Motes::from_gas(
-                    execution_result_builder.total_cost(),
-                    deploy_item.gas_price,
-                ) {
-                    Some(motes) => motes,
-                    None => {
-                        return Ok(ExecutionResult::precondition_failure(
-                            Error::GasConversionOverflow,
-                        ))
-                    }
-                };
+                // ((gas spent during payment code execution * gas_price) + (gas spent during
+                // session code execution * gas_price)
+                let finalize_cost_motes =
+                    match execution_result_builder.total_cost_motes(deploy_item.gas_price) {
+                        Some(motes) => motes,
+                        None => {
+                            return Ok(ExecutionResult::precondition_failure(
+                                Error::GasConversionOverflow,
+                            ))
+                        }
+                    };
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
                     args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;

@@ -2,8 +2,6 @@ use std::collections::HashSet;
 
 use casper_types::{Gas, PublicKey};
 use datasize::DataSize;
-use num::CheckedAdd;
-use num_traits::Zero;
 use thiserror::Error;
 
 use crate::{

@@ -914,12 +914,12 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     let expected_call_cost =
-        Gas::from(DEFAULT_ADD_BID_COST) + Gas::from(UPDATED_CALL_CONTRACT_COST);
+        Gas::from(DEFAULT_ADD_BID_COST).checked_add(&Gas::from(UPDATED_CALL_CONTRACT_COST));
 
     assert_eq!(
         user_funds_after,
         user_funds_before - transaction_fee_1 - U512::from(BOND_AMOUNT)
     );
 
-    assert_eq!(builder.last_exec_gas_cost(), expected_call_cost);
+    assert_eq!(Some(builder.last_exec_gas_cost()), expected_call_cost);
 }

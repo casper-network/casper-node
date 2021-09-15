@@ -1501,7 +1501,12 @@ where
         // Charge just for the amount that particular entry point cost - using gas cost from the
         // isolated runtime might have a recursive costs whenever system contract calls other system
         // contract.
-        self.gas(mint_runtime.gas_counter() - gas_counter)?;
+        self.gas(
+            mint_runtime
+                .gas_counter()
+                .checked_sub(&gas_counter)
+                .expect("gas counter can only increase"),
+        )?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
@@ -1620,7 +1625,12 @@ where
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
-        self.gas(runtime.gas_counter() - gas_counter)?;
+        self.gas(
+            runtime
+                .gas_counter()
+                .checked_sub(&gas_counter)
+                .expect("gas can only increase"),
+        )?;
 
         let ret = result?;
         let urefs = extract_urefs(&ret)?;
@@ -1836,7 +1846,12 @@ where
         };
 
         // Charge for the gas spent during execution in an isolated runtime.
-        self.gas(runtime.gas_counter() - gas_counter)?;
+        self.gas(
+            runtime
+                .gas_counter()
+                .checked_sub(&gas_counter)
+                .expect("gas can only increase"),
+        )?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;

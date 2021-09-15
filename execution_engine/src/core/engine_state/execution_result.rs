@@ -1,13 +1,13 @@
 use std::collections::VecDeque;
 
-use num_traits::Zero;
+use tracing::error;
 
 use casper_types::{
     bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Gas, Key, Motes, StoredValue,
     TransferAddr,
 };
 
-use super::{error, execution_effect::ExecutionEffect, op::Op};
+use super::{execution_effect::ExecutionEffect, op::Op, Error};
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::StateReader,
@@ -49,7 +49,7 @@ fn make_payment_error_effects(
 pub enum ExecutionResult {
     /// An error condition that happened during execution
     Failure {
-        error: error::Error,
+        error: Error,
         execution_effect: ExecutionEffect,
         transfers: Vec<TransferAddr>,
         cost: Gas,
@@ -88,7 +88,7 @@ impl ExecutionResult {
     /// Constructs [ExecutionResult::Failure] that has 0 cost and no effects.
     /// This is the case for failures that we can't (or don't want to) charge
     /// for, like `PreprocessingError` or `InvalidNonce`.
-    pub fn precondition_failure(error: error::Error) -> ExecutionResult {
+    pub fn precondition_failure(error: Error) -> ExecutionResult {
         ExecutionResult::Failure {
             error,
             execution_effect: Default::default(),
@@ -220,16 +220,16 @@ impl ExecutionResult {
         }
     }
 
-    pub fn as_error(&self) -> Option<&error::Error> {
+    pub fn as_error(&self) -> Option<&Error> {
         match self {
             ExecutionResult::Failure { error, .. } => Some(error),
             ExecutionResult::Success { .. } => None,
         }
     }
 
-    /// Consumes [`ExecutionResult`] instance and optionally returns [`error::Error`] instance for
+    /// Consumes [`ExecutionResult`] instance and optionally returns [`Error`] instance for
     /// [`ExecutionResult::Failure`] variant.
-    pub fn take_error(self) -> Option<error::Error> {
+    pub fn take_error(self) -> Option<Error> {
         match self {
             ExecutionResult::Failure { error, .. } => Some(error),
             ExecutionResult::Success { .. } => None,
@@ -266,7 +266,7 @@ impl ExecutionResult {
     }
 
     pub fn new_payment_code_error(
-        error: error::Error,
+        error: Error,
         max_payment_cost: Motes,
         account_main_purse_balance: Motes,
         gas_cost: Gas,
@@ -373,18 +373,34 @@ impl ExecutionResultBuilder {
         self
     }
 
-    pub fn total_cost(&self) -> Gas {
-        let payment_cost = self
-            .payment_execution_result
+    /// Calculates total cost of execution in [`Motes`].
+    ///
+    /// The difference from [`total_gas_cost`] is that the calculation is performed on `Motes`
+    /// rather than a `Gas` for greater precision.
+    pub(crate) fn total_cost_motes(&self, conv_rate: u64) -> Option<Motes> {
+        let payment_cost = Motes::from_gas(self.payment_gas_cost(), conv_rate)?;
+        let session_cost = Motes::from_gas(self.session_gas_cost(), conv_rate)?;
+        payment_cost.checked_add(session_cost)
+    }
+
+    fn payment_gas_cost(&self) -> Gas {
+        self.payment_execution_result
             .as_ref()
             .map(ExecutionResult::cost)
-            .unwrap_or_default();
-        let session_cost = self
-            .session_execution_result
+            .unwrap_or_default()
+    }
+
+    fn session_gas_cost(&self) -> Gas {
+        self.session_execution_result
             .as_ref()
             .map(ExecutionResult::cost)
-            .unwrap_or_default();
-        payment_cost + session_cost
+            .unwrap_or_default()
+    }
+
+    fn total_gas_cost(&self) -> Option<Gas> {
+        let payment_cost = self.payment_gas_cost();
+        let session_cost = self.session_gas_cost();
+        payment_cost.checked_add(&session_cost)
     }
 
     pub fn transfers(&self) -> Vec<TransferAddr> {
@@ -401,7 +417,20 @@ impl ExecutionResultBuilder {
         correlation_id: CorrelationId,
     ) -> Result<ExecutionResult, ExecutionResultBuilderError> {
         let transfers = self.transfers();
-        let cost = self.total_cost();
+        // Calculating total gas cost may technically overflow, so in such case we'd default to a
+        // `Gas::MAX`.
+        let cost = match self.total_gas_cost() {
+            Some(cost) => cost,
+            None => {
+                error!(
+                    payment_gas_cost = %self.payment_gas_cost(),
+                    session_gas_cost = %self.session_gas_cost(),
+                    "gas cost of payment and session overflow"
+                );
+                Gas::MAX
+            }
+        };
+
         let mut ops = AdditiveMap::new();
         let mut transforms = AdditiveMap::new();
 
@@ -439,9 +468,7 @@ impl ExecutionResultBuilder {
             Some(result) => {
                 if result.is_failure() {
                     // payment_code_spec_5_a: Finalization Error should only ever be raised here
-                    return Ok(ExecutionResult::precondition_failure(
-                        error::Error::Finalization,
-                    ));
+                    return Ok(ExecutionResult::precondition_failure(Error::Finalization));
                 } else {
                     Self::add_effects(&mut ops, &mut transforms, result.effect());
                 }

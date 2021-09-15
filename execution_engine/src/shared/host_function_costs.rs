@@ -1,5 +1,4 @@
 use datasize::DataSize;
-use num::{CheckedAdd, CheckedMul};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 

@@ -1,15 +1,11 @@
 use core::fmt;
 
-use num::CheckedMul;
-use num_derive::{Num, NumOps, One, Zero};
-use num_traits::{CheckedAdd, CheckedSub};
-
 use crate::{Motes, U512};
 
 const GAS_MAX_AS_U512: U512 = U512([u64::MAX, 0, 0, 0, 0, 0, 0, 0]);
 
 /// The `Gas` struct represents an amount of gas used during execution.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Num, Zero, One, NumOps)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Gas(u64);
 
 impl Gas {
@@ -21,6 +17,16 @@ impl Gas {
     /// Constructs a new `Gas`.
     pub const fn new(value: u64) -> Self {
         Gas(value)
+    }
+
+    /// Creates a [`Gas`] of zero.
+    pub const fn zero() -> Self {
+        Self(0)
+    }
+
+    /// Returns true if this [`Gas`] instance contains a zero.
+    pub fn is_zero(&self) -> bool {
+        self.0 == 0
     }
 
     fn from_u512(value: U512) -> Option<Gas> {
@@ -39,29 +45,36 @@ impl Gas {
             .checked_div(U512::from(conv_rate))
             .and_then(Self::from_u512)
     }
+
+    /// Performs checked add operation.
+    pub fn checked_add(&self, v: &Gas) -> Option<Gas> {
+        self.0.checked_add(v.0).map(Gas)
+    }
+
+    /// Performs checked sub operation.
+    pub fn checked_sub(&self, v: &Gas) -> Option<Gas> {
+        self.0.checked_sub(v.0).map(Gas)
+    }
+
+    /// Performs checked mul operation.
+    pub fn checked_mul(&self, v: &Gas) -> Option<Gas> {
+        self.0.checked_mul(v.0).map(Gas)
+    }
+
+    /// Performs checked div operation.
+    pub fn checked_div(&self, v: &Gas) -> Option<Gas> {
+        self.0.checked_div(v.0).map(Gas)
+    }
+
+    /// Performs checked modulo operation.
+    pub fn checked_rem(&self, v: &Gas) -> Option<Gas> {
+        self.0.checked_rem(v.0).map(Gas)
+    }
 }
 
 impl fmt::Display for Gas {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.0)
-    }
-}
-
-impl CheckedAdd for Gas {
-    fn checked_add(&self, v: &Self) -> Option<Self> {
-        self.0.checked_add(v.0).map(Gas)
-    }
-}
-
-impl CheckedMul for Gas {
-    fn checked_mul(&self, v: &Self) -> Option<Self> {
-        self.0.checked_mul(v.0).map(Gas)
-    }
-}
-
-impl CheckedSub for Gas {
-    fn checked_sub(&self, v: &Self) -> Option<Self> {
-        self.0.checked_sub(v.0).map(Gas)
     }
 }
 
@@ -97,8 +110,6 @@ impl From<Gas> for u64 {
 
 #[cfg(test)]
 mod tests {
-    use num_traits::{One, Zero};
-
     use crate::{Gas, Motes};
 
     use super::*;
@@ -112,7 +123,7 @@ mod tests {
     fn should_be_able_to_get_instance_of_gas() {
         let initial_value = 1;
         let gas = Gas::new(initial_value);
-        assert_eq!(gas, Gas::one());
+        assert_eq!(gas, Gas::from(1u64));
     }
 
     #[test]
@@ -129,7 +140,11 @@ mod tests {
         let left_gas = Gas::new(1);
         let right_gas = Gas::new(1);
         let expected_gas = Gas::new(2);
-        assert_eq!((left_gas + right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_add(&right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]
@@ -137,7 +152,11 @@ mod tests {
         let left_gas = Gas::new(1);
         let right_gas = Gas::new(1);
         let expected_gas = Gas::new(0);
-        assert_eq!((left_gas - right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_sub(&right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]
@@ -145,7 +164,11 @@ mod tests {
         let left_gas = Gas::new(100);
         let right_gas = Gas::new(10);
         let expected_gas = Gas::new(1000);
-        assert_eq!((left_gas * right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_mul(&right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]
@@ -153,7 +176,11 @@ mod tests {
         let left_gas = Gas::new(1000);
         let right_gas = Gas::new(100);
         let expected_gas = Gas::new(10);
-        assert_eq!((left_gas / right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_div(&right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]

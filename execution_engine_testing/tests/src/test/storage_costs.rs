@@ -1,4 +1,3 @@
-use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
@@ -335,12 +334,12 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     let expected_small_cost = Gas::from(expected_small_write_data.serialized_length());
 
     assert_eq!(
-        small_write_function_cost % cost_per_byte,
-        Gas::zero(),
+        small_write_function_cost.checked_rem(&cost_per_byte),
+        Some(Gas::zero()),
         "small cost does not divide without remainder"
     );
     assert!(
-        small_write_function_cost >= expected_small_cost * cost_per_byte,
+        Some(small_write_function_cost) >= expected_small_cost.checked_mul(&cost_per_byte),
         "small write function call should cost at least the expected amount"
     );
 
@@ -373,12 +372,12 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
     assert_eq!(
-        large_write_function_cost % cost_per_byte,
-        Gas::zero(),
+        large_write_function_cost.checked_rem(&cost_per_byte),
+        Some(Gas::zero()),
         "cost does not divide without remainder"
     );
     assert!(
-        large_write_function_cost >= expected_large_cost * cost_per_byte,
+        Some(large_write_function_cost) >= expected_large_cost.checked_mul(&cost_per_byte),
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
@@ -442,7 +441,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let expected_small_cost = Gas::from(expected_small_write_data.serialized_length());
 
     assert!(
-        small_write_function_cost >= expected_small_cost * cost_per_byte,
+        Some(small_write_function_cost) >= expected_small_cost.checked_mul(&cost_per_byte),
         "small write function call should cost at least the expected amount"
     );
 
@@ -474,7 +473,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let expected_large_cost = Gas::from(expected_large_write_data.serialized_length());
 
     assert!(
-        large_write_function_cost >= expected_large_cost * cost_per_byte,
+        Some(large_write_function_cost) >= expected_large_cost.checked_mul(&cost_per_byte),
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
@@ -541,12 +540,12 @@ fn should_measure_gas_cost_for_storage_usage_add() {
     let expected_small_cost = Gas::from(expected_small_add_data.serialized_length());
 
     assert_eq!(
-        small_add_function_cost % cost_per_byte,
-        Gas::zero(),
+        small_add_function_cost.checked_rem(&cost_per_byte),
+        Some(Gas::zero()),
         "small cost does not divide without remainder"
     );
     assert!(
-        small_add_function_cost >= expected_small_cost * cost_per_byte,
+        Some(small_add_function_cost) >= expected_small_cost.checked_mul(&cost_per_byte),
         "small write function call should cost at least the expected amount"
     );
 
@@ -581,12 +580,12 @@ fn should_measure_gas_cost_for_storage_usage_add() {
     assert!(expected_large_cost > expected_small_cost);
 
     assert_eq!(
-        large_add_function_cost % cost_per_byte,
-        Gas::zero(),
+        large_add_function_cost.checked_rem(&cost_per_byte),
+        Some(Gas::zero()),
         "cost does not divide without remainder"
     );
     assert!(
-        large_add_function_cost >= expected_large_cost * cost_per_byte,
+        Some(large_add_function_cost) >= expected_large_cost.checked_mul(&cost_per_byte),
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
@@ -652,7 +651,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let expected_small_cost = Gas::from(expected_small_add_data.serialized_length());
 
     assert!(
-        small_add_function_cost >= expected_small_cost * cost_per_byte,
+        Some(small_add_function_cost) >= expected_small_cost.checked_mul(&cost_per_byte),
         "small write function call should cost at least the expected amount"
     );
 
@@ -686,7 +685,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     assert!(expected_large_cost > expected_small_cost);
 
     assert!(
-        large_add_function_cost >= expected_large_cost * cost_per_byte,
+        Some(large_add_function_cost) >= expected_large_cost.checked_mul(&cost_per_byte),
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
