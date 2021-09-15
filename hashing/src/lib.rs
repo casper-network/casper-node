@@ -1,6 +1,7 @@
 //! A library providing hashing functionality including Merkle Proof utilities.
 mod blake2b_hash;
 mod chunk_with_proof;
+mod error;
 mod indexed_merkle_proof;
 mod util;
 

@@ -1,43 +1,11 @@
 use std::convert::TryFrom;
 
-use crate::{blake2b_hash::Blake2bHash, util, Digest};
+use crate::{blake2b_hash::Blake2bHash, error, util, Digest};
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
-pub enum MerkleVerificationError {
-    #[error("Index out of bounds. Count: {count}, index: {index}")]
-    IndexOutOfBounds { count: u64, index: u64 },
-    #[error(
-        "Unexpected proof length. Count: {count}, index: {index}, \
-         expected proof length: {expected_proof_length}, \
-         actual proof length: {actual_proof_length}"
-    )]
-    UnexpectedProofLength {
-        count: u64,
-        index: u64,
-        expected_proof_length: u64,
-        actual_proof_length: usize,
-    },
-}
-
-#[derive(thiserror::Error, Debug, Eq, PartialEq)]
-pub enum MerkleConstructionError {
-    #[error("Could not construct Merkle proof. Empty proof must have index 0. Index: {index}")]
-    EmptyProofMustHaveIndex { index: u64 },
-    #[error(
-        "Could not construct Merkle proof. Index out of bounds.  Count: {count}, index: {index}"
-    )]
-    IndexOutOfBounds { count: u64, index: u64 },
-    #[error("The chunk has incorrect proof")]
-    IncorrectChunkProof,
-    #[error("The idexed merkle proof is incorrect")]
-    IncorrectIndexedMerkleProof,
-}
 
 #[cfg_attr(
     feature = "std",
@@ -51,7 +19,7 @@ pub struct IndexedMerkleProofDeserializeValidator {
 }
 
 impl TryFrom<IndexedMerkleProofDeserializeValidator> for IndexedMerkleProof {
-    type Error = MerkleConstructionError;
+    type Error = error::MerkleConstructionError;
     fn try_from(value: IndexedMerkleProofDeserializeValidator) -> Result<Self, Self::Error> {
         let candidate = Self {
             index: value.index,
@@ -62,7 +30,7 @@ impl TryFrom<IndexedMerkleProofDeserializeValidator> for IndexedMerkleProof {
         if candidate.index > candidate.count
             || candidate.merkle_proof.len() as u64 != candidate.compute_expected_proof_length()
         {
-            return Err(MerkleConstructionError::IncorrectIndexedMerkleProof);
+            return Err(error::MerkleConstructionError::IncorrectIndexedMerkleProof);
         }
         Ok(candidate)
     }
@@ -92,7 +60,7 @@ impl IndexedMerkleProof {
     pub(crate) fn new<I>(
         leaves: I,
         index: u64,
-    ) -> Result<IndexedMerkleProof, MerkleConstructionError>
+    ) -> Result<IndexedMerkleProof, error::MerkleConstructionError>
     where
         I: IntoIterator<Item = Blake2bHash>,
     {
@@ -125,7 +93,7 @@ impl IndexedMerkleProof {
         match maybe_count_and_proof {
             None => {
                 if index != 0 {
-                    Err(MerkleConstructionError::EmptyProofMustHaveIndex { index })
+                    Err(error::MerkleConstructionError::EmptyProofMustHaveIndex { index })
                 } else {
                     Ok(IndexedMerkleProof {
                         index: 0,
@@ -135,7 +103,7 @@ impl IndexedMerkleProof {
                 }
             }
             Some((count, Hash(_))) => {
-                Err(MerkleConstructionError::IndexOutOfBounds { count, index })
+                Err(error::MerkleConstructionError::IndexOutOfBounds { count, index })
             }
             Some((count, Proof(merkle_proof))) => Ok(IndexedMerkleProof {
                 index,
@@ -238,16 +206,16 @@ impl IndexedMerkleProof {
         l
     }
 
-    fn verify(&self) -> Result<(), MerkleVerificationError> {
+    fn verify(&self) -> Result<(), error::MerkleVerificationError> {
         if !((self.count == 0 && self.index == 0) || self.index < self.count) {
-            return Err(MerkleVerificationError::IndexOutOfBounds {
+            return Err(error::MerkleVerificationError::IndexOutOfBounds {
                 count: self.count,
                 index: self.index,
             });
         }
         let expected_proof_length = self.compute_expected_proof_length();
         if self.merkle_proof.len() != expected_proof_length as usize {
-            return Err(MerkleVerificationError::UnexpectedProofLength {
+            return Err(error::MerkleVerificationError::UnexpectedProofLength {
                 count: self.count,
                 index: self.index,
                 expected_proof_length,
@@ -300,7 +268,7 @@ mod test {
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(MerkleVerificationError::IndexOutOfBounds {
+            Err(error::MerkleVerificationError::IndexOutOfBounds {
                 count: 4,
                 index: 23
             })
@@ -316,7 +284,7 @@ mod test {
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(MerkleVerificationError::UnexpectedProofLength {
+            Err(error::MerkleVerificationError::UnexpectedProofLength {
                 count: 5647,
                 index: 1235,
                 expected_proof_length: 14,
@@ -334,7 +302,7 @@ mod test {
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(MerkleVerificationError::UnexpectedProofLength {
+            Err(error::MerkleVerificationError::UnexpectedProofLength {
                 count: 0,
                 index: 0,
                 expected_proof_length: 0,
@@ -352,7 +320,7 @@ mod test {
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(MerkleVerificationError::IndexOutOfBounds {
+            Err(error::MerkleVerificationError::IndexOutOfBounds {
                 count: 0,
                 index: 23
             })
