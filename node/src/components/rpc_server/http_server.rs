@@ -121,7 +121,6 @@ pub(super) async fn run<REv: ReactorEventT>(
         service_routes_gzip.or(service_routes)
     );
 
-
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =
         hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
