@@ -31,6 +31,10 @@ pub struct Config {
     pub max_execution_delay: u64,
     /// The maximum number of peers we request the same vertex from in parallel.
     pub max_requests_for_vertex: usize,
+    /// The maximum number of dependencies we request per validator in a batch.
+    /// Limits requests per validator in panorama - in order to get a total number of
+    /// requests, multiply by # of validators.
+    pub max_request_batch_size: usize,
     pub round_success_meter: RSMConfig,
 }
 
@@ -46,6 +50,7 @@ impl Default for Config {
             log_unit_sizes: false,
             max_execution_delay: 3,
             max_requests_for_vertex: 5,
+            max_request_batch_size: 20,
             round_success_meter: RSMConfig::default(),
         }
     }

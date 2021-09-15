@@ -6,7 +6,7 @@ use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{Deploy, NodeId},
+    types::{Deploy, NodeId, Timestamp},
 };
 use casper_types::Key;
 
@@ -25,6 +25,7 @@ pub(crate) enum Event {
         source: Source<NodeId>,
         is_new: bool,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        verification_start_timestamp: Timestamp,
     },
     /// The result of verifying `Account` exists and has meets minimum balance requirements.
     AccountVerificationResult {
@@ -33,6 +34,7 @@ pub(crate) enum Event {
         account_key: Key,
         verified: Option<bool>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        verification_start_timestamp: Timestamp,
     },
 }
 

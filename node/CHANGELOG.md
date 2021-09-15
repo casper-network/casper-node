@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.  The format
 * Added new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 * Added `contract_runtime_execute_block` histogram tracking execution time of a whole block.
 * Long running events now log their event type.
+* Individual weights for traffic throttling can now be set through the configuration value
+  `network.estimator_weights`.
+* Added `consensus.highway.max_request_batch_size` configuration parameter. Defaults to 20.
+* New histogram metrics `deploy_acceptor_accepted_deploy` and `deploy_acceptor_rejected_deploy` that track how long the initial verification took.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):

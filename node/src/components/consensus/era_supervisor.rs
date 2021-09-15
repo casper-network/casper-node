@@ -1097,7 +1097,9 @@ where
                     era.start_height + relative_height,
                     proposer,
                 );
-                info!(?finalized_block, "finalized block");
+                info!(era_id=?finalized_block.era_id(),
+                        height=?finalized_block.height(),
+                        timestamp=?finalized_block.timestamp(), "finalized block");
                 self.era_supervisor
                     .metrics
                     .finalized_block(&finalized_block);

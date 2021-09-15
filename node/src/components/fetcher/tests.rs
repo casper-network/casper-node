@@ -79,7 +79,7 @@ reactor!(Reactor {
             false,
             "test"
         );
-        deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
+        deploy_acceptor = DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec(), registry);
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
     }
 

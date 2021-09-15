@@ -70,11 +70,7 @@ fn purge_vertices() {
     let (maybe_pv, outcomes) =
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(maybe_pv.is_none());
-    assert_targeted_message(
-        &unwrap_single(outcomes),
-        &peer0,
-        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
-    );
+    assert_targeted_message(&unwrap_single(outcomes), &peer0, Dependency::Unit(c0));
 
     // At 0x23, c0 gets enqueued and added.
     // That puts c1 back into the main queue, since its dependency is satisfied.
@@ -167,11 +163,7 @@ fn do_not_download_synchronized_dependencies() {
     let (pv, outcomes) =
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(pv.is_none());
-    assert_targeted_message(
-        &unwrap_single(outcomes),
-        &peer0,
-        HighwayMessage::RequestDependency(Dependency::Unit(c1)),
-    );
+    assert_targeted_message(&unwrap_single(outcomes), &peer0, Dependency::Unit(c1));
     // Simulate `c1` being downloaded…
     let c1_outcomes = sync.schedule_add_vertex(peer0, pvv(c1), now);
     assert!(matches!(
@@ -184,11 +176,7 @@ fn do_not_download_synchronized_dependencies() {
     let (pv, outcomes) =
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(pv.is_none());
-    assert_targeted_message(
-        &unwrap_single(outcomes),
-        &peer0,
-        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
-    );
+    assert_targeted_message(&unwrap_single(outcomes), &peer0, Dependency::Unit(c0));
     // `c1` is now part of the synchronizer's state, we should not try requesting it if other
     // vertices depend on it.
     assert!(matches!(
@@ -201,11 +189,7 @@ fn do_not_download_synchronized_dependencies() {
     // `b0` depends on `c1`, that is already in the synchronizer's state, but it also depends on
     // `c0` transitively that is not yet known. We should request it, even if we had already
     // done that for `c1`.
-    assert_targeted_message(
-        &unwrap_single(outcomes),
-        &peer1,
-        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
-    );
+    assert_targeted_message(&unwrap_single(outcomes), &peer1, Dependency::Unit(c0));
     // "Download" the last dependency.
     let _ = sync.schedule_add_vertex(peer0, pvv(c0), now);
     // Now, the whole chain can be added to the protocol state.
@@ -283,11 +267,7 @@ fn transitive_proposal_dependency() {
     let (pv, outcomes) =
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(pv.is_none());
-    assert_targeted_message(
-        &unwrap_single(outcomes),
-        &peer0,
-        HighwayMessage::RequestDependency(Dependency::Unit(a0)),
-    );
+    assert_targeted_message(&unwrap_single(outcomes), &peer0, Dependency::Unit(a0));
 
     // "Download" and schedule addition of a0.
     let a0_outcomes = sync.schedule_add_vertex(peer0, pvv(a0), now);
@@ -342,13 +322,31 @@ fn transitive_proposal_dependency() {
         {
             assert_eq!(
                 vec![&peer0, &peer1],
-                vec![p0, p1].into_iter().sorted().collect_vec()
+                vec![p0, p1].into_iter().sorted().collect_vec(),
+                "expected to request dependency from exactly two different peers",
             );
-            assert_eq!(msg0, msg1);
-            assert_eq!(
-                HighwayMessage::RequestDependency::<TestContext>(Dependency::Unit(c0)),
-                bincode::deserialize(msg0.as_slice()).expect("deserialization to pass")
-            );
+            let msg0_parsed: HighwayMessage<TestContext> =
+                bincode::deserialize(msg0.as_slice()).expect("deserialization to pass");
+            let msg1_parsed =
+                bincode::deserialize(msg1.as_slice()).expect("deserialization to pass");
+
+            match (msg0_parsed, msg1_parsed) {
+                (
+                    HighwayMessage::RequestDependency(_, dep0),
+                    HighwayMessage::RequestDependency(_, dep1),
+                ) => {
+                    assert_eq!(
+                        dep0,
+                        Dependency::Unit(c0),
+                        "unexpected dependency requested"
+                    );
+                    assert_eq!(
+                        dep0, dep1,
+                        "we should have requested the same dependency from two different peers"
+                    );
+                }
+                other => panic!("unexpected HighwayMessage variant {:?}", other),
+            }
         }
         outcomes => panic!("unexpected outcomes: {:?}", outcomes),
     }
@@ -367,14 +365,17 @@ fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
 fn assert_targeted_message(
     outcome: &ProtocolOutcome<NodeId, TestContext>,
     peer: &NodeId,
-    expected: HighwayMessage<TestContext>,
+    expected: Dependency<TestContext>,
 ) {
     match outcome {
         ProtocolOutcome::CreatedTargetedMessage(msg, peer0) => {
             assert_eq!(peer, peer0);
             let highway_message: HighwayMessage<TestContext> =
                 bincode::deserialize(msg.as_slice()).expect("deserialization to pass");
-            assert_eq!(highway_message, expected);
+            match highway_message {
+                HighwayMessage::RequestDependency(_, got) => assert_eq!(got, expected),
+                other => panic!("unexpected variant: {:?}", other),
+            }
         }
         _ => panic!("unexpected outcome: {:?}", outcome),
     }
