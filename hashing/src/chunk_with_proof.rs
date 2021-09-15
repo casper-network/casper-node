@@ -93,12 +93,15 @@ impl ChunkWithProof {
 
 #[cfg(test)]
 mod test {
+    use crate::error;
     use proptest::proptest;
     use rand::Rng;
     use std::{convert::TryInto, ops::Range};
-    use crate::error;
 
-    use crate::{chunk_with_proof::ChunkWithProof, util::{blake2b_hash, hash_merkle_tree}};
+    use crate::{
+        chunk_with_proof::ChunkWithProof,
+        util::{blake2b_hash, hash_merkle_tree},
+    };
 
     fn testing_data_size_range(minimum_size: usize) -> Range<usize> {
         minimum_size..512usize
@@ -206,7 +209,8 @@ mod test {
 
         let chunk_with_proof =
             ChunkWithProof::new(&[], 1).expect_err("should error with empty data and index > 0");
-        if let error::MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof {
+        if let error::MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof
+        {
             assert_eq!(count, 0);
             assert_eq!(index, 1);
         } else {
@@ -218,7 +222,8 @@ mod test {
 
         let chunk_with_proof =
             ChunkWithProof::new(data_larger_than_single_chunk.as_slice(), 10).unwrap_err();
-        if let error::MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof {
+        if let error::MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof
+        {
             assert_eq!(count, 10);
             assert_eq!(index, 10);
         } else {
