@@ -7,6 +7,8 @@ pub mod associated_keys;
 mod error;
 mod weight;
 
+use serde::Serialize;
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
@@ -31,7 +33,7 @@ pub use self::{
 };
 
 /// Represents an Account in the global state.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,

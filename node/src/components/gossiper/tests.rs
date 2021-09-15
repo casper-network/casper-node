@@ -407,7 +407,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Box::new(Deploy::random(rng));
+        let deploy = Box::new(Deploy::valid_deploy(rng));
         (*deploy.id(), deploy)
     })
     .take(deploy_count)
@@ -464,7 +464,7 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy = Box::new(Deploy::valid_deploy(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
@@ -528,7 +528,7 @@ async fn should_get_from_alternate_source() {
 #[tokio::test]
 async fn should_timeout_gossip_response() {
     const PAUSE_DURATION: Duration = Duration::from_millis(50);
-    const TIMEOUT: Duration = Duration::from_secs(2);
+    const TIMEOUT: Duration = Duration::from_secs(5);
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
@@ -543,7 +543,7 @@ async fn should_timeout_gossip_response() {
         .await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy = Box::new(Deploy::valid_deploy(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to node 0 to be gossiped.

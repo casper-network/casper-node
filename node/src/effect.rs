@@ -94,8 +94,8 @@ use casper_execution_engine::{
     storage::trie::Trie,
 };
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, U512,
+    system::auction::EraValidators, Contract, ContractPackage, EraId, ExecutionResult, Key,
+    ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
 };
 
 use crate::{
@@ -132,6 +132,8 @@ use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
 use crate::components::contract_runtime::{
     BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeAnnouncement, ExecutionPreState,
 };
+
+use casper_types::account::Account;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1465,7 +1467,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_verified_account(self, account_key: Key) -> Option<bool>
+    pub(crate) async fn _is_verified_account(self, account_key: Key) -> Option<bool>
     where
         REv: From<ContractRuntimeRequest>,
         REv: From<StorageRequest>,
@@ -1488,6 +1490,88 @@ impl<REv> EffectBuilder<REv> {
             }
         }
         None
+    }
+
+    pub(crate) async fn get_account_from_global_state(
+        self,
+        prestate_hash: Blake2bHash,
+        account_key: Key,
+    ) -> Option<Account>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let query_request = QueryRequest::new(prestate_hash, account_key, vec![]);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => {
+                if let StoredValue::Account(account) = *value {
+                    return Some(account);
+                }
+                None
+            }
+            Ok(_) | Err(_) => None,
+        }
+    }
+
+    pub(crate) async fn check_purse_balance(
+        self,
+        prestate_hash: Blake2bHash,
+        main_purse: URef,
+    ) -> Option<U512>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let balance_request = BalanceRequest::new(prestate_hash, main_purse);
+        match self.get_balance(balance_request).await {
+            Ok(balance_result) => {
+                if let Some(motes) = balance_result.motes() {
+                    return Some(*motes);
+                }
+                None
+            }
+            Err(_) => None,
+        }
+    }
+
+    pub(crate) async fn get_contract_for_validation(
+        self,
+        prestate_hash: Blake2bHash,
+        query_key: Key,
+        path: Vec<String>,
+    ) -> Option<Contract>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => {
+                if let StoredValue::Contract(contract) = *value {
+                    return Some(contract);
+                }
+                None
+            }
+            Ok(_) | Err(_) => None,
+        }
+    }
+
+    pub(crate) async fn get_contract_package_for_validation(
+        self,
+        prestate_hash: Blake2bHash,
+        query_key: Key,
+        path: Vec<String>,
+    ) -> Option<ContractPackage>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => {
+                if let StoredValue::ContractPackage(contract_package) = *value {
+                    return Some(contract_package);
+                }
+                None
+            }
+            Ok(_) | Err(_) => None,
+        }
     }
 
     /// Requests a query be executed on the Contract Runtime component.

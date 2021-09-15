@@ -53,7 +53,7 @@ pub use self::{
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
-    executable_deploy_item::ExecutableDeployItem,
+    executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},

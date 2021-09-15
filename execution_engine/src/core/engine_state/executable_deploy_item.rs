@@ -49,6 +49,47 @@ const TRANSFER_TAG: u8 = 5;
 #[derive(
     Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
+pub enum ExecutableDeployItemIdentifier {
+    Module,
+    Contract(ContractIdentifier),
+    Package(ContractPackageIdentifier),
+    Transfer,
+}
+
+#[derive(
+    Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub enum ContractIdentifier {
+    Name(String),
+    Hash(ContractHash),
+}
+
+#[derive(
+    Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub enum ContractPackageIdentifier {
+    Name {
+        name: String,
+        version: Option<ContractVersion>,
+    },
+    Hash {
+        contract_package_hash: ContractPackageHash,
+        version: Option<ContractVersion>,
+    },
+}
+
+impl ContractPackageIdentifier {
+    pub fn version(&self) -> Option<ContractVersion> {
+        match self {
+            ContractPackageIdentifier::Name { version, .. } => *version,
+            ContractPackageIdentifier::Hash { version, .. } => *version,
+        }
+    }
+}
+
+#[derive(
+    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
@@ -102,6 +143,69 @@ impl ExecutableDeployItem {
         }
     }
 
+    pub fn identifier(&self) -> ExecutableDeployItemIdentifier {
+        match self {
+            ExecutableDeployItem::ModuleBytes { .. } => ExecutableDeployItemIdentifier::Module,
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
+                ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(*hash))
+            }
+            ExecutableDeployItem::StoredContractByName { name, .. } => {
+                ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(name.to_string()))
+            }
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
+                ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Hash {
+                    contract_package_hash: *hash,
+                    version: *version,
+                })
+            }
+            ExecutableDeployItem::StoredVersionedContractByName { name, version, .. } => {
+                ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name {
+                    name: name.to_string(),
+                    version: *version,
+                })
+            }
+            ExecutableDeployItem::Transfer { .. } => ExecutableDeployItemIdentifier::Transfer,
+        }
+    }
+
+    pub fn contract_identifier(&self) -> Option<ContractIdentifier> {
+        match self {
+            ExecutableDeployItem::ModuleBytes { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { .. }
+            | ExecutableDeployItem::Transfer { .. } => None,
+
+            ExecutableDeployItem::StoredContractByName { name, .. } => {
+                Some(ContractIdentifier::Name(name.to_string()))
+            }
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
+                Some(ContractIdentifier::Hash(*hash))
+            }
+        }
+    }
+
+    pub fn contract_package_identifier(&self) -> Option<ContractPackageIdentifier> {
+        match self {
+            ExecutableDeployItem::ModuleBytes { .. }
+            | ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredContractByName { .. }
+            | ExecutableDeployItem::Transfer { .. } => None,
+
+            ExecutableDeployItem::StoredVersionedContractByName { name, version, .. } => {
+                Some(ContractPackageIdentifier::Name {
+                    name: name.clone(),
+                    version: *version,
+                })
+            }
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
+                Some(ContractPackageIdentifier::Hash {
+                    contract_package_hash: *hash,
+                    version: *version,
+                })
+            }
+        }
+    }
+
     pub fn args(&self) -> &RuntimeArgs {
         match self {
             ExecutableDeployItem::ModuleBytes { args, .. }
@@ -115,6 +219,41 @@ impl ExecutableDeployItem {
 
     pub fn is_transfer(&self) -> bool {
         matches!(self, ExecutableDeployItem::Transfer { .. })
+    }
+
+    pub fn is_by_name(&self) -> bool {
+        matches!(
+            self,
+            ExecutableDeployItem::StoredVersionedContractByName { .. }
+        ) || matches!(self, ExecutableDeployItem::StoredContractByName { .. })
+    }
+
+    pub fn by_name(&self) -> Option<String> {
+        match self {
+            ExecutableDeployItem::StoredContractByName { name, .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { name, .. } => {
+                Some(name.clone())
+            }
+            ExecutableDeployItem::ModuleBytes { .. }
+            | ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::Transfer { .. } => None,
+        }
+    }
+
+    pub fn is_stored_contract(&self) -> bool {
+        matches!(self, ExecutableDeployItem::StoredContractByHash { .. })
+            || matches!(self, ExecutableDeployItem::StoredContractByName { .. })
+    }
+
+    pub fn is_stored_contract_package(&self) -> bool {
+        matches!(
+            self,
+            ExecutableDeployItem::StoredVersionedContractByHash { .. }
+        ) || matches!(
+            self,
+            ExecutableDeployItem::StoredVersionedContractByName { .. }
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
