@@ -55,8 +55,9 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
+            NetRequestIncoming, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -1280,9 +1281,33 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            ParticipatingEvent::NetRequestIncoming(_) => todo!(),
+            ParticipatingEvent::NetRequestIncoming(NetRequestIncoming { sender, message }) => {
+                // This is legacy code to be refactored, as it recreates the tag to call
+                // `handle_get_request` instead of using the `enum` directly.
+                let (tag, serialized_id) = match message {
+                    NetRequest::Deploy(ref serialized_id) => (Tag::Deploy, serialized_id),
+                    NetRequest::Block(ref serialized_id) => (Tag::Block, serialized_id),
+                    NetRequest::GossipedAddress(ref serialized_id) => {
+                        (Tag::GossipedAddress, serialized_id)
+                    }
+                    NetRequest::BlockAndMetadataByHeight(ref serialized_id) => {
+                        (Tag::BlockAndMetadataByHeight, serialized_id)
+                    }
+                    NetRequest::BlockHeaderByHash(ref serialized_id) => {
+                        (Tag::BlockHeaderByHash, serialized_id)
+                    }
+                    NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_id) => {
+                        (Tag::BlockHeaderAndFinalitySignaturesByHeight, serialized_id)
+                    }
+                };
+
+                self.handle_get_request(effect_builder, sender, tag, serialized_id)
+            }
             ParticipatingEvent::NetResponseIncoming(_) => todo!(),
-            ParticipatingEvent::TrieRequestIncoming(_) => todo!(),
+            ParticipatingEvent::TrieRequestIncoming(TrieRequestIncoming {
+                sender,
+                message: TrieRequest(ref serialized_id),
+            }) => self.handle_get_request(effect_builder, sender, Tag::Trie, serialized_id),
             ParticipatingEvent::TrieResponseIncoming(_) => todo!(),
             ParticipatingEvent::FinalitySignatureIncoming(_) => todo!(),
         }
