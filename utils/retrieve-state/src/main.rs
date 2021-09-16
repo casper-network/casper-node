@@ -96,7 +96,6 @@ async fn main() -> Result<(), anyhow::Error> {
             .await?;
         }
         Action::DownloadTrie => {
-            // TODO: enable gzip if the rpc endpoint supports it.
             println!(
                 "Retrieving global state at height {}...",
                 highest_block.header.height
