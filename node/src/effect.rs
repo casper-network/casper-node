@@ -94,8 +94,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, Contract, ContractPackage, EraId, ExecutionResult, Key,
-    ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
+    account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
 };
 
 use crate::{
@@ -131,8 +131,6 @@ use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
 use crate::components::contract_runtime::{
     BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeAnnouncement, ExecutionPreState,
 };
-
-use casper_types::account::Account;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1466,31 +1464,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn _is_verified_account(self, account_key: Key) -> Option<bool>
-    where
-        REv: From<ContractRuntimeRequest>,
-        REv: From<StorageRequest>,
-    {
-        if let Some(block) = self.get_highest_block_from_storage().await {
-            let state_hash = *block.state_root_hash();
-            let query_request = QueryRequest::new(state_hash, account_key, vec![]);
-            if let Ok(QueryResult::Success { value, .. }) =
-                self.query_global_state(query_request).await
-            {
-                if let StoredValue::Account(account) = *value {
-                    let purse_uref = account.main_purse();
-                    let balance_request = BalanceRequest::new(state_hash, purse_uref);
-                    if let Ok(balance_result) = self.get_balance(balance_request).await {
-                        if let Some(motes) = balance_result.motes() {
-                            return Some(motes >= &*MAX_PAYMENT);
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
-
+    /// Retrieves an `Account` from global state if present.
     pub(crate) async fn get_account_from_global_state(
         self,
         prestate_hash: Digest,
@@ -1511,6 +1485,7 @@ impl<REv> EffectBuilder<REv> {
         }
     }
 
+    /// Retrieves the balance of a purse, returns `None` is no purse is present.
     pub(crate) async fn check_purse_balance(
         self,
         prestate_hash: Digest,
@@ -1531,6 +1506,7 @@ impl<REv> EffectBuilder<REv> {
         }
     }
 
+    /// Retrieves an `Contract` from global state if present.
     pub(crate) async fn get_contract_for_validation(
         self,
         prestate_hash: Digest,
@@ -1552,6 +1528,7 @@ impl<REv> EffectBuilder<REv> {
         }
     }
 
+    /// Retrieves an `ContractPackage` from global state if present.
     pub(crate) async fn get_contract_package_for_validation(
         self,
         prestate_hash: Digest,

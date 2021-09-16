@@ -725,8 +725,6 @@ impl Deploy {
     /// Returns true if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with,
-    ///   * the deploy is cryptographically valid **
-    /// Note: if everything else checks out, calls the computationally expensive `is_valid` method.
     pub fn is_config_compliant(
         &mut self,
         chain_name: &str,

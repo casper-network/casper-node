@@ -43,6 +43,9 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::{Event, EventMetadata};
 
+const ARG_TARGET: &str = "target";
+const ARG_SOURCE: &str = "source";
+
 #[derive(Debug, Error, Serialize)]
 #[allow(clippy::enum_variant_names)]
 pub(crate) enum Error {
@@ -497,10 +500,10 @@ impl DeployAcceptor {
             } else {
                 maybe_failure = Some(DeployParameterFailure::MissingTransferAmount)
             }
-            if args.get("target").is_none() {
+            if args.get(ARG_TARGET).is_none() {
                 maybe_failure = Some(DeployParameterFailure::MissingTransferTargetArgument)
             }
-            if args.get("source").is_none() {
+            if args.get(ARG_SOURCE).is_none() {
                 maybe_failure = Some(DeployParameterFailure::MissingTransferSourceArgument)
             }
         }

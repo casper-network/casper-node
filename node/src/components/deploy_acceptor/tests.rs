@@ -19,10 +19,12 @@ use casper_execution_engine::{
     core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT},
     storage::trie::merkle_proof::TrieMerkleProof,
 };
-use casper_types::{account::Account, CLValue, ProtocolVersion, StoredValue, URef, U512};
+use casper_types::{
+    account::{Account, ActionThresholds, Weight},
+    CLValue, ProtocolVersion, StoredValue, URef, U512,
+};
 
 use super::*;
-
 use crate::{
     components::storage::{self, Storage},
     effect::{
@@ -36,7 +38,6 @@ use crate::{
     utils::{Loadable, WithDir},
     NodeRng,
 };
-use casper_types::account::{ActionThresholds, Weight};
 
 const VERIFY_ACCOUNTS: bool = true;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);

@@ -46,6 +46,7 @@ const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
 const TRANSFER_TAG: u8 = 5;
 
+/// Possible ways to identify the `ExecutableDeployItem`.
 #[derive(
     Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
@@ -56,6 +57,7 @@ pub enum ExecutableDeployItemIdentifier {
     Transfer,
 }
 
+/// Possible ways to identify the contract object within an `ExecutableDeployItem`.
 #[derive(
     Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
@@ -64,6 +66,7 @@ pub enum ContractIdentifier {
     Hash(ContractHash),
 }
 
+/// Possible ways to identify the contract package object within an `ExecutableDeployItem`.
 #[derive(
     Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
