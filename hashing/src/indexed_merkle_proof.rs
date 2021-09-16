@@ -272,6 +272,18 @@ mod test {
 
     use super::*;
 
+    fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
+        let mut rng = rand::thread_rng();
+        let leaf_count: u64 = rng.gen_range(1..100);
+        let index = rng.gen_range(0..leaf_count);
+        let leaves: Vec<Blake2bHash> = (0..leaf_count)
+            .map(|i| blake2b_hash(i.to_le_bytes()))
+            .collect();
+        let indexed_merkle_proof = IndexedMerkleProof::new(leaves.iter().cloned(), index).unwrap();
+
+        IndexedMerkleProof::new(leaves, index).expect("should create indexed merkle proof")
+    }
+
     #[test]
     fn test_merkle_proofs() {
         let mut rng = rand::thread_rng();
@@ -522,18 +534,6 @@ mod test {
             .expect("should serialize correctly");
         IndexedMerkleProof::from_bytes(&bytes)
             .expect_err("should not deserialize correctly due to wrong merkle proof");
-    }
-
-    fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
-        let mut rng = rand::thread_rng();
-        let leaf_count: u64 = rng.gen_range(1..100);
-        let index = rng.gen_range(0..leaf_count);
-        let leaves: Vec<Blake2bHash> = (0..leaf_count)
-            .map(|i| blake2b_hash(i.to_le_bytes()))
-            .collect();
-        let indexed_merkle_proof = IndexedMerkleProof::new(leaves.iter().cloned(), index).unwrap();
-
-        IndexedMerkleProof::new(leaves, index).expect("should create indexed merkle proof")
     }
 
     #[test]

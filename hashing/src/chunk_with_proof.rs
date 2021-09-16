@@ -6,6 +6,11 @@ use crate::{
     util::blake2b_hash,
 };
 
+use casper_types::{
+    allocate_buffer,
+    bytesrepr::{Bytes, FromBytes, ToBytes},
+};
+
 #[cfg_attr(
     feature = "std",
     derive(serde::Deserialize),
@@ -46,6 +51,35 @@ impl TryFrom<ChunkWithProofDeserializeValidator> for ChunkWithProof {
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
     chunk: Vec<u8>,
+}
+
+impl ToBytes for ChunkWithProof {
+    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.proof.to_bytes()?);
+        result.append(&mut Bytes::from(self.chunk.as_slice()).to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.proof.serialized_length() + self.chunk.serialized_length()
+    }
+}
+
+impl FromBytes for ChunkWithProof {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+        let (proof, mut remainder) = IndexedMerkleProof::from_bytes(bytes)?;
+        let (chunk, mut remainder) = Bytes::from_bytes(remainder)?;
+
+        Ok((
+            ChunkWithProof::try_from(ChunkWithProofDeserializeValidator {
+                proof,
+                chunk: chunk.into(),
+            })
+            .map_err(|err| casper_types::bytesrepr::Error::Validation)?,
+            remainder,
+        ))
+    }
 }
 
 impl ChunkWithProof {
@@ -94,6 +128,7 @@ impl ChunkWithProof {
 #[cfg(test)]
 mod test {
     use crate::error;
+    use casper_types::bytesrepr::{FromBytes, ToBytes};
     use proptest::proptest;
     use rand::Rng;
     use std::{convert::TryInto, ops::Range};
@@ -183,7 +218,7 @@ mod test {
 
     proptest! {
         #[test]
-        fn validates_chunk_with_proof_after_deserialization(data_size in testing_data_size_range(0)) {
+        fn validates_chunk_with_proof_after_serde_deserialization(data_size in testing_data_size_range(0)) {
             let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * data_size];
             let chunk_with_proof =
                 ChunkWithProof::new(data.as_slice(), 0).unwrap();
@@ -198,6 +233,30 @@ mod test {
             let json = serde_json::to_string(&chunk_with_incorrect_proof).unwrap();
             serde_json::from_str::<ChunkWithProof>(&json).expect_err("shoud not deserialize correctly");
         }
+    }
+
+    proptest! {
+    #[test]
+           fn validates_chunk_with_proof_after_bytesrepr_deserialization(data_size in testing_data_size_range(0)) {
+        let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * 10];
+        let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
+
+        let bytes = chunk_with_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+
+        let (deserialized_chunk_with_proof, remainder) =
+            ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly");
+
+        assert_eq!(chunk_with_proof, deserialized_chunk_with_proof);
+
+        let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
+        let bytes = chunk_with_incorrect_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+
+        ChunkWithProof::from_bytes(&bytes).expect_err("should not deserialize correctly");
+    }
     }
 
     #[test]
@@ -229,5 +288,37 @@ mod test {
         } else {
             panic!("expected MerkleConstructionError::IndexOutOfBounds");
         }
+    }
+
+    #[test]
+    fn bytesrepr_serialization() {
+        let original_chunk_with_proof = ChunkWithProof::new(b"ABCDEF123456", 1).unwrap();
+
+        let bytes = original_chunk_with_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+
+        let (deserialized_chunk_with_proof, remainder) =
+            ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly");
+
+        assert_eq!(original_chunk_with_proof, deserialized_chunk_with_proof);
+        assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn bytesrepr_serialization_with_remainder() {
+        let original_chunk_with_proof = ChunkWithProof::new(b"ABCDEF123456", 1).unwrap();
+
+        let mut bytes = original_chunk_with_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+        bytes.push(0xFF);
+
+        let (deserialized_chunk_with_proof, remainder) =
+            ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly");
+
+        assert_eq!(original_chunk_with_proof, deserialized_chunk_with_proof);
+        assert_eq!(remainder.first().unwrap(), &0xFF);
+        assert_eq!(remainder.len(), 1);
     }
 }
