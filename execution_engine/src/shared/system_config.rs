@@ -14,7 +14,7 @@ use self::{
     standard_payment_costs::StandardPaymentCosts,
 };
 
-pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
+pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 250_000_000;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemConfig {
