@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::{
     components::{consensus, gossiper, small_network::GossipedAddress},
-    types::{Deploy, FinalitySignature},
+    types::{Deploy, FinalitySignature, Item, NodeId},
 };
 
 /// A new consensus message arrived.
@@ -22,29 +22,47 @@ impl Display for ConsensusMessageIncoming {
     }
 }
 
-/// A new deploy gossiper message arrived.
-#[derive(DataSize, Debug, Serialize)]
+/// An incoming message from a gossiper.
+#[derive(Debug, Serialize)]
+pub struct GossiperIncoming<T>
+where
+    T: Item,
+{
+    /// The node the gossiper message originated from.
+    pub(crate) sender: NodeId,
+    /// The actual message.
+    pub(crate) message: gossiper::Message<T>,
+}
 
-pub(crate) struct DeployGossiperIncoming(#[data_size(skip)] pub(crate) gossiper::Message<Deploy>);
-
-impl Display for DeployGossiperIncoming {
+impl<T> Display for GossiperIncoming<T>
+where
+    T: Item,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "deploy gossip: {}", self.0)
+        write!(f, "gossip from {}: {}", self.sender, self.message)
     }
 }
+
+// TODO: Make `Item` (and thus `T`) implement `DataSize`, then extend or derive this impl.
+impl<T> DataSize for GossiperIncoming<T>
+where
+    T: Item,
+{
+    const IS_DYNAMIC: bool = <NodeId as DataSize>::IS_DYNAMIC;
+
+    const STATIC_HEAP_SIZE: usize = <NodeId as DataSize>::STATIC_HEAP_SIZE;
+
+    #[inline]
+    fn estimate_heap_size(&self) -> usize {
+        self.sender.estimate_heap_size()
+    }
+}
+
+/// A new deploy gossiper message has arrived.
+pub type DeployGossiperIncoming = GossiperIncoming<Deploy>;
 
 /// A new address gossiper message arrived.
-#[derive(DataSize, Debug, Serialize)]
-
-pub(crate) struct AddressGossiperIncoming(
-    #[data_size(skip)] pub(crate) gossiper::Message<GossipedAddress>,
-);
-
-impl Display for AddressGossiperIncoming {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "address gossip: {}", self.0)
-    }
-}
+pub type AddressGossiperIncoming = GossiperIncoming<GossipedAddress>;
 
 /// A new request for a object out of storage arrived.
 ///

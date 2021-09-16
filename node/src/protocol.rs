@@ -157,11 +157,11 @@ where
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
-    fn from_incoming(_sender: NodeId, payload: Message) -> Self {
+    fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::Consensus(inner) => ConsensusMessageIncoming(inner).into(),
-            Message::DeployGossiper(inner) => DeployGossiperIncoming(inner).into(),
-            Message::AddressGossiper(inner) => AddressGossiperIncoming(inner).into(),
+            Message::DeployGossiper(message) => DeployGossiperIncoming { sender, message }.into(),
+            Message::AddressGossiper(message) => AddressGossiperIncoming { sender, message }.into(),
             Message::GetRequest { tag, serialized_id } => match tag {
                 Tag::Deploy => NetRequestIncoming::Deploy(serialized_id).into(),
                 Tag::Block => NetRequestIncoming::Block(serialized_id).into(),
