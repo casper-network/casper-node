@@ -5,8 +5,6 @@
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod chainspec_loader;
-#[cfg(test)]
-pub(crate) mod collector;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
