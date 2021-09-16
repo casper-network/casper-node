@@ -193,7 +193,7 @@ pub(crate) enum ParticipatingEvent {
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
     /// Incoming consensus network message.
     #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming),
+    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
     /// Incoming deploy gossiper network message.
     #[from]
     DeployGossiperIncoming(DeployGossiperIncoming),
@@ -1266,7 +1266,11 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
             ),
-            ParticipatingEvent::ConsensusMessageIncoming(_) => todo!(),
+            ParticipatingEvent::ConsensusMessageIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             ParticipatingEvent::DeployGossiperIncoming(_) => todo!(),
             ParticipatingEvent::AddressGossiperIncoming(_) => todo!(),
             ParticipatingEvent::NetRequestIncoming(_) => todo!(),

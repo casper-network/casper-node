@@ -221,7 +221,7 @@ pub(crate) enum JoinerEvent {
 
     /// Incoming consensus network message.
     #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming),
+    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
 
     /// Incoming deploy gossiper network message.
     #[from]
@@ -921,7 +921,10 @@ impl reactor::Reactor for Reactor {
                 self.linear_chain_sync = LinearChainSyncState::Done(block_header);
                 Effects::new()
             }
-            JoinerEvent::ConsensusMessageIncoming(_) => todo!(),
+            JoinerEvent::ConsensusMessageIncoming(incoming) => {
+                debug!(%incoming, "ignoring incoming consensus message");
+                Effects::new()
+            }
             JoinerEvent::DeployGossiperIncoming(_) => todo!(),
             JoinerEvent::AddressGossiperIncoming(_) => todo!(),
             JoinerEvent::NetRequestIncoming(_) => todo!(),

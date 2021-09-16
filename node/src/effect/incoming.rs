@@ -14,11 +14,19 @@ use crate::{
 
 /// A new consensus message arrived.
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) struct ConsensusMessageIncoming(pub(crate) consensus::ConsensusMessage);
+pub(crate) struct ConsensusMessageIncoming<I> {
+    /// The originator of the consensus message.
+    pub(crate) sender: I,
+    /// The actual message.
+    pub(crate) message: consensus::ConsensusMessage,
+}
 
-impl Display for ConsensusMessageIncoming {
+impl<I> Display for ConsensusMessageIncoming<I>
+where
+    I: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "consensus: {}", self.0)
+        write!(f, "consensus from {}: {}", self.sender, self.message)
     }
 }
 
