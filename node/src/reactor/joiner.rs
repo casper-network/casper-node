@@ -45,9 +45,8 @@ use crate::{
             LinearChainAnnouncement,
         },
         incoming::{
-            AddressGossiperIncoming, ConsensusMessageIncoming, DeployGossiperIncoming,
-            FinalitySignatureIncoming, NetRequestIncoming, NetResponseIncoming,
-            TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -225,11 +224,11 @@ pub(crate) enum JoinerEvent {
 
     /// Incoming deploy gossiper network message.
     #[from]
-    DeployGossiperIncoming(DeployGossiperIncoming),
+    DeployGossiperIncoming(GossiperIncoming<Deploy>),
 
     /// Incoming address gossiper network message.
     #[from]
-    AddressGossiperIncoming(AddressGossiperIncoming),
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
 
     /// Incoming net request network message.
     #[from]

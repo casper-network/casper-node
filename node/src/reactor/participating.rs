@@ -55,9 +55,8 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, RpcServerAnnouncement,
         },
         incoming::{
-            AddressGossiperIncoming, ConsensusMessageIncoming, DeployGossiperIncoming,
-            FinalitySignatureIncoming, NetRequestIncoming, NetResponseIncoming,
-            TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -196,10 +195,10 @@ pub(crate) enum ParticipatingEvent {
     ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
     /// Incoming deploy gossiper network message.
     #[from]
-    DeployGossiperIncoming(DeployGossiperIncoming),
+    DeployGossiperIncoming(GossiperIncoming<Deploy>),
     /// Incoming address gossiper network message.
     #[from]
-    AddressGossiperIncoming(AddressGossiperIncoming),
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     /// Incoming net request network message.
     #[from]
     NetRequestIncoming(NetRequestIncoming),

@@ -15,9 +15,9 @@ use crate::{
         small_network::{FromIncoming, GossipedAddress, MessageKind, Payload},
     },
     effect::incoming::{
-        AddressGossiperIncoming, ConsensusMessageIncoming, DeployGossiperIncoming,
-        FinalitySignatureIncoming, NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming,
-        TrieResponseIncoming,
+        ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
+        NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+        TrieResponse, TrieResponseIncoming,
     },
     types::{Deploy, FinalitySignature, Item, NodeId, Tag},
 };
@@ -149,8 +149,8 @@ impl Display for Message {
 impl<REv> FromIncoming<NodeId, Message> for REv
 where
     REv: From<ConsensusMessageIncoming<NodeId>>
-        + From<DeployGossiperIncoming>
-        + From<AddressGossiperIncoming>
+        + From<GossiperIncoming<Deploy>>
+        + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
         + From<TrieRequestIncoming>
@@ -160,46 +160,88 @@ where
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
-            Message::DeployGossiper(message) => DeployGossiperIncoming { sender, message }.into(),
-            Message::AddressGossiper(message) => AddressGossiperIncoming { sender, message }.into(),
+            Message::DeployGossiper(message) => GossiperIncoming { sender, message }.into(),
+            Message::AddressGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::GetRequest { tag, serialized_id } => match tag {
-                Tag::Deploy => NetRequestIncoming::Deploy(serialized_id).into(),
-                Tag::Block => NetRequestIncoming::Block(serialized_id).into(),
-                Tag::GossipedAddress => NetRequestIncoming::GossipedAddress(serialized_id).into(),
-                Tag::BlockAndMetadataByHeight => {
-                    NetRequestIncoming::BlockAndMetadataByHeight(serialized_id).into()
+                Tag::Deploy => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::Deploy(serialized_id),
                 }
-                Tag::BlockHeaderByHash => {
-                    NetRequestIncoming::BlockHeaderByHash(serialized_id).into()
+                .into(),
+                Tag::Block => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::Block(serialized_id),
                 }
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                    NetRequestIncoming::BlockHeaderAndFinalitySignaturesByHeight(serialized_id)
-                        .into()
+                .into(),
+                Tag::GossipedAddress => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::GossipedAddress(serialized_id),
                 }
-                Tag::Trie => TrieRequestIncoming(serialized_id).into(),
+                .into(),
+                Tag::BlockAndMetadataByHeight => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockAndMetadataByHeight(serialized_id),
+                }
+                .into(),
+                Tag::BlockHeaderByHash => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockHeaderByHash(serialized_id),
+                }
+                .into(),
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockHeaderAndFinalitySignaturesByHeight(serialized_id),
+                }
+                .into(),
+                Tag::Trie => TrieRequestIncoming {
+                    sender,
+                    message: TrieRequest(serialized_id),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
                 serialized_item,
             } => match tag {
-                Tag::Deploy => NetResponseIncoming::Deploy(serialized_item).into(),
-                Tag::Block => NetResponseIncoming::Block(serialized_item).into(),
-                Tag::GossipedAddress => {
-                    NetResponseIncoming::GossipedAddress(serialized_item).into()
+                Tag::Deploy => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::Deploy(serialized_item),
                 }
-                Tag::BlockAndMetadataByHeight => {
-                    NetResponseIncoming::BlockAndMetadataByHeight(serialized_item).into()
+                .into(),
+                Tag::Block => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::Block(serialized_item),
                 }
-                Tag::BlockHeaderByHash => {
-                    NetResponseIncoming::BlockHeaderByHash(serialized_item).into()
+                .into(),
+                Tag::GossipedAddress => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::GossipedAddress(serialized_item),
                 }
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                    NetResponseIncoming::BlockHeaderAndFinalitySignaturesByHeight(serialized_item)
-                        .into()
+                .into(),
+                Tag::BlockAndMetadataByHeight => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockAndMetadataByHeight(serialized_item),
                 }
-                Tag::Trie => TrieResponseIncoming(serialized_item).into(),
+                .into(),
+                Tag::BlockHeaderByHash => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockHeaderByHash(serialized_item),
+                }
+                .into(),
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockHeaderAndFinalitySignaturesByHeight(serialized_item),
+                }
+                .into(),
+                Tag::Trie => TrieResponseIncoming {
+                    sender,
+                    message: TrieResponse(serialized_item),
+                }
+                .into(),
             },
-            Message::FinalitySignature(inner) => FinalitySignatureIncoming(inner).into(),
+            Message::FinalitySignature(message) => {
+                FinalitySignatureIncoming { sender, message }.into()
+            }
         }
     }
 }

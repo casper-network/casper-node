@@ -27,7 +27,7 @@ use crate::{
     },
     effect::{
         announcements::{ControlAnnouncement, GossiperAnnouncement},
-        incoming::AddressGossiperIncoming,
+        incoming::GossiperIncoming,
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest,
             StorageRequest,
@@ -61,7 +61,7 @@ enum Event {
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     /// An incoming network message with an address gossiper protocol message.
-    AddressGossiperIncoming(AddressGossiperIncoming),
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
 }
 
 impl ReactorEvent for Event {
@@ -116,7 +116,7 @@ impl FromIncoming<NodeId, Message> for Event {
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::AddressGossiper(message) => {
-                Event::AddressGossiperIncoming(AddressGossiperIncoming { sender, message })
+                Event::AddressGossiperIncoming(GossiperIncoming { sender, message })
             }
         }
     }

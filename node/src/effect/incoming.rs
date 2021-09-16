@@ -8,77 +8,55 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
-    components::{consensus, gossiper, small_network::GossipedAddress},
-    types::{Deploy, FinalitySignature, Item, NodeId},
+    components::{consensus, gossiper},
+    types::{FinalitySignature, NodeId},
 };
 
-/// A new consensus message arrived.
+/// An envelope for an incoming message, attaching a sender address.
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) struct ConsensusMessageIncoming<I> {
-    /// The originator of the consensus message.
+pub struct MessageIncoming<I, M> {
     pub(crate) sender: I,
-    /// The actual message.
-    pub(crate) message: consensus::ConsensusMessage,
+    pub(crate) message: M,
 }
 
-impl<I> Display for ConsensusMessageIncoming<I>
+impl<I, M> Display for MessageIncoming<I, M>
 where
     I: Display,
+    M: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "consensus from {}: {}", self.sender, self.message)
+        write!(f, "incoming from {}: {}", self.sender, self.message)
     }
 }
 
-/// An incoming message from a gossiper.
-#[derive(Debug, Serialize)]
-pub struct GossiperIncoming<T>
-where
-    T: Item,
-{
-    /// The node the gossiper message originated from.
-    pub(crate) sender: NodeId,
-    /// The actual message.
-    pub(crate) message: gossiper::Message<T>,
-}
+/// A new consensus message arrived.
+pub(crate) type ConsensusMessageIncoming<I> = MessageIncoming<I, consensus::ConsensusMessage>;
 
-impl<T> Display for GossiperIncoming<T>
-where
-    T: Item,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "gossip from {}: {}", self.sender, self.message)
-    }
-}
+/// A new message from a gossiper arrived.
+pub type GossiperIncoming<T> = MessageIncoming<NodeId, gossiper::Message<T>>;
 
-// TODO: Make `Item` (and thus `T`) implement `DataSize`, then extend or derive this impl.
-impl<T> DataSize for GossiperIncoming<T>
-where
-    T: Item,
-{
-    const IS_DYNAMIC: bool = <NodeId as DataSize>::IS_DYNAMIC;
+/// A new message requesting various objects arrived.
+pub(crate) type NetRequestIncoming = MessageIncoming<NodeId, NetRequest>;
 
-    const STATIC_HEAP_SIZE: usize = <NodeId as DataSize>::STATIC_HEAP_SIZE;
+/// A new message requesting a trie arrived.
+pub(crate) type TrieRequestIncoming = MessageIncoming<NodeId, TrieRequest>;
 
-    #[inline]
-    fn estimate_heap_size(&self) -> usize {
-        self.sender.estimate_heap_size()
-    }
-}
+/// A new message requesting various objects arrived.
+pub(crate) type NetResponseIncoming = MessageIncoming<NodeId, NetResponse>;
 
-/// A new deploy gossiper message has arrived.
-pub type DeployGossiperIncoming = GossiperIncoming<Deploy>;
+/// A new message requesting a trie arrived.
+pub(crate) type TrieResponseIncoming = MessageIncoming<NodeId, TrieResponse>;
 
-/// A new address gossiper message arrived.
-pub type AddressGossiperIncoming = GossiperIncoming<GossipedAddress>;
+/// A new finality signature arrived over the network.
+pub(crate) type FinalitySignatureIncoming = MessageIncoming<NodeId, Box<FinalitySignature>>;
 
-/// A new request for a object out of storage arrived.
+/// A request for an object out of storage arrived.
 ///
 /// Note: The variants here are grouped under a common enum, since they are usually handled by the
 ///       same component. If this changes, split up this type (see `TrieRequestIncoming` for an
 ///       example).
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) enum NetRequestIncoming {
+pub(crate) enum NetRequest {
     /// Request for a deploy.
     Deploy(Vec<u8>),
     /// Request for a block.
@@ -93,44 +71,38 @@ pub(crate) enum NetRequestIncoming {
     BlockHeaderAndFinalitySignaturesByHeight(Vec<u8>),
 }
 
-impl Display for NetRequestIncoming {
+impl Display for NetRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NetRequestIncoming::Deploy(inner) => f.write_str("request for deploy"),
-            NetRequestIncoming::Block(inner) => f.write_str("request for block"),
-            NetRequestIncoming::GossipedAddress(inner) => {
-                f.write_str("request for gossiped address")
-            }
-            NetRequestIncoming::BlockAndMetadataByHeight(inner) => {
+            NetRequest::Deploy(_) => f.write_str("request for deploy"),
+            NetRequest::Block(_) => f.write_str("request for block"),
+            NetRequest::GossipedAddress(_) => f.write_str("request for gossiped address"),
+            NetRequest::BlockAndMetadataByHeight(_) => {
                 f.write_str("request for block and metadata by height")
             }
-            NetRequestIncoming::BlockHeaderByHash(inner) => {
-                f.write_str("request for block header by hash")
-            }
-            NetRequestIncoming::BlockHeaderAndFinalitySignaturesByHeight(inner) => {
+            NetRequest::BlockHeaderByHash(_) => f.write_str("request for block header by hash"),
+            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 f.write_str("request for block header and finality signatures by height")
             }
         }
     }
 }
 
-/// A new request for a trie arrived.
-///
-/// See `NetRequestIncoming` for notes.
+/// A request for a trie.
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) struct TrieRequestIncoming(pub(crate) Vec<u8>);
+pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
 
-impl Display for TrieRequestIncoming {
+impl Display for TrieRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("request for trie")
     }
 }
 
-/// A response for a net request arrived.
+/// A response for a net request.
 ///
-/// See `NetRequestIncoming` for notes.
+/// See `NetRequest` for notes.
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) enum NetResponseIncoming {
+pub(crate) enum NetResponse {
     /// Response of a deploy.
     Deploy(Vec<u8>),
     /// Response of a block.
@@ -145,45 +117,29 @@ pub(crate) enum NetResponseIncoming {
     BlockHeaderAndFinalitySignaturesByHeight(Vec<u8>),
 }
 
-impl Display for NetResponseIncoming {
+impl Display for NetResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NetResponseIncoming::Deploy(inner) => f.write_str("response, deploy"),
-            NetResponseIncoming::Block(inner) => f.write_str("response, block"),
-            NetResponseIncoming::GossipedAddress(inner) => {
-                f.write_str("response, gossiped address")
-            }
-            NetResponseIncoming::BlockAndMetadataByHeight(inner) => {
+            NetResponse::Deploy(_) => f.write_str("response, deploy"),
+            NetResponse::Block(_) => f.write_str("response, block"),
+            NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),
+            NetResponse::BlockAndMetadataByHeight(_) => {
                 f.write_str("response, block and metadata by height")
             }
-            NetResponseIncoming::BlockHeaderByHash(inner) => {
-                f.write_str("response, block header by hash")
-            }
-            NetResponseIncoming::BlockHeaderAndFinalitySignaturesByHeight(inner) => {
+            NetResponse::BlockHeaderByHash(_) => f.write_str("response, block header by hash"),
+            NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 f.write_str("response, block header and finality signatures by height")
             }
         }
     }
 }
 
-/// A response for a trie request arrived.
-///
-/// See `NetRequestIncoming` for notes.
+/// A response to a request for a trie.
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) struct TrieResponseIncoming(pub(crate) Vec<u8>);
+pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
 
-impl Display for TrieResponseIncoming {
+impl Display for TrieResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("response, trie")
-    }
-}
-
-/// A new finality signature arrived over the network.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) struct FinalitySignatureIncoming(pub(crate) Box<FinalitySignature>);
-
-impl Display for FinalitySignatureIncoming {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("finality signature")
     }
 }
