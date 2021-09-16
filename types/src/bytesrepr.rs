@@ -112,6 +112,12 @@ pub enum Error {
     /// Not all input bytes were consumed in [`deserialize`].
     #[cfg_attr(feature = "std", error("Deserialization error: left-over bytes"))]
     LeftOverBytes,
+    /// The deserialized object did not pass validation.
+    #[cfg_attr(
+        feature = "std",
+        error("Deserialization error: deserialized object didn't pass validation")
+    )]
+    Validation,
     /// Out of memory error.
     #[cfg_attr(feature = "std", error("Serialization error: out of memory"))]
     OutOfMemory,

@@ -83,11 +83,12 @@ impl FromBytes for IndexedMerkleProof {
         let (merkle_proof, mut remainder) = Vec::from_bytes(remainder)?;
 
         Ok((
-            IndexedMerkleProof {
+            IndexedMerkleProof::try_from(IndexedMerkleProofDeserializeValidator {
                 index,
                 count,
                 merkle_proof,
-            },
+            })
+            .map_err(|err| casper_types::bytesrepr::Error::Validation)?,
             remainder,
         ))
     }
@@ -470,7 +471,7 @@ mod test {
     }
 
     #[test]
-    fn validates_indexed_merkle_proof_after_deserialization() {
+    fn validates_indexed_merkle_proof_after_serde_deserialization() {
         let indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
 
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
@@ -480,19 +481,47 @@ mod test {
                 .expect("should deserialize correctly")
         );
 
-        // Check that proof with index greated than count fails to deserialize
+        // Check that proof with index greater than count fails to deserialize
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.index += 1;
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
         serde_json::from_str::<IndexedMerkleProof>(&json)
-            .expect_err("shoud not deserialize correctly");
+            .expect_err("should not deserialize correctly due to wrong index");
 
         // Check that proof with incorrect length fails to deserialize
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.merkle_proof.push(blake2b_hash("XXX"));
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
         serde_json::from_str::<IndexedMerkleProof>(&json)
-            .expect_err("shoud not deserialize correctly");
+            .expect_err("should not deserialize correctly due to wrong merkle proof");
+    }
+
+    #[test]
+    fn validates_indexed_merkle_proof_after_bytesrepr_deserialization() {
+        let indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
+
+        let bytes = indexed_merkle_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+        IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
+
+        // Check that proof with index greater than count fails to deserialize
+        let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
+        indexed_merkle_proof.index += 1;
+        let bytes = indexed_merkle_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+        IndexedMerkleProof::from_bytes(&bytes)
+            .expect_err("should not deserialize correctly due to wrong index");
+
+        // Check that proof with incorrect length fails to deserialize
+        let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
+        indexed_merkle_proof.merkle_proof.push(blake2b_hash("XXX"));
+        let bytes = indexed_merkle_proof
+            .to_bytes()
+            .expect("should serialize correctly");
+        IndexedMerkleProof::from_bytes(&bytes)
+            .expect_err("should not deserialize correctly due to wrong merkle proof");
     }
 
     fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
