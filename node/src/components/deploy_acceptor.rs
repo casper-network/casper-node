@@ -189,14 +189,24 @@ impl DeployAcceptor {
                 });
         }
 
-        effect_builder
-            .get_highest_block_from_storage()
-            .event(move |maybe_block| Event::GetBlockResult {
-                deploy,
-                source,
-                maybe_block: Box::new(maybe_block),
-                maybe_responder,
-            })
+        if self.verify_accounts {
+            effect_builder
+                .get_highest_block_from_storage()
+                .event(move |maybe_block| Event::GetBlockResult {
+                    deploy,
+                    source,
+                    maybe_block: Box::new(maybe_block),
+                    maybe_responder,
+                })
+        } else {
+            effect_builder
+                .immediately()
+                .event(move |_| Event::VerifyDeployCryptographicValidity {
+                    deploy,
+                    source,
+                    maybe_responder,
+                })
+        }
     }
 
     fn handle_get_block_result<REv: ReactorEventT>(
