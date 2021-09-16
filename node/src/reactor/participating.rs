@@ -56,7 +56,7 @@ use crate::{
         },
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
-            NetRequestIncoming, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -70,8 +70,8 @@ use crate::{
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
-        ActivationPoint, BlockHeader, BlockPayload, Deploy, ExitCode, FinalizedBlock, Item, NodeId,
-        Tag,
+        ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitCode, FinalizedBlock,
+        Item, NodeId, Tag,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -341,14 +341,14 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
             }
-            ParticipatingEvent::ConsensusMessageIncoming(_) => todo!(),
-            ParticipatingEvent::DeployGossiperIncoming(_) => todo!(),
-            ParticipatingEvent::AddressGossiperIncoming(_) => todo!(),
-            ParticipatingEvent::NetRequestIncoming(_) => todo!(),
-            ParticipatingEvent::NetResponseIncoming(_) => todo!(),
-            ParticipatingEvent::TrieRequestIncoming(_) => todo!(),
-            ParticipatingEvent::TrieResponseIncoming(_) => todo!(),
-            ParticipatingEvent::FinalitySignatureIncoming(_) => todo!(),
+            ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::NetRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
         }
     }
 }
@@ -939,108 +939,7 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            ParticipatingEvent::NetworkAnnouncement(MessageReceivedAnnouncement {
-                sender,
-                payload,
-            }) => {
-                let reactor_event = match payload {
-                    Message::Consensus(msg) => {
-                        ParticipatingEvent::Consensus(consensus::Event::MessageReceived {
-                            sender,
-                            msg,
-                        })
-                    }
-                    Message::DeployGossiper(message) => {
-                        ParticipatingEvent::DeployGossiper(gossiper::Event::MessageReceived {
-                            sender,
-                            message,
-                        })
-                    }
-                    Message::AddressGossiper(message) => {
-                        ParticipatingEvent::AddressGossiper(gossiper::Event::MessageReceived {
-                            sender,
-                            message,
-                        })
-                    }
-                    Message::GetRequest { tag, serialized_id } => {
-                        return self.handle_get_request(effect_builder, sender, tag, &serialized_id)
-                    }
-                    Message::GetResponse {
-                        tag,
-                        serialized_item,
-                    } => match tag {
-                        Tag::Deploy => {
-                            let deploy: Box<Deploy> = match bincode::deserialize::<
-                                FetchedOrNotFound<Deploy, DeployHash>,
-                            >(
-                                &serialized_item
-                            ) {
-                                Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                                Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                                    error!(
-                                        "peer did not have deploy with hash {}: {}",
-                                        sender, deploy_hash
-                                    );
-                                    return Effects::new();
-                                }
-                                Err(error) => {
-                                    error!("failed to decode deploy from {}: {}", sender, error);
-                                    return Effects::new();
-                                }
-                            };
-                            ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
-                                deploy,
-                                source: Source::Peer(sender),
-                                responder: None,
-                            })
-                        }
-                        Tag::Block => {
-                            error!(
-                                "cannot handle get response for block-by-hash from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::BlockAndMetadataByHeight => {
-                            error!(
-                                "cannot handle get response for block-by-height from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::GossipedAddress => {
-                            error!(
-                                "cannot handle get response for gossiped-address from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::BlockHeaderByHash => {
-                            error!(
-                                "cannot handle get response for block-header-by-hash from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                            error!(
-                                "cannot handle get response for \
-                                 block-header-and-finality-signatures-by-height from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::Trie => {
-                            error!("cannot handle get response for read-trie from {}", sender);
-                            return Effects::new();
-                        }
-                    },
-                    Message::FinalitySignature(fs) => ParticipatingEvent::LinearChain(
-                        linear_chain::Event::FinalitySignatureReceived(fs, true),
-                    ),
-                };
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
+
             ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
                 responder,
@@ -1282,8 +1181,8 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             ParticipatingEvent::NetRequestIncoming(NetRequestIncoming { sender, message }) => {
-                // This is legacy code to be refactored, as it recreates the tag to call
-                // `handle_get_request` instead of using the `enum` directly.
+                // TODO: Code to be refactored, as it recreates the tag to call `handle_get_request`
+                //       instead of using the `enum` directly.
                 let (tag, serialized_id) = match message {
                     NetRequest::Deploy(ref serialized_id) => (Tag::Deploy, serialized_id),
                     NetRequest::Block(ref serialized_id) => (Tag::Block, serialized_id),
@@ -1303,13 +1202,88 @@ impl reactor::Reactor for Reactor {
 
                 self.handle_get_request(effect_builder, sender, tag, serialized_id)
             }
-            ParticipatingEvent::NetResponseIncoming(_) => todo!(),
+            ParticipatingEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
+                // TODO: Code to be refactored, we do not want to handle all this logic inside the
+                //       routing function.
+                let event = match message {
+                    NetResponse::Deploy(ref serialized_item) => {
+                        let deploy: Box<Deploy> = match bincode::deserialize::<
+                            FetchedOrNotFound<Deploy, DeployHash>,
+                        >(serialized_item)
+                        {
+                            Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                            Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                                error!(
+                                    "peer did not have deploy with hash {}: {}",
+                                    sender, deploy_hash
+                                );
+                                return Effects::new();
+                            }
+                            Err(error) => {
+                                error!("failed to decode deploy from {}: {}", sender, error);
+                                return Effects::new();
+                            }
+                        };
+
+                        ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                            deploy,
+                            source: Source::Peer(sender),
+                            responder: None,
+                        })
+                    }
+                    NetResponse::Block(_) => {
+                        error!(
+                            "cannot handle get response for block-by-hash from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::GossipedAddress(_) => {
+                        error!(
+                            "cannot handle get response for gossiped-address from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::BlockAndMetadataByHeight(_) => {
+                        error!(
+                            "cannot handle get response for block-by-height from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::BlockHeaderByHash(_) => {
+                        error!(
+                            "cannot handle get response for block-header-by-hash from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
+                        error!(
+                            "cannot handle get response for \
+                            block-header-and-finality-signatures-by-height from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                };
+
+                self.dispatch_event(effect_builder, rng, event)
+            }
             ParticipatingEvent::TrieRequestIncoming(TrieRequestIncoming {
                 sender,
                 message: TrieRequest(ref serialized_id),
             }) => self.handle_get_request(effect_builder, sender, Tag::Trie, serialized_id),
-            ParticipatingEvent::TrieResponseIncoming(_) => todo!(),
-            ParticipatingEvent::FinalitySignatureIncoming(_) => todo!(),
+            ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {
+                error!("cannot handle get response for read-trie from {}", sender);
+                return Effects::new();
+            }
+            ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::LinearChain,
+                self.linear_chain
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
         }
     }
 

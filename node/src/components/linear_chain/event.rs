@@ -5,7 +5,10 @@ use std::{
 
 use casper_types::ExecutionResult;
 
-use crate::types::{Block, BlockSignatures, DeployHash, FinalitySignature};
+use crate::{
+    effect::incoming::FinalitySignatureIncoming,
+    types::{Block, BlockSignatures, DeployHash, FinalitySignature},
+};
 
 #[derive(Debug)]
 pub(crate) enum Event {
@@ -28,6 +31,12 @@ pub(crate) enum Event {
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
     /// Result of testing if creator of the finality signature is bonded validator.
     IsBonded(Option<Box<BlockSignatures>>, Box<FinalitySignature>, bool),
+}
+
+impl From<FinalitySignatureIncoming> for Event {
+    fn from(incoming: FinalitySignatureIncoming) -> Self {
+        Event::FinalitySignatureReceived(incoming.message, true)
+    }
 }
 
 impl Display for Event {
