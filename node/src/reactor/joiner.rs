@@ -925,8 +925,15 @@ impl reactor::Reactor for Reactor {
                 debug!(%incoming, "ignoring incoming consensus message");
                 Effects::new()
             }
-            JoinerEvent::DeployGossiperIncoming(_) => todo!(),
-            JoinerEvent::AddressGossiperIncoming(_) => todo!(),
+            JoinerEvent::DeployGossiperIncoming(incoming) => {
+                debug!(%incoming, "ignoring incoming deploy gossiper message");
+                Effects::new()
+            }
+            JoinerEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             JoinerEvent::NetRequestIncoming(_) => todo!(),
             JoinerEvent::NetResponseIncoming(_) => todo!(),
             JoinerEvent::TrieRequestIncoming(_) => todo!(),

@@ -1271,8 +1271,16 @@ impl reactor::Reactor for Reactor {
                 self.consensus
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            ParticipatingEvent::DeployGossiperIncoming(_) => todo!(),
-            ParticipatingEvent::AddressGossiperIncoming(_) => todo!(),
+            ParticipatingEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            ParticipatingEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             ParticipatingEvent::NetRequestIncoming(_) => todo!(),
             ParticipatingEvent::NetResponseIncoming(_) => todo!(),
             ParticipatingEvent::TrieRequestIncoming(_) => todo!(),
