@@ -78,9 +78,8 @@ impl ToBytes for IndexedMerkleProof {
 
 impl FromBytes for IndexedMerkleProof {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
-        let (index, mut remainder) = u64::from_bytes(bytes)?;
-        let (count, mut remainder) = u64::from_bytes(remainder)?;
-        let (merkle_proof, mut remainder) = Vec::from_bytes(remainder)?;
+        let ((index, count, merkle_proof), remainder) =
+            <(u64, u64, Vec<Blake2bHash>)>::from_bytes(bytes)?;
 
         Ok((
             IndexedMerkleProof::try_from(IndexedMerkleProofDeserializeValidator {

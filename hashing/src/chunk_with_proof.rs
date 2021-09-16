@@ -68,8 +68,7 @@ impl ToBytes for ChunkWithProof {
 
 impl FromBytes for ChunkWithProof {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
-        let (proof, mut remainder) = IndexedMerkleProof::from_bytes(bytes)?;
-        let (chunk, mut remainder) = Bytes::from_bytes(remainder)?;
+        let ((proof, chunk), remainder) = <(IndexedMerkleProof, Bytes)>::from_bytes(bytes)?;
 
         Ok((
             ChunkWithProof::try_from(ChunkWithProofDeserializeValidator {
