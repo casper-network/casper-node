@@ -12,9 +12,10 @@
 # Step 07: Assert nodes 1&10 did stall.
 # Step 08: Await 1 era.
 # Step 09: Stage nodes 1&10 and restart.
-# Step 10: Assert lfbs are in sync
-# Step 11: Assert chain didn't stall.
-# Step 12: Terminate.
+# Step 10: Assert all nodes are running
+# Step 11: Assert lfbs are in sync
+# Step 12: Assert chain didn't stall.
+# Step 13: Terminate.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -34,6 +35,8 @@ function _main()
     local STAGE_ID=${1}
     local INITIAL_PROTOCOL_VERSION
     local ACTIVATION_POINT
+    local PRE_UPGRADE_HASH
+    local POST_UPGRADE_HASH
 
     if [ ! -d "$(get_path_to_stage "$STAGE_ID")" ]; then
         log "ERROR :: stage $STAGE_ID has not been built - cannot run scenario"
@@ -47,6 +50,7 @@ function _main()
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
     ACTIVATION_POINT="$(get_chain_era)"
+    PRE_UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
@@ -54,10 +58,13 @@ function _main()
     _step_06
     _step_07
     _step_08
-    _step_09 "$STAGE_ID" "$ACTIVATION_POINT"
+    _step_09 "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_HASH"
+#    POST_UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+#    _step_09 "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_HASH"
     _step_10
     _step_11
     _step_12
+    _step_13
 }
 
 # Step 01: Start network from pre-built stage.
@@ -106,7 +113,7 @@ function _step_03()
 
     log "... awaiting 2 eras + 1 block"
     await_n_eras '2' 'true' '5.0'
-    await_n_blocks 1
+    await_n_blocks '1' 'true' '2'
 }
 
 # Step 04: Assert upgraded nodes 2-9.
@@ -165,13 +172,13 @@ function _step_06()
     log_step_upgrades 6 "Asserting nodes 2 thru 9 didn't stall"
 
     HEIGHT_1=$(get_chain_height 2)
-    await_n_blocks 5
+    await_n_blocks '5' 'true' '2'
     for NODE_ID in $(seq 2 9)
     do
         HEIGHT_2=$(get_chain_height "$NODE_ID")
         if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
             log "ERROR :: upgrade failure :: node-$NODE_ID has stalled"
-            log " ... $HEIGHT_2 <= $HEIGHT_1"
+            log " ... node-$NODE_ID : $HEIGHT_2 <= $HEIGHT_1"
             exit 1
         else
             log " ... no stall detected on node-$NODE_ID: $HEIGHT_2 > $HEIGHT_1 [expected]"
@@ -189,8 +196,7 @@ function _step_07()
     log_step_upgrades 7 "Asserting nodes 1 and 10 stalled"
 
     HEIGHT_1=$(get_chain_height 1)
-    log "... sleeping 10s for potential movement"
-    sleep 10
+    await_n_blocks '5' 'true' '2'
 
     for NODE_ID in 1 10
     do
@@ -216,7 +222,7 @@ function _step_09()
 {
     local STAGE_ID=${1}
     local ACTIVATION_POINT=${2}
-    local HASH
+    local HASH=${3}
 
     log_step_upgrades 9 "upgrading nodes 1&10 from stage ($STAGE_ID)"
 
@@ -237,26 +243,33 @@ function _step_09()
     sleep 1
     source "$NCTL/sh/node/stop.sh" node='10'
     sleep 5
-
-    # Get the latest hash - causes issue requiring 2 restarts.
-    # See commented lines below if using this.
-#    HASH=$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')
-
-    # Get first block hash - this works.
-    HASH=$($(get_path_to_client) get-block -b 0 --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')
     source "$NCTL/sh/node/start.sh" node='10' hash="$HASH"
     sleep 1
     source "$NCTL/sh/node/start.sh" node='1' hash="$HASH"
-
-# Leaving this in for future debugging purposes
-#    sleep 5
-#    source "$NCTL/sh/node/start.sh" node='1' hash="$HASH"
-#    sleep 5
-#    source "$NCTL/sh/node/start.sh" node='10' hash="$HASH"
+    sleep 5
 }
 
-# Step 10: Assert lfbs are in sync
+# Step 10: Assert all nodes are running
 function _step_10()
+{
+    local RUNNING_COUNT
+
+    log_step_upgrades 10 "Asserting all nodes are running..."
+
+    # true in case of bad grep which would exit 1
+    RUNNING_COUNT="$(nctl-status | grep -c 'RUNNING' || true)"
+    if [ "$RUNNING_COUNT" != '10' ]; then
+        log "ERROR: $RUNNING_COUNT of 10 nodes found running"
+        log "... dumping logs"
+        nctl-status; nctl-assets-dump
+        exit 1
+    else
+        log "... $RUNNING_COUNT of 10 nodes found running![expected]"
+    fi
+}
+
+# Step 11: Assert lfbs are in sync
+function _step_11()
 {
     local NODES_IN_SYNC
     local LOOPS_ALLOWED
@@ -264,7 +277,7 @@ function _step_10()
     # Retry 5mins
     LOOPS_ALLOWED=300
 
-    log_step_upgrades 10 "Asserting all nodes are in sync..."
+    log_step_upgrades 11 "Asserting all nodes are in sync..."
     
     while [ "$LOOPS_ALLOWED" != '0' ]; do
         NODES_IN_SYNC=$(nctl-view-chain-lfb | awk '{print $NF}' | uniq -c | sed 's/^ *//g' | awk '{ print $1 }')
@@ -286,17 +299,17 @@ function _step_10()
     fi
 }
 
-# Step 11: Assert chain didn't stall.
-function _step_11()
+# Step 12: Assert chain didn't stall.
+function _step_12()
 {
     local HEIGHT_1
     local HEIGHT_2
     local NODE_ID
 
-    log_step_upgrades 11 "Asserting nodes didn't stall"
+    log_step_upgrades 12 "Asserting nodes didn't stall"
 
     HEIGHT_1=$(get_chain_height 2)
-    await_n_blocks 5
+    await_n_blocks '5' 'true' '2'
     for NODE_ID in $(seq 1 10)
     do
         HEIGHT_2=$(get_chain_height "$NODE_ID")
@@ -310,10 +323,10 @@ function _step_11()
     done
 }
 
-# Step 12: Terminate.
-function _step_12()
+# Step 13: Terminate.
+function _step_13()
 {
-    log_step_upgrades 12 "upgrade_scenario_04 successful - tidying up"
+    log_step_upgrades 13 "upgrade_scenario_04 successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

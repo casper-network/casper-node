@@ -43,11 +43,12 @@ function await_n_blocks()
 {
     local OFFSET=${1}
     local EMIT_LOG=${2:-false}
+    local NODE_ID=${3:-''}
 
     local CURRENT
     local FUTURE
 
-    CURRENT=$(get_chain_height)
+    CURRENT=$(get_chain_height "$NODE_ID")
     FUTURE=$((CURRENT + OFFSET))
 
     while [ "$CURRENT" -lt "$FUTURE" ];
@@ -56,7 +57,7 @@ function await_n_blocks()
             log "current block height = $CURRENT :: future height = $FUTURE ... sleeping 2 seconds"
         fi
         sleep 2.0
-        CURRENT=$(get_chain_height)
+        CURRENT=$(get_chain_height "$NODE_ID")
     done
 
     if [ "$EMIT_LOG" = true ]; then
