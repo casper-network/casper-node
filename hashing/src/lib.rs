@@ -7,7 +7,6 @@
 )]
 #![warn(missing_docs)]
 
-mod blake2b_hash;
 mod chunk_with_proof;
 mod error;
 mod indexed_merkle_proof;

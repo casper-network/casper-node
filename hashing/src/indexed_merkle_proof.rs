@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use crate::{blake2b_hash::Blake2bHash, error, util, Digest};
+use crate::{error, Digest};
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -19,7 +19,7 @@ use itertools::Itertools;
 pub struct IndexedMerkleProofDeserializeValidator {
     index: u64,
     count: u64,
-    merkle_proof: Vec<Blake2bHash>,
+    merkle_proof: Vec<Digest>,
 }
 
 impl TryFrom<IndexedMerkleProofDeserializeValidator> for IndexedMerkleProof {
@@ -57,7 +57,7 @@ impl TryFrom<IndexedMerkleProofDeserializeValidator> for IndexedMerkleProof {
 pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
-    merkle_proof: Vec<Blake2bHash>,
+    merkle_proof: Vec<Digest>,
 }
 
 impl ToBytes for IndexedMerkleProof {
@@ -79,7 +79,7 @@ impl ToBytes for IndexedMerkleProof {
 impl FromBytes for IndexedMerkleProof {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
         let ((index, count, merkle_proof), remainder) =
-            <(u64, u64, Vec<Blake2bHash>)>::from_bytes(bytes)?;
+            <(u64, u64, Vec<Digest>)>::from_bytes(bytes)?;
 
         Ok((
             IndexedMerkleProof::try_from(IndexedMerkleProofDeserializeValidator {
@@ -99,11 +99,11 @@ impl IndexedMerkleProof {
         index: u64,
     ) -> Result<IndexedMerkleProof, error::MerkleConstructionError>
     where
-        I: IntoIterator<Item = Blake2bHash>,
+        I: IntoIterator<Item = Digest>,
     {
         enum HashOrProof {
-            Hash(Blake2bHash),
-            Proof(Vec<Blake2bHash>),
+            Hash(Digest),
+            Proof(Vec<Digest>),
         }
         use HashOrProof::{Hash, Proof};
 
@@ -119,7 +119,7 @@ impl IndexedMerkleProof {
             })
             .tree_fold1(|(count_x, x), (count_y, y)| match (x, y) {
                 (Hash(hash_x), Hash(hash_y)) => {
-                    (count_x + count_y, Hash(util::hash_pair(&hash_x, &hash_y)))
+                    (count_x + count_y, Hash(Digest::hash_pair(&hash_x, &hash_y)))
                 }
                 (Hash(hash), Proof(mut proof)) | (Proof(mut proof), Hash(hash)) => {
                     proof.push(hash);
@@ -150,7 +150,7 @@ impl IndexedMerkleProof {
         }
     }
 
-    pub(crate) fn root_hash(&self) -> Blake2bHash {
+    pub(crate) fn root_hash(&self) -> Digest {
         let IndexedMerkleProof {
             index: _,
             count,
@@ -196,11 +196,11 @@ impl IndexedMerkleProof {
             }
             acc
         } else {
-            util::SENTINEL2
+            Digest::SENTINEL_MERKLE_TREE
         };
 
         // The Merkle root is the hash of the count with the raw root.
-        util::hash_pair(count.to_le_bytes(), raw_root)
+        Digest::hash_pair(count.to_le_bytes(), raw_root)
     }
 
     pub fn index(&self) -> u64 {
@@ -210,12 +210,12 @@ impl IndexedMerkleProof {
         self.count
     }
 
-    pub(crate) fn merkle_proof(&self) -> &[Blake2bHash] {
+    pub(crate) fn merkle_proof(&self) -> &[Digest] {
         &self.merkle_proof
     }
 
     #[cfg(test)]
-    pub(crate) fn inject_merkle_proof(&mut self, merkle_proof: Vec<Blake2bHash>) {
+    pub(crate) fn inject_merkle_proof(&mut self, merkle_proof: Vec<Digest>) {
         self.merkle_proof = merkle_proof;
     }
 
@@ -263,20 +263,19 @@ impl IndexedMerkleProof {
 
 #[cfg(test)]
 mod test {
+    use casper_types::bytesrepr::{FromBytes, ToBytes};
     use proptest::prelude::{prop_assert, prop_assert_eq};
     use proptest_attr_macro::proptest;
     use rand::Rng;
 
-    use crate::{blake2b_hash::Blake2bHash, util::blake2b_hash};
-
-    use super::*;
+    use crate::{error, indexed_merkle_proof::IndexedMerkleProof, util, Digest};
 
     fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
         let mut rng = rand::thread_rng();
         let leaf_count: u64 = rng.gen_range(1..100);
         let index = rng.gen_range(0..leaf_count);
-        let leaves: Vec<Blake2bHash> = (0..leaf_count)
-            .map(|i| blake2b_hash(i.to_le_bytes()))
+        let leaves: Vec<Digest> = (0..leaf_count)
+            .map(|i| Digest::hash(i.to_le_bytes()))
             .collect();
         let indexed_merkle_proof = IndexedMerkleProof::new(leaves.iter().cloned(), index).unwrap();
 
@@ -289,8 +288,8 @@ mod test {
         for _ in 0..20 {
             let leaf_count: u64 = rng.gen_range(1..100);
             let index = rng.gen_range(0..leaf_count);
-            let leaves: Vec<Blake2bHash> = (0..leaf_count)
-                .map(|i| blake2b_hash(i.to_le_bytes()))
+            let leaves: Vec<Digest> = (0..leaf_count)
+                .map(|i| Digest::hash(i.to_le_bytes()))
                 .collect();
             let root = util::hash_merkle_tree(leaves.iter().cloned());
             let indexed_merkle_proof =
@@ -311,7 +310,7 @@ mod test {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 23,
             count: 4,
-            merkle_proof: vec![Blake2bHash([0u8; 32]); 3],
+            merkle_proof: vec![Digest([0u8; 32]); 3],
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
@@ -327,7 +326,7 @@ mod test {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 1235,
             count: 5647,
-            merkle_proof: vec![Blake2bHash([0u8; 32]); 13],
+            merkle_proof: vec![Digest([0u8; 32]); 13],
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
@@ -345,7 +344,7 @@ mod test {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 0,
             count: 0,
-            merkle_proof: vec![Blake2bHash([0u8; 32]); 3],
+            merkle_proof: vec![Digest([0u8; 32]); 3],
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
@@ -380,7 +379,7 @@ mod test {
         let indexed_merkle_proof = IndexedMerkleProof {
             index: 42,
             count: 1 << (PROOF_LENGTH - 1),
-            merkle_proof: vec![Blake2bHash([0u8; Digest::LENGTH]); PROOF_LENGTH],
+            merkle_proof: vec![Digest([0u8; Digest::LENGTH]); PROOF_LENGTH],
         };
         let _hash = indexed_merkle_proof.root_hash();
     }
@@ -390,7 +389,7 @@ mod test {
         let empty_merkle_root = util::hash_merkle_tree(vec![]);
         assert_eq!(
             empty_merkle_root,
-            util::hash_pair(0u64.to_le_bytes(), util::SENTINEL2)
+            Digest::hash_pair(0u64.to_le_bytes(), Digest::SENTINEL_MERKLE_TREE)
         );
         let indexed_merkle_proof = IndexedMerkleProof {
             index: 0,
@@ -411,14 +410,10 @@ mod test {
         prop_assert!(indexed_merkle_proof.compute_expected_proof_length() <= 65);
     }
 
-    fn reference_root_from_proof(index: u64, count: u64, proof: &[Blake2bHash]) -> Blake2bHash {
-        fn compute_raw_root_from_proof(
-            index: u64,
-            leaf_count: u64,
-            proof: &[Blake2bHash],
-        ) -> Blake2bHash {
+    fn reference_root_from_proof(index: u64, count: u64, proof: &[Digest]) -> Digest {
+        fn compute_raw_root_from_proof(index: u64, leaf_count: u64, proof: &[Digest]) -> Digest {
             if leaf_count == 0 {
-                return util::SENTINEL2;
+                return Digest::SENTINEL_MERKLE_TREE;
             }
             if leaf_count == 1 {
                 return proof[0].clone();
@@ -427,19 +422,19 @@ mod test {
             let last = proof.len() - 1;
             if index < half {
                 let left = compute_raw_root_from_proof(index, half, &proof[..last]);
-                util::hash_pair(&left, &proof[last])
+                Digest::hash_pair(&left, &proof[last])
             } else {
                 let right =
                     compute_raw_root_from_proof(index - half, leaf_count - half, &proof[..last]);
-                util::hash_pair(&proof[last], &right)
+                Digest::hash_pair(&proof[last], &right)
             }
         }
 
         let raw_root = compute_raw_root_from_proof(index, count, proof);
-        util::hash_pair(count.to_le_bytes(), raw_root)
+        Digest::hash_pair(count.to_le_bytes(), raw_root)
     }
 
-    /// Construct an `IndexedMerkleProof` with a proof of zero Blake2bHashes.
+    /// Construct an `IndexedMerkleProof` with a proof of zero digests.
     fn test_indexed_merkle_proof(index: u64, count: u64) -> IndexedMerkleProof {
         let mut indexed_merkle_proof = IndexedMerkleProof {
             index,
@@ -447,7 +442,7 @@ mod test {
             merkle_proof: vec![],
         };
         let expected_proof_length = indexed_merkle_proof.compute_expected_proof_length();
-        indexed_merkle_proof.merkle_proof = std::iter::repeat_with(|| Blake2bHash([0u8; 32]))
+        indexed_merkle_proof.merkle_proof = std::iter::repeat_with(|| Digest([0u8; 32]))
             .take(expected_proof_length as usize)
             .collect();
         indexed_merkle_proof
@@ -501,7 +496,7 @@ mod test {
 
         // Check that proof with incorrect length fails to deserialize
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
-        indexed_merkle_proof.merkle_proof.push(blake2b_hash("XXX"));
+        indexed_merkle_proof.merkle_proof.push(Digest::hash("XXX"));
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
         serde_json::from_str::<IndexedMerkleProof>(&json)
             .expect_err("should not deserialize correctly due to wrong merkle proof");
@@ -527,7 +522,7 @@ mod test {
 
         // Check that proof with incorrect length fails to deserialize
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
-        indexed_merkle_proof.merkle_proof.push(blake2b_hash("XXX"));
+        indexed_merkle_proof.merkle_proof.push(Digest::hash("XXX"));
         let bytes = indexed_merkle_proof
             .to_bytes()
             .expect("should serialize correctly");

@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use crate::{
     error::{self},
     indexed_merkle_proof::IndexedMerkleProof,
-    util::blake2b_hash,
+    Digest,
 };
 
 use casper_types::{
@@ -97,10 +97,10 @@ impl ChunkWithProof {
         }
 
         let (proof, chunk) = if data.is_empty() {
-            (IndexedMerkleProof::new([blake2b_hash(&[])], index)?, vec![])
+            (IndexedMerkleProof::new([Digest::hash(&[])], index)?, vec![])
         } else {
             (
-                IndexedMerkleProof::new(data.chunks(Self::CHUNK_SIZE).map(blake2b_hash), index)?,
+                IndexedMerkleProof::new(data.chunks(Self::CHUNK_SIZE).map(Digest::hash), index)?,
                 data[Self::CHUNK_SIZE * (index as usize)
                     ..data.len().min(Self::CHUNK_SIZE * ((index as usize) + 1))]
                     .to_vec(),
@@ -111,7 +111,7 @@ impl ChunkWithProof {
     }
 
     fn is_valid(&self) -> bool {
-        let chunk_hash = blake2b_hash(self.chunk());
+        let chunk_hash = Digest::hash(self.chunk());
         self.proof
             .merkle_proof()
             .first()
@@ -126,16 +126,13 @@ impl ChunkWithProof {
 
 #[cfg(test)]
 mod test {
-    use crate::error;
+    use crate::{error, Digest};
     use casper_types::bytesrepr::{FromBytes, ToBytes};
     use proptest::proptest;
     use rand::Rng;
     use std::{convert::TryInto, ops::Range};
 
-    use crate::{
-        chunk_with_proof::ChunkWithProof,
-        util::{blake2b_hash, hash_merkle_tree},
-    };
+    use crate::{chunk_with_proof::ChunkWithProof, util::hash_merkle_tree};
 
     fn testing_data_size_range(minimum_size: usize) -> Range<usize> {
         minimum_size..512usize
@@ -169,7 +166,7 @@ mod test {
 
             let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * data_size];
             let expected_root =
-                hash_merkle_tree(data.chunks(ChunkWithProof::CHUNK_SIZE).map(blake2b_hash));
+                hash_merkle_tree(data.chunks(ChunkWithProof::CHUNK_SIZE).map(Digest::hash));
 
             // Calculate proof with `ChunkWithProof`
             let ChunkWithProof {
@@ -186,34 +183,39 @@ mod test {
         }
     }
 
-    proptest! {
-        #[test]
-        fn validates_chunk_with_proofs(data_size in testing_data_size_range(0)) {
-            let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * data_size];
+    //    proptest! {
+    #[test]
+    //fn validates_chunk_with_proofs(data_size in testing_data_size_range(0)) {
+    fn validates_chunk_with_proofs() {
+        let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * 0];
 
-            impl ChunkWithProof {
-                fn replace_first_proof(self) -> Self {
-                    let mut rng = rand::thread_rng();
-                    let ChunkWithProof { mut proof, chunk } = self;
+        impl ChunkWithProof {
+            fn replace_first_proof(self) -> Self {
+                let mut rng = rand::thread_rng();
+                let ChunkWithProof { mut proof, chunk } = self;
 
-                    // Keep the same number of proofs, but replace the first one with some random hash
-                    let mut merkle_proof: Vec<_> = proof.merkle_proof().to_vec();
-                    merkle_proof.pop();
-                    merkle_proof.insert(0, blake2b_hash(rng.gen::<usize>().to_string()));
-                    proof.inject_merkle_proof(merkle_proof);
+                // Keep the same number of proofs, but replace the first one with some random hash
+                let mut merkle_proof: Vec<_> = proof.merkle_proof().to_vec();
+                merkle_proof.pop();
+                merkle_proof.insert(0, Digest::hash(rng.gen::<usize>().to_string()));
+                proof.inject_merkle_proof(merkle_proof);
 
-                    ChunkWithProof { proof, chunk }
-                }
+                ChunkWithProof { proof, chunk }
             }
-
-            let chunk_with_proof =
-                ChunkWithProof::new(data.as_slice(), 0).unwrap();
-            assert!(chunk_with_proof.is_valid());
-
-            let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
-            assert!(!chunk_with_incorrect_proof.is_valid());
         }
+
+        let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
+        assert!(chunk_with_proof.is_valid());
+
+        dbg!(&chunk_with_proof);
+
+        let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
+
+        dbg!(&chunk_with_incorrect_proof);
+
+        assert!(!chunk_with_incorrect_proof.is_valid());
     }
+    //  }
 
     proptest! {
         #[test]
