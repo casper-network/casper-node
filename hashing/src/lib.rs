@@ -1,10 +1,4 @@
 //! A library providing hashing functionality including Merkle Proof utilities.
-mod blake2b_hash;
-mod chunk_with_proof;
-mod error;
-mod indexed_merkle_proof;
-mod util;
-
 #![doc(html_root_url = "https://docs.rs/casper-hashing/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
@@ -12,6 +6,12 @@ mod util;
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
+
+mod blake2b_hash;
+mod chunk_with_proof;
+mod error;
+mod indexed_merkle_proof;
+mod util;
 
 use std::{
     array::TryFromSliceError,
