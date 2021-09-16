@@ -328,15 +328,11 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployAcceptor(event) => {
-                println!("In {:?}", event);
-                debug!(?event, "handling event");
-                reactor::wrap_effects(
-                    Event::DeployAcceptor,
-                    self.deploy_acceptor
-                        .handle_event(effect_builder, rng, event),
-                )
-            }
+            Event::DeployAcceptor(event) => reactor::wrap_effects(
+                Event::DeployAcceptor,
+                self.deploy_acceptor
+                    .handle_event(effect_builder, rng, event),
+            ),
             Event::ControlAnnouncement(ctrl_ann) => {
                 panic!("unhandled control announcement: {}", ctrl_ann)
             }
@@ -458,7 +454,7 @@ impl reactor::Reactor for Reactor {
                             _ => QueryResult::ValueNotFound(String::new()),
                         }
                     } else {
-                        panic!("expect only queries using Key::Account variant");
+                        panic!("expect only queries using Key::Account or Key::Hash variant");
                     };
                     responder.respond(Ok(query_result)).ignore()
                 }

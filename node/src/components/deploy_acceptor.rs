@@ -11,6 +11,13 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error};
 
+use casper_execution_engine::core::engine_state::{
+    executable_deploy_item::{
+        ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItemIdentifier,
+    },
+    ExecutableDeployItem, MAX_PAYMENT,
+};
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
@@ -33,17 +40,8 @@ use crate::{
     NodeRng,
 };
 
-use casper_execution_engine::core::engine_state::{
-    executable_deploy_item::{
-        ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItemIdentifier,
-    },
-    ExecutableDeployItem, MAX_PAYMENT,
-};
-
-use crate::components::deploy_acceptor::event::EventMetadata;
-use casper_hashing::Digest;
 pub(crate) use config::Config;
-pub(crate) use event::Event;
+pub(crate) use event::{Event, EventMetadata};
 
 #[derive(Debug, Error, Serialize)]
 #[allow(clippy::enum_variant_names)]

@@ -70,33 +70,39 @@ pub(crate) enum Event {
         error: Error,
         verification_start_timestamp: Timestamp,
     },
+    /// The result of querying the highest available `Block` from the storage component.
     GetBlockResult {
         event_metadata: EventMetadata,
         maybe_block: Box<Option<Block>>,
         verification_start_timestamp: Timestamp,
     },
+    /// The result of querying global state for the `Account` associated with the `Deploy`.
     GetAccountResult {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         maybe_account: Option<Account>,
         verification_start_timestamp: Timestamp,
     },
+    /// The result of querying the balance of the `Account` associated with the `Deploy`.
     GetBalanceResult {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         maybe_balance_value: Option<U512>,
         verification_start_timestamp: Timestamp,
     },
+    /// The event to initiate verification of the payment logic in the `Deploy`.
     VerifyPaymentLogic {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     },
+    /// The event to initiate verification of the session logic in the `Deploy`.
     VerifySessionLogic {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     },
+    /// The result of querying global state for a `Contract` to verify the executable logic.
     GetContractResult {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
@@ -105,6 +111,7 @@ pub(crate) enum Event {
         maybe_contract: Option<Contract>,
         verification_start_timestamp: Timestamp,
     },
+    /// The result of querying global state for a `ContractPackage` to verify the executable logic.
     GetContractPackageResult {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
@@ -113,6 +120,7 @@ pub(crate) enum Event {
         maybe_contract_package: Option<ContractPackage>,
         verification_start_timestamp: Timestamp,
     },
+    /// The event to initiate the verification of the `Deploy`'s cryptographic validity.
     VerifyDeployCryptographicValidity {
         event_metadata: EventMetadata,
         verification_start_timestamp: Timestamp,
