@@ -47,7 +47,7 @@ function _main()
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
     ACTIVATION_POINT="$(get_chain_era)"
-    
+
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
     _step_05 "$INITIAL_PROTOCOL_VERSION"
@@ -215,6 +215,7 @@ function _step_08()
 function _step_09()
 {
     local STAGE_ID=${1}
+    local ACTIVATION_POINT=${2}
     local HASH
 
     log_step_upgrades 9 "upgrading nodes 1&10 from stage ($STAGE_ID)"
