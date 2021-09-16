@@ -88,7 +88,6 @@ use casper_execution_engine::{
         genesis::GenesisSuccess,
         upgrade::{UpgradeConfig, UpgradeSuccess},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
-        MAX_PAYMENT,
     },
     storage::trie::Trie,
 };
