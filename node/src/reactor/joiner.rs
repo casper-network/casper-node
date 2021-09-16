@@ -42,7 +42,12 @@ use crate::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, MessageReceivedAnnouncement,
+            LinearChainAnnouncement,
+        },
+        incoming::{
+            AddressGossiperIncoming, ConsensusMessageIncoming, DeployGossiperIncoming,
+            FinalitySignatureIncoming, NetRequestIncoming, NetResponseIncoming,
+            TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -186,10 +191,6 @@ pub(crate) enum JoinerEvent {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
 
-    /// Network announcement.
-    #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] MessageReceivedAnnouncement<NodeId, Message>),
-
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement<NodeId>),
@@ -217,6 +218,38 @@ pub(crate) enum JoinerEvent {
     /// Consensus request.
     #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
+
+    /// Incoming consensus network message.
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
+
+    /// Incoming deploy gossiper network message.
+    #[from]
+    DeployGossiperIncoming(DeployGossiperIncoming),
+
+    /// Incoming address gossiper network message.
+    #[from]
+    AddressGossiperIncoming(AddressGossiperIncoming),
+
+    /// Incoming net request network message.
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+
+    /// Incoming net response network message.
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+
+    /// Incoming trie request network message.
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+
+    /// Incoming trie response network message.
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+
+    /// Incoming finality signature network message.
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
 
 impl ReactorEvent for JoinerEvent {
@@ -258,7 +291,6 @@ impl Display for JoinerEvent {
         match self {
             JoinerEvent::Network(event) => write!(f, "network: {}", event),
             JoinerEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
-            JoinerEvent::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             JoinerEvent::BlocklistAnnouncement(event) => {
                 write!(f, "blocklist announcement: {}", event)
             }
@@ -333,6 +365,14 @@ impl Display for JoinerEvent {
             JoinerEvent::FinishedJoining { block_header } => {
                 write!(f, "finished joining with block header: {}", block_header)
             }
+            JoinerEvent::ConsensusMessageIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::DeployGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::AddressGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::NetRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::NetResponseIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
         }
     }
 }
@@ -715,9 +755,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::BlockFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(request.into()))
-            }
+            JoinerEvent::BlockFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockFetcher(request.into()),
+            ),
             JoinerEvent::DeployAcceptor(event) => reactor::wrap_effects(
                 JoinerEvent::DeployAcceptor,
                 self.deploy_acceptor
@@ -746,9 +788,11 @@ impl reactor::Reactor for Reactor {
                 self.block_header_by_hash_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::DeployFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::DeployFetcher(request.into()))
-            }
+            JoinerEvent::DeployFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::DeployFetcher(request.into()),
+            ),
             JoinerEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -759,9 +803,11 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::BlockByHeightFetcher(request.into()),
             ),
-            JoinerEvent::TrieFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::TrieFetcher(request.into()))
-            }
+            JoinerEvent::TrieFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::TrieFetcher(request.into()),
+            ),
             JoinerEvent::BlockHeaderFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
@@ -772,9 +818,7 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::ContractRuntimeAnnouncement(_) => {
-                Effects::new()
-            }
+            JoinerEvent::ContractRuntimeAnnouncement(_) => Effects::new(),
             JoinerEvent::AddressGossiper(event) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -877,6 +921,14 @@ impl reactor::Reactor for Reactor {
                 self.linear_chain_sync = LinearChainSyncState::Done(block_header);
                 Effects::new()
             }
+            JoinerEvent::ConsensusMessageIncoming(_) => todo!(),
+            JoinerEvent::DeployGossiperIncoming(_) => todo!(),
+            JoinerEvent::AddressGossiperIncoming(_) => todo!(),
+            JoinerEvent::NetRequestIncoming(_) => todo!(),
+            JoinerEvent::NetResponseIncoming(_) => todo!(),
+            JoinerEvent::TrieRequestIncoming(_) => todo!(),
+            JoinerEvent::TrieResponseIncoming(_) => todo!(),
+            JoinerEvent::FinalitySignatureIncoming(_) => todo!(),
         }
     }
 

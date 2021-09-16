@@ -84,15 +84,13 @@ use self::{
 pub(crate) use self::{
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{Message, MessageKind, Payload},
+    message::{FromIncoming, Message, MessageKind, Payload},
 };
 use super::consensus;
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{
-            BlocklistAnnouncement, LinearChainAnnouncement, MessageReceivedAnnouncement,
-        },
+        announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, NetworkInfoRequest, NetworkRequest,
         },
@@ -192,10 +190,7 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv: ReactorEvent
-        + From<Event<P>>
-        + From<MessageReceivedAnnouncement<NodeId, P>>
-        + From<ChainspecLoaderRequest>,
+    REv: ReactorEvent + From<Event<P>> + From<ChainspecLoaderRequest> + FromIncoming<NodeId, P>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -705,7 +700,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: From<MessageReceivedAnnouncement<NodeId, P>>,
+        REv: FromIncoming<NodeId, P>,
     {
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
@@ -715,9 +710,9 @@ where
                 warn!("received unexpected handshake");
                 Effects::new()
             }
-            Message::Payload(payload) => effect_builder
-                .announce_message_received(peer_id, payload)
-                .ignore(),
+            Message::Payload(payload) => {
+                effect_builder.announce_incoming(peer_id, payload).ignore()
+            }
         })
     }
 
@@ -788,9 +783,9 @@ impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: ReactorEvent
         + From<Event<P>>
-        + From<MessageReceivedAnnouncement<NodeId, P>>
         + From<ChainspecLoaderRequest>
-        + From<BeginGossipRequest<GossipedAddress>>,
+        + From<BeginGossipRequest<GossipedAddress>>
+        + FromIncoming<NodeId, P>,
     P: Payload,
 {
     type Event = Event<P>;

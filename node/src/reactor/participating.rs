@@ -52,8 +52,12 @@ use crate::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock,
-            MessageReceivedAnnouncement, RpcServerAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, RpcServerAnnouncement,
+        },
+        incoming::{
+            AddressGossiperIncoming, ConsensusMessageIncoming, DeployGossiperIncoming,
+            FinalitySignatureIncoming, NetRequestIncoming, NetResponseIncoming,
+            TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -66,8 +70,8 @@ use crate::{
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
-        ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitCode, FinalizedBlock,
-        Item, NodeId, Tag,
+        ActivationPoint, BlockHeader, BlockPayload, Deploy, ExitCode, FinalizedBlock, Item, NodeId,
+        Tag,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -160,9 +164,6 @@ pub(crate) enum ParticipatingEvent {
     /// Control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
-    /// Network announcement.
-    #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] MessageReceivedAnnouncement<NodeId, Message>),
     /// API server announcement.
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
@@ -190,6 +191,30 @@ pub(crate) enum ParticipatingEvent {
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+    /// Incoming consensus network message.
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
+    /// Incoming deploy gossiper network message.
+    #[from]
+    DeployGossiperIncoming(DeployGossiperIncoming),
+    /// Incoming address gossiper network message.
+    #[from]
+    AddressGossiperIncoming(AddressGossiperIncoming),
+    /// Incoming net request network message.
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+    /// Incoming net response network message.
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+    /// Incoming trie request network message.
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+    /// Incoming trie response network message.
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+    /// Incoming finality signature network message.
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -289,9 +314,6 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
-            ParticipatingEvent::NetworkAnnouncement(ann) => {
-                write!(f, "network announcement: {}", ann)
-            }
             ParticipatingEvent::RpcServerAnnouncement(ann) => {
                 write!(f, "api server announcement: {}", ann)
             }
@@ -319,6 +341,14 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
             }
+            ParticipatingEvent::ConsensusMessageIncoming(_) => todo!(),
+            ParticipatingEvent::DeployGossiperIncoming(_) => todo!(),
+            ParticipatingEvent::AddressGossiperIncoming(_) => todo!(),
+            ParticipatingEvent::NetRequestIncoming(_) => todo!(),
+            ParticipatingEvent::NetResponseIncoming(_) => todo!(),
+            ParticipatingEvent::TrieRequestIncoming(_) => todo!(),
+            ParticipatingEvent::TrieResponseIncoming(_) => todo!(),
+            ParticipatingEvent::FinalitySignatureIncoming(_) => todo!(),
         }
     }
 }
@@ -1236,6 +1266,14 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
             ),
+            ParticipatingEvent::ConsensusMessageIncoming(_) => todo!(),
+            ParticipatingEvent::DeployGossiperIncoming(_) => todo!(),
+            ParticipatingEvent::AddressGossiperIncoming(_) => todo!(),
+            ParticipatingEvent::NetRequestIncoming(_) => todo!(),
+            ParticipatingEvent::NetResponseIncoming(_) => todo!(),
+            ParticipatingEvent::TrieRequestIncoming(_) => todo!(),
+            ParticipatingEvent::TrieResponseIncoming(_) => todo!(),
+            ParticipatingEvent::FinalitySignatureIncoming(_) => todo!(),
         }
     }
 

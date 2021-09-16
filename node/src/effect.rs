@@ -82,7 +82,7 @@ use tracing::error;
 use announcements::{
     ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    MessageReceivedAnnouncement, RpcServerAnnouncement,
+    RpcServerAnnouncement,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -113,6 +113,7 @@ use crate::{
         },
         deploy_acceptor,
         fetcher::FetchResult,
+        small_network::FromIncoming,
     },
     crypto::hash::Digest,
     reactor::{EventQueueHandle, QueueKind},
@@ -583,17 +584,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces that a network message has been received.
-    pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
+    /// Announces an incoming network message.
+    pub(crate) async fn announce_incoming<I, P>(self, sender: I, payload: P)
     where
-        REv: From<MessageReceivedAnnouncement<I, P>>,
+        REv: FromIncoming<I, P>,
     {
         self.0
             .schedule(
-                MessageReceivedAnnouncement { sender, payload },
+                <REv as FromIncoming<I, P>>::from_incoming(sender, payload),
                 QueueKind::NetworkIncoming,
             )
-            .await;
+            .await
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.

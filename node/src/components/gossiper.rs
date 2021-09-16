@@ -21,6 +21,7 @@ use crate::{
     components::{fetcher::FetchedOrNotFound, Component},
     effect::{
         announcements::GossiperAnnouncement,
+        incoming::GossiperIncoming,
         requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -554,7 +555,7 @@ where
             Event::CheckGetFromPeerTimeout { item_id, peer } => {
                 self.check_get_from_peer_timeout(effect_builder, item_id, peer)
             }
-            Event::MessageReceived { message, sender } => match message {
+            Event::Incoming(GossiperIncoming::<T> { sender, message }) => match message {
                 Message::Gossip(item_id) => self.handle_gossip(effect_builder, item_id, sender),
                 Message::GossipResponse {
                     item_id,

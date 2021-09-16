@@ -55,26 +55,6 @@ impl Display for ControlAnnouncement {
     }
 }
 
-/// A payload message has been received from a peer.
-#[derive(Debug, Serialize)]
-#[must_use]
-pub(crate) struct MessageReceivedAnnouncement<I, P> {
-    /// The sender of the message
-    pub(crate) sender: I,
-    /// The message payload
-    pub(crate) payload: P,
-}
-
-impl<I, P> Display for MessageReceivedAnnouncement<I, P>
-where
-    I: Display,
-    P: Display,
-{
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "received from {}: {}", self.sender, self.payload)
-    }
-}
-
 /// An RPC API server announcement.
 #[derive(Debug, Serialize)]
 #[must_use]

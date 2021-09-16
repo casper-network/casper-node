@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use super::{Item, Message};
 use crate::{
-    effect::requests::BeginGossipRequest,
+    effect::{incoming::GossiperIncoming, requests::BeginGossipRequest},
     types::NodeId,
     utils::{DisplayIter, Source},
 };
@@ -37,7 +37,8 @@ pub enum Event<T: Item> {
     /// arrived.
     CheckGetFromPeerTimeout { item_id: T::Id, peer: NodeId },
     /// An incoming gossip network message.
-    MessageReceived { sender: NodeId, message: Message<T> },
+    #[from]
+    Incoming(GossiperIncoming<T>),
     /// The result of the gossiper getting an item from the component responsible for holding it.
     /// If the result is `Ok`, the item should be sent to the requesting peer.
     GetFromHolderResult {
@@ -78,8 +79,8 @@ impl<T: Item> Display for Event<T> {
                 "check get from peer timeout for {} with {}",
                 item_id, peer
             ),
-            Event::MessageReceived { sender, message } => {
-                write!(formatter, "{} received from {}", message, sender)
+            Event::Incoming(incoming) => {
+                write!(formatter, "incoming: {}", incoming)
             }
             Event::GetFromHolderResult {
                 item_id, result, ..
