@@ -46,7 +46,8 @@ use crate::{
         },
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -65,8 +66,7 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, NodeId, Tag,
-        Timestamp,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, NodeId, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -601,128 +601,6 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::BlocklistAnnouncement(ann) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::SmallNetwork(ann.into()))
             }
-            JoinerEvent::NetworkAnnouncement(MessageReceivedAnnouncement {
-                sender,
-                payload,
-            }) => match payload {
-                Message::GetResponse {
-                    tag: Tag::Block,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<Block>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockAndMetadataByHeight,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockWithMetadata>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockByHeightFetcher(fetcher_event))
-                        }
-                        None => {
-                            info!("{} sent us a block with metadata we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::Trie,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<Trie<Key, StoredValue>>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::TrieFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a trie we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockHeaderByHash,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockHeader>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block header we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockHeaderAndFinalitySignaturesByHeight,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockHeaderWithMetadata>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderByHeightFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block header with finality signatures we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::Deploy,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<Deploy>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::DeployFetcher(fetcher_event))
-                        },
-                        None => {
-                            info!("{} sent us a deploy we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::AddressGossiper(message) => {
-                    let event = JoinerEvent::AddressGossiper(gossiper::Event::MessageReceived {
-                        sender,
-                        message,
-                    });
-                    self.dispatch_event(effect_builder, rng, event)
-                }
-                Message::FinalitySignature(_) => {
-                    debug!("finality signatures not handled in joiner reactor");
-                    Effects::new()
-                }
-                other => {
-                    debug!(?other, "network announcement ignored.");
-                    Effects::new()
-                }
-            },
             JoinerEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
@@ -933,11 +811,140 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            JoinerEvent::NetRequestIncoming(_) => todo!(),
-            JoinerEvent::NetResponseIncoming(_) => todo!(),
-            JoinerEvent::TrieRequestIncoming(_) => todo!(),
-            JoinerEvent::TrieResponseIncoming(_) => todo!(),
-            JoinerEvent::FinalitySignatureIncoming(_) => todo!(),
+            JoinerEvent::NetRequestIncoming(incoming) => {
+                debug!(%incoming, "net request ignored");
+                Effects::new()
+            }
+            JoinerEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
+                match message {
+                    NetResponse::Deploy(ref serialized_item) =>
+                        match fetcher::Event::<Deploy>::from_get_response_serialized_item(
+                            sender,
+                            &serialized_item,
+                        ) {
+                            Some(fetcher_event) => self.dispatch_event(
+                                effect_builder,
+                                rng,
+                                JoinerEvent::DeployFetcher(fetcher_event),
+                            ),
+                            None => {
+                                info!("{} sent us a deploy we couldn't parse! Banning", sender);
+                                effect_builder
+                                    .announce_disconnect_from_peer(sender)
+                                    .ignore()
+                            }
+                        }
+
+                    NetResponse::Block(ref serialized_item) => match fetcher::Event::<Block>::from_get_response_serialized_item(
+                            sender,
+                            &serialized_item,
+                        ) {
+                            Some(fetcher_event) => self.dispatch_event(
+                                effect_builder,
+                                rng,
+                                JoinerEvent::BlockFetcher(fetcher_event),
+                            ),
+                            None => {
+                                info!("{} sent us a block we couldn't parse! Banning", sender);
+                                effect_builder
+                                    .announce_disconnect_from_peer(sender)
+                                    .ignore()
+                            }
+                        }
+
+                    NetResponse::GossipedAddress(_) => {
+                        warn!("received get response for gossiped-address from {}", sender);
+                        Effects::new()
+                    }
+
+                    NetResponse::BlockAndMetadataByHeight(ref serialized_item) =>
+                        match fetcher::Event::<BlockWithMetadata>::from_get_response_serialized_item(
+                            sender,
+                            &serialized_item,
+                        ) {
+                            Some(fetcher_event) => self.dispatch_event(
+                                effect_builder,
+                                rng,
+                                JoinerEvent::BlockByHeightFetcher(fetcher_event),
+                            ),
+                            None => {
+                                info!(
+                                    "{} sent us a block with metadata we couldn't parse!
+                Banning",
+                                    sender
+                                );
+                                effect_builder
+                                    .announce_disconnect_from_peer(sender)
+                                    .ignore()
+                            }
+                        }
+
+                    NetResponse::BlockHeaderByHash(ref serialized_item) =>
+                         match fetcher::Event::<BlockHeader>::from_get_response_serialized_item(
+                            sender,
+                            &serialized_item,
+                        ) {
+                            Some(fetcher_event) => self.dispatch_event(
+                                effect_builder,
+                                rng,
+                                JoinerEvent::BlockHeaderFetcher(fetcher_event),
+                            ),
+                            None => {
+                                info!(
+                                    "{} sent us a block header we couldn't parse! Banning",
+                                    sender
+                                );
+                                effect_builder
+                                    .announce_disconnect_from_peer(sender)
+                                    .ignore()
+                            }
+                        }
+
+                    NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
+                       match
+                fetcher::Event::<BlockHeaderWithMetadata>::from_get_response_serialized_item(
+                            sender,
+                        serialized_item,
+                        ) {
+                            Some(fetcher_event) => {
+                                self.dispatch_event(effect_builder, rng,
+                JoinerEvent::BlockHeaderByHeightFetcher(fetcher_event))             } ,
+                            None => {
+                                  info!("{} sent us a block header with finality signatures we
+                couldn't parse! Banning", sender);
+                effect_builder.announce_disconnect_from_peer(sender).ignore()
+                }         }
+                    },
+                 }
+            }
+            JoinerEvent::TrieRequestIncoming(incoming) => {
+                debug!(%incoming, "trie request ignored");
+                Effects::new()
+            }
+            JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
+                match fetcher::Event::<Trie<Key, StoredValue>>::from_get_response_serialized_item(
+                    sender, &message.0,
+                ) {
+                    Some(fetcher_event) => self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        JoinerEvent::TrieFetcher(fetcher_event),
+                    ),
+                    None => {
+                        info!("{} sent us a trie we couldn't parse! Banning", sender);
+                        effect_builder
+                            .announce_disconnect_from_peer(sender)
+                            .ignore()
+                    }
+                }
+            }
+
+            JoinerEvent::FinalitySignatureIncoming(FinalitySignatureIncoming {
+                sender, ..
+            }) => {
+                debug!(%sender, "finality signatures not handled in joiner reactor");
+                Effects::new()
+            }
         }
     }
 

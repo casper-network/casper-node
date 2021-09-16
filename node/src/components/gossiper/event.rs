@@ -6,7 +6,7 @@ use std::{
 use derive_more::From;
 use serde::Serialize;
 
-use super::{Item, Message};
+use super::Item;
 use crate::{
     effect::{incoming::GossiperIncoming, requests::BeginGossipRequest},
     types::NodeId,

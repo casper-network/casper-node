@@ -62,6 +62,7 @@ pub(crate) enum NetRequest {
     /// Request for a block.
     Block(Vec<u8>),
     /// Request for a gossiped public listening address.
+    // TODO: Move this out of `NetRequest` into its own type, it is never valid.
     GossipedAddress(Vec<u8>),
     /// Request for a block by its height in the linear chain.
     BlockAndMetadataByHeight(Vec<u8>),
