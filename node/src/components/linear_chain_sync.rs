@@ -56,7 +56,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, Deploy,
-        DeployHash, FinalizedBlock, TimeDiff,
+        FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
@@ -65,7 +65,6 @@ use event::BlockByHeightResult;
 pub(crate) use event::Event;
 pub(crate) use metrics::LinearChainSyncMetrics;
 pub(crate) use peers::PeersState;
-use smallvec::SmallVec;
 pub(crate) use state::State;
 pub(crate) use traits::ReactorEventT;
 
@@ -1035,9 +1034,10 @@ async fn execute_block<REv>(
 
     // Get the deploy hashes for the block.
     let deploy_hashes = finalized_block
-        .deploys_and_transfers_iter()
-        .map(DeployHash::from)
-        .collect::<SmallVec<_>>();
+        .deploy_hashes()
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
 
     // Get all deploys in order they appear in the finalized block.
     let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
@@ -1054,6 +1054,33 @@ async fn execute_block<REv>(
             return;
         }
     }
+
+    // Get the transfer hashes for the block.
+    let transfer_hashes = finalized_block
+        .transfer_hashes()
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());
+    for maybe_transfer in effect_builder
+        .get_deploys_from_storage(transfer_hashes)
+        .await
+    {
+        if let Some(transfer) = maybe_transfer {
+            transfers.push(transfer)
+        } else {
+            fatal!(
+                effect_builder,
+                "Could not fetch deploys for finalized block: {:?}",
+                finalized_block
+            )
+            .await;
+            return;
+        }
+    }
+
     let BlockAndExecutionEffects {
         block,
         execution_results,
@@ -1064,6 +1091,7 @@ async fn execute_block<REv>(
             execution_pre_state,
             finalized_block,
             deploys,
+            transfers,
         )
         .await
     {

@@ -1,6 +1,7 @@
 use std::{convert::TryInto, fs::File};
 
 use async_trait::async_trait;
+use hex::FromHex;
 use jsonrpc_lite::{Id, JsonRpc, Params};
 use rand::Rng;
 use reqwest::Client;
@@ -8,8 +9,9 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::hash::Digest,
+    crypto,
     rpcs::{
         account::{PutDeploy, PutDeployParams},
         chain::{
@@ -77,7 +79,7 @@ impl RpcCall {
     pub(crate) async fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {
         let hash = Digest::from_hex(deploy_hash).map_err(|error| Error::CryptoError {
             context: "deploy_hash",
-            error,
+            error: crypto::Error::FromHex(error),
         })?;
         let params = GetDeployParams {
             deploy_hash: DeployHash::new(hash),
@@ -94,7 +96,7 @@ impl RpcCall {
         let state_root_hash =
             Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
                 context: "state_root_hash",
-                error,
+                error: crypto::Error::FromHex(error),
             })?;
 
         let key = {
@@ -131,7 +133,7 @@ impl RpcCall {
         let state_root_hash =
             Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
                 context: "state_root_hash",
-                error,
+                error: crypto::Error::FromHex(error),
             })?;
 
         let dictionary_identifier = dictionary_str_params.try_into()?;
@@ -163,7 +165,7 @@ impl RpcCall {
         let state_root_hash =
             Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
                 context: "state_root_hash",
-                error,
+                error: crypto::Error::FromHex(error),
             })?;
         let uref =
             URef::from_formatted_str(purse_uref).map_err(|error| Error::FailedToParseURef {
@@ -338,7 +340,7 @@ impl RpcCall {
             let hash =
                 Digest::from_hex(maybe_block_identifier).map_err(|error| Error::CryptoError {
                     context: "block_identifier",
-                    error,
+                    error: crypto::Error::FromHex(error),
                 })?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {

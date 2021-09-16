@@ -83,10 +83,10 @@ impl Timestamp {
 
 impl Display for Timestamp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let system_time = SystemTime::UNIX_EPOCH
-            .checked_add(Duration::from_millis(self.0))
-            .expect("should be within system time limits");
-        write!(f, "{}", humantime::format_rfc3339_millis(system_time))
+        match SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(self.0)) {
+            Some(system_time) => write!(f, "{}", humantime::format_rfc3339_millis(system_time)),
+            None => write!(f, "invalid Timestamp: {} ms after the Unix epoch", self.0),
+        }
     }
 }
 

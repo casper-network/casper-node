@@ -21,14 +21,14 @@ downstream consumers.
 
 #### In executables
 
-Logging can be initialized using the [`initialize()`][initialize] function, and should be done early in the runtime of
+Logging can be initialized using the `initialize()` function, and should be done early in the runtime of
 the program.
 
 #### In tests
 
 Logging can also be initialized early in a test's execution.  Note that constructing a
 [`TestContextBuilder`][TestContextBuilder] will automatically enable logging at warn-level in the human-readable
-format.  To avoid this, call [`initialize()`][initialize] with required settings before constructing the first
+format.  To avoid this, call `initialize()` with required settings before constructing the first
 `TestContextBuilder`.
 
 Bear in mind that by default tests are run in parallel on multiple threads, so initializing logging might need to be
@@ -36,15 +36,11 @@ done in several or all of the tests in a single binary.
 
 ## Metrics
 
-The structured log messages output via [`log_metric()`][log_metric] or [`log_duration()`][log_duration] can be
-parsed and read by the [`casper-engine-metrics-scraper`][scraper].
+The structured log messages output via `log_metric()` or `log_duration()` can be
+parsed and read by the `casper-engine-metrics-scraper`.
 
 This tool reads from `stdin`, extracts the "time-series-data" from the log messages' properties and makes the values
 available via a `GET` endpoint.
 
 
-[initialize]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.initialize.html
-[log_metric]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.log_metric.html
-[log_duration]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.log_duration.html
 [TestContextBuilder]: https://docs.rs/casper-engine-test-support/latest/casper_engine_test_support/struct.TestContextBuilder.html
-[scraper]: https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/engine-metrics-scraper

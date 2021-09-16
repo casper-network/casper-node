@@ -9,6 +9,13 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
+
+    # TODO: re-enable once we figure out publishing
+    # - name: markdown-link-check
+    #   image: casperlabs/node-build-u1804
+    #   commands:
+    #     - "./ci/markdown_link_check.sh"
+
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:

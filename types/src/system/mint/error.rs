@@ -17,63 +17,139 @@ use crate::{
 #[repr(u8)]
 pub enum Error {
     /// Insufficient funds to complete the transfer.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(0, Error::InsufficientFunds as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Insufficient funds"))]
     InsufficientFunds = 0,
     /// Source purse not found.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(1, Error::SourceNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Source not found"))]
     SourceNotFound = 1,
     /// Destination purse not found.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(2, Error::DestNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Destination not found"))]
     DestNotFound = 2,
     /// The given [`URef`](crate::URef) does not reference the account holder's purse, or such a
     /// `URef` does not have the required [`AccessRights`](crate::AccessRights).
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(3, Error::InvalidURef as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid URef"))]
     InvalidURef = 3,
     /// The source purse is not writeable (see [`URef::is_writeable`](crate::URef::is_writeable)),
     /// or the destination purse is not addable (see
     /// [`URef::is_addable`](crate::URef::is_addable)).
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(4, Error::InvalidAccessRights as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid AccessRights"))]
     InvalidAccessRights = 4,
     /// Tried to create a new purse with a non-zero initial balance.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(5, Error::InvalidNonEmptyPurseCreation as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid non-empty purse creation"))]
     InvalidNonEmptyPurseCreation = 5,
     /// Failed to read from local or global storage.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(6, Error::Storage as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Storage error"))]
     Storage = 6,
     /// Purse not found while trying to get balance.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(7, Error::PurseNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Purse not found"))]
     PurseNotFound = 7,
     /// Unable to obtain a key by its name.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(8, Error::MissingKey as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Missing key"))]
     MissingKey = 8,
     /// Total supply not found.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(9, Error::TotalSupplyNotFound as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Total supply not found"))]
     TotalSupplyNotFound = 9,
     /// Failed to record transfer.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(10, Error::RecordTransferFailure as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to record transfer"))]
     RecordTransferFailure = 10,
     /// Invalid attempt to reduce total supply.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(11, Error::InvalidTotalSupplyReductionAttempt as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid attempt to reduce total supply"))]
     InvalidTotalSupplyReductionAttempt = 11,
     /// Failed to create new uref.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(12, Error::NewURef as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to create new uref"))]
     NewURef = 12,
     /// Failed to put key.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(13, Error::PutKey as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to put key"))]
     PutKey = 13,
     /// Failed to write to dictionary.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(14, Error::WriteDictionary as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to write dictionary"))]
     WriteDictionary = 14,
     /// Failed to create a [`crate::CLValue`].
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(15, Error::CLValue as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to create a CLValue"))]
     CLValue = 15,
     /// Failed to serialize data.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(16, Error::Serialize as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Failed to serialize data"))]
     Serialize = 16,
     /// Source and target purse [`crate::URef`]s are equal.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(17, Error::EqualSourceAndTarget as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Invalid target purse"))]
     EqualSourceAndTarget = 17,
     /// An arithmetic overflow has occurred.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(18, Error::ArithmeticOverflow as u8);
+    /// ```
     #[cfg_attr(feature = "std", error("Arithmetic overflow has occurred"))]
     ArithmeticOverflow = 18,
 

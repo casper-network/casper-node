@@ -98,7 +98,9 @@ impl<'a, C: Context> Tally<'a, C> {
         state: &'a State<C>,
     ) -> Option<Self> {
         let iter = self.votes.into_iter();
-        Self::try_from_iter(iter.filter(|&(b, _)| state.find_ancestor(b, height) == Some(bhash)))
+        Self::try_from_iter(
+            iter.filter(|&(b, _)| state.find_ancestor_proposal(b, height) == Some(bhash)),
+        )
     }
 }
 

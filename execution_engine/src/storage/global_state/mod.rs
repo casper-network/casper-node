@@ -10,12 +10,13 @@ use std::hash::BuildHasher;
 
 use tracing::error;
 
+use casper_hashing::Digest;
 use casper_types::{bytesrepr, Key, StoredValue};
 
 use crate::{
     shared::{
         additive_map::AdditiveMap,
-        newtypes::{Blake2bHash, CorrelationId},
+        newtypes::CorrelationId,
         transform::{self, Transform},
     },
     storage::{
@@ -56,13 +57,13 @@ pub trait StateReader<K, V> {
 pub enum CommitError {
     /// Root not found.
     #[error("Root not found: {0:?}")]
-    RootNotFound(Blake2bHash),
+    RootNotFound(Digest),
     /// Root not found while attempting to read.
     #[error("Root not found while attempting to read: {0:?}")]
-    ReadRootNotFound(Blake2bHash),
+    ReadRootNotFound(Digest),
     /// Root not found while attempting to write.
     #[error("Root not found while writing: {0:?}")]
-    WriteRootNotFound(Blake2bHash),
+    WriteRootNotFound(Digest),
     /// Key not found.
     #[error("Key not found: {0}")]
     KeyNotFound(Key),
@@ -80,25 +81,25 @@ pub trait StateProvider {
     type Reader: StateReader<Key, StoredValue, Error = Self::Error>;
 
     /// Checkouts to the post state of a specific block.
-    fn checkout(&self, state_hash: Blake2bHash) -> Result<Option<Self::Reader>, Self::Error>;
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error>;
 
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
     fn commit(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Blake2bHash, Self::Error>;
+    ) -> Result<Digest, Self::Error>;
 
     /// Returns an empty root hash.
-    fn empty_root(&self) -> Blake2bHash;
+    fn empty_root(&self) -> Digest;
 
     /// Reads a `Trie` from the state if it is present
     fn read_trie(
         &self,
         correlation_id: CorrelationId,
-        trie_key: &Blake2bHash,
+        trie_key: &Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>;
 
     /// Insert a trie node into the trie
@@ -106,14 +107,14 @@ pub trait StateProvider {
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<Blake2bHash, Self::Error>;
+    ) -> Result<Digest, Self::Error>;
 
     /// Finds all of the missing or corrupt keys of which are descendants of `trie_key`
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Self::Error>;
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, Self::Error>;
 }
 
 /// Commit `effects` to the store.
@@ -121,9 +122,9 @@ pub fn commit<'a, R, S, H, E>(
     environment: &'a R,
     store: &S,
     correlation_id: CorrelationId,
-    prestate_hash: Blake2bHash,
+    prestate_hash: Digest,
     effects: AdditiveMap<Key, Transform, H>,
-) -> Result<Blake2bHash, E>
+) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,

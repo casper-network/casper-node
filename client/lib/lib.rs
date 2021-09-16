@@ -24,12 +24,14 @@ mod validation;
 
 use std::{convert::TryInto, fs, io::Cursor};
 
+use hex::FromHex;
 use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::hash::Digest,
+    crypto,
     rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
     types::{BlockHash, Deploy},
 };
@@ -190,8 +192,9 @@ pub async fn send_deploy_file(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
@@ -229,8 +232,9 @@ pub async fn transfer(
 ///
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
@@ -1182,7 +1186,7 @@ impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
     fn try_into(self) -> Result<GlobalStateIdentifier> {
         let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
             context: "global_state_identifier",
-            error,
+            error: crypto::Error::FromHex(error),
         })?;
 
         if self.is_block_hash {

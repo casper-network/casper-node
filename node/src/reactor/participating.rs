@@ -46,9 +46,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
+            BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
+            ConsensusAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -120,8 +121,7 @@ pub(crate) enum ParticipatingEvent {
 
     // Requests
     /// Contract runtime request.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
@@ -184,6 +184,9 @@ pub(crate) enum ParticipatingEvent {
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+    /// Block proposer announcement.
+    #[from]
+    BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -193,6 +196,54 @@ impl ReactorEvent for ParticipatingEvent {
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn description(&self) -> &'static str {
+        match self {
+            ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
+            ParticipatingEvent::BlockProposer(_) => "BlockProposer",
+            ParticipatingEvent::Storage(_) => "Storage",
+            ParticipatingEvent::RpcServer(_) => "RpcServer",
+            ParticipatingEvent::RestServer(_) => "RestServer",
+            ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
+            ParticipatingEvent::ChainspecLoader(_) => "ChainspecLoader",
+            ParticipatingEvent::Consensus(_) => "Consensus",
+            ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
+            ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
+            ParticipatingEvent::DeployGossiper(_) => "DeployGossiper",
+            ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
+            ParticipatingEvent::BlockValidator(_) => "BlockValidator",
+            ParticipatingEvent::LinearChain(_) => "LinearChain",
+            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
+            ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
+            ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
+            ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
+            ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
+            ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
+            ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
+            ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
+            ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
+            ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            ParticipatingEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
+            ParticipatingEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
+            ParticipatingEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
+            ParticipatingEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
+            ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
+            ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
+        }
+    }
+}
+
+impl From<ContractRuntimeRequest> for ParticipatingEvent {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        ParticipatingEvent::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -303,6 +354,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChainAnnouncement(ann) => {
                 write!(f, "linear chain announcement: {}", ann)
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(ann) => {
+                write!(f, "block proposer announcement: {}", ann)
             }
             ParticipatingEvent::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
@@ -439,8 +493,12 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         )?;
 
-        let deploy_acceptor =
-            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            &*chainspec_loader.chainspec(),
+            registry,
+        )?;
+
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -615,9 +673,9 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
-                ParticipatingEvent::ContractRuntime,
+                Into::into,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
             ParticipatingEvent::BlockValidator(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockValidator,
@@ -772,7 +830,7 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
 
-                            match self.storage.read_block_header_by_hash(&block_hash) {
+                            match self.storage.get_block_header_by_hash(&block_hash) {
                                 Ok(Some(block_header)) => {
                                     match Message::new_get_response(&block_header) {
                                         Err(error) => {
@@ -1112,6 +1170,14 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
 
                 effects
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+            ) => {
+                let reactor_event = ParticipatingEvent::EventStreamServer(
+                    event_stream_server::Event::DeploysExpired(hashes),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),

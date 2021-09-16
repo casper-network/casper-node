@@ -326,15 +326,26 @@ fn should_successfully_prune() {
 
     // test for retained values
     let pruned = proposer.prune(test_time);
-    assert_eq!(pruned, 0);
+    assert_eq!(pruned.total_pruned, 0);
 
     assert_eq!(proposer.sets.pending_deploys.len(), 3);
     assert_eq!(proposer.sets.finalized_deploys.len(), 1);
     assert!(proposer.sets.finalized_deploys.contains_key(deploy1.id()));
 
     // now move the clock to make some things expire
-    let pruned = proposer.prune(expired_time);
-    assert_eq!(pruned, 3);
+    let mut pruned = proposer.prune(expired_time);
+    assert_eq!(pruned.total_pruned, 3); // Three deploys pruned
+
+    // Expiration announcements created for two deploys only: "deploy2" and "deploy3"
+    // because "deploy4" did not expire and "deploy1" has been finalized
+    assert_eq!(pruned.expired_hashes_to_be_announced.len(), 2);
+    let mut hashes_to_be_announced = vec![*deploy2.id(), *deploy3.id()];
+    hashes_to_be_announced.sort();
+    pruned.expired_hashes_to_be_announced.sort();
+    assert_eq!(
+        pruned.expired_hashes_to_be_announced,
+        hashes_to_be_announced
+    );
 
     assert_eq!(proposer.sets.pending_deploys.len(), 1); // deploy4 is still valid
     assert_eq!(proposer.sets.finalized_deploys.len(), 0);

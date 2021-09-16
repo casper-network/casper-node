@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::TimeDiff;
 
+use super::PayloadWeights;
+
 /// Default binding address.
 ///
 /// Uses a fixed port per node, but binds on any interface.
@@ -32,6 +34,7 @@ impl Default for Config {
             max_addr_pending_time: TimeDiff::from_seconds(60),
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
+            estimator_weights: Default::default(),
         }
     }
 }
@@ -59,6 +62,8 @@ pub struct Config {
     pub max_outgoing_byte_rate_non_validators: u32,
     /// Maximum of requests answered from non-validating peers. Unlimited if 0.
     pub max_incoming_message_rate_non_validators: u32,
+    /// Weight distribution for the payload impact estimator.
+    pub estimator_weights: PayloadWeights,
 }
 
 #[cfg(test)]

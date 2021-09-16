@@ -6,7 +6,8 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, info};
+use rand::{thread_rng, RngCore};
+use tracing::{debug, info, trace};
 
 use crate::{
     components::consensus::{
@@ -40,11 +41,20 @@ impl<I, C: Context> Default for PendingVertices<I, C> {
 
 impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Removes expired vertices.
-    fn remove_expired(&mut self, oldest: Timestamp) {
+    fn remove_expired(&mut self, oldest: Timestamp) -> Vec<C::Hash> {
+        let mut removed = vec![];
         for time_by_sender in self.0.values_mut() {
             time_by_sender.retain(|_, time_received| *time_received >= oldest);
         }
-        self.0.retain(|_, time_by_peer| !time_by_peer.is_empty())
+        self.0.retain(|pvv, time_by_peer| {
+            if time_by_peer.is_empty() {
+                removed.extend(pvv.inner().unit_hash().into_iter());
+                false
+            } else {
+                true
+            }
+        });
+        removed
     }
 
     /// Adds a vertex, or updates its timestamp.
@@ -199,10 +209,17 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Removes expired pending vertices from the queues, and schedules the next purge.
     pub(crate) fn purge_vertices(&mut self, oldest: Timestamp) {
         info!("purging synchronizer queues");
-        self.vertices_no_deps.remove_expired(oldest);
+        let no_deps_expired = self.vertices_no_deps.remove_expired(oldest);
+        trace!(?no_deps_expired, "expired no dependencies");
         self.requests_sent.clear();
-        Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
-        Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
+        let to_be_added_later_expired =
+            Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
+        trace!(
+            ?to_be_added_later_expired,
+            "expired to be added later dependencies"
+        );
+        let awaiting_deps_expired = Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
+        trace!(?awaiting_deps_expired, "expired awaiting dependencies");
     }
 
     // Returns number of elements in the `vertices_to_be_added_later` queue.
@@ -387,7 +404,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     .flatten()
                     .find(|(vv, _)| vv.inner().id() == transitive_dependency)
                 {
-                    info!(
+                    debug!(
                         dependency = ?transitive_dependency, %sender,
                         "adding sender as a source for proposal"
                     );
@@ -409,8 +426,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
-                info!(dependency = ?transitive_dependency, %sender, "requesting dependency");
-                let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
+                let uuid = thread_rng().next_u64();
+                debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
+                let ser_msg =
+                    HighwayMessage::RequestDependency(uuid, transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
             }
@@ -523,9 +542,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     fn remove_expired<T: Ord + Clone>(
         map: &mut BTreeMap<T, PendingVertices<I, C>>,
         oldest: Timestamp,
-    ) {
+    ) -> Vec<C::Hash> {
+        let mut expired = vec![];
         for pvs in map.values_mut() {
-            pvs.remove_expired(oldest);
+            expired.extend(pvs.remove_expired(oldest));
         }
         let keys = map
             .iter()
@@ -535,5 +555,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         for key in keys {
             map.remove(&key);
         }
+        expired
     }
 }

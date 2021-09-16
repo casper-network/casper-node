@@ -1,6 +1,6 @@
 use proptest::{collection::vec, option, prelude::*};
 
-use crate::shared::newtypes::Blake2bHash;
+use casper_hashing::Digest;
 use casper_types::{
     gens::{key_arb, stored_value_arb},
     Key, StoredValue,
@@ -8,8 +8,8 @@ use casper_types::{
 
 use super::{Pointer, PointerBlock, Trie};
 
-pub fn blake2b_hash_arb() -> impl Strategy<Value = Blake2bHash> {
-    vec(any::<u8>(), 0..1000).prop_map(|b| Blake2bHash::new(&b))
+pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
+    vec(any::<u8>(), 0..1000).prop_map(|b| Digest::hash(&b))
 }
 
 pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {

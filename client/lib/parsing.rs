@@ -3,11 +3,13 @@
 
 use std::{convert::TryInto, fs, io, path::PathBuf, str::FromStr};
 
+use hex::FromHex;
 use serde::{self, Deserialize};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::{self, AsymmetricKeyExt},
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
@@ -60,7 +62,7 @@ fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
     for value in values {
         let digest = Digest::from_hex(value).map_err(|error| Error::CryptoError {
             context: "dependencies",
-            error,
+            error: crypto::Error::FromHex(error),
         })?;
         hashes.push(DeployHash::new(digest))
     }
@@ -582,21 +584,12 @@ pub(super) fn parse_payment_info(params: PaymentStrParams) -> Result<ExecutableD
     })
 }
 
-pub(crate) fn parse_public_key(target_account: &str) -> Result<PublicKey> {
-    let account = PublicKey::from_hex(target_account).map_err(|error| Error::InvalidArgument {
-        context: "target_account",
-        error: format!("failed to parse as a public key: {}", error),
-    })?;
-
-    Ok(account)
-}
-
 fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
     if value.is_empty() {
         return Ok(None);
     }
     if let Ok(digest) = Digest::from_hex(value) {
-        return Ok(Some(digest.to_array()));
+        return Ok(Some(digest.value()));
     }
     if let Ok(Key::Hash(hash)) = Key::from_formatted_str(value) {
         return Ok(Some(hash));

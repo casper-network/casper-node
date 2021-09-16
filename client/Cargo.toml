@@ -25,6 +25,7 @@ async-trait = "0.1.50"
 base64 = "0.13.0"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node = { version = "1.0.0", path = "../node" }
+casper-hashing = { version = "1.0.0", path = "../hashing" }
 casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std"] }
 clap = "2"
 hex = { version = "0.4.2", features = ["serde"] }
@@ -57,6 +58,7 @@ warp-json-rpc = "0.3.0"
 [features]
 default = ["ffi"]
 ffi = ["cbindgen"]
+casper-mainnet = ["casper-node/casper-mainnet"]
 
 [package.metadata.deb]
 features = ["vendored-openssl"]

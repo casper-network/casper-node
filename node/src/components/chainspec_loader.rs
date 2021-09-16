@@ -31,13 +31,13 @@ use casper_execution_engine::core::engine_state::{
     genesis::GenesisSuccess,
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
+use casper_hashing::Digest;
 use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion, StoredValue};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
     components::{contract_runtime::ExecutionPreState, Component},
-    crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
         requests::{
@@ -529,7 +529,7 @@ impl ChainspecLoader {
             })
             .unwrap_or_default();
         Box::new(UpgradeConfig::new(
-            (*block.state_root_hash()).into(),
+            *block.state_root_hash(),
             previous_version,
             new_version,
             Some(self.chainspec.protocol_config.activation_point.era_id()),
@@ -555,7 +555,7 @@ impl ChainspecLoader {
                 info!("genesis state root hash {}", post_state_hash);
                 trace!(%post_state_hash, ?execution_effect);
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                self.initial_state_root_hash = post_state_hash.into();
+                self.initial_state_root_hash = post_state_hash;
             }
             Err(error) => {
                 error!("failed to commit genesis: {}", error);
@@ -574,7 +574,7 @@ impl ChainspecLoader {
                 info!("state root hash {}", post_state_hash);
                 trace!(%post_state_hash, ?execution_effect);
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                self.initial_state_root_hash = post_state_hash.into();
+                self.initial_state_root_hash = post_state_hash;
             }
             Err(error) => {
                 error!("failed to upgrade contract runtime: {}", error);
