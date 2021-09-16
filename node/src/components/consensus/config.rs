@@ -3,11 +3,11 @@ use std::{path::Path, sync::Arc};
 use datasize::DataSize;
 use serde::Deserialize;
 
+use casper_hashing::Digest;
 use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
-    crypto::hash::Digest,
     types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
     utils::{External, LoadError, Loadable},
 };

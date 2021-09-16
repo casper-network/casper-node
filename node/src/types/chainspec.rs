@@ -24,6 +24,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -39,10 +40,7 @@ pub(crate) use self::{
 };
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{
-    crypto::hash::{self, Digest},
-    utils::Loadable,
-};
+use crate::utils::Loadable;
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
@@ -89,7 +87,7 @@ impl Chainspec {
             error!(%error, "failed to serialize chainspec");
             vec![]
         });
-        hash::hash(&serialized_chainspec)
+        Digest::hash(&serialized_chainspec)
     }
 
     /// Returns true if this chainspec has an activation_point specifying era ID 0.

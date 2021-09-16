@@ -283,7 +283,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
@@ -301,7 +301,9 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor = DeployAcceptor::new(
             super::Config::new(VERIFY_ACCOUNTS),
             &Chainspec::from_resources("local"),
-        );
+            registry,
+        )
+        .unwrap();
 
         let reactor = Reactor {
             storage,
@@ -538,7 +540,7 @@ fn schedule_accept_deploy(
                 super::Event::Accept {
                     deploy,
                     source,
-                    responder: Some(responder),
+                    maybe_responder: Some(responder),
                 },
                 QueueKind::Regular,
             )
@@ -555,7 +557,6 @@ async fn run_deploy_acceptor_without_timeout(
         Runner::new(test_scenario, &mut rng).await.unwrap();
 
     let block = Box::new(Block::random(&mut rng));
-    let _prestate_hash: Blake2bHash = (*block.state_root_hash()).into();
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
     let block_responder = Responder::create(block_sender);

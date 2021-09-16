@@ -5,7 +5,7 @@ use thiserror::Error;
 use toml::de::Error as TomlDecodeError;
 use tracing::info;
 
-use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_hashing::Digest;
 use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
@@ -86,7 +86,7 @@ pub(crate) enum Error {
 
 #[derive(Serialize, Deserialize)]
 struct PostMigrationInfo {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     protocol_version: ProtocolVersion,
 }
 
@@ -106,7 +106,7 @@ struct SignedPostMigrationInfo {
 pub(crate) fn read_post_migration_info(
     protocol_version: ProtocolVersion,
     public_key: &PublicKey,
-) -> Result<Option<Blake2bHash>, Error> {
+) -> Result<Option<Digest>, Error> {
     do_read_post_migration_info(protocol_version, public_key, info_path())
 }
 
@@ -116,7 +116,7 @@ fn do_read_post_migration_info(
     protocol_version: ProtocolVersion,
     public_key: &PublicKey,
     path: PathBuf,
-) -> Result<Option<Blake2bHash>, Error> {
+) -> Result<Option<Digest>, Error> {
     // If the file doesn't exist, return `Ok(None)`.
     if !path.is_file() {
         return Ok(None);
@@ -155,7 +155,7 @@ fn do_read_post_migration_info(
 /// This must be called after a data migration in order to allow the node to read in the new root
 /// state on restart.
 fn write_post_migration_info(
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     new_protocol_version: ProtocolVersion,
     secret_key: &SecretKey,
     path: PathBuf,
@@ -211,9 +211,9 @@ pub(crate) fn migrate_data(
         .map_err(Error::LoadSecretKey)?;
 
     // Get this by actually migrating the global state data.
-    let state_hash = Blake2bHash::default();
+    let state_hash = Digest::default();
 
-    if state_hash != Blake2bHash::default() {
+    if state_hash != Digest::default() {
         write_post_migration_info(state_hash, new_protocol_version, &secret_key, info_path())?;
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let info_path = tempdir.path().join(POST_MIGRATION_STATE_HASH_FILENAME);
 
         let mut rng = crate::new_rng();
-        let state_hash = Blake2bHash::new(&[rng.gen()]);
+        let state_hash = Digest::hash(&[rng.gen()]);
         let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let secret_key = SecretKey::random(&mut rng);
 
@@ -261,7 +261,7 @@ mod tests {
         assert!(maybe_hash.is_none());
 
         // Create the info file and check we can read it.
-        let state_hash = Blake2bHash::new(&[rng.gen()]);
+        let state_hash = Digest::hash(&[rng.gen()]);
         write_post_migration_info(state_hash, protocol_version, &secret_key, info_path.clone())
             .unwrap();
         assert!(
@@ -294,7 +294,7 @@ mod tests {
 
         // Should return `Err` if the signature is invalid.
         let other_secret_key = SecretKey::random(&mut rng);
-        let state_hash = Blake2bHash::new(&[rng.gen()]);
+        let state_hash = Digest::hash(&[rng.gen()]);
         write_post_migration_info(
             state_hash,
             protocol_version,

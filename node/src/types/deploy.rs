@@ -26,6 +26,7 @@ use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
+use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::bytesrepr::Bytes;
 use casper_types::{
@@ -39,15 +40,8 @@ use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::block_proposer::DeployInfo,
-    crypto,
-    crypto::{
-        hash::{self, Digest},
-        AsymmetricKeyExt,
-    },
-    rpcs::docs::DocExample,
-    types::chainspec::DeployConfig,
-    utils::DisplayIter,
+    components::block_proposer::DeployInfo, crypto, crypto::AsymmetricKeyExt,
+    rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::DisplayIter,
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -64,7 +58,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     };
     let session = ExecutableDeployItem::Transfer { args: session_args };
     let serialized_body = serialize_body(&payment, &session);
-    let body_hash = hash::hash(&serialized_body);
+    let body_hash = Digest::hash(&serialized_body);
 
     let secret_key = SecretKey::doc_example();
     let header = DeployHeader {
@@ -77,7 +71,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
         chain_name: String::from("casper-example"),
     };
     let serialized_header = serialize_header(&header);
-    let hash = DeployHash::new(hash::hash(&serialized_header));
+    let hash = DeployHash::new(Digest::hash(&serialized_header));
 
     let signature = Signature::from_hex(
         "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
@@ -280,7 +274,7 @@ impl DeployHash {
     /// Creates a random deploy hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let hash = Digest::random(rng);
+        let hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         DeployHash(hash)
     }
 }
@@ -591,7 +585,7 @@ impl Deploy {
         account: Option<PublicKey>,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
-        let body_hash = hash::hash(&serialized_body);
+        let body_hash = Digest::hash(&serialized_body);
 
         let account = account.unwrap_or_else(|| PublicKey::from(secret_key));
 
@@ -607,7 +601,7 @@ impl Deploy {
             chain_name,
         };
         let serialized_header = serialize_header(&header);
-        let hash = DeployHash::new(hash::hash(&serialized_header));
+        let hash = DeployHash::new(Digest::hash(&serialized_header));
 
         let mut deploy = Deploy {
             hash,
@@ -1171,8 +1165,8 @@ impl Deploy {
         let gas_price = rng.gen_range(1..100);
 
         let dependencies = vec![
-            DeployHash::new(hash::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(hash::hash(rng.next_u64().to_le_bytes())),
+            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
+            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
         ];
         let chain_name = String::from("casper-example");
 
@@ -1219,9 +1213,9 @@ impl Deploy {
         let gas_price = rng.gen_range(1..100);
 
         let dependencies = vec![
-            DeployHash::new(hash::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(hash::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(hash::hash(rng.next_u64().to_le_bytes())),
+            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
+            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
+            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
         ];
         let chain_name = String::from("casper-example");
 
@@ -1294,14 +1288,14 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
         return Err(DeployConfigurationFailure::EmptyApprovals);
     }
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
-    let body_hash = hash::hash(&serialized_body);
+    let body_hash = Digest::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
         warn!(?deploy, ?body_hash, "invalid deploy body hash");
         return Err(DeployConfigurationFailure::InvalidBodyHash);
     }
 
     let serialized_header = serialize_header(&deploy.header);
-    let hash = DeployHash::new(hash::hash(&serialized_header));
+    let hash = DeployHash::new(Digest::hash(&serialized_header));
     if hash != deploy.hash {
         warn!(?deploy, ?hash, "invalid deploy hash");
         return Err(DeployConfigurationFailure::InvalidDeployHash);
@@ -1360,7 +1354,7 @@ impl From<Deploy> for DeployItem {
             deploy.payment().clone(),
             deploy.header().gas_price(),
             authorization_keys,
-            casper_types::DeployHash::new(deploy.id().inner().to_array()),
+            casper_types::DeployHash::new(deploy.id().inner().value()),
         )
     }
 }
@@ -1446,7 +1440,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let mut rng = crate::new_rng();
-        let hash = DeployHash(Digest::random(&mut rng));
+        let hash = DeployHash(rng.gen::<[u8; Digest::LENGTH]>().into());
         bytesrepr::test_serialization_roundtrip(&hash);
 
         let deploy = Deploy::random(&mut rng);

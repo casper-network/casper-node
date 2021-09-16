@@ -208,7 +208,9 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor = DeployAcceptor::new(
             deploy_acceptor::Config::new(false),
             &Chainspec::from_resources("local"),
-        );
+            registry,
+        )
+        .unwrap();
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -313,7 +315,7 @@ impl reactor::Reactor for Reactor {
                         Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
-                            responder: None,
+                            maybe_responder: None,
                         })
                     }
                     NodeMessage::DeployGossiper(message) => {
@@ -337,7 +339,7 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
-                    responder,
+                    maybe_responder: responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }

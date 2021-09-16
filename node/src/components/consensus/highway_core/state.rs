@@ -1,4 +1,5 @@
 mod block;
+mod index_panorama;
 mod panorama;
 mod params;
 mod tallies;
@@ -12,6 +13,7 @@ pub(crate) use params::Params;
 use quanta::Clock;
 pub(crate) use weight::Weight;
 
+pub(crate) use index_panorama::{IndexObservation, IndexPanorama};
 pub(crate) use panorama::{Observation, Panorama};
 pub(super) use unit::Unit;
 
@@ -726,7 +728,8 @@ impl<C: Context> State<C> {
 
     /// Returns the ancestor of the block with the given `hash`, on the specified `height`, or
     /// `None` if the block's height is lower than that.
-    pub(crate) fn find_ancestor<'a>(
+    /// NOTE: Panics if used on non-proposal hashes. For those use [`find_ancestor_unit`].
+    pub(crate) fn find_ancestor_proposal<'a>(
         &'a self,
         hash: &'a C::Hash,
         height: u64,
@@ -745,7 +748,31 @@ impl<C: Context> State<C> {
         // A block at height > 0 always has at least its parent entry in skip_idx.
         #[allow(clippy::integer_arithmetic)]
         let i = max_i.min(block.skip_idx.len() - 1);
-        self.find_ancestor(&block.skip_idx[i], height)
+        self.find_ancestor_proposal(&block.skip_idx[i], height)
+    }
+
+    /// Returns the ancestor of the unit with the given `hash`, on the specified `height`, or
+    /// `None` if the unit's height is lower than that.
+    pub(crate) fn find_ancestor_unit<'a>(
+        &'a self,
+        hash: &'a C::Hash,
+        height: u64,
+    ) -> Option<&'a C::Hash> {
+        let unit = self.unit(hash);
+        if unit.seq_number < height {
+            return None;
+        }
+        if unit.seq_number == height {
+            return Some(hash);
+        }
+        #[allow(clippy::integer_arithmetic)] // block.height > height, otherwise we returned.
+        let diff = unit.seq_number - height;
+        // We want to make the greatest step 2^i such that 2^i <= diff.
+        let max_i = log2(diff) as usize;
+        // A unit at height > 0 always has at least its parent entry in skip_idx.
+        #[allow(clippy::integer_arithmetic)]
+        let i = max_i.min(unit.skip_idx.len() - 1);
+        self.find_ancestor_unit(&unit.skip_idx[i], height)
     }
 
     /// Returns an error if `swunit` is invalid. This can be called even if the dependencies are

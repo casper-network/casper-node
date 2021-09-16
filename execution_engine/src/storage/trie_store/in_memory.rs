@@ -1,6 +1,6 @@
 //! An in-memory trie store, intended to be used for testing.
 
-use super::{Blake2bHash, Store, Trie, TrieStore, NAME};
+use super::{Digest, Store, Trie, TrieStore, NAME};
 use crate::storage::{error::in_memory::Error, transaction_source::in_memory::InMemoryEnvironment};
 
 /// An in-memory trie store.
@@ -19,7 +19,7 @@ impl InMemoryTrieStore {
     }
 }
 
-impl<K, V> Store<Blake2bHash, Trie<K, V>> for InMemoryTrieStore {
+impl<K, V> Store<Digest, Trie<K, V>> for InMemoryTrieStore {
     type Error = Error;
 
     type Handle = Option<String>;
@@ -33,16 +33,15 @@ impl<K, V> TrieStore<K, V> for InMemoryTrieStore {}
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        shared::newtypes::Blake2bHash,
-        storage::{
-            store::Store,
-            transaction_source::{in_memory::InMemoryEnvironment, Transaction, TransactionSource},
-            trie::{Pointer, PointerBlock, Trie},
-            trie_store::in_memory::InMemoryTrieStore,
-        },
-    };
+    use casper_hashing::Digest;
     use casper_types::bytesrepr::{Bytes, ToBytes};
+
+    use crate::storage::{
+        store::Store,
+        transaction_source::{in_memory::InMemoryEnvironment, Transaction, TransactionSource},
+        trie::{Pointer, PointerBlock, Trie},
+        trie_store::in_memory::InMemoryTrieStore,
+    };
 
     #[test]
     fn test_in_memory_trie_store() {
@@ -57,8 +56,8 @@ mod test {
         };
 
         // Get their hashes
-        let leaf_1_hash = Blake2bHash::new(&leaf_1.to_bytes().unwrap());
-        let leaf_2_hash = Blake2bHash::new(&leaf_2.to_bytes().unwrap());
+        let leaf_1_hash = Digest::hash(&leaf_1.to_bytes().unwrap());
+        let leaf_2_hash = Digest::hash(&leaf_2.to_bytes().unwrap());
 
         // Create a node
         let node: Trie<Bytes, Bytes> = {
@@ -70,7 +69,7 @@ mod test {
         };
 
         // Get its hash
-        let node_hash = Blake2bHash::new(&node.to_bytes().unwrap());
+        let node_hash = Digest::hash(&node.to_bytes().unwrap());
 
         // Create the environment and the store. For both the in-memory and
         // LMDB-backed implementations, the environment is the source of

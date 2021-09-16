@@ -482,8 +482,11 @@ impl reactor::Reactor for Reactor {
         let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
             Fetcher::new("block_header_by_hash", config.fetcher, registry)?;
 
-        let deploy_acceptor =
-            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            &*chainspec_loader.chainspec(),
+            registry,
+        )?;
 
         contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -645,7 +648,7 @@ impl reactor::Reactor for Reactor {
                     let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(sender),
-                        responder: None,
+                        maybe_responder: None,
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }

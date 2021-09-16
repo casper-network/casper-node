@@ -7,9 +7,11 @@ use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
-use casper_execution_engine::{shared::newtypes::Blake2bHash, storage::trie::Trie};
+use casper_execution_engine::storage::trie::Trie;
+use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+
+use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -58,13 +60,13 @@ pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Dis
 }
 
 impl Item for Trie<Key, StoredValue> {
-    type Id = Blake2bHash;
+    type Id = Digest;
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
         let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
-        Blake2bHash::new(&node_bytes)
+        Digest::hash(&node_bytes)
     }
 }
 

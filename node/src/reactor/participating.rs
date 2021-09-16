@@ -493,8 +493,12 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         )?;
 
-        let deploy_acceptor =
-            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            &*chainspec_loader.chainspec(),
+            registry,
+        )?;
+
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -910,7 +914,7 @@ impl reactor::Reactor for Reactor {
                             ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                                 deploy,
                                 source: Source::Peer(sender),
-                                responder: None,
+                                maybe_responder: None,
                             })
                         }
                         Tag::Block => {
@@ -980,7 +984,7 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
-                    responder,
+                    maybe_responder: responder,
                 };
                 self.dispatch_event(
                     effect_builder,
