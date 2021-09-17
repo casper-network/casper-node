@@ -2,15 +2,14 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use alloc::{string::String, vec::Vec};
-use core::fmt;
+use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
@@ -29,8 +28,8 @@ pub struct CLTypeMismatch {
     pub found: CLType,
 }
 
-impl fmt::Display for CLTypeMismatch {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+impl Display for CLTypeMismatch {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "Expected {:?} but found {:?}.",
@@ -41,13 +40,10 @@ impl fmt::Display for CLTypeMismatch {
 
 /// Error relating to [`CLValue`] operations.
 #[derive(PartialEq, Eq, Clone, Debug)]
-#[cfg_attr(feature = "std", derive(Error))]
 pub enum CLValueError {
     /// An error while serializing or deserializing the underlying data.
-    #[cfg_attr(feature = "std", error("CLValue error: {}", _0))]
     Serialization(bytesrepr::Error),
     /// A type mismatch while trying to convert a [`CLValue`] into a given type.
-    #[cfg_attr(feature = "std", error("Type mismatch: {}", _0))]
     Type(CLTypeMismatch),
 }
 
@@ -57,13 +53,22 @@ impl From<bytesrepr::Error> for CLValueError {
     }
 }
 
+impl Display for CLValueError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            CLValueError::Serialization(error) => write!(formatter, "CLValue error: {}", error),
+            CLValueError::Type(error) => write!(formatter, "Type mismatch: {}", error),
+        }
+    }
+}
+
 /// A Casper value, i.e. a value which can be stored and manipulated by smart contracts.
 ///
 /// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the
 /// [`CLType`] of the underlying data as a separate member.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug, DataSize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct CLValue {
-    #[data_size(skip)]
     cl_type: CLType,
     bytes: Bytes,
 }
@@ -159,7 +164,7 @@ impl FromBytes for CLValue {
 }
 
 /// We need to implement `JsonSchema` for `CLValue` as though it is a `CLValueJson`.
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for CLValue {
     fn schema_name() -> String {
         "CLValue".to_string()
@@ -179,8 +184,8 @@ impl JsonSchema for CLValue {
 /// CLValue is encoded to JSON, and can always be set to null if preferred.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-#[cfg_attr(feature = "std", schemars(rename = "CLValue"))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "CLValue"))]
 struct CLValueJson {
     cl_type: CLType,
     bytes: String,
@@ -224,7 +229,7 @@ impl<'de> Deserialize<'de> for CLValue {
 mod tests {
     use alloc::string::ToString;
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "json-schema")]
     use schemars::schema_for;
 
     use super::*;
@@ -235,7 +240,7 @@ mod tests {
         TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
     };
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "json-schema")]
     #[test]
     fn json_schema() {
         let json_clvalue_schema = schema_for!(CLValueJson);

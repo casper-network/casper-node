@@ -1,6 +1,8 @@
 use alloc::vec::Vec;
+use core::fmt::{self, Display, Formatter};
 
 use bitflags::bitflags;
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
@@ -17,7 +19,7 @@ bitflags! {
     /// A struct which behaves like a set of bitflags to define access rights associated with a
     /// [`URef`](crate::URef).
     #[allow(clippy::derive_hash_xor_eq)]
-    #[derive(DataSize)]
+    #[cfg_attr(feature = "datasize", derive(DataSize))]
     pub struct AccessRights: u8 {
         /// No permissions
         const NONE = 0;
@@ -66,8 +68,8 @@ impl AccessRights {
     }
 }
 
-impl core::fmt::Display for AccessRights {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl Display for AccessRights {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             AccessRights::NONE => write!(f, "NONE"),
             AccessRights::READ => write!(f, "READ"),
