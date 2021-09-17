@@ -1,4 +1,4 @@
-//! Operations occuring during execution of a smart contract.
+//! Operations occuring during execution.
 use std::{
     default::Default,
     fmt::{self, Display, Formatter},

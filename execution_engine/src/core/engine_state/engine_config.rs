@@ -10,7 +10,7 @@ pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// The runtime configuration of the execution engine
 #[derive(Debug, Copy, Clone)]
 pub struct EngineConfig {
-    /// Max query depth of the query.
+    /// Max query depth of the engine.
     pub(crate) max_query_depth: u64,
 
     /// Maximum number of associated keys (i.e. map of

@@ -56,7 +56,7 @@ use crate::{
     storage::global_state::StateReader,
 };
 
-/// Represents a runtime properties of a WASM execution.
+/// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,
     config: EngineConfig,
@@ -1324,7 +1324,7 @@ where
         }
     }
 
-    /// Checks if current context is a mint system contract.
+    /// Checks if current context is the mint system contract.
     pub(crate) fn is_mint(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(MINT) {
             Ok(hash) => hash,
@@ -1336,7 +1336,7 @@ where
         key.into_hash() == Some(hash.value())
     }
 
-    /// Checks if current context is a handle payment system contract.
+    /// Checks if current context is the `handle_payment` system contract.
     pub(crate) fn is_handle_payment(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(HANDLE_PAYMENT) {
             Ok(hash) => hash,
@@ -1348,7 +1348,7 @@ where
         key.into_hash() == Some(hash.value())
     }
 
-    /// Checks if current context is an auction system contract.
+    /// Checks if current context is the auction system contract.
     pub(crate) fn is_auction(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(AUCTION) {
             Ok(hash) => hash,
@@ -1395,7 +1395,7 @@ where
         }
     }
 
-    /// Calls host mint system contract.
+    /// Calls host mint contract.
     pub fn call_host_mint(
         &mut self,
         protocol_version: ProtocolVersion,
@@ -1542,7 +1542,7 @@ where
         Ok(ret)
     }
 
-    /// Calls host handle payment system contract.
+    /// Calls host `handle_payment` contract.
     pub fn call_host_handle_payment(
         &mut self,
         protocol_version: ProtocolVersion,
@@ -1672,7 +1672,7 @@ where
         result
     }
 
-    /// Calls host auction system contract.
+    /// Calls host auction contract.
     pub fn call_host_auction(
         &mut self,
         protocol_version: ProtocolVersion,

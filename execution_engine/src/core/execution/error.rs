@@ -10,7 +10,7 @@ use casper_types::{
 
 use crate::{core::resolvers::error::ResolverError, shared::wasm_prep, storage};
 
-/// Possible outcomes of executing a contract.
+/// Possible execution errors.
 #[derive(Error, Debug, Clone)]
 pub enum Error {
     /// WASM interpreter error.
@@ -19,7 +19,7 @@ pub enum Error {
     /// Storage error.
     #[error("Storage error: {}", _0)]
     Storage(storage::error::Error),
-    /// Failed to serialize bytes.
+    /// Failed to (de)serialize bytes.
     #[error("Serialization error: {}", _0)]
     BytesRepr(bytesrepr::Error),
     /// Unable to find named key.
@@ -55,7 +55,7 @@ pub enum Error {
     /// Error optimizing WASM.
     #[error("WASM optimizer error")]
     WasmOptimizer,
-    /// Executing the contract returned reached a gas limit.
+    /// Execution exceeded the gas limit.
     #[error("Out of gas error")]
     GasLimit,
     /// A stored smart contract incorrectly called a ret function.
@@ -114,13 +114,13 @@ pub enum Error {
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
     NoActiveContractVersions(ContractPackageHash),
-    /// Invalid contract version is supplied.
+    /// Invalid contract version supplied.
     #[error("Invalid contract version: {}", _0)]
     InvalidContractVersion(ContractVersionKey),
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
-    /// Error processing a WASM bytes.
+    /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(wasm_prep::PreprocessingError),
     /// Unable to convert a [`Key`] into an [`URef`].
@@ -138,7 +138,7 @@ pub enum Error {
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
     InvalidContract(ContractHash),
-    /// Unable to find a WASM bytes by a specified hash address.
+    /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
     InvalidContractWasm(ContractWasmHash),
     /// Error calling a smart contract with a missing argument.

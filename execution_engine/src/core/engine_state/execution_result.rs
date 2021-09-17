@@ -1,4 +1,4 @@
-//! Outcome of a an `ExecutionRequest`.
+//! Outcome of an `ExecutionRequest`.
 use std::collections::VecDeque;
 
 use casper_types::{
@@ -44,7 +44,7 @@ fn make_payment_error_effects(
     Ok(ExecutionEffect::new(ops, transforms))
 }
 
-/// Represents a result of a contract execution specified by
+/// Represents the result of an execution specified by
 /// [`crate::core::engine_state::ExecuteRequest`].
 #[derive(Clone, Debug)]
 pub enum ExecutionResult {
@@ -52,11 +52,11 @@ pub enum ExecutionResult {
     Failure {
         /// Error causing this `Failure` variant.
         error: error::Error,
-        /// Contains all the effects that occurred during execution up to the point of a failure.
+        /// Contains all the effects that occurred during execution up to the point of the failure.
         execution_effect: ExecutionEffect,
-        /// List of transfers that happened during execution up to the point of a failure.
+        /// List of transfers that happened during execution up to the point of the failure.
         transfers: Vec<TransferAddr>,
-        /// Gas cost.
+        /// Gas consumed up to the point of the failure.
         cost: Gas,
     },
     /// Execution was finished successfully
@@ -83,7 +83,7 @@ impl Default for ExecutionResult {
 /// A type alias that represents multiple execution results.
 pub type ExecutionResults = VecDeque<ExecutionResult>;
 
-/// Indicates outcome of a transfer payment check.
+/// Indicates the outcome of a transfer payment check.
 pub enum ForcedTransferResult {
     /// Payment code ran out of gas during execution
     InsufficientPayment,
@@ -122,7 +122,7 @@ impl ExecutionResult {
         }
     }
 
-    /// Returns `true` if this is a precondition variant.
+    /// Returns `true` if this is a precondition failure.
     ///
     /// Precondition variant is further described as an execution failure which does not have any
     /// effects, and has a gas cost of 0.
@@ -165,7 +165,7 @@ impl ExecutionResult {
         }
     }
 
-    /// Returns new execution result with updated gas cost.
+    /// Returns a new execution result with updated gas cost.
     ///
     /// This method supports preserves the [`ExecutionResult`] variant and updates the cost field
     /// only.
@@ -194,10 +194,10 @@ impl ExecutionResult {
         }
     }
 
-    /// Returns new execution result with updated execution effects.
+    /// Returns a new execution result with updated execution effects.
     ///
-    /// This method supports preserves the [`ExecutionResult`] variant and updates the cost field
-    /// only.
+    /// This method preserves the [`ExecutionResult`] variant and updates the
+    /// `execution_effect` field only.
     pub fn with_effect(self, execution_effect: ExecutionEffect) -> Self {
         match self {
             ExecutionResult::Failure {
@@ -221,10 +221,10 @@ impl ExecutionResult {
         }
     }
 
-    /// Returns new execution result with updated transfers field.
+    /// Returns a new execution result with updated transfers field.
     ///
-    /// This method supports preserves the [`ExecutionResult`] variant and updates the cost field
-    /// only.
+    /// This method supports preserves the [`ExecutionResult`] variant and updates the
+    /// `transfers` field only.
     pub fn with_transfers(self, transfers: Vec<TransferAddr>) -> Self {
         match self {
             ExecutionResult::Failure {
@@ -272,7 +272,7 @@ impl ExecutionResult {
 
     /// Checks the transfer status of a payment code.
     ///
-    /// This method converts a gas cost of the execution result into motes using supplied
+    /// This method converts the gas cost of the execution result into motes using supplied
     /// `gas_price`, and then a check is made to ensure that user deposited enough funds in the
     /// payment purse (in motes) to cover the execution of a payment code.
     ///
@@ -308,9 +308,11 @@ impl ExecutionResult {
         }
     }
 
+    /// TODO: This comment is not very helpful. Clarify what the method does.
+    ///
     /// Creates a new payment code error.
     ///
-    /// Method below creates an [`ExecutionResult`] with a precomputed effects of a
+    /// The method below creates an [`ExecutionResult`] with precomputed effects of a
     /// "finalize_payment".
     pub fn new_payment_code_error(
         error: error::Error,
@@ -373,7 +375,7 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
     }
 }
 
-/// Represents error conditions of a execution result builder.
+/// Represents error conditions of an execution result builder.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ExecutionResultBuilderError {
     /// Missing a payment execution result.
@@ -432,7 +434,7 @@ impl ExecutionResultBuilder {
         self
     }
 
-    /// Calculates a total gas cost of the execution result.
+    /// Calculates the total gas cost of the execution result.
     ///
     /// Takes a payment execution result, and a session execution result and returns a sum. If
     /// either a payment or session code is not specified then a 0 is used.
@@ -447,12 +449,14 @@ impl ExecutionResultBuilder {
             .as_ref()
             .map(ExecutionResult::cost)
             .unwrap_or_default();
+        // TODO: Make sure this code isn't in production.
+        // It should have been removed in the fix of #1968.
         payment_cost + session_cost
     }
 
     /// Returns transfers from a session's execution result.
     ///
-    /// If session's execution result is not supplied then an empty [`Vec`] is returned.
+    /// If the session's execution result is not supplied then an empty [`Vec`] is returned.
     pub fn transfers(&self) -> Vec<TransferAddr> {
         self.session_execution_result
             .as_ref()

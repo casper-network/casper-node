@@ -24,7 +24,7 @@ use crate::{
 pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Blake2bHash,
-    /// Effects of executing a upgrade request.
+    /// Effects of executing an upgrade request.
     pub execution_effect: ExecutionEffect,
 }
 
@@ -38,7 +38,7 @@ impl fmt::Display for UpgradeSuccess {
     }
 }
 
-/// Represents a configuration of a protocol upgrade.
+/// Represents the configuration of a protocol upgrade.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpgradeConfig {
     pre_state_hash: Blake2bHash,
@@ -161,7 +161,7 @@ pub enum ProtocolUpgradeError {
     FailedToCreateSystemRegistry,
 }
 
-/// System upgrader deals with conducting actual protocol upgrade.
+/// The system upgrader deals with conducting an actual protocol upgrade.
 pub(crate) struct SystemUpgrader<S>
 where
     S: StateProvider,

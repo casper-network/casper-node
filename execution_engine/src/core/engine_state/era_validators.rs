@@ -7,7 +7,7 @@ use casper_types::ProtocolVersion;
 
 use crate::{core::engine_state::error::Error, shared::newtypes::Blake2bHash};
 
-/// An enum that represents all possible error conditions of a get era validators request.
+/// An enum that represents all possible error conditions of a `get_era_validators` request.
 #[derive(Debug, Error, DataSize)]
 pub enum GetEraValidatorsError {
     /// Invalid state hash was used to make this request
@@ -28,7 +28,7 @@ impl GetEraValidatorsError {
     }
 }
 
-/// Represents a get era validators request.
+/// Represents a `get_era_validators` request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetEraValidatorsRequest {
     state_hash: Blake2bHash,
@@ -36,7 +36,7 @@ pub struct GetEraValidatorsRequest {
 }
 
 impl GetEraValidatorsRequest {
-    /// Creates a new [`GetEraValidatorsRequest`]
+    /// Creates a new [`GetEraValidatorsRequest`].
     pub fn new(state_hash: Blake2bHash, protocol_version: ProtocolVersion) -> Self {
         GetEraValidatorsRequest {
             state_hash,
@@ -44,12 +44,12 @@ impl GetEraValidatorsRequest {
         }
     }
 
-    /// Returns a state root hash.
+    /// Returns the state root hash.
     pub fn state_hash(&self) -> Blake2bHash {
         self.state_hash
     }
 
-    /// Returns a protocol version.
+    /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }

@@ -1,6 +1,4 @@
-//! Implementation of WASM execution engine.
-//!
-//! This module is responsible for resolving host functions from within WASM engine.
+//! This module is responsible for resolving host functions from within the WASM engine.
 pub mod error;
 pub mod memory_resolver;
 pub(crate) mod v1_function_index;

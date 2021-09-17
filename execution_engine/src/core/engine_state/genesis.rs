@@ -126,12 +126,12 @@ impl GenesisValidator {
         }
     }
 
-    /// Returns bonded amount of a genesis validator.
+    /// Returns the bonded amount of a genesis validator.
     pub fn bonded_amount(&self) -> Motes {
         self.bonded_amount
     }
 
-    /// Returns delegation rate of a genesis validator.
+    /// Returns the delegation rate of a genesis validator.
     pub fn delegation_rate(&self) -> DelegationRate {
         self.delegation_rate
     }
@@ -161,16 +161,17 @@ pub enum GenesisAccount {
         /// If set, it will make this account a genesis validator.
         validator: Option<GenesisValidator>,
     },
-    /// Genesis delegator is a special account that will be created as a delegator.
-    /// It does not have stake on its own, but will create a real account in the system but it will
-    /// delegate to a genesis validator.
+    /// TODO: Review the following comment.
+    /// The genesis delegator is a special account that will be created as a delegator.
+    /// It does not have any stake of its own, but will create a real account in the system
+    /// which will delegate to a genesis validator.
     Delegator {
         /// Validator's public key that has to refer to other instance of
         /// [`GenesisAccount::Account`] with a `validator` field set.
         validator_public_key: PublicKey,
         /// Public key of the genesis account that will be created as part of this entry.
         delegator_public_key: PublicKey,
-        /// Starting balance of an account created in the system.
+        /// Starting balance of the account.
         balance: Motes,
         /// Delegated amount for given `validator_public_key`.
         delegated_amount: Motes,
@@ -490,7 +491,7 @@ impl GenesisConfig {
         &self.ee_config
     }
 
-    /// Returns mutable refernece to the configuration.
+    /// Returns mutable reference to the configuration.
     pub fn ee_config_mut(&mut self) -> &mut ExecConfig {
         &mut self.ee_config
     }
@@ -524,7 +525,7 @@ impl Distribution<GenesisConfig> for Standard {
     }
 }
 
-/// Represents the detals of a genesis process.
+/// Represents the details of a genesis process.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecConfig {
     accounts: Vec<GenesisAccount>,
@@ -575,14 +576,14 @@ impl ExecConfig {
         &self.system_config
     }
 
-    /// Returns all genesis validators.
+    /// Returns all bonded genesis validators.
     pub fn get_bonded_validators(&self) -> impl Iterator<Item = &GenesisAccount> {
         self.accounts
             .iter()
             .filter(|&genesis_account| genesis_account.is_validator())
     }
 
-    /// Returns all genesis delegators.
+    /// Returns all bonded genesis delegators.
     pub fn get_bonded_delegators(
         &self,
     ) -> impl Iterator<Item = (&PublicKey, &PublicKey, &Motes, &Motes)> {
@@ -671,24 +672,24 @@ impl Distribution<ExecConfig> for Standard {
     }
 }
 
-/// Error returned as a result of a genesis process.
+/// Error returned as a result of a failed genesis process.
 #[derive(Clone, Debug)]
 pub enum GenesisError {
     /// Error creating a runtime.
     UnableToCreateRuntime,
-    /// Error obtaining a mint's contract key.
+    /// Error obtaining the mint's contract key.
     InvalidMintKey,
-    /// Error missing mint contract.
+    /// Missing mint contract.
     MissingMintContract,
     /// Unexpected stored value variant.
     UnexpectedStoredValue,
     /// Error executing a system contract.
     ExecutionError(execution::Error),
-    /// Error executing mint system contract.
+    /// Error executing the mint system contract.
     MintError(mint::Error),
-    /// Error converting [`CLValue`] to a concrete type.
+    /// Error converting a [`CLValue`] to a concrete type.
     CLValue(String),
-    /// Specified validator does not exists in genesis accounts.
+    /// Specified validator does not exist among the genesis accounts.
     OrphanedDelegator {
         /// Validator's public key.
         validator_public_key: PublicKey,
@@ -702,19 +703,19 @@ pub enum GenesisError {
         /// Delegator's public key.
         delegator_public_key: PublicKey,
     },
-    /// Invalid delgation rate specified outside allowed range.
+    /// Delegation rate outside the allowed range.
     InvalidDelegationRate {
         /// Delegator's public key.
         public_key: PublicKey,
-        /// Invalid delegation rate as specified in the genesis account entry.
+        /// Invalid delegation rate specified in the genesis account entry.
         delegation_rate: DelegationRate,
     },
-    /// Invalid bond amount in the genesis account.
+    /// Invalid bond amount in a genesis account.
     InvalidBondAmount {
         /// Validator's public key.
         public_key: PublicKey,
     },
-    /// Invalid delegated amount in the genesis account.
+    /// Invalid delegated amount in a genesis account.
     InvalidDelegatedAmount {
         /// Delegator's public key.
         public_key: PublicKey,

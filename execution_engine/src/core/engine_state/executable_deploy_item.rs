@@ -1,4 +1,4 @@
-//! Smart contract execution parameters.
+//! Units of execution.
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
@@ -53,7 +53,7 @@ const TRANSFER_TAG: u8 = 5;
 )]
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
-    /// Executable is specifed as a raw bytes that represents a WASM code and an instance of
+    /// Executable specified as raw bytes that represent WASM code and an instance of
     /// [`RuntimeArgs`].
     ModuleBytes {
         /// Raw WASM module bytes with assumed "call" export as an entrypoint.
@@ -121,7 +121,7 @@ pub enum ExecutableDeployItem {
 }
 
 impl ExecutableDeployItem {
-    /// Returns an entry point name.
+    /// Returns the entry point name.
     pub fn entry_point_name(&self) -> &str {
         match self {
             ExecutableDeployItem::ModuleBytes { .. } | ExecutableDeployItem::Transfer { .. } => {
@@ -134,7 +134,7 @@ impl ExecutableDeployItem {
         }
     }
 
-    /// Returns a runtime arguments.
+    /// Returns the runtime arguments.
     pub fn args(&self) -> &RuntimeArgs {
         match self {
             ExecutableDeployItem::ModuleBytes { args, .. }
@@ -151,8 +151,8 @@ impl ExecutableDeployItem {
         matches!(self, ExecutableDeployItem::Transfer { .. })
     }
 
-    /// Returns a [`DeployMetadata`] which contains all the details necessary to execute a smart
-    /// contract. This object is generated based on information provided by
+    /// Returns all the details necessary for execution.
+    /// This object is generated based on information provided by
     /// [`ExecutableDeployItem`].
     #[allow(clippy::too_many_arguments)]
     pub fn get_deploy_metadata<R>(
@@ -786,14 +786,14 @@ impl Distribution<ExecutableDeployItem> for Standard {
     }
 }
 
-/// The metadata whose is a result of resolving an instance of [`ExecutableDeployItem`] into values
-/// that will be later used to create a [`crate::core::runtime::Runtime`] and
+/// The metadata which results from resolving an instance of [`ExecutableDeployItem`] into values
+/// that will be later be used to create a [`crate::core::runtime::Runtime`] and
 /// [`crate::core::runtime_context::RuntimeContext`].
 #[derive(Clone, Debug)]
 pub struct DeployMetadata {
     /// This will be a [`DeployKind::System`] if the resolved contract is a system one based on
-    /// it's [`ContractHash`] or either a [`DeployKind::Session`] or [`DeployKind::Contract`]
-    /// depending on an [`EntryPointType`] of the contract referenced by [`ExecutableDeployItem`]
+    /// it's [`ContractHash`] or a [`DeployKind::Session`] or [`DeployKind::Contract`]
+    /// depending on the [`EntryPointType`] of the contract referenced by [`ExecutableDeployItem`]
     /// variants.
     pub kind: DeployKind,
     /// Account hash of the account that initiates the deploy.
@@ -810,7 +810,7 @@ pub struct DeployMetadata {
     pub contract_package: ContractPackage,
     /// Entry point that will be executed.
     pub entry_point: EntryPoint,
-    /// Indicates if a given contract is stored in the global state.
+    /// Indicates if the contract is stored in the global state.
     pub is_stored: bool,
 }
 

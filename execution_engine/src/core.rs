@@ -8,8 +8,8 @@ pub(crate) mod tracking_copy;
 
 pub use tracking_copy::{validate_balance_proof, validate_query_proof, ValidationError};
 
-/// Length of the address.
+/// The length of an address.
 pub const ADDRESS_LENGTH: usize = 32;
 
-/// An alias for array of bytes that represents an address.
+/// Alias for an array of bytes that represents an address.
 pub type Address = [u8; ADDRESS_LENGTH];

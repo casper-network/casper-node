@@ -1,4 +1,4 @@
-//! This module contains a context of execution of the WASM code.
+//! The context of execution of WASM code.
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap, HashSet},
@@ -59,9 +59,9 @@ pub(crate) fn uref_has_access_rights(
 /// Validates an entry point access with a special validator callback.
 ///
 /// If the passed `access` object is a `Groups` variant, then this function will return a
-/// [`Error::InvalidContext`] if there are no groups specified as such entry point is uncallable.
-/// For each [`URef`] in every group that this `access` object refers a validator callback is
-/// called. If a validator functions returns `false` for any of the `URef` in the set, an
+/// [`Error::InvalidContext`] if there are no groups specified, as such entry point is uncallable.
+/// For each [`URef`] in every group that this `access` object refers to, a validator callback is
+/// called. If a validator function returns `false` for any of the `URef` in the set, an
 /// [`Error::InvalidContext`] is returned.
 ///
 /// Otherwise, if `access` object is a `Public` variant, then the entry point is considered callable
@@ -190,7 +190,7 @@ where
         self.named_keys
     }
 
-    /// Returns mutable reference to named keys.
+    /// Returns a mutable reference to named keys.
     pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
         &mut self.named_keys
     }
@@ -292,17 +292,17 @@ where
         }
     }
 
-    /// Returns caller of the contract.
+    /// Returns the caller of the contract.
     pub fn get_caller(&self) -> AccountHash {
         self.account.account_hash()
     }
 
-    /// Returns block time.
+    /// Returns the block time.
     pub fn get_blocktime(&self) -> BlockTime {
         self.blocktime
     }
 
-    /// Returns deploy hash.
+    /// Returns the deploy hash.
     pub fn get_deploy_hash(&self) -> DeployHash {
         self.deploy_hash
     }
@@ -347,22 +347,22 @@ where
         Rc::clone(&self.tracking_copy)
     }
 
-    /// Returns gas limit.
+    /// Returns the gas limit.
     pub fn gas_limit(&self) -> Gas {
         self.gas_limit
     }
 
-    /// Returns current gas counter.
+    /// Returns the current gas counter.
     pub fn gas_counter(&self) -> Gas {
         self.gas_counter
     }
 
-    /// Sets new value to the gas counter.
+    /// Sets the gas counter to a new value.
     pub fn set_gas_counter(&mut self, new_gas_counter: Gas) {
         self.gas_counter = new_gas_counter;
     }
 
-    /// Returns base key.
+    /// Returns the base key.
     ///
     /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
     /// type.
@@ -370,17 +370,17 @@ where
         self.base_key
     }
 
-    /// Returns protocol version.
+    /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
-    /// Returns correlation id.
+    /// Returns the correlation id.
     pub fn correlation_id(&self) -> CorrelationId {
         self.correlation_id
     }
 
-    /// Returns current phase.
+    /// Returns the current phase.
     pub fn phase(&self) -> Phase {
         self.phase
     }
@@ -406,7 +406,7 @@ where
         self.new_uref(StoredValue::CLValue(CLValue::unit()))
     }
 
-    /// Creates new transfer address using at transfer address generator.
+    /// Creates a new transfer address using a transfer address generator.
     pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
         let transfer_addr = self
             .transfer_address_generator
@@ -427,6 +427,7 @@ where
     }
 
     /// Reads new purse [`URef`].
+    /// TODO: Check whether the word “new” should be removed from the comment above.
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
     #[cfg(test)]

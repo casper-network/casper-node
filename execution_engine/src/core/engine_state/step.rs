@@ -16,10 +16,10 @@ use crate::{
     shared::newtypes::Blake2bHash,
 };
 
-/// A definition of a slash item.
+/// The definition of a slash item.
 #[derive(Debug)]
 pub struct SlashItem {
-    /// Validator's public key that will be slashed.
+    /// The public key of the validator that will be slashed.
     pub validator_id: PublicKey,
 }
 
@@ -30,12 +30,12 @@ impl SlashItem {
     }
 }
 
-/// A definition of a reward item.
+/// The definition of a reward item.
 #[derive(Debug)]
 pub struct RewardItem {
-    /// Validator's public key that will be rewarded.
+    /// The public key of the validator that will be rewarded.
     pub validator_id: PublicKey,
-    /// Amount of motes that will be rewarded.
+    /// Amount of motes that will be distributed as rewards.
     pub value: u64,
 }
 
@@ -49,10 +49,10 @@ impl RewardItem {
     }
 }
 
-/// A definition of an evict item.
+/// The definition of an evict item.
 #[derive(Debug)]
 pub struct EvictItem {
-    /// Validator's public key that will be evicted.
+    /// The public key of the validator that will be evicted.
     pub validator_id: PublicKey,
 }
 
@@ -78,7 +78,7 @@ pub struct StepRequest {
     pub reward_items: Vec<RewardItem>,
     /// List of validators to be evicted.
     ///
-    /// Compared to a slashing, evictions are deactivating given validator, but his stake is
+    /// Compared to a slashing, evictions are deactivating a given validator, but his stake is
     /// unchanged. A further re-activation is possible.
     pub evict_items: Vec<EvictItem>,
     /// If true an auction contract will be executed to compute new era validators.
@@ -138,13 +138,13 @@ impl StepRequest {
     }
 }
 
-/// Representation of all possible outcomes of a step request.
+/// Representation of all possible failures of a step request.
 #[derive(Debug, thiserror::Error)]
 pub enum StepError {
     /// Invalid state root hash.
     #[error("Root not found: {0:?}")]
     RootNotFound(Blake2bHash),
-    /// Error creating a tracking copy intsance.
+    /// Error creating a tracking copy instance.
     #[error("Tracking copy error: {0}")]
     TrackingCopyError(Error),
     #[error("Get contract error: {0}")]
@@ -153,19 +153,19 @@ pub enum StepError {
     /// Error retrieving a system module.
     #[error("Get system module error: {0}")]
     GetSystemModuleError(Error),
-    /// Error executing slashing operation.
+    /// Error executing a slashing operation.
     #[error("Slashing error: {0}")]
     SlashingError(Error),
-    /// Error executing auction contract.
+    /// Error executing the auction contract.
     #[error("Auction error: {0}")]
     AuctionError(Error),
-    /// Error executing distribute operation.
+    /// Error executing a distribute operation.
     #[error("Distribute error: {0}")]
     DistributeError(Error),
     /// Invalid protocol version.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
-    /// Error while serializing data.
+    /// Error while (de)serializing data.
     #[error(transparent)]
     BytesRepr(#[from] bytesrepr::Error),
     /// Error converting `CLValue`.
@@ -174,7 +174,7 @@ pub enum StepError {
     #[error("Other engine state error: {0}")]
     /// Other engine state error.
     OtherEngineStateError(#[from] Error),
-    /// Error executing a smart contract.
+    /// Execution error.
     #[error(transparent)]
     ExecutionError(#[from] execution::Error),
 }

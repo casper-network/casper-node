@@ -1,4 +1,4 @@
-//! Address generator is used to generate unique addresses that have length of 32 bytes.
+//! Generates unique 32-byte addresses.
 
 use blake2::{
     digest::{Update, VariableOutput},

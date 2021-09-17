@@ -1,4 +1,4 @@
-//!  This module contains all contract execution related code.
+//!  This module contains all the execution related code.
 pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
@@ -90,12 +90,16 @@ use crate::{
     },
 };
 
-/// A maximum amount of gas a paymnet code can use as expressed in `u64`.
-pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
-/// A maximum amount of gas a payment code can use.
+/// The maximum amount of gas a payment code can use, expressed as an `u64`.
 ///
-/// This values also indicates a minimum balance of a main purse of an account when executing
-/// payment code.
+/// TODO: There needs to be a clarification here on whether the following
+/// value is an amount of Motes or an amount of GAS.
+pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+/// The maximum amount of gas a payment code can use.
+///
+/// This value also indicates the minimum balance of the main purse of an account when
+/// executing payment code.
+/// TODO: Explain why.
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
@@ -104,9 +108,9 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 
 /// Main implementation of an execution engine state.
 ///
-/// Takes a engine's configuration and a provider of a state (aka the global state) to operate on.
-/// Methods implemented on this structure is the external API intended to use by the users such as
-/// node, test framework, and others.
+/// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
+/// Methods implemented on this structure are the external API intended to be used by the users such as
+/// the node, test framework, and others.
 #[derive(Debug)]
 pub struct EngineState<S> {
     config: EngineConfig,
@@ -151,12 +155,12 @@ where
 
     /// Commits genesis process.
     ///
-    /// This process is ran only once per network to initiate the system. By definition users are
+    /// This process is run only once per network to initiate the system. By definition users are
     /// unable to execute smart contracts on a network without a genesis.
     ///
-    /// Takes genesis configuration passed through [`ExecConfig`] and creates system contracts, sets
-    /// up genesis accounts, and sets up auction state based on that. At the end of the process
-    /// [`SystemContractRegistry`] is persisted under the special global state space
+    /// Takes genesis configuration passed through [`ExecConfig`] and creates the system contracts,
+    /// sets up the genesis accounts, and sets up the auction state based on that. At the end of
+    /// the process, [`SystemContractRegistry`] is persisted under the special global state space
     /// [`Key::SystemContractRegistry`].
     ///
     /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
@@ -172,7 +176,7 @@ where
 
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            // NOTE: As genesis is ran once per instance condition below is considered programming
+            // NOTE: As genesis is run once per instance condition below is considered programming
             // error
             Ok(None) => panic!("state has not been initialized properly"),
             Err(error) => return Err(error),
@@ -543,7 +547,7 @@ where
         Ok(account)
     }
 
-    /// Get a balance of a passed purse referenced by its [`URef`].
+    /// Get the balance of a passed purse referenced by its [`URef`].
     pub fn get_purse_balance(
         &self,
         correlation_id: CorrelationId,
@@ -565,7 +569,7 @@ where
 
     /// Executes a native transfer.
     ///
-    /// Native transfer does not involve WASM at all, and also skips executing payment code.
+    /// Native transfers do not involve WASM at all, and also skip executing payment code.
     /// Therefore this is the fastest and cheapest way to transfer tokens from account to account.
     ///
     /// Returns an [`ExecutionResult`] for a successful native transfer.
@@ -1152,10 +1156,12 @@ where
 
     /// Executes a deploy.
     ///
-    /// A deploy execution consists of running payment code which is expected to deposit funds
-    /// into a payment purse, and then running session code with a specific gas limit. For running
-    /// payment code we let users a [`MAX_PAYMENT`] leash. After successful session code execution
-    /// funds are transfered to a proposer of the deploy as specified in the request.
+    /// A deploy execution consists of running the payment code, which is expected to deposit funds
+    /// into the payment purse, and then running session code with a specific gas limit. For running
+    /// payment code we give users a [`MAX_PAYMENT`] lease. After successful session code execution
+    /// funds are transferred to the proposer of the deploy as specified in the request.
+    /// TODO: There needs to be a clarification on whether the user pays `MAX_PAYMENT` upfront or
+    /// whether `MAX_PAYMENT` is leased to the user, which pays it back after.
     ///
     /// Returns [`ExecutionResult`], or an error condition.
     #[allow(clippy::too_many_arguments)]
@@ -1709,7 +1715,7 @@ where
     /// Apply effects of the execution.
     ///
     /// This is also refered to as "committing" the effects into the global state. This method has
-    /// to be ran after an execution has been made to persists the effects of it.
+    /// to be run after an execution has been made to persists the effects of it.
     ///
     /// Returns new state root hash.
     pub fn apply_effect(
@@ -1740,7 +1746,7 @@ where
             .map_err(Error::from)
     }
 
-    /// Puts a trie and finds a missing descendant trie keys.
+    /// Puts a trie and finds missing descendant trie keys.
     pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
@@ -2139,7 +2145,7 @@ where
         })
     }
 
-    /// Gets a balance of a given public key.
+    /// Gets the balance of a given public key.
     pub fn get_balance(
         &self,
         correlation_id: CorrelationId,

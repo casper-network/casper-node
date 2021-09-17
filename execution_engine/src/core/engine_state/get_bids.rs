@@ -21,7 +21,7 @@ impl GetBidsRequest {
     }
 }
 
-/// Represents a result of a get bids request.
+/// Represents a result of a `get_bids` request.
 #[derive(Debug)]
 pub enum GetBidsResult {
     /// Invalid state root hash.

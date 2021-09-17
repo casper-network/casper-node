@@ -18,7 +18,7 @@ pub enum BalanceResult {
 }
 
 impl BalanceResult {
-    /// Returns amount of motes for a [`BalanceResult::Success`] variant.
+    /// Returns the amount of motes for a [`BalanceResult::Success`] variant.
     pub fn motes(&self) -> Option<&U512> {
         match self {
             BalanceResult::Success { motes, .. } => Some(motes),
@@ -26,7 +26,7 @@ impl BalanceResult {
         }
     }
 
-    /// Returns Merkle proof for a given [`BalanceResult::Success`] variant.
+    /// Returns the Merkle proof for a given [`BalanceResult::Success`] variant.
     pub fn proof(self) -> Option<TrieMerkleProof<Key, StoredValue>> {
         match self {
             BalanceResult::Success { proof, .. } => Some(*proof),
@@ -35,7 +35,7 @@ impl BalanceResult {
     }
 }
 
-/// Represents a balance request
+/// Represents a balance request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceRequest {
     state_hash: Blake2bHash,
@@ -43,7 +43,7 @@ pub struct BalanceRequest {
 }
 
 impl BalanceRequest {
-    /// Creates a new [`BalanceRequest`]
+    /// Creates a new [`BalanceRequest`].
     pub fn new(state_hash: Blake2bHash, purse_uref: URef) -> Self {
         BalanceRequest {
             state_hash,

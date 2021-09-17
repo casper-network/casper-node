@@ -96,7 +96,8 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
     }
 }
 
-/// State of a transfer args builder.
+/// State of a builder of a `TransferArgs`.
+/// TODO: Why is `Runtime` part of the name.
 ///
 /// Purpose of this builder is to resolve native tranfer args into [`TransferTargetMode`] and a
 /// [`TransferArgs`] instance to execute actual token transfer on the mint contract.
@@ -143,7 +144,7 @@ impl TransferRuntimeArgsBuilder {
             .is_ok()
     }
 
-    /// Resolves a source purse of the transfer.
+    /// Resolves the source purse of the transfer.
     ///
     /// User can optionally pass a "source" argument which should refer to an [`URef`] existing in
     /// user's named keys. When the "source" argument is missing then user's main purse is assumed.
