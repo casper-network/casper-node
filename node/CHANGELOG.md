@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file.  The format
   `network.estimator_weights`.
 * Added `consensus.highway.max_request_batch_size` configuration parameter. Defaults to 20.
 * New histogram metrics `deploy_acceptor_accepted_deploy` and `deploy_acceptor_rejected_deploy` that track how long the initial verification took.
-* New JSON-RPC endpoint `get-validator-info` and REST endpoint `validator-changes`  that return the changes in the validator set between two eras.
+* New JSON-RPC endpoint `info-get-validator-changes` and REST endpoint `validator-changes`  that return the changes in validator status between two eras.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
