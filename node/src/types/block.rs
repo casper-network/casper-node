@@ -1284,7 +1284,7 @@ pub enum HashingAlgorithmVersion {
 impl HashingAlgorithmVersion {
     #[cfg(feature = "casper-mainnet")]
     pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-        // TODO: restore that to 1.4.0 when fast sync is merged
+        // TODO: restore that to the actual switchover version when fast sync is merged
         ProtocolVersion::from_parts(9001, 0, 0);
 
     #[cfg(not(feature = "casper-mainnet"))]
