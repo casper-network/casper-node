@@ -203,7 +203,7 @@ where
             })
             .join(", ");
         info!(
-            ?sender, %duplicates,
+            peer_id=?sender, %duplicates,
             "received invalid block containing duplicated deploys"
         );
     }

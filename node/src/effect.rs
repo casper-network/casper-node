@@ -211,9 +211,9 @@ impl<T> Drop for Responder<T> {
         if self.0.is_some() {
             // This is usually a very serious error, as another component will now be stuck.
             error!(
-                "{} dropped without being responded to --- \
-                 this is always a bug and will likely cause another component to be stuck!",
-                self
+                responder=?self,
+                "dropped without being responded to --- \
+                 this is always a bug and will likely cause another component to be stuck!"
             );
         }
     }
@@ -449,8 +449,8 @@ impl<REv> EffectBuilder<REv> {
             Err(err) => {
                 // The channel should never be closed, ever. If it is, we pretend nothing happened
                 // though, instead of crashing.
-                error!(%err, ?queue_kind, "request for {} channel closed, this may be a bug? \
-                       check if a component is stuck from now on ", type_name::<T>());
+                error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
+                       check if a component is stuck from now on ");
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
