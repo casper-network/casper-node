@@ -96,8 +96,8 @@ impl Digest {
         self.0.to_vec()
     }
 
-    /// Hashes a `impl IntoIterator` of [`Blake2bHash`]s into a single [`Blake2bHash`] by
-    /// constructing a [Merkle tree][1]. Reduces pairs of elements in the [`Vec`] by repeatedly
+    /// Hashes a `impl IntoIterator` of [`Digest`]s into a single [`Digest`] by
+    /// constructing a [Merkle tree][1]. Reduces pairs of elements in the collection by repeatedly
     /// calling [hash_pair].
     ///
     /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
@@ -128,7 +128,7 @@ impl Digest {
         let (leaf_count, raw_root) = leaves
             .into_iter()
             .map(|x| (1u64, x))
-            .tree_fold1(|(mut count_x, mut hash_x), (count_y, hash_y)| {
+            .tree_fold1(|(count_x, mut hash_x), (count_y, hash_y)| {
                 let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
                 hasher.update(&hash_x);
                 hasher.update(&hash_y);

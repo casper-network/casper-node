@@ -1,10 +1,6 @@
 use std::convert::TryFrom;
 
 use crate::{error, Digest};
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
 use casper_types::{
     allocate_buffer,
     bytesrepr::{FromBytes, ToBytes},
@@ -87,14 +83,14 @@ impl FromBytes for IndexedMerkleProof {
                 count,
                 merkle_proof,
             })
-            .map_err(|err| casper_types::bytesrepr::Error::Validation)?,
+            .map_err(|_| casper_types::bytesrepr::Error::Validation)?,
             remainder,
         ))
     }
 }
 
 impl IndexedMerkleProof {
-    pub(crate) fn new<I>(
+    pub fn new<I>(
         leaves: I,
         index: u64,
     ) -> Result<IndexedMerkleProof, error::MerkleConstructionError>
@@ -150,7 +146,8 @@ impl IndexedMerkleProof {
         }
     }
 
-    pub(crate) fn root_hash(&self) -> Digest {
+    #[cfg(test)]
+    fn root_hash(&self) -> Digest {
         let IndexedMerkleProof {
             index: _,
             count,
@@ -203,13 +200,6 @@ impl IndexedMerkleProof {
         Digest::hash_pair(count.to_le_bytes(), raw_root)
     }
 
-    pub fn index(&self) -> u64 {
-        self.index
-    }
-    pub fn count(&self) -> u64 {
-        self.count
-    }
-
     pub(crate) fn merkle_proof(&self) -> &[Digest] {
         &self.merkle_proof
     }
@@ -241,6 +231,7 @@ impl IndexedMerkleProof {
         l
     }
 
+    #[cfg(test)]
     fn verify(&self) -> Result<(), error::MerkleVerificationError> {
         if !((self.count == 0 && self.index == 0) || self.index < self.count) {
             return Err(error::MerkleVerificationError::IndexOutOfBounds {
