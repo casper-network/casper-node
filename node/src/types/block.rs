@@ -618,7 +618,7 @@ impl EraEnd {
             })
             .collect();
         let hashed_next_era_validator_weights =
-            Digest::hash_vec_merkle_tree(descending_validator_weight_hashed_pairs);
+            Digest::hash_merkle_tree(descending_validator_weight_hashed_pairs); // TODO[RC]: Double check this! The hashes produced by `hash_vec_merkle_tree` and `hash_merkle_tree` differ!
         let hashed_era_report: Digest = era_report.hash();
         Digest::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
     }
@@ -1134,15 +1134,13 @@ impl BlockBody {
 
         let transfer_hashes = MerkleBlockBodyPart::new(
             transfer_hashes,
-            Digest::hash_vec_merkle_tree(
-                transfer_hashes.iter().cloned().map(Digest::from).collect(),
-            ),
+            Digest::hash_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from).collect()),
             proposer.merkle_linked_list_node_hash,
         );
 
         let deploy_hashes = MerkleBlockBodyPart::new(
             deploy_hashes,
-            Digest::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
+            Digest::hash_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
             transfer_hashes.merkle_linked_list_node_hash,
         );
 

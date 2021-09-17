@@ -142,6 +142,7 @@ impl<VID> EraReport<VID> {
                 })
                 .collect();
             Digest::hash_vec_merkle_tree(hashes)
+            Digest::hash_merkle_tree(hashes) // TODO[RC]: Double check this! The hashes produced by `hash_vec_merkle_tree` and `hash_merkle_tree` differ!
         }
 
         // Pattern match here leverages compiler to ensure every field is accounted for

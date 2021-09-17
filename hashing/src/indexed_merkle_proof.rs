@@ -157,7 +157,7 @@ impl IndexedMerkleProof {
             merkle_proof,
         } = self;
 
-        let mut hashes = merkle_proof.into_iter();
+        let mut hashes = merkle_proof.iter();
         let raw_root = if let Some(leaf_hash) = hashes.next().cloned() {
             // Compute whether to hash left or right for the elements of the Merkle proof.
             // This gives a path to the value with the specified index.
@@ -268,7 +268,7 @@ mod test {
     use proptest_attr_macro::proptest;
     use rand::Rng;
 
-    use crate::{error, indexed_merkle_proof::IndexedMerkleProof, util, Digest};
+    use crate::{error, indexed_merkle_proof::IndexedMerkleProof, Digest};
 
     fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
         let mut rng = rand::thread_rng();
@@ -291,9 +291,8 @@ mod test {
             let leaves: Vec<Digest> = (0..leaf_count)
                 .map(|i| Digest::hash(i.to_le_bytes()))
                 .collect();
-            let root = util::hash_merkle_tree(leaves.iter().cloned());
-            let indexed_merkle_proof =
-                IndexedMerkleProof::new(leaves.iter().cloned(), index).unwrap();
+            let root = Digest::hash_merkle_tree(leaves.clone());
+            let indexed_merkle_proof = IndexedMerkleProof::new(leaves.clone(), index).unwrap();
             assert_eq!(
                 indexed_merkle_proof.compute_expected_proof_length(),
                 indexed_merkle_proof.merkle_proof().len() as u64
@@ -386,7 +385,7 @@ mod test {
 
     #[test]
     fn empty_proof() {
-        let empty_merkle_root = util::hash_merkle_tree(vec![]);
+        let empty_merkle_root = Digest::hash_merkle_tree(vec![]);
         assert_eq!(
             empty_merkle_root,
             Digest::hash_pair(0u64.to_le_bytes(), Digest::SENTINEL_MERKLE_TREE)
