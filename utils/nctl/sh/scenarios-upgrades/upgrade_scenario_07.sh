@@ -10,7 +10,7 @@
 # Step 05: Assert nodes 1&10 didn't upgrade.
 # Step 06: Assert nodes 2-9 didn't stall.
 # Step 07: Assert nodes 1&10 did stall.
-# Step 08: Await 1 era.
+# Step 08: Await 7 era.
 # Step 09: Stage nodes 1&10 and restart.
 # Step 10: Assert all nodes are running
 # Step 11: Assert lfbs are in sync
@@ -23,7 +23,8 @@
 
 source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/views/utils.sh"
-source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
+source "$NCTL/sh/assets/upgrade.sh"
+source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -32,35 +33,30 @@ source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
 # Main entry point.
 function _main()
 {
-    local STAGE_ID=${1}
+    local PROTOCOL_VERSION=${1}
     local INITIAL_PROTOCOL_VERSION
     local ACTIVATION_POINT
     local PRE_UPGRADE_HASH
     local POST_UPGRADE_HASH
 
-    if [ ! -d "$(get_path_to_stage "$STAGE_ID")" ]; then
-        log "ERROR :: stage $STAGE_ID has not been built - cannot run scenario"
-        exit 1
-    fi
-
-    _step_01 "$STAGE_ID"
+    _step_01
     _step_02
 
     # Set initial protocol version for use later.
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
-    ACTIVATION_POINT="$(get_chain_era)"
+    ACTIVATION_POINT="$(($(get_chain_era) + 2))"
     PRE_UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
-    _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
+    _step_03 "$PROTOCOL_VERSION" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
     _step_05 "$INITIAL_PROTOCOL_VERSION"
     _step_06
     _step_07
     _step_08
-    _step_09 "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_HASH"
+    _step_09 "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$PRE_UPGRADE_HASH"
 #    POST_UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
-#    _step_09 "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_HASH"
+#    _step_09 "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$POST_UPGRADE_HASH"
     _step_10
     _step_11
     _step_12
@@ -70,13 +66,15 @@ function _main()
 # Step 01: Start network from pre-built stage.
 function _step_01()
 {
-    local STAGE_ID=${1}
+    local PATH_TO_CHAINSPEC
 
-    log_step_upgrades 0 "Begin upgrade_scenario_04"
-    log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
+    log_step_upgrades 1 "Begin upgrade_scenario_07"
 
-    source "$NCTL/sh/assets/setup_from_stage.sh" \
-            stage="$STAGE_ID"
+    nctl-assets-setup
+    
+    # Force Hard Reset
+    PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
+    sed -i 's/hard_reset = false/hard_reset = true/g' "PATH_TO_CHAINSPEC"
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
     log "... Starting 5 non-validators"
@@ -95,10 +93,10 @@ function _step_02()
 # Step 03: Stage nodes 2-9 and upgrade.
 function _step_03()
 {
-    local STAGE_ID=${1}
+    local PROTOCOL_VERSION=${1}
     local ACTIVATION_POINT=${2}
 
-    log_step_upgrades 3 "upgrading 2 thru 9 from stage ($STAGE_ID)"
+    log_step_upgrades 3 "upgrading 2 thru 9"
 
     log "... setting upgrade assets"
  
@@ -108,7 +106,7 @@ function _step_03()
         else
             log "... staging upgrade on non-validator node-$i"
         fi
-        source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="$i" era="$ACTIVATION_POINT"
+        _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$i"
         echo ""
     done
 
@@ -211,21 +209,21 @@ function _step_07()
     done
 }
 
-# Step 08: Await 1 era.
+# Step 08: Await 7 eras.
 function _step_08()
 {
-    log_step_upgrades 8 "awaiting next era"
-    await_n_eras '1' 'true' '5.0' '2'
+    log_step_upgrades 8 "awaiting 7 eras"
+    await_n_eras '7' 'true' '5.0' '2'
 }
 
 # Step 09: Stage nodes 1&10 and restart.
 function _step_09()
 {
-    local STAGE_ID=${1}
+    local PROTOCOL_VERSION=${1}
     local ACTIVATION_POINT=${2}
     local HASH=${3}
 
-    log_step_upgrades 9 "upgrading nodes 1&10 from stage ($STAGE_ID)"
+    log_step_upgrades 9 "upgrading nodes 1&10"
 
     log "... setting upgrade assets"
 
@@ -235,7 +233,7 @@ function _step_09()
         else
             log "... staging upgrade on non-validator node-$i"
         fi
-        source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="$i" era="$ACTIVATION_POINT"
+        _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$i"
         echo ""
     done
 
@@ -327,7 +325,7 @@ function _step_12()
 # Step 13: Terminate.
 function _step_13()
 {
-    log_step_upgrades 13 "upgrade_scenario_04 successful - tidying up"
+    log_step_upgrades 13 "upgrade_scenario_07 successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
@@ -338,17 +336,19 @@ function _step_13()
 # ENTRY POINT
 # ----------------------------------------------------------------
 
-unset _STAGE_ID
 unset INITIAL_PROTOCOL_VERSION
+unset PROTOCOL_VERSION
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        stage) _STAGE_ID=${VALUE} ;;
+        version) PROTOCOL_VERSION=${VALUE} ;;
         *)
     esac
 done
 
-_main "${_STAGE_ID:-1}"
+PROTOCOL_VERSION=${PROTOCOL_VERSION:-"2_0_0"}
+
+_main "$PROTOCOL_VERSION"

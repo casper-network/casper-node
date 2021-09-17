@@ -10,7 +10,7 @@
 # Step 05: Assert nodes 1&10 didn't upgrade.
 # Step 06: Assert nodes 2-9 didn't stall.
 # Step 07: Assert nodes 1&10 did stall.
-# Step 08: Await 1 era.
+# Step 08: Await 7 era.
 # Step 09: Stage nodes 1&10 and restart.
 # Step 10: Assert all nodes are running
 # Step 11: Assert lfbs are in sync
@@ -72,7 +72,7 @@ function _step_01()
 {
     local STAGE_ID=${1}
 
-    log_step_upgrades 0 "Begin upgrade_scenario_04"
+    log_step_upgrades 0 "Begin upgrade_scenario_05"
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
@@ -211,11 +211,11 @@ function _step_07()
     done
 }
 
-# Step 08: Await 1 era.
+# Step 08: Await 7 era.
 function _step_08()
 {
-    log_step_upgrades 8 "awaiting next era"
-    await_n_eras '1' 'true' '5.0' '2'
+    log_step_upgrades 8 "awaiting 7 eras"
+    await_n_eras '7' 'true' '5.0' '2'
 }
 
 # Step 09: Stage nodes 1&10 and restart.
@@ -327,7 +327,7 @@ function _step_12()
 # Step 13: Terminate.
 function _step_13()
 {
-    log_step_upgrades 13 "upgrade_scenario_04 successful - tidying up"
+    log_step_upgrades 13 "upgrade_scenario_05 successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
