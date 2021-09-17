@@ -21,7 +21,8 @@ All notable changes to this project will be documented in this file.  The format
   `network.estimator_weights`.
 * Added `consensus.highway.max_request_batch_size` configuration parameter. Defaults to 20.
 * New histogram metrics `deploy_acceptor_accepted_deploy` and `deploy_acceptor_rejected_deploy` that track how long the initial verification took.
-* Adds `retrieve-state` in `utils/`.
+* Added gzip content negotiation (using accept-encoding header) to rpc endpoints.
+* Adds `read_trie` json-rpc endpoint and related `retrieve-state` binary in `utils/`.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):

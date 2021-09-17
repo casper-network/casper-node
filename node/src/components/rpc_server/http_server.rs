@@ -92,29 +92,35 @@ pub(super) async fn run<REv: ReactorEventT>(
         Ok::<_, Rejection>(error_response)
     });
 
+    let service_routes = rpc_put_deploy
+        .or(rpc_get_block)
+        .or(rpc_get_block_transfers)
+        .or(rpc_get_state_root_hash)
+        .or(rpc_get_item)
+        .or(rpc_get_balance)
+        .or(rpc_get_deploy)
+        .or(rpc_get_peers)
+        .or(rpc_get_status)
+        .or(rpc_get_era_info)
+        .or(rpc_get_auction_info)
+        .or(rpc_get_account_info)
+        .or(rpc_get_rpcs)
+        .or(rpc_get_dictionary_item)
+        .or(rpc_read_trie)
+        .or(rpc_query_global_state)
+        .or(unknown_method)
+        .or(parse_failure);
+
+    // Supports content negotiation for gzip responses. This is an interim fix until
+    // https://github.com/seanmonstar/warp/pull/513 moves forward.
+    let service_routes_gzip = warp::header::exact("accept-encoding", "gzip")
+        .and(service_routes.clone())
+        .with(warp::compression::gzip());
+
     // TODO - we can't catch cases where we should return `warp_json_rpc::Error::INVALID_REQUEST`
     //        (i.e. where the request is JSON, but not valid JSON-RPC).  This will require an
     //        update to or move away from warp_json_rpc.
-    let service = warp_json_rpc::service(
-        rpc_put_deploy
-            .or(rpc_get_block)
-            .or(rpc_get_block_transfers)
-            .or(rpc_get_state_root_hash)
-            .or(rpc_get_item)
-            .or(rpc_query_global_state)
-            .or(rpc_get_balance)
-            .or(rpc_get_deploy)
-            .or(rpc_get_peers)
-            .or(rpc_get_status)
-            .or(rpc_get_era_info)
-            .or(rpc_get_auction_info)
-            .or(rpc_get_account_info)
-            .or(rpc_get_rpcs)
-            .or(rpc_get_dictionary_item)
-            .or(rpc_read_trie)
-            .or(unknown_method)
-            .or(parse_failure),
-    );
+    let service = warp_json_rpc::service(service_routes_gzip.or(service_routes));
 
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =

@@ -63,7 +63,7 @@ impl AccountHash {
         Ok(AccountHash(bytes))
     }
 
-    #[doc(hidden)]
+    /// Parses a `PublicKey` and outputs the corresponding account hash.
     pub fn from_public_key(
         public_key: &PublicKey,
         blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
