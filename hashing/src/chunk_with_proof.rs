@@ -128,7 +128,6 @@ impl ChunkWithProof {
 mod test {
     use crate::{error, Digest};
     use casper_types::bytesrepr::{FromBytes, ToBytes};
-    use itertools::Itertools;
     use proptest::proptest;
     use rand::Rng;
     use std::{convert::TryInto, ops::Range};

@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use crate::{error, Digest};
+use blake2::digest::Update;
 use casper_types::{
     allocate_buffer,
     bytesrepr::{FromBytes, ToBytes},
@@ -147,7 +148,9 @@ impl IndexedMerkleProof {
     }
 
     #[cfg(test)]
-    fn root_hash(&self) -> Digest {
+    pub(crate) fn root_hash(&self) -> Digest {
+        use blake2::{digest::VariableOutput, VarBlake2b};
+
         let IndexedMerkleProof {
             index: _,
             count,
@@ -268,9 +271,8 @@ mod test {
         let leaves: Vec<Digest> = (0..leaf_count)
             .map(|i| Digest::hash(i.to_le_bytes()))
             .collect();
-        let indexed_merkle_proof = IndexedMerkleProof::new(leaves.iter().cloned(), index).unwrap();
-
-        IndexedMerkleProof::new(leaves, index).expect("should create indexed merkle proof")
+        IndexedMerkleProof::new(leaves.iter().cloned(), index)
+            .expect("should create indexed merkle proof")
     }
 
     #[test]

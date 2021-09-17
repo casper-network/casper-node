@@ -1134,13 +1134,13 @@ impl BlockBody {
 
         let transfer_hashes = MerkleBlockBodyPart::new(
             transfer_hashes,
-            Digest::hash_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from).collect()),
+            Digest::hash_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from)),
             proposer.merkle_linked_list_node_hash,
         );
 
         let deploy_hashes = MerkleBlockBodyPart::new(
             deploy_hashes,
-            Digest::hash_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
+            Digest::hash_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from)),
             transfer_hashes.merkle_linked_list_node_hash,
         );
 

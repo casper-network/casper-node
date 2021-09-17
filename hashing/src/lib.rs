@@ -50,7 +50,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 pub struct Digest(
     #[serde(with = "HexForm::<[u8; Digest::LENGTH]>")]
     #[schemars(skip, with = "String")]
-    [u8; Digest::LENGTH],
+    pub(crate) [u8; Digest::LENGTH],
 );
 
 impl Digest {
@@ -121,7 +121,7 @@ impl Digest {
     ///
     /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
     /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
-    pub(crate) fn hash_merkle_tree<I>(leaves: I) -> Digest
+    pub fn hash_merkle_tree<I>(leaves: I) -> Digest
     where
         I: IntoIterator<Item = Digest>,
     {
@@ -414,7 +414,7 @@ mod test {
     }
 
     #[test]
-    #[ignore] // TODO[RC]: Check expected value with Matt
+    //#[ignore] // TODO[RC]: Check expected value with Matt
     fn test_hash_merkle_odd() {
         let hashes = vec![
             Digest([1u8; 32]),
