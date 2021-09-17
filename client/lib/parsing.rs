@@ -182,34 +182,30 @@ mod args_complex {
     pub mod session {
         use super::*;
 
-        pub fn parse(path: &str) -> Result<RuntimeArgs> {
+        pub fn parse(path: &str) -> Result<Option<RuntimeArgs>> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument {
-                    context: "session_path",
-                    error: path.to_string(),
-                });
+                return Ok(None);
             }
-            get(path).map_err(|error| Error::IoError {
+            let runtime_args = get(path).map_err(|error| Error::IoError {
                 context: format!("error reading session file at '{}'", path),
                 error,
-            })
+            })?;
+            Ok(Some(runtime_args))
         }
     }
 
     pub mod payment {
         use super::*;
 
-        pub fn parse(path: &str) -> Result<RuntimeArgs> {
+        pub fn parse(path: &str) -> Result<Option<RuntimeArgs>> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument {
-                    context: "payment_path",
-                    error: path.to_string(),
-                });
+                return Ok(None);
             }
-            get(path).map_err(|error| Error::IoError {
+            let runtime_args = get(path).map_err(|error| Error::IoError {
                 context: format!("error reading payment file at '{}'", path),
                 error,
-            })
+            })?;
+            Ok(Some(runtime_args))
         }
     }
 
@@ -425,7 +421,7 @@ pub(super) fn parse_session_info(params: SessionStrParams) -> Result<ExecutableD
 
     let session_args = args_from_simple_or_complex(
         arg_simple::session::parse(session_args_simple)?,
-        args_complex::session::parse(session_args_complex).ok(),
+        args_complex::session::parse(session_args_complex)?,
     );
     if session_transfer {
         if session_args.is_empty() {
@@ -536,7 +532,7 @@ pub(super) fn parse_payment_info(params: PaymentStrParams) -> Result<ExecutableD
 
     let payment_args = args_from_simple_or_complex(
         arg_simple::payment::parse(payment_args_simple)?,
-        args_complex::payment::parse(payment_args_complex).ok(),
+        args_complex::payment::parse(payment_args_complex)?,
     );
 
     if let Some(payment_name) = name(payment_name) {
@@ -959,6 +955,52 @@ mod tests {
                 context: "parse_payment_info",
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn should_fail_to_parse_bad_session_args_complex() {
+        let missing_file = "missing/file";
+        assert!(matches!(
+            parse_session_info(SessionStrParams {
+                session_hash: happy::HASH,
+                session_name: "",
+                session_package_hash: "",
+                session_package_name: "",
+                session_path: "",
+                session_args_simple: vec![],
+                session_args_complex: missing_file,
+                session_version: "",
+                session_entry_point: "entrypoint",
+                is_session_transfer: false,
+            }),
+            Err(Error::IoError {
+                context,
+                ..
+            }) if context == format!("error reading session file at '{}'", missing_file)
+        ));
+    }
+
+    #[test]
+    fn should_fail_to_parse_bad_payment_args_complex() {
+        let missing_file = "missing/file";
+        assert!(matches!(
+            parse_payment_info(PaymentStrParams {
+                payment_amount: "",
+                payment_hash: happy::HASH,
+                payment_name: "",
+                payment_package_hash: "",
+                payment_package_name: "",
+                payment_path: "",
+                payment_args_simple: vec![],
+                payment_args_complex: missing_file,
+                payment_version: "",
+                payment_entry_point: "entrypoint",
+            }),
+            Err(Error::IoError {
+                context,
+                ..
+            }) if context == format!("error reading payment file at '{}'", missing_file)
         ));
     }
 
