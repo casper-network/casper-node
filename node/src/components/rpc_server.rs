@@ -324,3 +324,41 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use assert_json_diff::assert_json_eq;
+    use schemars::schema_for_value;
+    use serde_json::Value;
+
+    use crate::rpcs::docs::OPEN_RPC_SCHEMA;
+
+    #[test]
+    fn schema() {
+        // The expected schema depends on the hashing algorithm
+        // selected by the `casper-mainnet` feature.
+
+        #[cfg(feature = "casper-mainnet")]
+        let schema_path = format!(
+            "{}/../resources/test/rpc_schema_hashing_V1.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+
+        #[cfg(not(feature = "casper-mainnet"))]
+        let schema_path = format!(
+            "{}/../resources/test/rpc_schema_hashing_V2.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+
+        let expected_schema = fs::read_to_string(schema_path).unwrap();
+        let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
+
+        let actual_schema = schema_for_value!(OPEN_RPC_SCHEMA.clone());
+        let actual_schema = serde_json::to_string(&actual_schema).unwrap();
+        let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+
+        assert_json_eq!(actual_schema, expected_schema);
+    }
+}
