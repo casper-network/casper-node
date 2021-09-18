@@ -17,6 +17,6 @@ pub struct NodeConfig {
     pub trusted_hash_time_to_expiration: Option<TimeDiff>,
 
     /// Whether to run in archival-sync mode. Archival-sync mode captures all data (blocks, deploys
-    /// and global state) back to genesis. Defaults to `false`.
+    /// and global state) back to genesis.
     pub archival_sync: bool,
 }
