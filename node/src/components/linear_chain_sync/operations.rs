@@ -228,7 +228,7 @@ async fn fetch_and_store_block_header_by_height(
 ///   - The global state under a genesis block
 ///
 /// If the data was scraped from genesis, then `era_id` is 0.
-/// Otherwise if it came from a switch block it is that switch's block `era_id + 1`.
+/// Otherwise if it came from a switch block it is that switch block's `era_id + 1`.
 #[derive(Clone, Debug)]
 pub(crate) struct KeyBlockInfo {
     /// The block hash of the key block
