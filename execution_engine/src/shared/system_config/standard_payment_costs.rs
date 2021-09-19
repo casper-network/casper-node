@@ -6,9 +6,7 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_PAY_COST: u32 = 10_000;
 
 /// Description of costs of calling standard payment entrypoints.
-#[derive(
-    Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, schemars::JsonSchema,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StandardPaymentCosts {
     pub pay: u32,
 }

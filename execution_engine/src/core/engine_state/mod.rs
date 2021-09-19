@@ -97,7 +97,7 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 pub struct EngineState<S> {
     config: EngineConfig,
     system_contract_cache: SystemContractCache,
-    pub state: S,
+    state: S,
 }
 
 impl EngineState<LmdbGlobalState> {
@@ -1656,7 +1656,7 @@ where
             .map_err(Error::from)
     }
 
-    pub fn read_trie(
+    pub fn get_trie(
         &self,
         correlation_id: CorrelationId,
         trie_key: Digest,
@@ -1665,7 +1665,7 @@ where
         Error: From<S::Error>,
     {
         self.state
-            .read_trie(correlation_id, &trie_key)
+            .get_trie(correlation_id, &trie_key)
             .map_err(Error::from)
     }
 

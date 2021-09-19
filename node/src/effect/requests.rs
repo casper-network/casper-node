@@ -752,9 +752,9 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
-    /// Read a trie by its hash key
-    ReadTrie {
-        /// The hash of the value to get from the `TrieStore`
+    /// Get a trie by its hash key.
+    GetTrie {
+        /// The hash of the value to get from the `TrieStore`.
         trie_key: Digest,
         /// Responder to call with the result.
         responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
@@ -831,7 +831,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
-            ContractRuntimeRequest::ReadTrie { trie_key, .. } => {
+            ContractRuntimeRequest::GetTrie { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
             ContractRuntimeRequest::PutTrie { trie, .. } => {

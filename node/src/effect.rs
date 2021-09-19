@@ -944,8 +944,8 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Read a trie by its hash key
-    pub(crate) async fn read_trie(
+    /// Get a trie by its hash key.
+    pub(crate) async fn get_trie(
         self,
         trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
@@ -953,7 +953,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::ReadTrie {
+            |responder| ContractRuntimeRequest::GetTrie {
                 trie_key,
                 responder,
             },

@@ -9,9 +9,7 @@ use casper_types::{
 
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 
-#[derive(
-    Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, schemars::JsonSchema,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StorageCosts {
     /// Gas charged per byte stored in the global state.
     gas_per_byte: u32,

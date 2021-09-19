@@ -294,10 +294,10 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
         peer: NodeId,
     ) -> Effects<Event<GlobalStorageTrie>> {
         async move {
-            let maybe_trie = match effect_builder.read_trie(id).await {
+            let maybe_trie = match effect_builder.get_trie(id).await {
                 Ok(maybe_trie) => maybe_trie,
                 Err(error) => {
-                    error!(?error, "read_trie_request");
+                    error!(?error, "get_trie_request");
                     None
                 }
             };

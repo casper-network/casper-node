@@ -9,9 +9,7 @@ pub const DEFAULT_GET_REFUND_PURSE_COST: u32 = 10_000;
 pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 10_000;
 
 /// Description of costs of calling handle payment entrypoints.
-#[derive(
-    Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, schemars::JsonSchema,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HandlePaymentCosts {
     pub get_payment_purse: u32,
     pub set_refund_purse: u32,

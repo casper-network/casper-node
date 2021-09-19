@@ -21,10 +21,10 @@ use rand_chacha::ChaCha20Rng;
 
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature, FinalizedBlock,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,
     HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
 };
-pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload};
+pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
 pub use datasize::DataSize;

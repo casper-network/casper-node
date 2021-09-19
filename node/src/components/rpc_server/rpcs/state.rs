@@ -16,10 +16,10 @@ use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
 use casper_hashing::Digest;
-
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue as DomainStoredValue, URef, U512,
+    bytesrepr::{Bytes, ToBytes},
+    CLValue, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue as DomainStoredValue, URef,
+    U512,
 };
 
 use super::{
@@ -112,109 +112,13 @@ static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
         stored_value: StoredValue::Account(JsonAccount::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
-
-pub mod read_trie {
-    //! RPC examples for `ReadTrie`.
-
-    use super::*;
-    use crate::types::json_compatibility::Base16Blob;
-
-    static GET_KEYS_WITH_PREFIX_EXAMPLE: ReadTrie = ReadTrie {};
-    static READ_TRIE_PARAMS_EXAMPLE: Lazy<ReadTrieParams> = Lazy::new(|| ReadTrieParams {
-        trie_key: *Block::doc_example().header().state_root_hash(),
-    });
-    static GET_KEYS_WITH_PREFIX_RESULT_EXAMPLE: Lazy<ReadTrieResult> =
-        Lazy::new(|| ReadTrieResult {
-            maybe_trie_bytes: None,
-        });
-
-    /// Read trie endpoint.
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
-    pub struct ReadTrie {}
-
-    impl RpcWithParams for ReadTrie {
-        const METHOD: &'static str = "read_trie";
-        type RequestParams = ReadTrieParams;
-        type ResponseResult = ReadTrieResult;
-    }
-
-    impl RpcWithParamsExt for ReadTrie {
-        fn handle_request<REv: ReactorEventT>(
-            effect_builder: EffectBuilder<REv>,
-            response_builder: Builder,
-            params: Self::RequestParams,
-            _api_version: ProtocolVersion,
-        ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-            async move {
-                let trie_key = params.trie_key;
-
-                let ee_trie = match effect_builder.read_trie(trie_key).await {
-                    Ok(Some(maybe_trie)) => maybe_trie,
-                    Ok(None) => {
-                        return Ok(response_builder.success(Self::ResponseResult {
-                            maybe_trie_bytes: None,
-                        })?)
-                    }
-                    Err(error) => {
-                        error!(?error, "read_trie_request");
-                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::ReadTrie as i64,
-                            "Failed to read trie",
-                        ))?);
-                    }
-                };
-
-                let trie_bytes = match ee_trie.to_bytes() {
-                    Ok(bytes) => bytes,
-                    Err(error) => {
-                        error!(?error, "read_trie_request");
-                        return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                    }
-                };
-
-                let result = Self::ResponseResult {
-                    maybe_trie_bytes: Some(trie_bytes.into()),
-                };
-
-                Ok(response_builder.success(result)?)
-            }
-            .boxed()
-        }
-    }
-
-    impl DocExample for ReadTrie {
-        fn doc_example() -> &'static Self {
-            &GET_KEYS_WITH_PREFIX_EXAMPLE
-        }
-    }
-
-    /// Parameters for `ReadTrie` request.
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
-    pub struct ReadTrieParams {
-        /// A trie key to read.
-        pub trie_key: Digest,
-    }
-
-    impl DocExample for ReadTrieParams {
-        fn doc_example() -> &'static Self {
-            &*READ_TRIE_PARAMS_EXAMPLE
-        }
-    }
-
-    /// Result of a `ReadTrie` request.
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
-    pub struct ReadTrieResult {
-        /// A list of keys read under the specified prefix.
-        #[schemars(with = "String", description = "A trie from global state storage.")]
-        pub maybe_trie_bytes: Option<Base16Blob>,
-    }
-
-    impl DocExample for ReadTrieResult {
-        fn doc_example() -> &'static Self {
-            &*GET_KEYS_WITH_PREFIX_RESULT_EXAMPLE
-        }
-    }
-}
+static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
+    trie_key: *Block::doc_example().header().state_root_hash(),
+});
+static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    maybe_trie_bytes: None,
+});
 
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -1076,6 +980,95 @@ impl RpcWithParamsExt for QueryGlobalState {
                 block_header: maybe_block_header,
                 stored_value,
                 merkle_proof: hex::encode(proof_bytes),
+            };
+
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Parameters for "state_get_trie" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct GetTrieParams {
+    /// A trie key.
+    pub trie_key: Digest,
+}
+
+impl DocExample for GetTrieParams {
+    fn doc_example() -> &'static Self {
+        &*GET_TRIE_PARAMS
+    }
+}
+
+/// Result for "state_get_trie" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetTrieResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// A list of keys read under the specified prefix.
+    #[schemars(
+        with = "Option<String>",
+        description = "A trie from global state storage, bytesrepr serialized and hex-encoded."
+    )]
+    pub maybe_trie_bytes: Option<Bytes>,
+}
+
+impl DocExample for GetTrieResult {
+    fn doc_example() -> &'static Self {
+        &*GET_TRIE_RESULT
+    }
+}
+
+/// `state_get_trie` RPC.
+pub struct GetTrie {}
+
+impl RpcWithParams for GetTrie {
+    const METHOD: &'static str = "state_get_trie";
+    type RequestParams = GetTrieParams;
+    type ResponseResult = GetTrieResult;
+}
+
+impl RpcWithParamsExt for GetTrie {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let trie_key = params.trie_key;
+
+            let ee_trie = match effect_builder.get_trie(trie_key).await {
+                Ok(Some(trie)) => trie,
+                Ok(None) => {
+                    return Ok(response_builder.success(Self::ResponseResult {
+                        api_version,
+                        maybe_trie_bytes: None,
+                    })?)
+                }
+                Err(error) => {
+                    error!(?error, "failed to get trie");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::FailedToGetTrie as i64,
+                        format!("failed to get trie: {:?}", error),
+                    ))?);
+                }
+            };
+
+            let trie_bytes = match ee_trie.to_bytes() {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    error!(?error, "failed to serialize trie");
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                maybe_trie_bytes: Some(trie_bytes.into()),
             };
 
             Ok(response_builder.success(result)?)

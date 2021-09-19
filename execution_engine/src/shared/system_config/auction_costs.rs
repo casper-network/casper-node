@@ -18,9 +18,7 @@ pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 
 /// Description of costs of calling auction entrypoints.
-#[derive(
-    Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, schemars::JsonSchema,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct AuctionCosts {
     pub get_era_validators: u32,
     pub read_seigniorage_recipients: u32,

@@ -130,7 +130,7 @@ pub(crate) struct ContractRuntimeMetrics {
     get_bids: Histogram,
     missing_trie_keys: Histogram,
     put_trie: Histogram,
-    read_trie: Histogram,
+    get_trie: Histogram,
     chain_height: IntGauge,
     exec_block: Histogram,
 }
@@ -166,8 +166,8 @@ const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators in seconds.";
 const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
 const GET_BIDS_HELP: &str = "tracking run of engine_state.get_bids in seconds.";
-const READ_TRIE_NAME: &str = "contract_runtime_read_trie";
-const READ_TRIE_HELP: &str = "tracking run of engine_state.read_trie in seconds.";
+const GET_TRIE_NAME: &str = "contract_runtime_get_trie";
+const GET_TRIE_HELP: &str = "tracking run of engine_state.get_trie in seconds.";
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "tracking run of engine_state.put_trie in seconds.";
 const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
@@ -224,7 +224,7 @@ impl ContractRuntimeMetrics {
                 GET_ERA_VALIDATORS_HELP,
             )?,
             get_bids: register_histogram_metric(registry, GET_BIDS_NAME, GET_BIDS_HELP)?,
-            read_trie: register_histogram_metric(registry, READ_TRIE_NAME, READ_TRIE_HELP)?,
+            get_trie: register_histogram_metric(registry, GET_TRIE_NAME, GET_TRIE_HELP)?,
             put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
             missing_trie_keys: register_histogram_metric(
                 registry,
@@ -351,19 +351,19 @@ where
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::ReadTrie {
+            ContractRuntimeRequest::GetTrie {
                 trie_key,
                 responder,
             } => {
-                trace!(?trie_key, "read_trie request");
+                trace!(?trie_key, "get_trie request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.read_trie(correlation_id, trie_key);
-                    metrics.read_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "read_trie response");
+                    let result = engine_state.get_trie(correlation_id, trie_key);
+                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get_trie response");
                     responder.respond(result).await
                 }
                 .ignore()
