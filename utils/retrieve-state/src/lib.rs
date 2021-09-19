@@ -2,6 +2,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Instant,
 };
 
 use jsonrpc_lite::{JsonRpc, Params};
@@ -28,7 +29,7 @@ use casper_node::{
     rpcs::{
         chain::{BlockIdentifier, GetBlockParams, GetBlockResult},
         info::{GetDeployParams, GetDeployResult},
-        state::read_trie::{ReadTrieParams, ReadTrieResult},
+        state::{GetTrieParams, GetTrieResult},
     },
     types::{BlockHash, Deploy, JsonBlock},
 };
@@ -68,15 +69,14 @@ pub async fn get_block(
     url: &str,
     params: Option<GetBlockParams>,
 ) -> Result<GetBlockResult, anyhow::Error> {
-    let result = rpc(client, url, "chain_get_block", params).await?;
-    Ok(result)
+    rpc(client, url, "chain_get_block", params).await
 }
 
 pub async fn get_genesis_block(
     client: &mut Client,
     url: &str,
 ) -> Result<GetBlockResult, anyhow::Error> {
-    let result = rpc(
+    rpc(
         client,
         url,
         "chain_get_block",
@@ -84,17 +84,15 @@ pub async fn get_genesis_block(
             block_identifier: BlockIdentifier::Height(0),
         }),
     )
-    .await?;
-    Ok(result)
+    .await
 }
 
-async fn read_trie(
+async fn get_trie(
     client: &mut Client,
     url: &str,
-    params: ReadTrieParams,
-) -> Result<ReadTrieResult, anyhow::Error> {
-    let result = rpc(client, url, "read_trie", params).await?;
-    Ok(result)
+    params: GetTrieParams,
+) -> Result<GetTrieResult, anyhow::Error> {
+    rpc(client, url, "state_get_trie", params).await
 }
 
 async fn get_deploy(
@@ -102,8 +100,7 @@ async fn get_deploy(
     url: &str,
     params: GetDeployParams,
 ) -> Result<GetDeployResult, anyhow::Error> {
-    let result = rpc(client, url, "info_get_deploy", params).await?;
-    Ok(result)
+    rpc(client, url, "info_get_deploy", params).await
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -184,7 +181,7 @@ pub async fn download_blocks(
     if !chain_download_path.as_ref().exists() {
         tokio::fs::create_dir_all(&chain_download_path).await?;
     }
-    let mut start = std::time::Instant::now();
+    let mut start = Instant::now();
     loop {
         let block_with_deploys = download_block_with_deploys(client, url, block_hash).await?;
         block_with_deploys.save(&chain_download_path).await?;
@@ -197,9 +194,9 @@ pub async fn download_blocks(
             println!(
                 "downloaded block at height {} in {}ms",
                 block_with_deploys.block.header.height,
-                (std::time::Instant::now() - start).as_millis()
+                start.elapsed().as_millis()
             );
-            start = std::time::Instant::now();
+            start = Instant::now();
         }
     }
     println!("finished downloading blocks");
@@ -214,13 +211,13 @@ pub async fn download_trie(
 ) -> Result<usize, anyhow::Error> {
     let mut outstanding_tries = vec![state_root_hash];
 
-    let mut start = std::time::Instant::now();
+    let mut start = Instant::now();
     let mut tries_downloaded = 0;
     while let Some(next_trie_key) = outstanding_tries.pop() {
-        let read_result = read_trie(
+        let read_result = get_trie(
             client,
             url,
-            ReadTrieParams {
+            GetTrieParams {
                 trie_key: next_trie_key,
             },
         )
@@ -242,9 +239,9 @@ pub async fn download_trie(
             println!(
                 "downloaded {} tries in {}ms",
                 tries_downloaded,
-                (std::time::Instant::now() - start).as_millis()
+                start.elapsed().as_millis()
             );
-            start = std::time::Instant::now();
+            start = Instant::now();
         }
     }
     println!("downloaded {} tries", tries_downloaded);
@@ -259,7 +256,7 @@ pub async fn download_global_state_at_height(
 ) -> Result<(), anyhow::Error> {
     // if we can't find this block in the trie, download it from a running node
     if !matches!(
-        engine_state.read_trie(Default::default(), genesis_block.header.state_root_hash),
+        engine_state.get_trie(Default::default(), genesis_block.header.state_root_hash),
         Ok(Some(_))
     ) {
         download_trie(
@@ -274,7 +271,6 @@ pub async fn download_global_state_at_height(
 }
 
 pub mod offline {
-
     use super::*;
 
     pub fn get_lowest_block_downloaded(
@@ -344,7 +340,6 @@ pub mod offline {
             DatabaseFlags::empty(),
         )?);
         let global_state = LmdbGlobalState::empty(lmdb_environment, lmdb_trie_store)?;
-        global_state.environment.env().sync(true)?;
 
         Ok(Arc::new(EngineState::new(
             global_state,
@@ -373,36 +368,6 @@ pub mod offline {
         let keys = value.get("protocol_data").unwrap();
         let deserialized = serde_json::from_value(keys.clone())?;
         Ok(deserialized)
-    }
-
-    pub fn load_execution_engine(
-        lmdb_path: impl AsRef<Path>,
-        state_root_hash: Digest,
-    ) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
-        let lmdb_data_file = lmdb_path.as_ref().join("data.lmdb");
-        if !lmdb_path.as_ref().join("data.lmdb").exists() {
-            return Err(anyhow::anyhow!(
-                "lmdb data file not found at: {}",
-                lmdb_data_file.display()
-            ));
-        }
-
-        let lmdb_environment = Arc::new(LmdbEnvironment::new(
-            &lmdb_path,
-            DEFAULT_TEST_MAX_DB_SIZE,
-            DEFAULT_TEST_MAX_READERS,
-            true,
-        )?);
-        let lmdb_trie_store = Arc::new(LmdbTrieStore::open(&lmdb_environment, None)?);
-        let global_state = LmdbGlobalState::new(
-            Arc::clone(&lmdb_environment),
-            lmdb_trie_store,
-            state_root_hash,
-        );
-        Ok((
-            Arc::new(EngineState::new(global_state, EngineConfig::default())),
-            lmdb_environment,
-        ))
     }
 
     pub async fn read_block_file(

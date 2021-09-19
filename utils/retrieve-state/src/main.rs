@@ -1,4 +1,8 @@
-use std::{env, str::FromStr};
+use std::{
+    env,
+    fmt::{self, Display, Formatter},
+    str::FromStr,
+};
 
 use reqwest::ClientBuilder;
 use structopt::StructOpt;
@@ -8,43 +12,63 @@ use casper_node::{
     types::JsonBlock,
 };
 
+const DOWNLOAD_TRIES: &str = "download-tries";
+const DOWNLOAD_BLOCKS: &str = "download-blocks";
+
 #[derive(Debug, StructOpt)]
 struct Opts {
     #[structopt(short = "n", default_value = "http://localhost:11101")]
     server_host: String,
 
-    #[structopt(short = "h", long = "--download-height")]
+    #[structopt(short, long)]
     download_height: Option<u64>,
 
     #[structopt(
         required = true,
-        short = "a",
-        long = "--action",
-        default_value = "download-trie"
-    )]
+        short,
+        long,
+        default_value,
+        possible_values = &[DOWNLOAD_TRIES, DOWNLOAD_BLOCKS])
+    ]
     action: Action,
 }
 
 #[derive(Debug)]
 enum Action {
-    DownloadTrie,
+    DownloadTries,
     DownloadBlocks,
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Action::DownloadTries
+    }
 }
 
 impl FromStr for Action {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let value = match s.to_ascii_lowercase().as_ref() {
-            "download-trie" => Self::DownloadTrie,
-            "download-blocks" => Self::DownloadBlocks,
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let value = match input {
+            DOWNLOAD_TRIES => Self::DownloadTries,
+            DOWNLOAD_BLOCKS => Self::DownloadBlocks,
             _ => {
-                return Err(anyhow::Error::msg(
-                    "should be one of 'download-trie' or 'download-blocks'.",
-                ))
+                return Err(anyhow::Error::msg(format!(
+                    "should be one of '{}' or '{}'.",
+                    DOWNLOAD_TRIES, DOWNLOAD_BLOCKS
+                )))
             }
         };
         Ok(value)
+    }
+}
+
+impl Display for Action {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            Action::DownloadTries => formatter.write_str(DOWNLOAD_TRIES),
+            Action::DownloadBlocks => formatter.write_str(DOWNLOAD_BLOCKS),
+        }
     }
 }
 
@@ -74,7 +98,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 let lowest_block_file = block_files.get(0);
                 match lowest_block_file {
                     Some(lowest_block_file) => {
-                        println!("found lowest block downloaded at {:?}", lowest_block_file);
+                        println!(
+                            "found lowest block downloaded at {}",
+                            lowest_block_file.path().display()
+                        );
                         retrieve_state::offline::read_block_file(lowest_block_file)
                             .await?
                             .block
@@ -83,7 +110,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
             };
             println!(
-                "Downloading all blocks from {} to {}...",
+                "downloading all blocks from {} to {}...",
                 download_block.header.height, 0
             );
             let _block_files = retrieve_state::download_blocks(
@@ -95,9 +122,9 @@ async fn main() -> Result<(), anyhow::Error> {
             )
             .await?;
         }
-        Action::DownloadTrie => {
+        Action::DownloadTries => {
             println!(
-                "Retrieving global state at height {}...",
+                "retrieving global state at height {}...",
                 highest_block.header.height
             );
             let lmdb_path = env::current_dir()?.join(retrieve_state::LMDB_PATH);

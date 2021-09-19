@@ -16,9 +16,7 @@ use self::{
 
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 250_000_000;
 
-#[derive(
-    Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, schemars::JsonSchema,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
     wasmless_transfer_cost: u32,

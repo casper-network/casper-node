@@ -3660,17 +3660,11 @@ dependencies = [
  "hex",
  "jsonrpc-lite",
  "lmdb",
- "log",
- "num-rational 0.4.0",
- "num-traits",
- "once_cell",
- "rand 0.8.4",
  "reqwest",
  "serde",
  "serde_json",
  "structopt",
  "tokio",
- "version-sync",
  "walkdir",
 ]
 

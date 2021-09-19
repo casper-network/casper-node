@@ -23,7 +23,7 @@ use crate::{
 /// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
     /// Environment for LMDB.
-    pub environment: Arc<LmdbEnvironment>,
+    pub(crate) environment: Arc<LmdbEnvironment>,
     /// Trie store held within LMDB.
     pub(crate) trie_store: Arc<LmdbTrieStore>,
     // TODO: make this a lazy-static
@@ -52,6 +52,7 @@ impl LmdbGlobalState {
             let mut txn = environment.create_read_write_txn()?;
             trie_store.put(&mut txn, &root_hash, &root)?;
             txn.commit()?;
+            environment.env().sync(true)?;
             root_hash
         };
         Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
@@ -59,7 +60,7 @@ impl LmdbGlobalState {
 
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
-    pub fn new(
+    pub(crate) fn new(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
@@ -185,7 +186,7 @@ impl StateProvider for LmdbGlobalState {
         self.empty_root_hash
     }
 
-    fn read_trie(
+    fn get_trie(
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,

@@ -29,9 +29,7 @@ const NUM_FIELDS: usize = 17;
 pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
-#[derive(
-    Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, schemars::JsonSchema,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct OpcodeCosts {
     /// Bit operations multiplier.
     pub bit: u32,
