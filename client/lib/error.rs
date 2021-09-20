@@ -4,7 +4,10 @@ use humantime::{DurationError, TimestampError};
 use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
-use casper_node::{crypto::Error as CryptoError, types::ExcessiveSizeDeployError};
+use casper_node::{
+    crypto, crypto::Error as CryptoError, rpcs::chain::ParseBlockIdentifierError,
+    types::ExcessiveSizeDeployError,
+};
 use casper_types::{
     bytesrepr::Error as ToBytesError, CLValueError, UIntParseError, URefFromStrError,
 };
@@ -191,6 +194,25 @@ impl From<CLValueError> for Error {
         match error {
             CLValueError::Serialization(bytesrepr_error) => bytesrepr_error.into(),
             CLValueError::Type(type_mismatch) => Error::InvalidCLValue(type_mismatch.to_string()),
+        }
+    }
+}
+
+impl From<ParseBlockIdentifierError> for Error {
+    fn from(parse_error: ParseBlockIdentifierError) -> Self {
+        match parse_error {
+            error @ ParseBlockIdentifierError::EmptyString => Error::InvalidArgument {
+                context: "block_identifier",
+                error: format!("{:?}", error),
+            },
+            ParseBlockIdentifierError::ParseIntError(error) => Error::FailedToParseInt {
+                context: "block_identifier",
+                error,
+            },
+            ParseBlockIdentifierError::FromHexError(error) => Error::CryptoError {
+                context: "block_identifier",
+                error: crypto::Error::FromHex(error),
+            },
         }
     }
 }

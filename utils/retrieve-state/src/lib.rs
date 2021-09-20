@@ -35,12 +35,12 @@ use casper_node::{
 };
 use casper_types::{bytesrepr::FromBytes, Key, StoredValue};
 
-// TODO: make these parameters
-const RPC_SERVER: &str = "http://localhost:11101/rpc";
+use crate::offline::{get_block_file, read_block_file};
+
 pub const LMDB_PATH: &str = "lmdb-data";
 pub const CHAIN_DOWNLOAD_PATH: &str = "chain-download";
-pub const DEFAULT_TEST_MAX_DB_SIZE: usize = 483_183_820_800; // 450 gb
-pub const DEFAULT_TEST_MAX_READERS: u32 = 512;
+pub const DEFAULT_MAX_DB_SIZE: usize = 483_183_820_800; // 450 gb
+pub const DEFAULT_MAX_READERS: u32 = 512;
 
 async fn rpc<'de, R, P>(
     client: &mut Client,
@@ -64,6 +64,7 @@ where
     Ok(deserialized)
 }
 
+/// Get a block with optional parameters.
 pub async fn get_block(
     client: &mut Client,
     url: &str,
@@ -72,6 +73,7 @@ pub async fn get_block(
     rpc(client, url, "chain_get_block", params).await
 }
 
+/// Get the genesis block.
 pub async fn get_genesis_block(
     client: &mut Client,
     url: &str,
@@ -103,6 +105,7 @@ async fn get_deploy(
     rpc(client, url, "info_get_deploy", params).await
 }
 
+/// Composes a [`JsonBlock`] along with all of it's transfers and deploys.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BlockWithDeploys {
     pub block: JsonBlock,
@@ -111,6 +114,7 @@ pub struct BlockWithDeploys {
 }
 
 impl BlockWithDeploys {
+    /// Save [`BlockWithDeploys`] to disk, in the provided file path.
     pub async fn save(&self, path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
         let path = PathBuf::from(path.as_ref());
         let file_path = path.join(format!(
@@ -125,6 +129,7 @@ impl BlockWithDeploys {
     }
 }
 
+/// Download a block, along with all it's deploys.
 pub async fn download_block_with_deploys(
     client: &mut Client,
     url: &str,
@@ -171,38 +176,94 @@ pub async fn download_block_with_deploys(
     })
 }
 
+/// Download block files from the highest (provided) block hash to genesis.
 pub async fn download_blocks(
     client: &mut Client,
     url: &str,
     chain_download_path: impl AsRef<Path>,
-    mut block_hash: BlockHash,
-    until_height: u64,
+    highest_block: Option<&BlockIdentifier>,
 ) -> Result<Vec<DirEntry>, anyhow::Error> {
     if !chain_download_path.as_ref().exists() {
         tokio::fs::create_dir_all(&chain_download_path).await?;
     }
-    let mut start = Instant::now();
-    loop {
-        let block_with_deploys = download_block_with_deploys(client, url, block_hash).await?;
-        block_with_deploys.save(&chain_download_path).await?;
-
-        if block_with_deploys.block.header.height == until_height {
-            break;
+    let mut maybe_next_block_hash: Option<BlockHash> = match highest_block.as_ref() {
+        Some(block_identifier) => {
+            download_or_read_block_file_and_extract_parent_hash(
+                client,
+                url,
+                &chain_download_path,
+                *block_identifier,
+            )
+            .await?
         }
-        block_hash = block_with_deploys.block.header.parent_hash;
-        if block_with_deploys.block.header.height % 1000 == 0 {
-            println!(
-                "downloaded block at height {} in {}ms",
-                block_with_deploys.block.header.height,
-                start.elapsed().as_millis()
-            );
-            start = Instant::now();
-        }
+        // Get the highest block.
+        None => get_block_and_download(client, url, &chain_download_path, None).await?,
+    };
+    while let Some(next_block_hash) = maybe_next_block_hash {
+        maybe_next_block_hash = download_or_read_block_file_and_extract_parent_hash(
+            client,
+            url,
+            &chain_download_path,
+            &BlockIdentifier::Hash(next_block_hash),
+        )
+        .await?;
     }
-    println!("finished downloading blocks");
     Ok(offline::get_block_files(chain_download_path))
 }
 
+async fn download_or_read_block_file_and_extract_parent_hash(
+    client: &mut Client,
+    url: &str,
+    chain_download_path: &impl AsRef<Path>,
+    block_identifier: &BlockIdentifier,
+) -> Result<Option<BlockHash>, anyhow::Error> {
+    match get_block_file(&chain_download_path, block_identifier) {
+        None => {
+            Ok(
+                get_block_and_download(client, url, chain_download_path, Some(*block_identifier))
+                    .await?,
+            )
+        }
+        Some(block_file) => {
+            let block_with_deploys = read_block_file(&block_file).await?;
+            if block_with_deploys.block.header.height != 0 {
+                Ok(Some(block_with_deploys.block.header.parent_hash))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+async fn get_block_and_download(
+    client: &mut Client,
+    url: &str,
+    chain_download_path: &impl AsRef<Path>,
+    block_identifier: Option<BlockIdentifier>,
+) -> Result<Option<BlockHash>, anyhow::Error> {
+    // passing None for block_identifier will fetch highest
+    let get_block_params =
+        block_identifier.map(|block_identifier| GetBlockParams { block_identifier });
+    let block = get_block(client, url, get_block_params).await?;
+    if let GetBlockResult {
+        block: Some(json_block),
+        ..
+    } = block
+    {
+        let block_with_deploys = download_block_with_deploys(client, url, json_block.hash).await?;
+        block_with_deploys.save(&chain_download_path).await?;
+
+        if block_with_deploys.block.header.height != 0 {
+            Ok(Some(block_with_deploys.block.header.parent_hash))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Err(anyhow::anyhow!("unable to download highest block"))
+    }
+}
+
+/// Download the trie from a node to the provided lmdb path.
 pub async fn download_trie(
     client: &mut Client,
     url: &str,
@@ -244,28 +305,23 @@ pub async fn download_trie(
             start = Instant::now();
         }
     }
-    println!("downloaded {} tries", tries_downloaded);
+    println!("Downloaded {} tries", tries_downloaded);
     Ok(tries_downloaded)
 }
 
+/// Download global state from `url` using the provided block for it's `state_root_hash`.
 pub async fn download_global_state_at_height(
     client: &mut Client,
     url: &str,
     engine_state: &EngineState<LmdbGlobalState>,
-    genesis_block: &JsonBlock,
+    block: &JsonBlock,
 ) -> Result<(), anyhow::Error> {
     // if we can't find this block in the trie, download it from a running node
     if !matches!(
-        engine_state.get_trie(Default::default(), genesis_block.header.state_root_hash),
+        engine_state.get_trie(Default::default(), block.header.state_root_hash),
         Ok(Some(_))
     ) {
-        download_trie(
-            client,
-            url,
-            engine_state,
-            genesis_block.header.state_root_hash,
-        )
-        .await?;
+        download_trie(client, url, engine_state, block.header.state_root_hash).await?;
     }
     Ok(())
 }
@@ -273,28 +329,45 @@ pub async fn download_global_state_at_height(
 pub mod offline {
     use super::*;
 
+    /// Returns the height of the lowest block already downloaded.
     pub fn get_lowest_block_downloaded(
         chain_download_path: impl AsRef<Path>,
     ) -> Result<Option<u64>, anyhow::Error> {
+        get_block_downloaded(chain_download_path, |a, b| a.min(b))
+    }
+
+    /// Returns the height of the highest block already downloaded.
+    pub fn get_highest_block_downloaded(
+        chain_download_path: impl AsRef<Path>,
+    ) -> Result<Option<u64>, anyhow::Error> {
+        get_block_downloaded(chain_download_path, |a, b| a.max(b))
+    }
+
+    fn get_block_downloaded(
+        chain_download_path: impl AsRef<Path>,
+        comparator: impl Fn(u64, u64) -> u64,
+    ) -> Result<Option<u64>, anyhow::Error> {
         let lowest = if chain_download_path.as_ref().exists() {
             let existing_chain = walkdir::WalkDir::new(chain_download_path);
-            let mut lowest_downloaded_block = 0;
+            let mut height_comparison = None;
             for entry in existing_chain {
                 if let Some(filename) = entry?.file_name().to_str() {
                     let split = filename.split('-').collect::<Vec<&str>>();
                     if let ["block", height, _hash] = &split[..] {
                         let height: u64 = height.parse::<u64>()?;
-                        lowest_downloaded_block = lowest_downloaded_block.min(height);
+                        height_comparison =
+                            Some(comparator(height_comparison.unwrap_or(height), height));
                     }
                 }
             }
-            Some(lowest_downloaded_block)
+            height_comparison
         } else {
             None
         };
         Ok(lowest)
     }
 
+    /// Walks the chain-download directory and finds blocks that have already been downloaded.
     pub fn get_block_files(chain_path: impl AsRef<Path>) -> Vec<DirEntry> {
         let mut block_files = walkdir::WalkDir::new(chain_path)
             .into_iter()
@@ -314,8 +387,37 @@ pub mod offline {
         block_files
     }
 
+    /// Look for a block file matching the given [`BlockIdentifier`], returns `None` if not found.
+    pub fn get_block_file(
+        chain_path: impl AsRef<Path>,
+        block_identifier: &BlockIdentifier,
+    ) -> Option<DirEntry> {
+        walkdir::WalkDir::new(chain_path)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .find(|entry| {
+                let file_name = match entry.file_name().to_str() {
+                    Some(file_name) => file_name,
+                    None => return false,
+                };
+                let split = file_name.split('-').collect::<Vec<&str>>();
+                if let ["block", height, hash] = &split[..] {
+                    match block_identifier {
+                        BlockIdentifier::Height(id_height) => *height == id_height.to_string(),
+                        BlockIdentifier::Hash(id_hash) => {
+                            *hash == format!("{}.json", id_hash.inner().to_string())
+                        }
+                    }
+                } else {
+                    false
+                }
+            })
+    }
+
+    /// Creates a new execution engine.
     pub fn create_execution_engine(
         lmdb_path: impl AsRef<Path>,
+        default_max_db_size: usize,
     ) -> Result<Arc<EngineState<LmdbGlobalState>>, anyhow::Error> {
         if !lmdb_path.as_ref().exists() {
             println!(
@@ -328,8 +430,8 @@ pub mod offline {
         fs::create_dir_all(&lmdb_path)?;
         let lmdb_environment = Arc::new(LmdbEnvironment::new(
             &lmdb_path,
-            DEFAULT_TEST_MAX_DB_SIZE,
-            DEFAULT_TEST_MAX_READERS,
+            default_max_db_size,
+            DEFAULT_MAX_READERS,
             true,
         )?);
         lmdb_environment.env().sync(true)?;
@@ -347,29 +449,7 @@ pub mod offline {
         )))
     }
 
-    pub async fn get_protocol_data<'de, T, P>(
-        client: &mut Client,
-        params: P,
-    ) -> Result<T, anyhow::Error>
-    where
-        T: DeserializeOwned,
-        P: Serialize,
-    {
-        let url = RPC_SERVER;
-        let method = "info_get_protocol_data";
-        let params = Params::from(json!(params));
-        let rpc_req = JsonRpc::request_with_params(12345, method, params);
-        let response = client.post(url).json(&rpc_req).send().await?;
-        let rpc_res: JsonRpc = response.json().await?;
-        if let Some(error) = rpc_res.get_error() {
-            return Err(anyhow::format_err!(error.clone()));
-        }
-        let value = rpc_res.get_result().unwrap();
-        let keys = value.get("protocol_data").unwrap();
-        let deserialized = serde_json::from_value(keys.clone())?;
-        Ok(deserialized)
-    }
-
+    /// Read a [`BlockWithDeploys`] from a file on disk.
     pub async fn read_block_file(
         block_file_entry: &DirEntry,
     ) -> Result<BlockWithDeploys, anyhow::Error> {

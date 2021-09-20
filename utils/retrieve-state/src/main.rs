@@ -17,20 +17,57 @@ const DOWNLOAD_BLOCKS: &str = "download-blocks";
 
 #[derive(Debug, StructOpt)]
 struct Opts {
-    #[structopt(short = "n", default_value = "http://localhost:11101")]
+    #[structopt(
+        short = "n",
+        default_value = "http://localhost:11101",
+        about = "Specifies the host address and port for the node to be
+         reached. e.g. \"http://hosname:9001\""
+    )]
     server_host: String,
 
-    #[structopt(short, long)]
-    download_height: Option<u64>,
+    #[structopt(
+        short,
+        long,
+        about = "Specifies the block from which to start downloading state."
+    )]
+    highest_block: Option<BlockIdentifier>,
 
     #[structopt(
         required = true,
         short,
         long,
         default_value,
-        possible_values = &[DOWNLOAD_TRIES, DOWNLOAD_BLOCKS])
-    ]
+        possible_values = &[DOWNLOAD_TRIES, DOWNLOAD_BLOCKS],
+        about = "Specify the mode of operation for this tool."
+    )]
     action: Action,
+
+    #[structopt(
+        required = true,
+        short,
+        long,
+        default_value = retrieve_state::CHAIN_DOWNLOAD_PATH,
+        about = "Specify the path to the folder to be used for downloading blocks."
+    )]
+    chain_download_path: String,
+
+    #[structopt(
+        short,
+        long,
+        default_value = retrieve_state::LMDB_PATH,
+        about = "Specify the path to the folder containing the underlying LMDB data files."
+    )]
+    lmdb_path: String,
+
+    #[structopt(
+        short,
+        long,
+        about = "Specify the max size (in bytes) that the underlying LMDB can grow to."
+    )]
+    max_db_size: Option<usize>,
+
+    #[structopt(short, long)]
+    use_gzip: bool,
 }
 
 #[derive(Debug)]
@@ -75,14 +112,13 @@ impl Display for Action {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let opts = Opts::from_args();
-    // TODO: enable gzip if the rpc endpoint supports it.
-    let mut client = ClientBuilder::new().gzip(false).build().unwrap();
-    let chain_download_path = env::current_dir()?.join(retrieve_state::CHAIN_DOWNLOAD_PATH);
+    let mut client = ClientBuilder::new().gzip(opts.use_gzip).build().unwrap();
+    let chain_download_path = env::current_dir()?.join(&opts.chain_download_path);
     let url = format!("{}/rpc", opts.server_host);
 
-    let maybe_download_block = opts.download_height.map(|height| GetBlockParams {
-        block_identifier: BlockIdentifier::Height(height),
-    });
+    let maybe_download_block = opts
+        .highest_block
+        .map(|block_identifier| GetBlockParams { block_identifier });
 
     let highest_block: JsonBlock =
         retrieve_state::get_block(&mut client, &url, maybe_download_block)
@@ -92,43 +128,27 @@ async fn main() -> Result<(), anyhow::Error> {
 
     match opts.action {
         Action::DownloadBlocks => {
-            let download_block = {
-                let block_files =
-                    retrieve_state::offline::get_block_files(retrieve_state::CHAIN_DOWNLOAD_PATH);
-                let lowest_block_file = block_files.get(0);
-                match lowest_block_file {
-                    Some(lowest_block_file) => {
-                        println!(
-                            "found lowest block downloaded at {}",
-                            lowest_block_file.path().display()
-                        );
-                        retrieve_state::offline::read_block_file(lowest_block_file)
-                            .await?
-                            .block
-                    }
-                    _ => highest_block,
-                }
-            };
-            println!(
-                "downloading all blocks from {} to {}...",
-                download_block.header.height, 0
-            );
+            println!("Downloading all blocks to genesis...");
             let _block_files = retrieve_state::download_blocks(
                 &mut client,
                 &url,
                 &chain_download_path,
-                download_block.hash,
-                0,
+                opts.highest_block.as_ref(),
             )
             .await?;
+            println!("Finished downloding blocks.")
         }
         Action::DownloadTries => {
             println!(
                 "retrieving global state at height {}...",
                 highest_block.header.height
             );
-            let lmdb_path = env::current_dir()?.join(retrieve_state::LMDB_PATH);
-            let engine_state = retrieve_state::offline::create_execution_engine(lmdb_path)?;
+            let lmdb_path = env::current_dir()?.join(opts.lmdb_path);
+            let engine_state = retrieve_state::offline::create_execution_engine(
+                lmdb_path,
+                opts.max_db_size
+                    .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE),
+            )?;
             retrieve_state::download_trie(
                 &mut client,
                 &url,
@@ -137,7 +157,7 @@ async fn main() -> Result<(), anyhow::Error> {
             )
             .await
             .expect("should download trie");
-            println!("finished downloading global state");
+            println!("Finished downloading global state.");
         }
     }
     Ok(())
