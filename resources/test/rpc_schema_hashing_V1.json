@@ -1424,15 +1424,31 @@
             "description": "A JSON-friendly representation of `Block`.",
             "properties": {
               "body": {
-                "$ref": "#/components/schemas/JsonBlockBody"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/JsonBlockBody"
+                  }
+                ],
+                "description": "JSON-friendly block body."
               },
               "hash": {
-                "$ref": "#/components/schemas/BlockHash"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ],
+                "description": "`BlockHash`"
               },
               "header": {
-                "$ref": "#/components/schemas/JsonBlockHeader"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/JsonBlockHeader"
+                  }
+                ],
+                "description": "JSON-friendly block header."
               },
               "proofs": {
+                "description": "JSON-friendly list of proofs for this block.",
                 "items": {
                   "$ref": "#/components/schemas/JsonProof"
                 },
@@ -1479,10 +1495,20 @@
             "description": "JSON representation of a block header.",
             "properties": {
               "accumulated_seed": {
-                "$ref": "#/components/schemas/Digest"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "Accumulated seed."
               },
               "body_hash": {
-                "$ref": "#/components/schemas/Digest"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "The body hash."
               },
               "era_end": {
                 "anyOf": [
@@ -1492,30 +1518,58 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "description": "The era end."
               },
               "era_id": {
-                "$ref": "#/components/schemas/EraId"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The block era id."
               },
               "height": {
+                "description": "The block height.",
                 "format": "uint64",
                 "minimum": 0.0,
                 "type": "integer"
               },
               "parent_hash": {
-                "$ref": "#/components/schemas/BlockHash"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ],
+                "description": "The parent hash."
               },
               "protocol_version": {
-                "$ref": "#/components/schemas/ProtocolVersion"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ProtocolVersion"
+                  }
+                ],
+                "description": "The protocol version."
               },
               "random_bit": {
+                "description": "Randomness bit.",
                 "type": "boolean"
               },
               "state_root_hash": {
-                "$ref": "#/components/schemas/Digest"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "The state root hash."
               },
               "timestamp": {
-                "$ref": "#/components/schemas/Timestamp"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  }
+                ],
+                "description": "The block timestamp."
               }
             },
             "required": [
