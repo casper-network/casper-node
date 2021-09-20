@@ -443,7 +443,12 @@ impl AnnouncementDefinition {
     pub(crate) fn full_announcement_type(&self) -> TokenStream {
         let announcement_type = self.announcement_type();
         let ty = announcement_type.ty();
-        quote!(crate::effect::announcements::#ty)
+
+        if announcement_type.ident().to_string().ends_with("Incoming") {
+            quote!(crate::effect::incoming::#ty)
+        } else {
+            quote!(crate::effect::announcements::#ty)
+        }
     }
 
     /// Returns an iterator over the targets of the announcement.
