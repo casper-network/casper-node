@@ -24,7 +24,7 @@ use casper_node::rpcs::{
     account::PutDeploy,
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
-    info::{GetDeploy, GetValidatorInfo},
+    info::{GetDeploy, GetValidatorChanges},
     state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, QueryGlobalState},
 };
 
@@ -87,7 +87,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
             DisplayOrder::GetEraInfo as usize,
         ))
         .subcommand(GetAuctionInfo::build(DisplayOrder::GetAuctionInfo as usize))
-        .subcommand(GetValidatorInfo::build(
+        .subcommand(GetValidatorChanges::build(
             DisplayOrder::GetValidatorInfo as usize,
         ))
         .subcommand(Keygen::build(DisplayOrder::Keygen as usize))
@@ -127,7 +127,9 @@ async fn main() {
             (GetEraInfoBySwitchBlock::run(matches).await, matches)
         }
         (GetAuctionInfo::NAME, Some(matches)) => (GetAuctionInfo::run(matches).await, matches),
-        (GetValidatorInfo::NAME, Some(matches)) => (GetValidatorInfo::run(matches).await, matches),
+        (GetValidatorChanges::NAME, Some(matches)) => {
+            (GetValidatorChanges::run(matches).await, matches)
+        }
         (Keygen::NAME, Some(matches)) => (Keygen::run(matches).await, matches),
         (GenerateCompletion::NAME, Some(matches)) => {
             (GenerateCompletion::run(matches).await, matches)

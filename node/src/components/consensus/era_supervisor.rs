@@ -233,7 +233,9 @@ where
     }
 
     /// Returns a list of validator status changes, by public key.
-    pub(super) fn get_validator_info(&self) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
+    pub(super) fn get_validator_changes(
+        &self,
+    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
         let mut result: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> = BTreeMap::new();
         for ((_, era0), (era_id, era1)) in self.active_eras.iter().tuple_windows() {
             for (pub_key, change) in ValidatorChange::era_changes(era0, era1) {

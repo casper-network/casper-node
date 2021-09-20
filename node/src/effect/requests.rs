@@ -921,7 +921,7 @@ pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
     /// Request for a list of validator status changes, by public key.
-    ValidatorInfo(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
+    ValidatorChanges(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
 }
 
 /// ChainspecLoader component requests.

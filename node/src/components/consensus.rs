@@ -342,9 +342,9 @@ where
             Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 handling_es.status(responder)
             }
-            Event::ConsensusRequest(ConsensusRequest::ValidatorInfo(responder)) => {
-                let validator_info = self.get_validator_info();
-                responder.respond(validator_info).ignore()
+            Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                let validator_changes = self.get_validator_changes();
+                responder.respond(validator_changes).ignore()
             }
         }
     }

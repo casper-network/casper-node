@@ -16,7 +16,7 @@ use super::ReactorEventT;
 use crate::{
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
-    rpcs::info::{GetValidatorInfoResult, JsonEraChange, JsonValidatorInfo},
+    rpcs::info::{GetValidatorChangesResult, JsonEraChange, JsonValidatorInfo},
     types::GetStatusResult,
 };
 
@@ -106,7 +106,7 @@ pub(super) fn create_validator_info_filter<REv: ReactorEventT>(
         .and(warp::path(VALIDATOR_CHANGES_API_PATH))
         .and_then(move || {
             effect_builder
-                .get_consensus_validator_info()
+                .get_consensus_validator_changes()
                 .map(move |validator_info| {
                     let json_validator_info = validator_info
                         .into_iter()
@@ -120,7 +120,7 @@ pub(super) fn create_validator_info_filter<REv: ReactorEventT>(
                             JsonValidatorInfo::new(public_key, era_changes)
                         })
                         .collect();
-                    let result = GetValidatorInfoResult {
+                    let result = GetValidatorChangesResult {
                         api_version,
                         changes_to_validators: json_validator_info,
                     };

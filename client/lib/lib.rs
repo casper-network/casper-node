@@ -630,13 +630,13 @@ pub async fn get_dictionary_item(
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
-pub async fn get_validator_info(
+pub async fn get_validator_changes(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
-        .get_validator_info()
+        .get_validator_changes()
         .await
 }
 

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use clap::{App, ArgMatches, SubCommand};
 
 use casper_client::Error;
-use casper_node::rpcs::info::GetValidatorInfo;
+use casper_node::rpcs::info::GetValidatorChanges;
 
 use crate::{command::ClientCommand, common, Success};
 
@@ -16,7 +16,7 @@ enum DisplayOrder {
 }
 
 #[async_trait]
-impl<'a, 'b> ClientCommand<'a, 'b> for GetValidatorInfo {
+impl<'a, 'b> ClientCommand<'a, 'b> for GetValidatorChanges {
     const NAME: &'static str = "get-validator-changes";
     const ABOUT: &'static str = "Retrieves changes in validator status between two eras.";
 
@@ -36,7 +36,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetValidatorInfo {
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
 
-        casper_client::get_validator_info(maybe_rpc_id, node_address, verbosity_level)
+        casper_client::get_validator_changes(maybe_rpc_id, node_address, verbosity_level)
             .await
             .map(Success::from)
     }

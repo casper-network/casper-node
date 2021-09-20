@@ -751,9 +751,9 @@ pub extern "C" fn casper_get_auction_info(
 
 /// Retrieves changes in validator status between two eras.
 ///
-/// See [super::get_validator_info](super::get_validator_info) for more details.
+/// See [super::get_validator_changes](super::get_validator_changes) for more details.
 #[no_mangle]
-pub extern "C" fn casper_get_validator_info(
+pub extern "C" fn casper_get_validator_changes(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
     verbosity_level: u64,
@@ -765,7 +765,8 @@ pub extern "C" fn casper_get_validator_info(
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
     let node_address = try_unsafe_arg!(node_address);
     runtime.block_on(async move {
-        let result = super::get_validator_info(maybe_rpc_id, node_address, verbosity_level).await;
+        let result =
+            super::get_validator_changes(maybe_rpc_id, node_address, verbosity_level).await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS

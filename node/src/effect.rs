@@ -1676,13 +1676,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Returns a list of validator status changes, by public key.
-    pub(crate) async fn get_consensus_validator_info(
+    pub(crate) async fn get_consensus_validator_changes(
         self,
     ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>
     where
         REv: From<ConsensusRequest>,
     {
-        self.make_request(ConsensusRequest::ValidatorInfo, QueueKind::Regular)
+        self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
             .await
     }
 

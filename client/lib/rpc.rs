@@ -19,7 +19,7 @@ use casper_node::{
             GetEraInfoBySwitchBlock, GetEraInfoParams, GetStateRootHash, GetStateRootHashParams,
         },
         docs::ListRpcs,
-        info::{GetDeploy, GetDeployParams, GetValidatorInfo},
+        info::{GetDeploy, GetDeployParams, GetValidatorChanges},
         state::{
             GetAccountInfo, GetAccountInfoParams, GetAuctionInfo, GetAuctionInfoParams, GetBalance,
             GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams, GetItem, GetItemParams,
@@ -209,8 +209,8 @@ impl RpcCall {
         Ok(response)
     }
 
-    pub(crate) async fn get_validator_info(self) -> Result<JsonRpc> {
-        GetValidatorInfo::request(self).await
+    pub(crate) async fn get_validator_changes(self) -> Result<JsonRpc> {
+        GetValidatorChanges::request(self).await
     }
 
     pub(crate) async fn list_rpcs(self) -> Result<JsonRpc> {
@@ -473,7 +473,7 @@ impl RpcClient for QueryGlobalState {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
-impl RpcClient for GetValidatorInfo {
+impl RpcClient for GetValidatorChanges {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 

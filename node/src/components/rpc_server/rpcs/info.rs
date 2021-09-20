@@ -44,11 +44,11 @@ static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     peers: GetStatusResult::doc_example().peers.clone(),
 });
-static GET_VALIDATOR_INFO_RESULT: Lazy<GetValidatorInfoResult> = Lazy::new(|| {
+static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
     let era_changes = JsonEraChange::new(EraId::new(1), ValidatorChange::Added);
     let public_key = PublicKey::doc_example().clone();
     let validator_info = vec![JsonValidatorInfo::new(public_key, vec![era_changes])];
-    GetValidatorInfoResult {
+    GetValidatorChangesResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         changes_to_validators: validator_info,
     }
@@ -278,7 +278,7 @@ impl JsonValidatorInfo {
 /// Result for the "info_get_validator_changes" RPC.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct GetValidatorInfoResult {
+pub struct GetValidatorChangesResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
@@ -286,21 +286,21 @@ pub struct GetValidatorInfoResult {
     pub changes_to_validators: Vec<JsonValidatorInfo>,
 }
 
-impl DocExample for GetValidatorInfoResult {
+impl DocExample for GetValidatorChangesResult {
     fn doc_example() -> &'static Self {
-        &*GET_VALIDATOR_INFO_RESULT
+        &*GET_VALIDATOR_CHANGES_RESULT
     }
 }
 
 /// "info_get_validator_changes" RPC.
-pub struct GetValidatorInfo {}
+pub struct GetValidatorChanges {}
 
-impl RpcWithoutParams for GetValidatorInfo {
+impl RpcWithoutParams for GetValidatorChanges {
     const METHOD: &'static str = "info_get_validator_changes";
-    type ResponseResult = GetValidatorInfoResult;
+    type ResponseResult = GetValidatorChangesResult;
 }
 
-impl RpcWithoutParamsExt for GetValidatorInfo {
+impl RpcWithoutParamsExt for GetValidatorChanges {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
@@ -309,7 +309,7 @@ impl RpcWithoutParamsExt for GetValidatorInfo {
         async move {
             // Get the validator info.
             let validator_info = effect_builder
-                .get_consensus_validator_info()
+                .get_consensus_validator_changes()
                 .await
                 .into_iter()
                 .map(|(public_key, era_changes)| {

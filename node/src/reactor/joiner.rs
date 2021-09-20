@@ -913,7 +913,7 @@ impl reactor::Reactor for Reactor {
                 // Upcoming validators are not used by joiner reactor
                 Effects::new()
             }
-            JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorInfo(responder)) => {
+            JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 // no consensus, respond with empty map
                 responder.respond(BTreeMap::new()).ignore()
             }
