@@ -21,6 +21,9 @@ use num_integer::Integer;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "std")]
+use thiserror::Error;
+
 pub use bytes::Bytes;
 
 /// The number of bytes in a serialized `()`.
@@ -100,6 +103,7 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 
 /// Serialization and deserialization errors.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[repr(u8)]
 pub enum Error {
     /// Early end of stream while deserializing.

@@ -46,12 +46,16 @@ use crate::{
 pub(crate) use announcements::ContractRuntimeAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
+pub use operations::execute_finalized_block;
+pub use types::BlockAndExecutionEffects;
+pub(crate) use types::EraValidatorsRequest;
+
+const EE_DB_COUNT: u32 = 2;
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
-pub(crate) struct ExecutionPreState {
+pub struct ExecutionPreState {
     /// The height of the next `Block` to be constructed. Note that this must match the height of
     /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
@@ -118,7 +122,7 @@ impl Debug for ContractRuntime {
 
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
-pub(crate) struct ContractRuntimeMetrics {
+pub struct ContractRuntimeMetrics {
     run_execute: Histogram,
     apply_effect: Histogram,
     commit_upgrade: Histogram,
@@ -411,9 +415,9 @@ where
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 tokio::task::unconstrained(async move {
-                    let result = operations::execute_finalized_block(
+                    let result = execute_finalized_block(
                         engine_state.as_ref(),
-                        metrics.as_ref(),
+                        Some(metrics),
                         protocol_version,
                         execution_pre_state,
                         finalized_block,
@@ -506,6 +510,7 @@ impl ContractRuntime {
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
             contract_runtime_config.manual_sync_enabled(),
+            EE_DB_COUNT,
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(
@@ -606,9 +611,9 @@ impl ContractRuntime {
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
         } = match tokio::task::unconstrained(async move {
-            operations::execute_finalized_block(
+            execute_finalized_block(
                 engine_state.as_ref(),
-                metrics.as_ref(),
+                Some(metrics),
                 protocol_version,
                 current_execution_pre_state,
                 finalized_block,

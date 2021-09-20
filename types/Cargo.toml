@@ -32,6 +32,7 @@ schemars = { version = "0.8.0", features = ["preserve_order"], optional = true }
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 serde_bytes = { version = "0.11.5", default-features = false, features = ["alloc"] }
 serde_json = { version = "1.0.59", default-features = false, features = ["alloc"] }
+thiserror = { version = "1.0.29", optional = true }
 uint = { version = "0.9.0", default-features = false }
 version-sync = { version = "0.9", optional = true }
 
@@ -49,8 +50,7 @@ strum = { version = "0.21", features = ["derive"] }
 [features]
 json-schema = ["once_cell", "schemars"]
 gens = ["proptest"]
-# DEPRECATED - enabling `std` has no effect.
-std = []
+std = ["thiserror"]
 
 [[bench]]
 name = "bytesrepr_bench"
