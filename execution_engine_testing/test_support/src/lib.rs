@@ -81,9 +81,10 @@ mod value;
 mod wasm_test_builder;
 
 /// TODO: doc comment.
-pub use account::Account;
+// pub use account::Account;
 /// TODO: doc comment.
-pub use casper_types::account::AccountHash;
+// pub use casper_types::account::AccountHash;
+use casper_types::account::{Account, AccountHash};
 /// TODO: doc comment.
 pub use code::Code;
 /// TODO: doc comment.

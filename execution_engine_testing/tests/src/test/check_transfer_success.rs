@@ -2,8 +2,9 @@ use casper_types::{runtime_args, RuntimeArgs, U512};
 use core::convert::TryFrom;
 
 use casper_engine_test_support::{
-    Code, SessionBuilder, SessionTransferInfo, TestContextBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    Code, DeployItemBuilder, ExecuteRequestBuilder, SessionBuilder, SessionTransferInfo,
+    TestContextBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -51,6 +52,11 @@ fn test_check_transfer_success_with_source_only() {
         .with_check_transfer_success(source_only_session_transfer_info)
         .build();
     test_context.run(session);
+    let di_builder = DeployItemBuilder::default();
+    // let er_builder = ExecuteRequestBuilder::default();
+    di_builder
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR]);
 }
 
 #[ignore]

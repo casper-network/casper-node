@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    AccountHash, ExecuteRequestBuilder, InMemoryWasmTestContext, LmdbWasmTestContext,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, InMemoryWasmTestContext, LmdbWasmTestContext, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
@@ -13,6 +13,7 @@ use casper_execution_engine::{
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,

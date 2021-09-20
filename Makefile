@@ -106,16 +106,16 @@ format:
 	$(CARGO_PINNED_NIGHTLY) fmt --all
 
 lint-contracts-rs:
-	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
+	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -A renamed_and_removed_lints
 
 .PHONY: lint
 lint: lint-contracts-rs
-	$(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
-	$(LEGACY) $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
-	$(CARGO) clippy --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
-	$(CARGO) clippy --no-default-features --features=no-std --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
-	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
-	$(CARGO) clippy --no-default-features --features=std --all-targets --manifest-path=smart_contracts/contract/Cargo.toml -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets -- -A renamed_and_removed_lints
+	$(LEGACY) $(CARGO) clippy --all-targets -- -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets -p casper-types -- -A renamed_and_removed_lints
+	$(CARGO) clippy --no-default-features --features=no-std --all-targets -p casper-types -- -A renamed_and_removed_lints
+	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -A renamed_and_removed_lints
+	$(CARGO) clippy --no-default-features --features=std --all-targets --manifest-path=smart_contracts/contract/Cargo.toml -- -A renamed_and_removed_lints
 
 .PHONY: audit
 audit:
@@ -123,9 +123,9 @@ audit:
 
 .PHONY: doc
 doc:
-	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps
-	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-types
-	cd smart_contracts/contract && RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-contract
+	$(CARGO) doc $(CARGO_FLAGS) --no-deps
+	$(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-types
+	cd smart_contracts/contract && $(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-contract
 
 .PHONY: check-rs
 check-rs: \

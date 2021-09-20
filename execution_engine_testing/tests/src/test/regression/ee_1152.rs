@@ -2,15 +2,16 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, AccountHash, ExecuteRequestBuilder, InMemoryWasmTestContext, StepRequestBuilder,
-    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestContext, StepRequestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
     genesis::GenesisValidator, GenesisAccount, RewardItem,
 };
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
     Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,

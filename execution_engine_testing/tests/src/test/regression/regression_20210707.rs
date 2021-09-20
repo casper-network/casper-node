@@ -1,7 +1,6 @@
 use casper_engine_test_support::{
-    AccountHash, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
-    MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
@@ -11,8 +10,10 @@ use casper_execution_engine::{
     shared::wasm,
 };
 use casper_types::{
-    account::Account, runtime_args, system::mint, AccessRights, ContractHash, PublicKey,
-    RuntimeArgs, SecretKey, URef, U512,
+    account::{Account, AccountHash},
+    runtime_args,
+    system::mint,
+    AccessRights, ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 

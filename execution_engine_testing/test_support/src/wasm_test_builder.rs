@@ -246,6 +246,7 @@ impl LmdbWasmTestContext {
     /// Creates new instance of builder and applies values only which allows the engine state to be
     /// swapped with a new one, possibly after running genesis once and reusing existing database
     /// (i.e. LMDB).
+    #[deprecated]
     pub fn new_with_config_and_result<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         engine_config: EngineConfig,

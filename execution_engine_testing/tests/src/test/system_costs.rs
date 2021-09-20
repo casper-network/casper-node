@@ -2,7 +2,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, AccountHash, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext,
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
     DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
@@ -36,6 +36,7 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{
         auction::{self, DelegationRate},

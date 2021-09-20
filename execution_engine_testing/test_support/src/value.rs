@@ -1,11 +1,12 @@
 use std::convert::{TryFrom, TryInto};
 
 use casper_types::{
+    account::Account,
     bytesrepr::{FromBytes, ToBytes},
-    CLTyped, CLValue, StoredValue,
+    CLTyped, CLValue, StoredValue, StoredValueTypeMismatch,
 };
 
-use crate::{Account, Result};
+use crate::Result;
 
 /// A value stored under a given key on the network.
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -34,7 +35,7 @@ impl Value {
     }
 
     /// Consumes and converts `self` into an `Account` or errors.
-    pub fn into_account(self) -> Result<Account> {
+    pub fn into_account(self) -> std::result::Result<Account, StoredValueTypeMismatch> {
         self.inner.try_into()
     }
 }
