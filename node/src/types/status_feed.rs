@@ -192,8 +192,13 @@ impl GetStatusResult {
             our_public_signing_key: status_feed.our_public_signing_key,
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
-            build_version: crate::VERSION_STRING.clone(),
             uptime: status_feed.node_uptime.into(),
+            #[cfg(not(test))]
+            build_version: crate::VERSION_STRING.clone(),
+
+            //  Prevent these values from changing between test sessions
+            #[cfg(test)]
+            build_version: String::from("1.0.0-xxxxxxxxx@DEBUG"),
         }
     }
 }

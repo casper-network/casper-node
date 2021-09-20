@@ -186,7 +186,7 @@ write = { cost = 14_000, arguments = [0, 0, 0, 980] }
 write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }
 
 [system_costs]
-wasmless_transfer_cost = 10_000
+wasmless_transfer_cost = 250_000_000
 
 [system_costs.auction_costs]
 get_era_validators = 10_000
