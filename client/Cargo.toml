@@ -56,7 +56,7 @@ warp = "0.3.0"
 warp-json-rpc = "0.3.0"
 
 [features]
-default = ["ffi"]
+default = ["ffi", "casper-mainnet"]
 ffi = ["cbindgen"]
 casper-mainnet = ["casper-node/casper-mainnet"]
 
