@@ -200,6 +200,7 @@ impl LmdbWasmTestBuilder {
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
                 true,
+                2,
             )
             .expect("should create LmdbEnvironment"),
         );
@@ -282,6 +283,7 @@ impl LmdbWasmTestBuilder {
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
                 true,
+                2,
             )
             .expect("should create LmdbEnvironment"),
         );

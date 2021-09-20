@@ -8,7 +8,7 @@ use lmdb::{
 use crate::storage::{
     error,
     transaction_source::{Readable, Transaction, TransactionSource, Writable},
-    MAX_DBS,
+    MIN_DBS,
 };
 
 /// Filename for the LMDB database created by the EE.
@@ -77,7 +77,11 @@ impl LmdbEnvironment {
         map_size: usize,
         max_readers: u32,
         manual_sync_enabled: bool,
+        max_dbs: u32,
     ) -> Result<Self, error::Error> {
+        if max_dbs < MIN_DBS {
+            return Err(error::Error::NotEnoughDatabases);
+        }
         let lmdb_flags = if manual_sync_enabled {
             // These options require that we manually call sync on the environment for the EE.
             EnvironmentFlags::NO_SUB_DIR
@@ -91,7 +95,7 @@ impl LmdbEnvironment {
         let env = Environment::new()
             // Set the flag to manage our own directory like in the storage component.
             .set_flags(lmdb_flags)
-            .set_max_dbs(MAX_DBS)
+            .set_max_dbs(max_dbs)
             .set_map_size(map_size)
             .set_max_readers(max_readers)
             .open(&path.as_ref().join(EE_DB_FILENAME))?;
