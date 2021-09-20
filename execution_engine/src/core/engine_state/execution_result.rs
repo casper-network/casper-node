@@ -449,8 +449,10 @@ impl ExecutionResultBuilder {
             .as_ref()
             .map(ExecutionResult::cost)
             .unwrap_or_default();
-        // TODO: Make sure this code isn't in production.
-        // It should have been removed in the fix of #1968.
+        // TODO: Make sure this code isn't in production, as, even though it's highly unlikely
+        // to happen, an integer overflow would be silently ignored in release builds.
+        // NOTE: This code should have been removed in the fix of #1968, where arithmetic
+        // operations on the Gas type were disabled.
         payment_cost + session_cost
     }
 

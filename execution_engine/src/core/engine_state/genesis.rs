@@ -161,7 +161,6 @@ pub enum GenesisAccount {
         /// If set, it will make this account a genesis validator.
         validator: Option<GenesisValidator>,
     },
-    /// TODO: Review the following comment.
     /// The genesis delegator is a special account that will be created as a delegator.
     /// It does not have any stake of its own, but will create a real account in the system
     /// which will delegate to a genesis validator.

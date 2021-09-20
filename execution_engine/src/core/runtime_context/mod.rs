@@ -426,8 +426,7 @@ where
         Ok(())
     }
 
-    /// Reads new purse [`URef`].
-    /// TODO: Check whether the word “new” should be removed from the comment above.
+    /// Reads the balance of a purse [`URef`].
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
     #[cfg(test)]

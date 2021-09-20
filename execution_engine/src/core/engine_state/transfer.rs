@@ -97,7 +97,6 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
 }
 
 /// State of a builder of a `TransferArgs`.
-/// TODO: Why is `Runtime` part of the name.
 ///
 /// Purpose of this builder is to resolve native tranfer args into [`TransferTargetMode`] and a
 /// [`TransferArgs`] instance to execute actual token transfer on the mint contract.

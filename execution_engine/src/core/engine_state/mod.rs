@@ -90,16 +90,13 @@ use crate::{
     },
 };
 
-/// The maximum amount of gas a payment code can use, expressed as an `u64`.
-///
-/// TODO: There needs to be a clarification here on whether the following
-/// value is an amount of Motes or an amount of GAS.
+/// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// The maximum amount of gas a payment code can use.
 ///
 /// This value also indicates the minimum balance of the main purse of an account when
-/// executing payment code.
-/// TODO: Explain why.
+/// executing payment code, as such amount is held as collateral to compensate for
+/// code execution.
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
@@ -1157,11 +1154,11 @@ where
     /// Executes a deploy.
     ///
     /// A deploy execution consists of running the payment code, which is expected to deposit funds
-    /// into the payment purse, and then running session code with a specific gas limit. For running
-    /// payment code we give users a [`MAX_PAYMENT`] lease. After successful session code execution
-    /// funds are transferred to the proposer of the deploy as specified in the request.
-    /// TODO: There needs to be a clarification on whether the user pays `MAX_PAYMENT` upfront or
-    /// whether `MAX_PAYMENT` is leased to the user, which pays it back after.
+    /// into the payment purse, and then running the session code with a specific gas limit. For
+    /// running payment code, we lock [`MAX_PAYMENT`] amount of motes from the user as collateral.
+    /// If both the payment code and the session code execute successfully, a fraction of the
+    /// unspent collateral will be transferred back to the proposer of the deploy, as specified
+    /// in the request.
     ///
     /// Returns [`ExecutionResult`], or an error condition.
     #[allow(clippy::too_many_arguments)]
