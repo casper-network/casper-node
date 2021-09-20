@@ -3,12 +3,13 @@ use core::{
     convert::{From, TryFrom},
     fmt::{Debug, Display, Formatter},
 };
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -26,7 +27,8 @@ pub const ACCOUNT_HASH_FORMATTED_STRING_PREFIX: &str = "account-hash-";
 
 /// A newtype wrapping an array which contains the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AccountHash(pub [u8; ACCOUNT_HASH_LENGTH]);
 
 impl AccountHash {
@@ -93,7 +95,7 @@ impl AccountHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for AccountHash {
     fn schema_name() -> String {
         String::from("AccountHash")

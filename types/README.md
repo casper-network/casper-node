@@ -7,14 +7,15 @@
 [![Documentation](https://docs.rs/casper-types/badge.svg)](https://docs.rs/casper-types)
 [![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
 
+Types shared by many casper crates for use on the Casper network.
+
 ## `no_std`
 
-By default, the `no-std` feature is enabled which in turn enables a similar feature on many dependent crates.  To use
-the library in a `std` environment, disable the default features and enable the `std` feature.  For example:
+The crate is `no_std` (using the `core` and `alloc` crates) unless any of the following features are enabled:
 
-```toml
-casper-types = { version = "1.0.0", default-features = false, features = ["std"] }
-```
+* `json-schema` to enable many types to be used to produce JSON-schema data via the [`schemars`](https://crates.io/crates/schemars) crate
+* `datasize` to enable many types to derive the [`DataSize`](https://github.com/casperlabs/datasize-rs) trait
+* `gens` to enable many types to be produced in accordance with [`proptest`](https://crates.io/crates/proptest) usage for consumption within dependee crates' property testing suites
 
 ## License
 

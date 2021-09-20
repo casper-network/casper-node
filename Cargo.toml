@@ -1,5 +1,4 @@
 [workspace]
-
 members = [
     "ci/casper_updater",
     "client",
@@ -26,6 +25,7 @@ default-members = [
     "execution_engine_testing/tests",
     "hashing",
     "node",
+    "types",
     "utils/global-state-update-gen",
     "utils/retrieve-state",
     "utils/validation",
@@ -35,6 +35,10 @@ default-members = [
 # perf data.
 [profile.release.package.casper-engine-tests]
 debug = true
+
+[profile.release]
+codegen-units = 1
+lto = true
 
 [profile.bench]
 codegen-units = 1

@@ -5,6 +5,7 @@ use std::{
     time::Instant,
 };
 
+use anyhow::anyhow;
 use jsonrpc_lite::{JsonRpc, Params};
 use lmdb::DatabaseFlags;
 use reqwest::Client;
@@ -224,16 +225,14 @@ pub async fn download_trie(
         .await?;
         if let Some(blob) = read_result.maybe_trie_bytes {
             let bytes: Vec<u8> = blob.into();
-            let (trie, _): (Trie<Key, StoredValue>, _) = FromBytes::from_bytes(&bytes)?;
+            let (trie, _): (Trie<Key, StoredValue>, _) = FromBytes::from_bytes(&bytes)
+                .map_err(|error| anyhow!("unable to parse trie: {:?}", error))?;
             let mut missing_descendants = engine_state
                 .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)?;
             outstanding_tries.append(&mut missing_descendants);
             tries_downloaded += 1;
         } else {
-            return Err(anyhow::anyhow!(
-                "unable to download trie at {:?}",
-                next_trie_key
-            ));
+            return Err(anyhow!("unable to download trie at {:?}", next_trie_key));
         }
         if tries_downloaded % 1000 == 0 {
             println!(

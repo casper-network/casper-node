@@ -1,11 +1,9 @@
 //! Types used to allow creation of Wasm contracts and tests for use on the Casper Platform.
-//!
-//! # `no_std`
-//!
-//! By default, the library is `no_std`, however you can enable full `std` functionality by enabling
-//! the crate's `std` feature.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(
+    not(any(feature = "json-schema", feature = "datasize", feature = "gens", test)),
+    no_std
+)]
 #![doc(html_root_url = "https://docs.rs/casper-types/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
@@ -14,12 +12,8 @@
 )]
 #![warn(missing_docs)]
 
-#[cfg_attr(not(any(feature = "std", test)), macro_use)]
+#[cfg_attr(not(test), macro_use)]
 extern crate alloc;
-
-#[cfg(any(feature = "std", test))]
-#[macro_use]
-extern crate std;
 
 mod access_rights;
 pub mod account;
@@ -98,13 +92,3 @@ pub use crate::{
     era_id::EraId,
     uint::{UIntParseError, U128, U256, U512},
 };
-
-#[cfg(not(any(feature = "std", feature = "no-std")))]
-compile_error!(
-    "casper-types requires one of 'std' (enabled by default) or 'no-std' features to be enabled"
-);
-
-#[cfg(all(feature = "std", feature = "no-std"))]
-compile_error!(
-    "casper-types features 'std' (enabled by default) and 'no-std' should not both be enabled"
-);

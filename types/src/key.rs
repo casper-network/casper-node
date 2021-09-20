@@ -16,6 +16,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use rand::{
@@ -97,7 +98,8 @@ pub enum KeyTag {
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
 #[repr(C)]
-#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, DataSize)]
+#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum Key {
     /// A `Key` under which a user account is stored.
     Account(AccountHash),

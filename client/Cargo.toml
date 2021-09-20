@@ -26,7 +26,7 @@ base64 = "0.13.0"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node = { version = "1.0.0", path = "../node" }
 casper-hashing = { version = "1.0.0", path = "../hashing" }
-casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std"] }
+casper-types = { version = "1.0.0", path = "../types" }
 clap = "2"
 hex = { version = "0.4.2", features = ["serde"] }
 humantime = "2"
