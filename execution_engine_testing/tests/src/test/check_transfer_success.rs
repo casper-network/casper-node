@@ -46,12 +46,12 @@ fn test_check_transfer_success_with_source_only() {
         ARG_DESTINATION => NEW_PURSE_NAME,
         ARG_AMOUNT => transfer_amount
     };
-    let session = SessionBuilder::new(session_code, session_args)
-        .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-        .with_check_transfer_success(source_only_session_transfer_info)
-        .build();
-    test_context.run(session);
+    // let session = SessionBuilder::new(session_code, session_args)
+    //     .with_address(*DEFAULT_ACCOUNT_ADDR)
+    //     .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+    //     .with_check_transfer_success(source_only_session_transfer_info)
+    //     .build();
+    // test_context.run(session);
     let di_builder = DeployItemBuilder::default();
     // let er_builder = ExecuteRequestBuilder::default();
     di_builder
