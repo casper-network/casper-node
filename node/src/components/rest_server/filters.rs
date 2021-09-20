@@ -98,7 +98,7 @@ pub(super) fn create_rpc_schema_filter<REv: ReactorEventT>(
         .boxed()
 }
 
-pub(super) fn create_validator_info_filter<REv: ReactorEventT>(
+pub(super) fn create_validator_changes_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     api_version: ProtocolVersion,
 ) -> BoxedFilter<(Response<Body>,)> {
