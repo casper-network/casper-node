@@ -391,7 +391,7 @@ impl RequestDefinition {
     /// Returns an ident identifying the request that is suitable for a variant, e.g.
     /// `NetworkRequest`.
     pub fn variant_ident(&self) -> Ident {
-        self.request_type.ident()
+        self.request_type.stringified_ident()
     }
 
     /// Returns the type of the request.
@@ -459,7 +459,7 @@ impl AnnouncementDefinition {
     /// Returns an ident identifying the announcement that is suitable for a variant, e.g.
     /// `NetworkAnnouncement`.
     pub fn variant_ident(&self) -> Ident {
-        self.announcement_type.ident()
+        self.announcement_type.stringified_ident()
     }
 }
 

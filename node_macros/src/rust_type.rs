@@ -9,7 +9,7 @@ use std::{
 use inflector::cases::snakecase::to_snake_case;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Ident, Path, Type};
+use syn::{Ident, Path, PathArguments, Type};
 
 use crate::util::to_ident;
 
@@ -29,6 +29,16 @@ impl RustType {
         RustType(path)
     }
 
+    /// The final type argument, used for disambiguation.
+    fn final_type_arg_ident(&self) -> PathArguments {
+        self.0
+            .segments
+            .last()
+            .expect("type has no last part?")
+            .arguments
+            .clone()
+    }
+
     /// Returns the types identifier without type arguments, e.g. `SmallNet`.
     pub fn ident(&self) -> Ident {
         self.0
@@ -39,15 +49,33 @@ impl RustType {
             .clone()
     }
 
-    /// Returns the type without the path, but with type arguments, e.g. `SmallNet<NodeId>`.
-    pub fn ty(&self) -> TokenStream {
-        let ident = self.ident();
-        let args = &self
+    /// Returns the types identifier with type arguments attached as strings, i.e.
+    /// `GossipIncomingDeploy`'.
+    pub fn stringified_ident(&self) -> Ident {
+        let base = self
             .0
             .segments
             .last()
             .expect("type has no last part?")
-            .arguments;
+            .ident
+            .clone();
+
+        // This is a slightly ugly hack to get a string out of the type.
+        let final_arg = self.final_type_arg_ident();
+        let args: String = quote!(#final_arg)
+            .to_string()
+            .chars()
+            .filter(|c| c.is_alphabetic())
+            .collect();
+
+        Ident::new(&format!("{}{}", base, args), base.span())
+    }
+
+    /// Returns the type without the path, but with type arguments, e.g. `SmallNet<NodeId>`.
+    pub fn ty(&self) -> TokenStream {
+        let ident = self.ident();
+        let args = self.final_type_arg_ident();
+
         quote!(#ident #args)
     }
 
