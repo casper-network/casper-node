@@ -154,5 +154,5 @@ alias nctl-exec-upgrade-scenario-2='source $NCTL/sh/scenarios-upgrades/upgrade_s
 alias nctl-exec-upgrade-scenario-3='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_03.sh'
 alias nctl-exec-upgrade-scenario-4='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_04.sh'
 alias nctl-exec-upgrade-scenario-5='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_05.sh'
-alias nctl-exec-upgrade-scenario-5='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_06.sh'
-alias nctl-exec-upgrade-scenario-5='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_07.sh'
+alias nctl-exec-upgrade-scenario-6='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_06.sh'
+alias nctl-exec-upgrade-scenario-7='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_07.sh'

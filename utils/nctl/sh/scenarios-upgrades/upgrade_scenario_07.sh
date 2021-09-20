@@ -74,7 +74,7 @@ function _step_01()
     
     # Force Hard Reset
     PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
-    sed -i 's/hard_reset = false/hard_reset = true/g' "PATH_TO_CHAINSPEC"
+    sed -i 's/hard_reset = false/hard_reset = true/g' "$PATH_TO_CHAINSPEC"
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
     log "... Starting 5 non-validators"
