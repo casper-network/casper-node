@@ -52,6 +52,7 @@ impl LmdbGlobalState {
             let mut txn = environment.create_read_write_txn()?;
             trie_store.put(&mut txn, &root_hash, &root)?;
             txn.commit()?;
+            environment.env().sync(true)?;
             root_hash
         };
         Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
@@ -185,7 +186,7 @@ impl StateProvider for LmdbGlobalState {
         self.empty_root_hash
     }
 
-    fn read_trie(
+    fn get_trie(
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
