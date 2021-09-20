@@ -1,10 +1,4 @@
-use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    path::Path,
-    process::{self, Command},
-    str,
-};
+use std::{fs, path::Path, process, str};
 
 use colour::e_red;
 use once_cell::sync::Lazy;
@@ -12,36 +6,28 @@ use once_cell::sync::Lazy;
 use crate::{dependency::Dependency, ARGS, FAILURE_EXIT_CODE};
 
 pub static CL_CONTRACT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-contract", "1.0.0", "smart_contracts/contract"));
-pub static CL_TYPES: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-types", "1.0.0", "types"));
+    Lazy::new(|| Dependency::new("casper-contract", "1.0.0"));
+pub static CL_TYPES: Lazy<Dependency> = Lazy::new(|| Dependency::new("casper-types", "1.0.0"));
+pub static CL_ENGINE_TEST_SUPPORT: Lazy<Dependency> =
+    Lazy::new(|| Dependency::new("casper-engine-test-support", "1.0.0"));
+pub static PATCH_SECTION: Lazy<String> = Lazy::new(|| match ARGS.workspace_path() {
+    Some(workspace_path) => {
+        format!(
+            r#"[patch.crates-io]
+casper-engine-test-support = {{ path = "{0}/execution_engine_testing/test_support" }}
+casper-contract = {{ path = "{0}/smart_contracts/contract" }}
+casper-types = {{ path = "{0}/types" }}
+"#,
+            workspace_path.display()
+        )
+    }
+    None => String::new(),
+});
 
 pub fn print_error_and_exit(msg: &str) -> ! {
     e_red!("error");
     eprintln!("{}", msg);
     process::exit(FAILURE_EXIT_CODE)
-}
-
-pub fn run_cargo_new(package_name: &str) {
-    let mut command = Command::new("cargo");
-    command
-        .args(&["new", "--vcs", "none"])
-        .arg(package_name)
-        .current_dir(ARGS.root_path());
-
-    let output = match command.output() {
-        Ok(output) => output,
-        Err(error) => print_error_and_exit(&format!(": failed to run '{:?}': {}", command, error)),
-    };
-
-    if !output.status.success() {
-        let stdout = str::from_utf8(&output.stdout).expect("should be valid UTF8");
-        let stderr = str::from_utf8(&output.stderr).expect("should be valid UTF8");
-        print_error_and_exit(&format!(
-            ": failed to run '{:?}':\n{}\n{}\n",
-            command, stdout, stderr
-        ));
-    }
 }
 
 pub fn create_dir_all<P: AsRef<Path>>(path: P) {
@@ -64,47 +50,6 @@ pub fn write_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) {
     }
 }
 
-pub fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) {
-    let mut file = match OpenOptions::new().append(true).open(path.as_ref()) {
-        Ok(file) => file,
-        Err(error) => {
-            print_error_and_exit(&format!(
-                ": failed to open '{}': {}",
-                path.as_ref().display(),
-                error
-            ));
-        }
-    };
-    if let Err(error) = file.write_all(contents.as_ref()) {
-        print_error_and_exit(&format!(
-            ": failed to append to '{}': {}",
-            path.as_ref().display(),
-            error
-        ));
-    }
-}
-
-pub fn remove_file<P: AsRef<Path>>(path: P) {
-    if let Err(error) = fs::remove_file(path.as_ref()) {
-        print_error_and_exit(&format!(
-            ": failed to remove '{}': {}",
-            path.as_ref().display(),
-            error
-        ));
-    }
-}
-
-pub fn copy_file<S: AsRef<Path>, D: AsRef<Path>>(source: S, destination: D) {
-    if let Err(error) = fs::copy(source.as_ref(), destination.as_ref()) {
-        print_error_and_exit(&format!(
-            ": failed to copy '{}' to '{}': {}",
-            source.as_ref().display(),
-            destination.as_ref().display(),
-            error
-        ));
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
     use std::{env, fs};
@@ -115,6 +60,8 @@ pub mod tests {
 
     const CL_CONTRACT_TOML_PATH: &str = "smart_contracts/contract/Cargo.toml";
     const CL_TYPES_TOML_PATH: &str = "types/Cargo.toml";
+    const CL_ENGINE_TEST_SUPPORT_TOML_PATH: &str =
+        "execution_engine_testing/test_support/Cargo.toml";
     const PACKAGE_FIELD_NAME: &str = "package";
     const VERSION_FIELD_NAME: &str = "version";
     const PATH_PREFIX: &str = "/execution_engine_testing/cargo_casper";
@@ -166,5 +113,10 @@ pub mod tests {
     #[test]
     fn check_cl_types_version() {
         check_package_version(&*CL_TYPES, CL_TYPES_TOML_PATH);
+    }
+
+    #[test]
+    fn check_cl_engine_test_support_version() {
+        check_package_version(&*CL_ENGINE_TEST_SUPPORT, CL_ENGINE_TEST_SUPPORT_TOML_PATH);
     }
 }

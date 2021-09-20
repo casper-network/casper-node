@@ -5,7 +5,7 @@ mod vesting;
 
 use alloc::{collections::BTreeMap, vec::Vec};
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ pub use vesting::VestingSchedule;
 
 /// An entry in the validator map.
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Bid {
     /// Validator public key

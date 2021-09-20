@@ -5,7 +5,7 @@ fn checked_delete<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     key_to_delete: &K,
 ) -> Result<DeleteResult, E>
 where
@@ -32,9 +32,9 @@ mod partial_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        root: &Blake2bHash,
+        root: &Digest,
         key_to_delete: &K,
-        expected_root_after_delete: &Blake2bHash,
+        expected_root_after_delete: &Digest,
         expected_tries_after_delete: &[HashedTrie<K, V>],
     ) -> Result<(), E>
     where
@@ -114,7 +114,7 @@ mod partial_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        root: &Blake2bHash,
+        root: &Digest,
         key_to_delete: &K,
     ) -> Result<(), E>
     where
@@ -197,7 +197,7 @@ mod full_tries {
     };
 
     use crate::{
-        shared::newtypes::{Blake2bHash, CorrelationId},
+        shared::newtypes::CorrelationId,
         storage::{
             error,
             transaction_source::TransactionSource,
@@ -214,12 +214,13 @@ mod full_tries {
             },
         },
     };
+    use casper_hashing::Digest;
 
     fn serially_insert_and_delete<'a, K, V, R, S, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        root: &Blake2bHash,
+        root: &Digest,
         pairs: &[(K, V)],
     ) -> Result<(), E>
     where
@@ -316,7 +317,7 @@ mod full_tries {
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
-        root: &Blake2bHash,
+        root: &Digest,
         pairs_to_insert: &[(K, V)],
         keys_to_delete: &[K],
     ) -> Result<(), E>

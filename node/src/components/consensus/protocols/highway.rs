@@ -783,7 +783,7 @@ where
                 trace!(?uuid, dependency=?dep, "received a request for a dependency");
                 match self.highway.get_dependency(&dep) {
                     GetDepOutcome::None => {
-                        info!(?dep, ?sender, "requested dependency doesn't exist");
+                        info!(?dep, peer_id=?sender, "requested dependency doesn't exist");
                         vec![]
                     }
                     GetDepOutcome::Evidence(vid) => {

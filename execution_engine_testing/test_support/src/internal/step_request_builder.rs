@@ -1,15 +1,13 @@
-use casper_execution_engine::{
-    core::engine_state::{
-        step::{EvictItem, RewardItem, SlashItem},
-        StepRequest,
-    },
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::engine_state::{
+    step::{EvictItem, RewardItem, SlashItem},
+    StepRequest,
 };
+use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
 #[derive(Debug)]
 pub struct StepRequestBuilder {
-    parent_state_hash: Blake2bHash,
+    parent_state_hash: Digest,
     protocol_version: ProtocolVersion,
     slash_items: Vec<SlashItem>,
     reward_items: Vec<RewardItem>,
@@ -24,7 +22,7 @@ impl StepRequestBuilder {
         Default::default()
     }
 
-    pub fn with_parent_state_hash(mut self, parent_state_hash: Blake2bHash) -> Self {
+    pub fn with_parent_state_hash(mut self, parent_state_hash: Digest) -> Self {
         self.parent_state_hash = parent_state_hash;
         self
     }

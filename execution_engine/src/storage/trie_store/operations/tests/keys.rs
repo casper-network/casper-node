@@ -1,14 +1,15 @@
 mod partial_tries {
-    use crate::shared::newtypes::CorrelationId;
-
-    use crate::storage::{
-        transaction_source::{Transaction, TransactionSource},
-        trie::Trie,
-        trie_store::operations::{
-            self,
-            tests::{
-                InMemoryTestContext, LmdbTestContext, TestKey, TestValue, TEST_LEAVES,
-                TEST_TRIE_GENERATORS,
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::{Transaction, TransactionSource},
+            trie::Trie,
+            trie_store::operations::{
+                self,
+                tests::{
+                    InMemoryTestContext, LmdbTestContext, TestKey, TestValue, TEST_LEAVES,
+                    TEST_TRIE_GENERATORS,
+                },
             },
         },
     };
@@ -87,16 +88,19 @@ mod partial_tries {
 }
 
 mod full_tries {
-    use crate::shared::newtypes::{Blake2bHash, CorrelationId};
+    use casper_hashing::Digest;
 
-    use crate::storage::{
-        transaction_source::{Transaction, TransactionSource},
-        trie::Trie,
-        trie_store::operations::{
-            self,
-            tests::{
-                InMemoryTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
-                TEST_TRIE_GENERATORS,
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::{Transaction, TransactionSource},
+            trie::Trie,
+            trie_store::operations::{
+                self,
+                tests::{
+                    InMemoryTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
+                    TEST_TRIE_GENERATORS,
+                },
             },
         },
     };
@@ -105,7 +109,7 @@ mod full_tries {
     fn in_memory_keys_from_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (state_index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();
@@ -147,23 +151,25 @@ mod full_tries {
 
 #[cfg(debug_assertions)]
 mod keys_iterator {
-    use crate::shared::newtypes::{Blake2bHash, CorrelationId};
+    use casper_hashing::Digest;
     use casper_types::bytesrepr;
 
-    use crate::storage::{
-        transaction_source::TransactionSource,
-        trie::{Pointer, Trie},
-        trie_store::operations::{
-            self,
-            tests::{
-                hash_test_tries, HashedTestTrie, HashedTrie, InMemoryTestContext, TestKey,
-                TestValue, TEST_LEAVES,
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::TransactionSource,
+            trie::{Pointer, Trie},
+            trie_store::operations::{
+                self,
+                tests::{
+                    hash_test_tries, HashedTestTrie, HashedTrie, InMemoryTestContext, TestKey,
+                    TestValue, TEST_LEAVES,
+                },
             },
         },
     };
 
-    fn create_invalid_extension_trie(
-    ) -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+    fn create_invalid_extension_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
         let leaves = hash_test_tries(&TEST_LEAVES[2..3])?;
         let ext_1 = HashedTrie::new(Trie::extension(
             vec![0u8, 0],
@@ -178,7 +184,7 @@ mod keys_iterator {
         Ok((root_hash, tries))
     }
 
-    fn create_invalid_path_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+    fn create_invalid_path_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
         let leaves = hash_test_tries(&TEST_LEAVES[..1])?;
 
         let root = HashedTrie::new(Trie::node(&[(1, Pointer::NodePointer(leaves[0].hash))]))?;
@@ -189,7 +195,7 @@ mod keys_iterator {
         Ok((root_hash, tries))
     }
 
-    fn create_invalid_hash_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+    fn create_invalid_hash_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Error> {
         let leaves = hash_test_tries(&TEST_LEAVES[..2])?;
 
         let root = HashedTrie::new(Trie::node(&[(0, Pointer::NodePointer(leaves[1].hash))]))?;
@@ -211,7 +217,7 @@ mod keys_iterator {
         };
     }
 
-    fn test_trie(root_hash: Blake2bHash, tries: Vec<HashedTestTrie>) {
+    fn test_trie(root_hash: Digest, tries: Vec<HashedTestTrie>) {
         let correlation_id = CorrelationId::new();
         let context = return_on_err!(InMemoryTestContext::new(&tries));
         let txn = return_on_err!(context.environment.create_read_txn());
@@ -247,14 +253,15 @@ mod keys_iterator {
 }
 
 mod keys_with_prefix_iterator {
-    use crate::shared::newtypes::CorrelationId;
-
-    use crate::storage::{
-        transaction_source::TransactionSource,
-        trie::Trie,
-        trie_store::operations::{
-            self,
-            tests::{create_6_leaf_trie, InMemoryTestContext, TestKey, TestValue, TEST_LEAVES},
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            transaction_source::TransactionSource,
+            trie::Trie,
+            trie_store::operations::{
+                self,
+                tests::{create_6_leaf_trie, InMemoryTestContext, TestKey, TestValue, TEST_LEAVES},
+            },
         },
     };
 

@@ -9,13 +9,14 @@ use core::{
     num::ParseIntError,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -92,7 +93,8 @@ impl Display for FromStrError {
 /// the [`AccessRights`] of the reference.
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default, DataSize)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct URef(URefAddr, AccessRights);
 
 impl URef {
@@ -198,7 +200,7 @@ impl URef {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for URef {
     fn schema_name() -> String {
         String::from("URef")
@@ -207,7 +209,7 @@ impl JsonSchema for URef {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded, formatted URef.".to_string());
+        schema_object.metadata().description = Some(String::from("Hex-encoded, formatted URef."));
         schema_object.into()
     }
 }

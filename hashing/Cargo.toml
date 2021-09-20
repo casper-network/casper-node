@@ -1,0 +1,28 @@
+[package]
+name = "casper-hashing"
+version = "1.0.0"
+edition = "2018"
+description = "A library providing hashing functionality including Merkle Proof utilities."
+readme = "README.md"
+documentation = "https://docs.rs/casper-hashing"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/hashing"
+license-file = "../LICENSE"
+
+[dependencies]
+blake2 = "0.9.0"
+base16 = "0.2.1"
+casper-types = { version = "1.0.0", path = "../types", features = ["gens"] }
+datasize = "0.2.9"
+hex = { version = "0.4.2", default-features = false, features = ["serde"] }
+hex-buffer-serde = "0.3.0"
+itertools = "0.10.1"
+schemars = "0.8.3"
+serde = "1.0.130"
+
+[dev-dependencies]
+assert_matches = "1.3.0"
+criterion = "0.3.5"
+proptest = "1.0.0"
+proptest-attr-macro = "1.0.0"
+tempfile = "3.1.0"

@@ -1,13 +1,13 @@
 use alloc::vec::Vec;
-use core::{convert::TryFrom, fmt, num::ParseIntError};
+use core::{
+    convert::TryFrom,
+    fmt::{self, Display, Formatter},
+    num::ParseIntError,
+};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
-
-#[cfg(not(feature = "std"))]
-use displaydoc::Display;
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
@@ -16,19 +16,9 @@ pub const SEM_VER_SERIALIZED_LENGTH: usize = 3 * U32_SERIALIZED_LENGTH;
 
 /// A struct for semantic versioning.
 #[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Debug,
-    Default,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
+    Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct SemVer {
     /// Major version.
     pub major: u32,
@@ -79,23 +69,28 @@ impl FromBytes for SemVer {
     }
 }
 
-impl fmt::Display for SemVer {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for SemVer {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
 /// Parsing error when creating a SemVer.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Error))]
-#[cfg_attr(not(feature = "std"), derive(Display))]
 pub enum ParseSemVerError {
-    /// Invalid version format
-    #[cfg_attr(feature = "std", error("Invalid version format"))]
+    /// Invalid version format.
     InvalidVersionFormat,
-    /// {0}
-    #[cfg_attr(feature = "std", error("{}", _0))]
+    /// Error parsing an integer.
     ParseIntError(ParseIntError),
+}
+
+impl Display for ParseSemVerError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            ParseSemVerError::InvalidVersionFormat => formatter.write_str("invalid version format"),
+            ParseSemVerError::ParseIntError(error) => error.fmt(formatter),
+        }
+    }
 }
 
 impl From<ParseIntError> for ParseSemVerError {

@@ -6,17 +6,18 @@ edition = "2018"
 
 [dependencies]
 base16 = "0.2.1"
-casper-contract = { path = "../../smart_contracts/contract", default-features = false, features = ["std", "test-support"] }
+casper-contract = { path = "../../smart_contracts/contract", default-features = false, features = ["test-support"] }
 casper-engine-test-support = { path = "../test_support", features = ["test-support"] }
 casper-execution-engine = { path = "../../execution_engine", features = ["test-support"] }
-casper-types = { path = "../../types", default-features = false, features = ["std"] }
+casper-hashing = { path = "../../hashing" }
+casper-types = { path = "../../types", features = ["datasize", "json-schema"] }
 clap = "2"
 crossbeam-channel = "0.5.0"
-dictionary = { path = "../../smart_contracts/contracts/test/dictionary", default-features = false, features = ["std"] }
-dictionary-call = { path = "../../smart_contracts/contracts/test/dictionary-call", default-features = false, features = ["std"] }
+dictionary = { path = "../../smart_contracts/contracts/test/dictionary", default-features = false }
+dictionary-call = { path = "../../smart_contracts/contracts/test/dictionary-call", default-features = false }
 env_logger = "0.8.1"
 fs_extra = "1.2.0"
-get-call-stack-recursive-subcall = { path = "../../smart_contracts/contracts/test/get-call-stack-recursive-subcall", default-features = false, features = ["std"] }
+get-call-stack-recursive-subcall = { path = "../../smart_contracts/contracts/test/get-call-stack-recursive-subcall", default-features = false }
 hex = { version = "0.4.2", features = ["serde"] }
 log = "0.4.8"
 parity-wasm = "0.41.0"
@@ -28,8 +29,8 @@ tempfile = "3"
 [dev-dependencies]
 assert_matches = "1.3.0"
 criterion = "0.3.5"
-gh-1470-regression = { path = "../../smart_contracts/contracts/test/gh-1470-regression", default-features = false, features = ["std"] }
-gh-1470-regression-call = { path = "../../smart_contracts/contracts/test/gh-1470-regression-call", default-features = false, features = ["std"] }
+gh-1470-regression = { path = "../../smart_contracts/contracts/test/gh-1470-regression", default-features = false }
+gh-1470-regression-call = { path = "../../smart_contracts/contracts/test/gh-1470-regression-call", default-features = false }
 num-rational = "0.4.0"
 num-traits = "0.2.10"
 once_cell = "1.5.2"
