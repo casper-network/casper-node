@@ -13,6 +13,7 @@ members = [
     "smart_contracts/contracts/[!.]*/*",
     "types",
     "utils/global-state-update-gen",
+    "utils/retrieve-state",
     "utils/validation",
 ]
 
@@ -26,6 +27,7 @@ default-members = [
     "hashing",
     "node",
     "utils/global-state-update-gen",
+    "utils/retrieve-state",
     "utils/validation",
 ]
 

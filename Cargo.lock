@@ -3616,6 +3616,7 @@ version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "246e9f61b9bb77df069a947682be06e31ac43ea37862e244a69f177694ea6d22"
 dependencies = [
+ "async-compression",
  "base64",
  "bytes",
  "encoding_rs",
@@ -3638,11 +3639,33 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-util",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "winreg",
+]
+
+[[package]]
+name = "retrieve-state"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "casper-contract",
+ "casper-execution-engine",
+ "casper-hashing",
+ "casper-node",
+ "casper-types",
+ "hex",
+ "jsonrpc-lite",
+ "lmdb",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "structopt",
+ "tokio",
+ "walkdir",
 ]
 
 [[package]]

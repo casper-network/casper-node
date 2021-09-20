@@ -1284,7 +1284,7 @@ pub enum HashingAlgorithmVersion {
 impl HashingAlgorithmVersion {
     #[cfg(feature = "casper-mainnet")]
     pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-        // TODO: restore that to 1.4.0 when fast sync is merged
+        // TODO: restore that to the actual switchover version when fast sync is merged
         ProtocolVersion::from_parts(9001, 0, 0);
 
     #[cfg(not(feature = "casper-mainnet"))]
@@ -1677,7 +1677,7 @@ pub(crate) mod json_compatibility {
 
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, PartialEq, Eq, DataSize)]
     #[serde(deny_unknown_fields)]
-    struct JsonEraEnd {
+    pub struct JsonEraEnd {
         era_report: JsonEraReport,
         next_era_validator_weights: Vec<ValidatorWeight>,
     }
@@ -1718,16 +1718,26 @@ pub(crate) mod json_compatibility {
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, PartialEq, Eq, DataSize)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlockHeader {
-        parent_hash: BlockHash,
-        state_root_hash: Digest,
-        body_hash: Digest,
-        random_bit: bool,
-        accumulated_seed: Digest,
-        era_end: Option<JsonEraEnd>,
-        timestamp: Timestamp,
-        era_id: EraId,
-        height: u64,
-        protocol_version: ProtocolVersion,
+        /// The parent hash.
+        pub parent_hash: BlockHash,
+        /// The state root hash.
+        pub state_root_hash: Digest,
+        /// The body hash.
+        pub body_hash: Digest,
+        /// Randomness bit.
+        pub random_bit: bool,
+        /// Accumulated seed.
+        pub accumulated_seed: Digest,
+        /// The era end.
+        pub era_end: Option<JsonEraEnd>,
+        /// The block timestamp.
+        pub timestamp: Timestamp,
+        /// The block era id.
+        pub era_id: EraId,
+        /// The block height.
+        pub height: u64,
+        /// The protocol version.
+        pub protocol_version: ProtocolVersion,
     }
 
     impl From<BlockHeader> for JsonBlockHeader {
@@ -1803,10 +1813,14 @@ pub(crate) mod json_compatibility {
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, PartialEq, Eq, DataSize)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlock {
-        hash: BlockHash,
-        header: JsonBlockHeader,
-        body: JsonBlockBody,
-        proofs: Vec<JsonProof>,
+        /// `BlockHash`
+        pub hash: BlockHash,
+        /// JSON-friendly block header.
+        pub header: JsonBlockHeader,
+        /// JSON-friendly block body.
+        pub body: JsonBlockBody,
+        /// JSON-friendly list of proofs for this block.
+        pub proofs: Vec<JsonProof>,
     }
 
     impl JsonBlock {

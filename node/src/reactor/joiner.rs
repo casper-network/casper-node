@@ -438,12 +438,10 @@ impl reactor::Reactor for Reactor {
                 {
                     if Timestamp::now() > start_time + era_duration {
                         error!(
-                            "Node started with no trusted hash after the expected end of \
-                             the genesis era! Please specify a trusted hash and restart. \
-                             Time: {}, End of genesis era: {}",
-                            Timestamp::now(),
-                            start_time + era_duration
-                        );
+                            now=?Timestamp::now(),
+                            genesis_era_end=?start_time + era_duration,
+                            "node started with no trusted hash after the expected end of \
+                             the genesis era! Please specify a trusted hash and restart.");
                         panic!("should have trusted hash after genesis era")
                     }
                 }

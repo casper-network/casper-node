@@ -71,6 +71,7 @@ pub(super) async fn run<REv: ReactorEventT>(
         rpcs::chain::GetEraInfoBySwitchBlock::create_filter(effect_builder, api_version);
     let rpc_get_auction_info =
         rpcs::state::GetAuctionInfo::create_filter(effect_builder, api_version);
+    let rpc_get_trie = rpcs::state::GetTrie::create_filter(effect_builder, api_version);
     let rpcs_get_validator_changes =
         rpcs::info::GetValidatorChanges::create_filter(effect_builder, api_version);
     let rpc_get_rpcs = rpcs::docs::ListRpcs::create_filter(effect_builder, api_version);
@@ -107,6 +108,7 @@ pub(super) async fn run<REv: ReactorEventT>(
         .or(rpcs_get_validator_changes)
         .or(rpc_get_rpcs)
         .or(rpc_get_dictionary_item)
+        .or(rpc_get_trie)
         .or(rpc_query_global_state)
         .or(unknown_method)
         .or(parse_failure);

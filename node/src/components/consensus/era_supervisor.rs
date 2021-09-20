@@ -949,7 +949,7 @@ where
         let mut effects = Effects::new();
         if !valid {
             warn!(
-                %sender,
+                peer_id=%sender,
                 era = %era_id.value(),
                 "invalid consensus value; disconnecting from the sender"
             );

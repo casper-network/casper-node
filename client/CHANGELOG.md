@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file.  The format
 * Support building and testing using stable Rust.
 * Support `URef`, `PublicKey` and `AccountHash` as transfer targets for `transfer` and `make-transfer`.
 
+### Fixed
+* Stop silently ignoring parse errors for `--session-args-complex` or `--payment-args-complex`.
+
+
 
 ## [1.3.0] - 2021-07-21
 
@@ -35,6 +39,7 @@ All notable changes to this project will be documented in this file.  The format
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to use transactional file writing for enhanced safety and reliability.
 * Update pinned version of Rust to `nightly-2021-06-17`
 * Change the Rust interface of the client library to expose `async` functions, instead of running an executor internally.
+
 
 
 ## [1.2.0] - 2021-05-27
