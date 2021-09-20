@@ -726,7 +726,7 @@ impl Deploy {
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with,
     pub fn is_config_compliant(
-        &mut self,
+        &self,
         chain_name: &str,
         config: &DeployConfig,
     ) -> Result<(), DeployConfigurationFailure> {
@@ -850,7 +850,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn valid_deploy(rng: &mut TestRng) -> Self {
+    pub(crate) fn valid_native_transfer(rng: &mut TestRng) -> Self {
         let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
         let gas_price = rng.gen_range(1..100);
@@ -1012,7 +1012,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_contract_version_in_payment_package(
+    pub(crate) fn with_nonexistent_contract_version_in_payment_package(
         &mut self,
         rng: &mut TestRng,
     ) -> Self {
@@ -1155,7 +1155,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_contract_version_in_session_package(
+    pub(crate) fn with_nonexistent_contract_version_in_session_package(
         &mut self,
         rng: &mut TestRng,
     ) -> Self {
@@ -1580,7 +1580,7 @@ mod tests {
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
 
-        let mut deploy = create_deploy(
+        let deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
             deploy_config.max_dependencies.into(),
@@ -1598,7 +1598,7 @@ mod tests {
         let wrong_chain_name = "net-2".to_string();
         let deploy_config = DeployConfig::default();
 
-        let mut deploy = create_deploy(
+        let deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
             deploy_config.max_dependencies.into(),
@@ -1628,7 +1628,7 @@ mod tests {
 
         let dependency_count = usize::from(deploy_config.max_dependencies + 1);
 
-        let mut deploy = create_deploy(
+        let deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
             dependency_count,
@@ -1658,7 +1658,7 @@ mod tests {
 
         let ttl = deploy_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
 
-        let mut deploy = create_deploy(
+        let deploy = create_deploy(
             &mut rng,
             ttl,
             deploy_config.max_dependencies.into(),
@@ -1750,7 +1750,7 @@ mod tests {
             transfer_args
         };
 
-        let mut deploy = Deploy::new(
+        let deploy = Deploy::new(
             Timestamp::now(),
             deploy_config.max_ttl,
             1,

@@ -69,40 +69,40 @@ pub(crate) enum Error {
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error, Serialize)]
 pub enum DeployParameterFailure {
     /// Account does not exist
-    #[error("Account does not exist")]
+    #[error("account does not exist")]
     NonexistentAccount { account_hash: AccountHash },
     /// Nonexistent contract at hash
-    #[error("Contract at {contract_hash} does not exist")]
+    #[error("contract at {contract_hash} does not exist")]
     NonexistentContractAtHash { contract_hash: ContractHash },
-    #[error("Contract named {name} does not exist in Account's NamedKeys")]
+    #[error("contract named {name} does not exist in Account's NamedKeys")]
     NonexistentContractAtName { name: String },
     /// Nonexistent contract entrypoint
-    #[error("Contract does not have {entry_point}")]
+    #[error("contract does not have {entry_point}")]
     NonexistentContractEntryPoint { entry_point: String },
     /// Contract Package does not exist
-    #[error("Contract Package at {contract_package_hash} does not exist")]
+    #[error("contract Package at {contract_package_hash} does not exist")]
     NonexistentContractPackageAtHash {
         contract_package_hash: ContractPackageHash,
     },
-    #[error("ContractPackage named {name} does not exist in Account's NamedKeys")]
+    #[error("contractPackage named {name} does not exist in Account's NamedKeys")]
     NonexistentContractPackageAtName { name: String },
     /// Invalid contract at given version.
-    #[error("Invalid contract at version: {contract_version}")]
+    #[error("invalid contract at version: {contract_version}")]
     InvalidContractAtVersion { contract_version: ContractVersion },
     /// Invalid associated keys
-    #[error("Account authorization invalid")]
+    #[error("account authorization invalid")]
     InvalidAssociatedKeys,
     /// Insufficient deploy signature weight
-    #[error("Insufficient deploy signature weight")]
+    #[error("insufficient deploy signature weight")]
     InsufficientDeploySignatureWeight,
     /// A deploy was sent from account with insufficient balance.
-    #[error("Insufficient balance")]
-    InsufficientBalance,
+    #[error("insufficient balance in account {account_hash}")]
+    InsufficientBalance { account_hash: AccountHash },
     /// A deploy was sent from account with an unknown balance.
-    #[error("Unable to determine balance")]
-    UnknownBalance,
+    #[error("unable to determine balance for {account_hash}")]
+    UnknownBalance { account_hash: AccountHash },
     /// Transfer is not valid for payment code.
-    #[error("Transfer is not valid for payment code")]
+    #[error("transfer is not valid for payment code")]
     InvalidPaymentVariant,
     /// Missing payment amount.
     #[error("missing payment argument amount")]
@@ -183,19 +183,17 @@ impl DeployAcceptor {
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let verification_start_timestamp = Timestamp::now();
-        let mut cloned_deploy = deploy.clone();
-        let acceptable_result =
-            cloned_deploy.is_config_compliant(&self.chain_name, &self.deploy_config);
+        let acceptable_result = deploy.is_config_compliant(&self.chain_name, &self.deploy_config);
         // checks chainspec values
         // DOES NOT check cryptographic security
         if let Err(error) = acceptable_result {
-            return effect_builder
-                .immediately()
-                .event(move |_| Event::InvalidDeployResult {
-                    event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    error: Error::InvalidDeployConfiguration(error),
-                    verification_start_timestamp,
-                });
+            debug!(?deploy, "deploy is incorrectly configured");
+            return self.handle_invalid_deploy_result(
+                effect_builder,
+                EventMetadata::new(deploy, source, maybe_responder),
+                Error::InvalidDeployConfiguration(error),
+                verification_start_timestamp,
+            );
         }
 
         if self.verify_accounts {
@@ -261,16 +259,20 @@ impl DeployAcceptor {
         match maybe_account {
             None => {
                 let account_hash = event_metadata.deploy().header().account().to_account_hash();
-                effect_builder
-                    .immediately()
-                    .event(move |_| Event::InvalidDeployResult {
-                        event_metadata,
-                        error: Error::InvalidDeployParameters {
-                            prestate_hash,
-                            failure: DeployParameterFailure::NonexistentAccount { account_hash },
-                        },
-                        verification_start_timestamp,
-                    })
+                let error = Error::InvalidDeployParameters {
+                    prestate_hash,
+                    failure: DeployParameterFailure::NonexistentAccount { account_hash },
+                };
+                debug!(
+                    ?account_hash,
+                    "nonexistent account associated with the deploy"
+                );
+                self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    error,
+                    verification_start_timestamp,
+                )
             }
             Some(account) => {
                 let authorization_keys = event_metadata
@@ -280,28 +282,30 @@ impl DeployAcceptor {
                     .map(|approval| approval.signer().to_account_hash())
                     .collect();
                 if !account.can_authorize(&authorization_keys) {
-                    return effect_builder.immediately().event(move |_| {
-                        Event::InvalidDeployResult {
-                            event_metadata,
-                            error: Error::InvalidDeployParameters {
-                                prestate_hash,
-                                failure: DeployParameterFailure::InvalidAssociatedKeys,
-                            },
-                            verification_start_timestamp,
-                        }
-                    });
+                    let error = Error::InvalidDeployParameters {
+                        prestate_hash,
+                        failure: DeployParameterFailure::InvalidAssociatedKeys,
+                    };
+                    debug!(?authorization_keys, "account authorization invalid");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        error,
+                        verification_start_timestamp,
+                    );
                 }
                 if !account.can_deploy_with(&authorization_keys) {
-                    return effect_builder.immediately().event(move |_| {
-                        Event::InvalidDeployResult {
-                            event_metadata,
-                            error: Error::InvalidDeployParameters {
-                                prestate_hash,
-                                failure: DeployParameterFailure::InsufficientDeploySignatureWeight,
-                            },
-                            verification_start_timestamp,
-                        }
-                    });
+                    let error = Error::InvalidDeployParameters {
+                        prestate_hash,
+                        failure: DeployParameterFailure::InsufficientDeploySignatureWeight,
+                    };
+                    debug!(?authorization_keys, "insufficient deploy signature weight");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        error,
+                        verification_start_timestamp,
+                    );
                 }
                 return if event_metadata.source().from_client() {
                     effect_builder
@@ -310,16 +314,16 @@ impl DeployAcceptor {
                             event_metadata,
                             prestate_hash,
                             maybe_balance_value,
+                            account_hash: account.account_hash(),
                             verification_start_timestamp,
                         })
                 } else {
-                    effect_builder
-                        .immediately()
-                        .event(move |_| Event::VerifyPaymentLogic {
-                            event_metadata,
-                            prestate_hash,
-                            verification_start_timestamp,
-                        })
+                    self.verify_payment_logic(
+                        effect_builder,
+                        event_metadata,
+                        prestate_hash,
+                        verification_start_timestamp,
+                    )
                 };
             }
         }
@@ -331,6 +335,7 @@ impl DeployAcceptor {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         maybe_balance_value: Option<U512>,
+        account_hash: AccountHash,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if !event_metadata.source().from_client() {
@@ -340,37 +345,40 @@ impl DeployAcceptor {
             panic!("Balance checks for deploys received from peers should never occur.")
         }
         match maybe_balance_value {
-            None => effect_builder
-                .immediately()
-                .event(move |_| Event::InvalidDeployResult {
+            None => {
+                let error = Error::InvalidDeployParameters {
+                    prestate_hash,
+                    failure: DeployParameterFailure::UnknownBalance { account_hash },
+                };
+                debug!(?account_hash, "unable to determine balance");
+                self.handle_invalid_deploy_result(
+                    effect_builder,
                     event_metadata,
-                    error: Error::InvalidDeployParameters {
-                        prestate_hash,
-                        failure: DeployParameterFailure::UnknownBalance,
-                    },
+                    error,
                     verification_start_timestamp,
-                }),
+                )
+            }
             Some(balance) => {
                 let has_minimum_balance = balance >= *MAX_PAYMENT;
                 if !has_minimum_balance {
-                    effect_builder
-                        .immediately()
-                        .event(move |_| Event::InvalidDeployResult {
-                            event_metadata,
-                            error: Error::InvalidDeployParameters {
-                                prestate_hash,
-                                failure: DeployParameterFailure::InsufficientBalance,
-                            },
-                            verification_start_timestamp,
-                        })
+                    let error = Error::InvalidDeployParameters {
+                        prestate_hash,
+                        failure: DeployParameterFailure::InsufficientBalance { account_hash },
+                    };
+                    debug!(?account_hash, "insufficient balance");
+                    self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        error,
+                        verification_start_timestamp,
+                    )
                 } else {
-                    effect_builder
-                        .immediately()
-                        .event(move |_| Event::VerifyPaymentLogic {
-                            event_metadata,
-                            prestate_hash,
-                            verification_start_timestamp,
-                        })
+                    self.verify_payment_logic(
+                        effect_builder,
+                        event_metadata,
+                        prestate_hash,
+                        verification_start_timestamp,
+                    )
                 }
             }
         }
@@ -386,6 +394,7 @@ impl DeployAcceptor {
         let executable_deploy_item = event_metadata.deploy().payment();
         let mut maybe_failure: Option<DeployParameterFailure> = None;
         if let ExecutableDeployItem::Transfer { .. } = executable_deploy_item {
+            debug!("invalid payment variant in payment logic");
             maybe_failure = Some(DeployParameterFailure::InvalidPaymentVariant);
         }
 
@@ -393,9 +402,11 @@ impl DeployAcceptor {
             if !module_bytes.is_empty() {
                 if let Some(value) = args.get(ARG_AMOUNT) {
                     let _ = value.clone().into_t::<U512>().map_err(|_| {
+                        debug!("failed to parse payment amount");
                         maybe_failure = Some(DeployParameterFailure::FailedToParsePaymentAmount)
                     });
                 } else {
+                    debug!("payment amount missing in payment logic");
                     maybe_failure = Some(DeployParameterFailure::MissingPaymentAmount)
                 }
             }
@@ -403,29 +414,28 @@ impl DeployAcceptor {
 
         match maybe_failure {
             Some(failure) => {
-                effect_builder
-                    .immediately()
-                    .event(move |_| Event::InvalidDeployResult {
-                        event_metadata,
-                        error: Error::InvalidDeployParameters {
-                            prestate_hash,
-                            failure,
-                        },
-                        verification_start_timestamp,
-                    })
+                let error = Error::InvalidDeployParameters {
+                    prestate_hash,
+                    failure,
+                };
+                self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    error,
+                    verification_start_timestamp,
+                )
             }
             None => {
                 let executable_deploy_item_identifier = executable_deploy_item.identifier();
                 let account_hash = event_metadata.deploy().header().account().to_account_hash();
                 match executable_deploy_item_identifier {
                     ExecutableDeployItemIdentifier::Module
-                    | ExecutableDeployItemIdentifier::Transfer => effect_builder
-                        .immediately()
-                        .event(move |_| Event::VerifySessionLogic {
-                            event_metadata,
-                            prestate_hash,
-                            verification_start_timestamp,
-                        }),
+                    | ExecutableDeployItemIdentifier::Transfer => self.verify_session_logic(
+                        effect_builder,
+                        event_metadata,
+                        prestate_hash,
+                        verification_start_timestamp,
+                    ),
                     ExecutableDeployItemIdentifier::Contract(contract_identifier) => {
                         let (query_key, path) = match contract_identifier.clone() {
                             ContractIdentifier::Name(name) => {
@@ -495,49 +505,54 @@ impl DeployAcceptor {
         if let ExecutableDeployItem::Transfer { args } = executable_deploy_item {
             if let Some(value) = args.get(ARG_AMOUNT) {
                 let _ = value.clone().into_t::<U512>().map_err(|_| {
+                    debug!("failed to parse transfer amount in native transfer object");
                     maybe_failure = Some(DeployParameterFailure::FailedToParseTransferAmount)
                 });
             } else {
+                debug!("native transfer object is missing transfer amount");
                 maybe_failure = Some(DeployParameterFailure::MissingTransferAmount)
             }
             if args.get(ARG_TARGET).is_none() {
+                debug!("native transfer object is missing transfer argument");
                 maybe_failure = Some(DeployParameterFailure::MissingTransferTargetArgument)
             }
             if args.get(ARG_SOURCE).is_none() {
+                debug!("native transfer object is missing source argument");
                 maybe_failure = Some(DeployParameterFailure::MissingTransferSourceArgument)
             }
         }
 
         if let ExecutableDeployItem::ModuleBytes { module_bytes, .. } = executable_deploy_item {
             if module_bytes.is_empty() {
+                debug!("module bytes in session logic is empty");
                 maybe_failure = Some(DeployParameterFailure::MissingModuleBytes)
             }
         }
 
         match maybe_failure {
             Some(failure) => {
-                effect_builder
-                    .immediately()
-                    .event(move |_| Event::InvalidDeployResult {
-                        event_metadata,
-                        error: Error::InvalidDeployParameters {
-                            prestate_hash,
-                            failure,
-                        },
-                        verification_start_timestamp,
-                    })
+                let error = Error::InvalidDeployParameters {
+                    prestate_hash,
+                    failure,
+                };
+                self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    error,
+                    verification_start_timestamp,
+                )
             }
             None => {
                 let executable_deploy_item_identifier = executable_deploy_item.identifier();
                 let account_hash = event_metadata.deploy().header().account().to_account_hash();
                 match executable_deploy_item_identifier {
                     ExecutableDeployItemIdentifier::Module
-                    | ExecutableDeployItemIdentifier::Transfer => effect_builder
-                        .immediately()
-                        .event(move |_| Event::VerifyDeployCryptographicValidity {
+                    | ExecutableDeployItemIdentifier::Transfer => self
+                        .validate_deploy_cryptography(
+                            effect_builder,
                             event_metadata,
                             verification_start_timestamp,
-                        }),
+                        ),
                     ExecutableDeployItemIdentifier::Contract(contract_identifier) => {
                         let (query_key, path) = match contract_identifier.clone() {
                             ContractIdentifier::Name(name) => {
@@ -609,55 +624,60 @@ impl DeployAcceptor {
     ) -> Effects<Event> {
         if let Some(contract) = maybe_contract {
             if !contract.entry_points().has_entry_point(&entry_point) {
-                let failure = DeployParameterFailure::NonexistentContractEntryPoint { entry_point };
-                return effect_builder
-                    .immediately()
-                    .event(move |_| Event::InvalidDeployResult {
-                        event_metadata,
-                        error: Error::InvalidDeployParameters {
-                            prestate_hash,
-                            failure,
-                        },
-                        verification_start_timestamp,
-                    });
+                debug!(
+                    ?entry_point,
+                    ?contract_identifier,
+                    ?prestate_hash,
+                    "missing entry point in contract"
+                );
+                let error = Error::InvalidDeployParameters {
+                    prestate_hash,
+                    failure: DeployParameterFailure::NonexistentContractEntryPoint { entry_point },
+                };
+                return self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    error,
+                    verification_start_timestamp,
+                );
             }
             return if is_payment {
-                effect_builder
-                    .immediately()
-                    .event(move |_| Event::VerifySessionLogic {
-                        event_metadata,
-                        prestate_hash,
-                        verification_start_timestamp,
-                    })
+                self.verify_session_logic(
+                    effect_builder,
+                    event_metadata,
+                    prestate_hash,
+                    verification_start_timestamp,
+                )
             } else {
-                effect_builder.immediately().event(move |_| {
-                    Event::VerifyDeployCryptographicValidity {
-                        event_metadata,
-                        verification_start_timestamp,
-                    }
-                })
+                self.validate_deploy_cryptography(
+                    effect_builder,
+                    event_metadata,
+                    verification_start_timestamp,
+                )
             };
         }
 
         let failure = match contract_identifier {
             ContractIdentifier::Name(name) => {
+                debug!(?name, "nonexistent contract with name");
                 DeployParameterFailure::NonexistentContractAtName { name }
             }
             ContractIdentifier::Hash(contract_hash) => {
+                debug!(?contract_hash, "nonexistent contract with hash");
                 DeployParameterFailure::NonexistentContractAtHash { contract_hash }
             }
         };
 
-        effect_builder
-            .immediately()
-            .event(move |_| Event::InvalidDeployResult {
-                event_metadata,
-                error: Error::InvalidDeployParameters {
-                    prestate_hash,
-                    failure,
-                },
-                verification_start_timestamp,
-            })
+        let error = Error::InvalidDeployParameters {
+            prestate_hash,
+            failure,
+        };
+        self.handle_invalid_deploy_result(
+            effect_builder,
+            event_metadata,
+            error,
+            verification_start_timestamp,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -675,26 +695,32 @@ impl DeployAcceptor {
             None => {
                 let failure = match contract_package_identifier {
                     ContractPackageIdentifier::Name { name, .. } => {
+                        debug!(?name, "nonexistent contract package with name");
                         DeployParameterFailure::NonexistentContractPackageAtName { name }
                     }
                     ContractPackageIdentifier::Hash {
                         contract_package_hash,
                         ..
-                    } => DeployParameterFailure::NonexistentContractPackageAtHash {
-                        contract_package_hash,
-                    },
+                    } => {
+                        debug!(
+                            ?contract_package_hash,
+                            "nonexistent contract package with hash"
+                        );
+                        DeployParameterFailure::NonexistentContractPackageAtHash {
+                            contract_package_hash,
+                        }
+                    }
                 };
-
-                effect_builder
-                    .immediately()
-                    .event(move |_| Event::InvalidDeployResult {
-                        event_metadata,
-                        error: Error::InvalidDeployParameters {
-                            prestate_hash,
-                            failure,
-                        },
-                        verification_start_timestamp,
-                    })
+                let error = Error::InvalidDeployParameters {
+                    prestate_hash,
+                    failure,
+                };
+                self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    error,
+                    verification_start_timestamp,
+                )
             }
             Some(contract_package) => match contract_package_identifier.version() {
                 Some(contract_version) => {
@@ -716,36 +742,37 @@ impl DeployAcceptor {
                                     verification_start_timestamp,
                                 })
                         }
-                        None => effect_builder.immediately().event(move |_| {
-                            Event::InvalidDeployResult {
-                                event_metadata,
-                                error: Error::InvalidDeployParameters {
-                                    prestate_hash,
-                                    failure: DeployParameterFailure::InvalidContractAtVersion {
-                                        contract_version,
-                                    },
+                        None => {
+                            debug!(?contract_version, "invalid contract at version");
+                            let error = Error::InvalidDeployParameters {
+                                prestate_hash,
+                                failure: DeployParameterFailure::InvalidContractAtVersion {
+                                    contract_version,
                                 },
+                            };
+                            self.handle_invalid_deploy_result(
+                                effect_builder,
+                                event_metadata,
+                                error,
                                 verification_start_timestamp,
-                            }
-                        }),
+                            )
+                        }
                     }
                 }
                 None => {
                     if is_payment {
-                        effect_builder
-                            .immediately()
-                            .event(move |_| Event::VerifySessionLogic {
-                                event_metadata,
-                                prestate_hash,
-                                verification_start_timestamp,
-                            })
+                        self.verify_session_logic(
+                            effect_builder,
+                            event_metadata,
+                            prestate_hash,
+                            verification_start_timestamp,
+                        )
                     } else {
-                        effect_builder.immediately().event(move |_| {
-                            Event::VerifyDeployCryptographicValidity {
-                                event_metadata,
-                                verification_start_timestamp,
-                            }
-                        })
+                        self.validate_deploy_cryptography(
+                            effect_builder,
+                            event_metadata,
+                            verification_start_timestamp,
+                        )
                     }
                 }
             },
@@ -791,13 +818,13 @@ impl DeployAcceptor {
         if let Err(deploy_configuration_failure) = cloned_deploy.is_valid() {
             // The client has submitted a deploy with one or more invalid signatures.
             // Return an error to the RPC component via the responder.
-            return effect_builder
-                .immediately()
-                .event(move |_| Event::InvalidDeployResult {
-                    event_metadata,
-                    error: Error::InvalidDeployConfiguration(deploy_configuration_failure),
-                    verification_start_timestamp,
-                });
+            debug!("deploy is cryptographically invalid");
+            return self.handle_invalid_deploy_result(
+                effect_builder,
+                event_metadata,
+                Error::InvalidDeployConfiguration(deploy_configuration_failure),
+                verification_start_timestamp,
+            );
         }
 
         effect_builder
@@ -807,6 +834,33 @@ impl DeployAcceptor {
                 is_new,
                 verification_start_timestamp,
             })
+    }
+
+    fn handle_invalid_deploy_result<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: EventMetadata,
+        error: Error,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        let EventMetadata {
+            deploy,
+            source,
+            maybe_responder,
+        } = event_metadata;
+        self.metrics.observe_rejected(verification_start_timestamp);
+        let mut effects = Effects::new();
+        // The client has submitted a deploy with one or more invalid signatures.
+        // Return an error to the RPC component via the responder.
+        if let Some(responder) = maybe_responder {
+            effects.extend(responder.respond(Err(error)).ignore());
+        }
+        effects.extend(
+            effect_builder
+                .announce_invalid_deploy(deploy, source)
+                .ignore(),
+        );
+        effects
     }
 }
 
@@ -853,32 +907,14 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 event_metadata,
                 prestate_hash,
                 maybe_balance_value,
+                account_hash,
                 verification_start_timestamp,
             } => self.handle_get_balance_result(
                 effect_builder,
                 event_metadata,
                 prestate_hash,
                 maybe_balance_value,
-                verification_start_timestamp,
-            ),
-            Event::VerifyPaymentLogic {
-                event_metadata,
-                prestate_hash,
-                verification_start_timestamp,
-            } => self.verify_payment_logic(
-                effect_builder,
-                event_metadata,
-                prestate_hash,
-                verification_start_timestamp,
-            ),
-            Event::VerifySessionLogic {
-                event_metadata,
-                prestate_hash,
-                verification_start_timestamp,
-            } => self.verify_session_logic(
-                effect_builder,
-                event_metadata,
-                prestate_hash,
+                account_hash,
                 verification_start_timestamp,
             ),
             Event::GetContractResult {
@@ -940,30 +976,6 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 is_new,
                 verification_start_timestamp,
             ),
-            Event::InvalidDeployResult {
-                event_metadata,
-                error,
-                verification_start_timestamp,
-            } => {
-                let EventMetadata {
-                    deploy,
-                    source,
-                    maybe_responder,
-                } = event_metadata;
-                self.metrics.observe_rejected(verification_start_timestamp);
-                let mut effects = Effects::new();
-                // The client has submitted a deploy with one or more invalid signatures.
-                // Return an error to the RPC component via the responder.
-                if let Some(responder) = maybe_responder {
-                    effects.extend(responder.respond(Err(error)).ignore());
-                }
-                effects.extend(
-                    effect_builder
-                        .announce_invalid_deploy(deploy, source)
-                        .ignore(),
-                );
-                effects
-            }
         }
     }
 }

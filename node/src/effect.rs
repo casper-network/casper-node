@@ -1484,7 +1484,7 @@ impl<REv> EffectBuilder<REv> {
         }
     }
 
-    /// Retrieves the balance of a purse, returns `None` is no purse is present.
+    /// Retrieves the balance of a purse, returns `None` if no purse is present.
     pub(crate) async fn check_purse_balance(
         self,
         prestate_hash: Digest,

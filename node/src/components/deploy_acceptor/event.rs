@@ -13,7 +13,10 @@ use casper_execution_engine::core::engine_state::executable_deploy_item::{
     ContractIdentifier, ContractPackageIdentifier,
 };
 use casper_hashing::Digest;
-use casper_types::{account::Account, Contract, ContractPackage, U512};
+use casper_types::{
+    account::{Account, AccountHash},
+    Contract, ContractPackage, U512,
+};
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
@@ -64,12 +67,6 @@ pub(crate) enum Event {
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
-    /// The InvalidDeployResult event
-    InvalidDeployResult {
-        event_metadata: EventMetadata,
-        error: Error,
-        verification_start_timestamp: Timestamp,
-    },
     /// The result of querying the highest available `Block` from the storage component.
     GetBlockResult {
         event_metadata: EventMetadata,
@@ -88,18 +85,7 @@ pub(crate) enum Event {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         maybe_balance_value: Option<U512>,
-        verification_start_timestamp: Timestamp,
-    },
-    /// The event to initiate verification of the payment logic in the `Deploy`.
-    VerifyPaymentLogic {
-        event_metadata: EventMetadata,
-        prestate_hash: Digest,
-        verification_start_timestamp: Timestamp,
-    },
-    /// The event to initiate verification of the session logic in the `Deploy`.
-    VerifySessionLogic {
-        event_metadata: EventMetadata,
-        prestate_hash: Digest,
+        account_hash: AccountHash,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for a `Contract` to verify the executable logic.
@@ -164,20 +150,6 @@ impl Display for Event {
                     )
                 }
             }
-
-            Event::InvalidDeployResult {
-                event_metadata,
-                error,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "deploy received by {} with hash: {} is invalid due to error: {:?}.",
-                    event_metadata.source(),
-                    event_metadata.deploy().id(),
-                    error
-                )
-            }
             Event::GetBlockResult { event_metadata, .. } => {
                 write!(
                     formatter,
@@ -197,30 +169,6 @@ impl Display for Event {
                     formatter,
                     "verifying account balance to validate deploy with hash {}.",
                     event_metadata.deploy().id()
-                )
-            }
-            Event::VerifyPaymentLogic {
-                event_metadata,
-                prestate_hash,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "verifying payment logic to validate deploy with hash {} with state hash: {}.",
-                    event_metadata.deploy().id(),
-                    prestate_hash
-                )
-            }
-            Event::VerifySessionLogic {
-                event_metadata,
-                prestate_hash,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "verifying session logic to validate deploy with hash {} with state hash: {}.",
-                    event_metadata.deploy().id(),
-                    prestate_hash
                 )
             }
             Event::GetContractResult {

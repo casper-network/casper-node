@@ -160,7 +160,7 @@ impl TestScenario {
     }
 
     fn deploy(&self, rng: &mut NodeRng) -> Deploy {
-        let mut deploy = Deploy::valid_deploy(rng);
+        let mut deploy = Deploy::valid_native_transfer(rng);
         match self {
             TestScenario::FromPeerInvalidDeploy | TestScenario::FromClientInvalidDeploy => {
                 deploy.invalidate();
@@ -198,7 +198,7 @@ impl TestScenario {
                         deploy.with_missing_payment_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.with_missing_contract_version_in_payment_package(rng)
+                        deploy.with_nonexistent_contract_version_in_payment_package(rng)
                     }
                 }
             }
@@ -223,7 +223,7 @@ impl TestScenario {
                         deploy.with_missing_session_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.with_missing_contract_version_in_session_package(rng)
+                        deploy.with_nonexistent_contract_version_in_session_package(rng)
                     }
                 }
             }
@@ -824,7 +824,7 @@ async fn should_reject_valid_deploy_from_client_for_insufficient_balance() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::InsufficientBalance,
+            failure: DeployParameterFailure::InsufficientBalance { .. },
             ..
         })
     ))
@@ -836,7 +836,7 @@ async fn should_reject_valid_deploy_from_client_for_unknown_balance() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::UnknownBalance,
+            failure: DeployParameterFailure::UnknownBalance { .. },
             ..
         })
     ))
