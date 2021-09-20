@@ -2,6 +2,15 @@ use crate::types::{ActivationPoint, Block, BlockHash};
 
 use std::fmt::{Debug, Display};
 
+use datasize::DataSize;
+
+#[derive(DataSize, Debug, PartialEq)]
+pub enum StopReason {
+    None,
+    ForUpgrade,
+    ForDowngrade,
+}
+
 #[derive(Debug)]
 pub enum Event<I> {
     Start(I),
@@ -15,7 +24,7 @@ pub enum Event<I> {
     InitUpgradeShutdown,
     /// An event instructing us to shutdown if we haven't downloaded any blocks.
     InitializeTimeout,
-    Shutdown(bool),
+    Shutdown(StopReason),
 }
 
 #[derive(Debug)]
@@ -69,10 +78,10 @@ where
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
             Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiated"),
-            Event::Shutdown(upgrade) => write!(
+            Event::Shutdown(reason) => write!(
                 f,
-                "linear chain sync is ready for shutdown. upgrade: {}",
-                upgrade
+                "linear chain sync is ready for shutdown. reason: {:?}",
+                reason
             ),
             Event::InitializeTimeout => write!(f, "Initialize timeout"),
         }

@@ -30,7 +30,7 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{convert::Infallible, fmt::Display, mem};
+use std::{cmp::Ordering, convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -61,8 +61,8 @@ use crate::{
     NodeRng,
 };
 pub(crate) use config::Config;
-use event::BlockByHeightResult;
 pub(crate) use event::Event;
+use event::{BlockByHeightResult, StopReason};
 pub(crate) use metrics::LinearChainSyncMetrics;
 pub(crate) use peers::PeersState;
 pub(crate) use state::State;
@@ -78,7 +78,7 @@ pub(crate) struct LinearChainSync<I> {
     /// When we download the switch block of an era immediately before the activation point,
     /// we need to shut down for an upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
-    stop_for_upgrade: bool,
+    stop_reason: StopReason,
     /// Key for storing the linear chain sync state.
     state_key: Vec<u8>,
     /// Shortest era that is allowed with the given protocol configuration.
@@ -167,7 +167,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 state,
                 metrics: LinearChainSyncMetrics::new(registry)?,
                 next_upgrade_activation_point,
-                stop_for_upgrade: false,
+                stop_reason: StopReason::None,
                 state_key,
                 shortest_era,
                 min_round_length: chainspec.highway_config.min_round_length(),
@@ -206,7 +206,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
             next_upgrade_activation_point,
-            stop_for_upgrade: false,
+            stop_reason: StopReason::None,
             state_key,
             shortest_era,
             min_round_length: chainspec.highway_config.min_round_length(),
@@ -233,7 +233,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we should stop for upgrade.
     pub(crate) fn stopped_for_upgrade(&self) -> bool {
-        self.stop_for_upgrade
+        self.stop_reason == StopReason::ForUpgrade
+    }
+
+    /// Returns `true` if we should stop for downgrade.
+    pub(crate) fn stopped_for_downgrade(&self) -> bool {
+        self.stop_reason == StopReason::ForDowngrade
     }
 
     fn block_downloaded<REv>(
@@ -528,7 +533,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
         effect_builder
             .save_state(self.state_key.clone().into(), Some(self.state.clone()))
-            .event(|_| Event::Shutdown(true))
+            .event(|_| Event::Shutdown(StopReason::ForUpgrade))
     }
 
     pub(crate) fn latest_block(&self) -> Option<&Block> {
@@ -779,6 +784,24 @@ where
                 self.metrics.observe_get_deploys();
                 match fetch_result {
                     event::DeploysResult::Found(block_to_execute) => {
+                        // Before we execute, check if the protocol version is correct - if not,
+                        // stop for an upgrade/downgrade
+                        match self
+                            .protocol_version
+                            .cmp(&block_to_execute.protocol_version())
+                        {
+                            Ordering::Less => {
+                                return effect_builder
+                                    .immediately()
+                                    .event(|_| Event::Shutdown(StopReason::ForUpgrade));
+                            }
+                            Ordering::Greater => {
+                                return effect_builder
+                                    .immediately()
+                                    .event(|_| Event::Shutdown(StopReason::ForDowngrade));
+                            }
+                            _ => (),
+                        }
                         let block_hash = block_to_execute.hash();
                         trace!(%block_hash, "deploys for linear chain block found");
                         // Reset used peers so we can download next block with the full set.
@@ -853,9 +876,9 @@ where
                 // Serialize and store state.
                 self.handle_upgrade_shutdown(effect_builder)
             }
-            Event::Shutdown(upgrade) => {
-                info!(%upgrade, "ready for shutdown");
-                self.stop_for_upgrade = upgrade;
+            Event::Shutdown(reason) => {
+                info!(?reason, "ready for shutdown");
+                self.stop_reason = reason;
                 Effects::new()
             }
             Event::InitializeTimeout => {
