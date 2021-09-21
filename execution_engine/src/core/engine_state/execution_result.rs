@@ -2,12 +2,12 @@
 use std::collections::VecDeque;
 
 use casper_types::{
-    bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Gas, Key, Motes, StoredValue,
-    TransferAddr,
+    bytesrepr::FromBytes, CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
 use super::{error, execution_effect::ExecutionEffect, op::Op};
 use crate::{
+    core::execution::Error as ExecError,
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::StateReader,
 };
@@ -17,13 +17,15 @@ fn make_payment_error_effects(
     account_main_purse_balance: Motes,
     account_main_purse_balance_key: Key,
     proposer_main_purse_balance_key: Key,
-) -> Result<ExecutionEffect, CLValueError> {
+) -> Result<ExecutionEffect, error::Error> {
     let mut ops = AdditiveMap::new();
     let mut transforms = AdditiveMap::new();
 
-    let new_balance = account_main_purse_balance - max_payment_cost;
+    let new_balance = account_main_purse_balance
+        .checked_sub(max_payment_cost)
+        .ok_or(error::Error::InsufficientPayment)?;
     // from_t for U512 is assumed to never panic
-    let new_balance_clvalue = CLValue::from_t(new_balance.value())?;
+    let new_balance_clvalue = CLValue::from_t(new_balance.value()).map_err(ExecError::from)?;
     let new_balance_value = StoredValue::CLValue(new_balance_clvalue);
 
     let account_main_purse_balance_normalize = account_main_purse_balance_key.normalize();
@@ -315,9 +317,6 @@ impl ExecutionResult {
     ///
     /// The effects that are produced as part of this process would subract `max_payment_cost` from
     /// account's main purse, and add `max_payment_cost` to proposer account's balance.
-    ///
-    /// NOTE: This function assumes that `max_payment_cost <= account_main_purse_balance`.
-    /// Not obeying this restriction is a programming error with undefined behavior.
     pub fn new_payment_code_error(
         error: error::Error,
         max_payment_cost: Motes,
@@ -325,7 +324,7 @@ impl ExecutionResult {
         gas_cost: Gas,
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
-    ) -> Result<ExecutionResult, CLValueError> {
+    ) -> Result<ExecutionResult, error::Error> {
         let execution_effect = make_payment_error_effects(
             max_payment_cost,
             account_main_purse_balance,

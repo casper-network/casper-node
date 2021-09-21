@@ -33,6 +33,11 @@ impl Motes {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if underflow occurred.
+    pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
+        self.0.checked_sub(rhs.value()).map(Self::new)
+    }
+
     /// Returns the inner `U512` value.
     pub fn value(&self) -> U512 {
         self.0

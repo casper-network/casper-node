@@ -745,10 +745,7 @@ where
             proposer_main_purse_balance_key,
         ) {
             Ok(execution_result) => execution_result,
-            Err(error) => {
-                let exec_error = ExecError::from(error);
-                ExecutionResult::precondition_failure(exec_error.into())
-            }
+            Err(error) => ExecutionResult::precondition_failure(error),
         };
 
         // All wasmless transfer preconditions are met.
@@ -1497,10 +1494,7 @@ where
                 proposer_main_purse_balance_key,
             ) {
                 Ok(execution_result) => return Ok(execution_result),
-                Err(error) => {
-                    let exec_error = ExecError::from(error);
-                    return Ok(ExecutionResult::precondition_failure(exec_error.into()));
-                }
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             }
         };
 
