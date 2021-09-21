@@ -308,12 +308,13 @@ impl ExecutionResult {
         }
     }
 
-    /// TODO: This comment is not very helpful. Clarify what the method does.
-    ///
     /// Creates a new payment code error.
     ///
     /// The method below creates an [`ExecutionResult`] with precomputed effects of a
     /// "finalize_payment".
+    ///
+    /// The effects that are produced as part of this process would subract `max_payment_cost` from
+    /// account's main purse, and add `max_payment_cost` to proposer account's balance.
     pub fn new_payment_code_error(
         error: error::Error,
         max_payment_cost: Motes,
