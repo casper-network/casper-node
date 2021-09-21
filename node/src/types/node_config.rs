@@ -8,7 +8,7 @@ use crate::types::{BlockHash, TimeDiff};
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct NodeConfig {
-    /// Hash used as a trust anchor when joining. If no hash is provided, attempt to run genesis.
+    /// Hash used as a trust anchor when joining, if any.
     pub trusted_hash: Option<BlockHash>,
 
     /// An (optional) time to expiration for the header for the trusted hash. If the timestamp of
