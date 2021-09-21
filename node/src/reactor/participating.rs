@@ -45,7 +45,7 @@ use crate::{
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
-        storage::Storage,
+        storage::{self, Storage},
         Component,
     },
     effect::{
@@ -92,6 +92,9 @@ pub(crate) enum ParticipatingEvent {
     /// Small network event.
     #[from]
     SmallNetwork(small_network::Event<Message>),
+    /// Storage event.
+    #[from]
+    Storage(storage::Event),
     /// Block proposer event.
     #[from]
     BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
@@ -272,6 +275,7 @@ impl From<ConsensusRequest> for ParticipatingEvent {
 impl Display for ParticipatingEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::Network(event) => write!(f, "network: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
@@ -816,6 +820,10 @@ impl reactor::Reactor for Reactor {
         event: ParticipatingEvent,
     ) -> Effects<Self::Event> {
         match event {
+            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::Network(event) => reactor::wrap_effects(
                 ParticipatingEvent::Network,
                 self.network.handle_event(effect_builder, rng, event),
@@ -926,8 +934,8 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::ChainspecLoader(req.into()),
             ),
             ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(
-                ParticipatingEvent::StorageRequest,
-                self.storage.handle_event(effect_builder, rng, req),
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
             ),
             ParticipatingEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::AddressGossiper,

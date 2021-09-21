@@ -35,7 +35,7 @@ use crate::{
         network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
-        storage::Storage,
+        storage::{self, Storage},
         Component,
     },
     effect::{
@@ -90,7 +90,7 @@ pub(crate) enum JoinerEvent {
 
     /// Storage event.
     #[from]
-    Storage(#[serde(skip_serializing)] StorageRequest),
+    Storage(storage::Event),
 
     #[from]
     /// REST server event.
@@ -153,6 +153,10 @@ pub(crate) enum JoinerEvent {
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
     /// Requests.
+    /// Storage request.
+    #[from]
+    StorageRequest(StorageRequest),
+
     /// Linear chain block by hash fetcher request.
     #[from]
     BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
@@ -301,6 +305,7 @@ impl Display for JoinerEvent {
             JoinerEvent::ChainspecLoaderRequest(req) => {
                 write!(f, "chainspec loader request: {}", req)
             }
+            JoinerEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
             JoinerEvent::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             JoinerEvent::BlockFetcherRequest(request) => {
                 write!(f, "block fetcher request: {}", request)
@@ -669,6 +674,10 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 JoinerEvent::DeployFetcher(request.into()),
+            ),
+            JoinerEvent::StorageRequest(req) => reactor::wrap_effects(
+                JoinerEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
             ),
             JoinerEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,

@@ -47,16 +47,19 @@ pub(crate) enum Event {
     Chainspec(chainspec_loader::Event),
 
     /// Storage event.
-
     #[from]
-    Storage(#[serde(skip_serializing)] StorageRequest),
+    Storage(storage::Event),
 
     /// Contract runtime event.
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
 
-    /// Control announcement
+    /// Control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+
+    /// Storage request.
+    #[from]
+    StorageRequest(StorageRequest),
 }
 
 impl From<ContractRuntimeRequest> for Event {
@@ -118,6 +121,7 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {:?}", event),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
+            Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
         }
     }
 }
@@ -277,6 +281,10 @@ impl reactor::Reactor for Reactor {
                 Event::from,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, *event),
+            ),
+            Event::StorageRequest(req) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
             ),
             Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
         }

@@ -60,13 +60,15 @@ enum Event {
     #[from]
     Network(in_memory_network::Event<NodeMessage>),
     #[from]
-    Storage(#[serde(skip_serializing)] StorageRequest),
+    Storage(storage::Event),
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
     NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
+    #[from]
+    StorageRequest(StorageRequest),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
@@ -136,6 +138,7 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
+            Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::RpcServerAnnouncement(ann) => {
@@ -267,6 +270,11 @@ impl reactor::Reactor for Reactor {
             Event::NetworkRequest(request) => reactor::wrap_effects(
                 Event::Network,
                 self.network
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            Event::StorageRequest(request) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
             Event::ControlAnnouncement(ctrl_ann) => {

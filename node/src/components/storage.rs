@@ -46,12 +46,14 @@ use std::collections::BTreeSet;
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
+    fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
@@ -66,13 +68,11 @@ use tracing::{debug, error, info, warn};
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{EraId, ExecutionResult, PublicKey, Transfer, Transform};
 
-pub(crate) use crate::effect::requests::StorageRequest; // Needed by reactor! macro in fetcher tests...
-
 use crate::{
     components::{consensus, consensus::error::FinalitySignatureError, Component},
     crypto,
     crypto::hash::{self, Digest},
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::ReactorEvent,
     types::{
@@ -116,7 +116,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 /// Mac OS X exhibits performance regressions when `WRITE_MAP` is used.
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
-const _STORAGE_EVENT_SIZE: usize = mem::size_of::<StorageRequest>();
+const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
 const STORAGE_FILES: [&str; 5] = [
@@ -344,11 +344,28 @@ pub(crate) struct Storage {
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
 }
 
+/// A storage component event.
+#[derive(Debug, From, Serialize)]
+#[repr(u8)]
+pub(crate) enum Event {
+    /// Incoming storage request.
+    #[from]
+    StorageRequest(StorageRequest),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::StorageRequest(req) => req.fmt(f),
+        }
+    }
+}
+
 impl<REv> Component<REv> for Storage
 where
     REv: ReactorEvent,
 {
-    type Event = StorageRequest;
+    type Event = Event;
     type ConstructionError = Error;
 
     fn handle_event(
@@ -360,7 +377,11 @@ where
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
         // we are dropping a lot of responders this way, but since we are crashing with fatal
         // anyway, it should not matter.
-        match self.handle_storage_request::<REv>(event) {
+        let outcome = match event {
+            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
+        };
+
+        match outcome {
             Ok(effects) => effects,
             Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
@@ -570,10 +591,7 @@ impl Storage {
     }
 
     /// Handles a storage request.
-    fn handle_storage_request<REv>(
-        &mut self,
-        req: StorageRequest,
-    ) -> Result<Effects<StorageRequest>, Error>
+    fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
     where
         Self: Component<REv>,
     {

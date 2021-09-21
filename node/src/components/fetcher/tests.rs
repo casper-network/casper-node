@@ -88,12 +88,12 @@ cfg.fetcher_config, registry);     }
     events: {
         network = Event<Message>;
         deploy_fetcher = Event<Deploy>;
-        storage = StorageRequest;
     }
 
     requests: {
         NetworkRequest<NodeId, Message> -> network;
         FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
+        StorageRequest -> storage;
 
         // The only contract runtime request will be the commit of genesis, which we discard.
         ContractRuntimeRequest -> #;
