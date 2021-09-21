@@ -3,6 +3,7 @@
 mod memory_metrics;
 
 use std::{
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
@@ -909,6 +910,10 @@ impl reactor::Reactor for Reactor {
             ) => {
                 // Upcoming validators are not used by joiner reactor
                 Effects::new()
+            }
+            JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                // no consensus, respond with empty map
+                responder.respond(BTreeMap::new()).ignore()
             }
         }
     }

@@ -1610,6 +1610,33 @@
             ],
             "type": "object"
           },
+          "JsonValidatorStatusChange": {
+            "additionalProperties": false,
+            "description": "A single change to a validator's status in the given era.",
+            "properties": {
+              "era_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The era in which the change occurred."
+              },
+              "validator_change": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidatorChange"
+                  }
+                ],
+                "description": "The change in validator status."
+              }
+            },
+            "required": [
+              "era_id",
+              "validator_change"
+            ],
+            "type": "object"
+          },
           "JsonEraEnd": {
             "additionalProperties": false,
             "properties": {
@@ -1720,6 +1747,32 @@
             "required": [
               "public_key",
               "signature"
+            ],
+            "type": "object"
+          },
+          "JsonValidatorChanges": {
+            "additionalProperties": false,
+            "description": "The changes in a validator's status.",
+            "properties": {
+              "public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "The public key of the validator."
+              },
+              "status_changes": {
+                "description": "The set of changes to the validator's status.",
+                "items": {
+                  "$ref": "#/components/schemas/JsonValidatorStatusChange"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "public_key",
+              "status_changes"
             ],
             "type": "object"
           },
@@ -2554,6 +2607,17 @@
             ],
             "type": "object"
           },
+          "ValidatorChange": {
+            "description": "A change to a validator's status between two eras.",
+            "enum": [
+              "Added",
+              "Removed",
+              "Banned",
+              "CannotPropose",
+              "SeenAsFaulty"
+            ],
+            "type": "string"
+          },
           "ValidatorWeight": {
             "additionalProperties": false,
             "properties": {
@@ -3376,6 +3440,59 @@
             }
           },
           "summary": "returns the current status of the node"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_validator_changes_example",
+              "params": [],
+              "result": {
+                "name": "info_get_validator_changes_example_result",
+                "value": {
+                  "api_version": "1.3.2",
+                  "changes": [
+                    {
+                      "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "status_changes": [
+                        {
+                          "era_id": 1,
+                          "validator_change": "Added"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "name": "info_get_validator_changes",
+          "params": [],
+          "result": {
+            "name": "info_get_validator_changes_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for the \"info_get_validator_changes\" RPC.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "changes": {
+                  "description": "The validators' status changes.",
+                  "items": {
+                    "$ref": "#/components/schemas/JsonValidatorChanges"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "api_version",
+                "changes"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns status changes of active validators"
         },
         {
           "examples": [
