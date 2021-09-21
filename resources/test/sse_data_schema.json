@@ -602,7 +602,7 @@
       "description": "Represents possible variants of an executable deploy.",
       "anyOf": [
         {
-          "description": "Executable is specifed as a raw bytes that represents a WASM code and an instance of [`RuntimeArgs`].",
+          "description": "Executable specified as raw bytes that represent WASM code and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "ModuleBytes"
