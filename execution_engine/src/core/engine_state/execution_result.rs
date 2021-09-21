@@ -315,6 +315,9 @@ impl ExecutionResult {
     ///
     /// The effects that are produced as part of this process would subract `max_payment_cost` from
     /// account's main purse, and add `max_payment_cost` to proposer account's balance.
+    ///
+    /// NOTE: This function assumes that `max_payment_cost <= account_main_purse_balance`.
+    /// Not obeying this restriction is a programming error with undefined behavior.
     pub fn new_payment_code_error(
         error: error::Error,
         max_payment_cost: Motes,
