@@ -346,4 +346,4 @@ sync_timeout = '1hr'
 # Deploys are only proposed in a new block if they have been received at least this long ago.
 # A longer delay makes it more likely that many proposed deploys are already known by the
 # other nodes, and don't have to be requested from the proposer afterwards.
-#deploy_delay = '1min'
+deploy_delay = '15sec'
