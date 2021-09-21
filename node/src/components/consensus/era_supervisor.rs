@@ -39,6 +39,7 @@ use crate::{
         },
         metrics::ConsensusMetrics,
         traits::NodeIdT,
+        validator_change::ValidatorChanges,
         ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
         TimerId, ValidatorChange,
     },
@@ -232,13 +233,13 @@ where
         }
     }
 
-    /// Returns a list of validator status changes, by public key.
+    /// Returns a list of status changes of active validators.
     pub(super) fn get_validator_changes(
         &self,
     ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
         let mut result: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> = BTreeMap::new();
         for ((_, era0), (era_id, era1)) in self.active_eras.iter().tuple_windows() {
-            for (pub_key, change) in ValidatorChange::era_changes(era0, era1) {
+            for (pub_key, change) in ValidatorChanges::new(era0, era1).0 {
                 result.entry(pub_key).or_default().push((*era_id, change));
             }
         }

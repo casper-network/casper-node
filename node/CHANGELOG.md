@@ -17,13 +17,12 @@ All notable changes to this project will be documented in this file.  The format
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 * Add `contract_runtime_execute_block` histogram tracking execution time of a whole block.
 * Long-running events now log their event type.
-* Individual weights for traffic throttling can now be set through the configuration value
-  `network.estimator_weights`.
+* Individual weights for traffic throttling can now be set through the configuration value `network.estimator_weights`.
 * Add `consensus.highway.max_request_batch_size` configuration parameter. Defaults to 20.
 * New histogram metrics `deploy_acceptor_accepted_deploy` and `deploy_acceptor_rejected_deploy` that track how long the initial verification took.
 * Add gzip content negotiation (using accept-encoding header) to rpc endpoints.
 * Add `state_get_trie` JSON-RPC endpoint.
-* Add `info-get-validator-changes` JSON-RPC endpoint and REST endpoint `validator-changes`  that return the changes in validator status between two eras.
+* Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes`  that return the status changes of active validators.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):

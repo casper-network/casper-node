@@ -618,7 +618,7 @@ pub async fn get_dictionary_item(
         .await
 }
 
-/// Retrieves changes in validator status between two eras.
+/// Retrieves status changes of active validators.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
 ///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a

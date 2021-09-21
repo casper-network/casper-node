@@ -749,9 +749,9 @@ pub extern "C" fn casper_get_auction_info(
     })
 }
 
-/// Retrieves changes in validator status between two eras.
+/// Retrieves status changes of active validators.
 ///
-/// See [super::get_validator_changes](super::get_validator_changes) for more details.
+/// See [get_validator_changes](super::get_validator_changes) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_validator_changes(
     maybe_rpc_id: *const c_char,

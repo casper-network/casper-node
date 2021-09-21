@@ -83,9 +83,8 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     );
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
-    schema.push_without_params::<GetValidatorChanges>(
-        "returns changes in validator status between any two eras",
-    );
+    schema
+        .push_without_params::<GetValidatorChanges>("returns status changes of active validators");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(
         "returns all transfers for a Block from the network",
