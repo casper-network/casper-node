@@ -25,7 +25,7 @@ impl Debug for RustType {
 
 impl RustType {
     /// Creates a new `RustType` from a path.
-    pub fn new(path: Path) -> Self {
+    pub(crate) fn new(path: Path) -> Self {
         RustType(path)
     }
 
@@ -40,7 +40,7 @@ impl RustType {
     }
 
     /// Returns the types identifier without type arguments, e.g. `SmallNet`.
-    pub fn ident(&self) -> Ident {
+    pub(crate) fn ident(&self) -> Ident {
         self.0
             .segments
             .last()
@@ -51,7 +51,7 @@ impl RustType {
 
     /// Returns the types identifier with type arguments attached as strings, i.e.
     /// `GossipIncomingDeploy`'.
-    pub fn stringified_ident(&self) -> Ident {
+    pub(crate) fn stringified_ident(&self) -> Ident {
         let base = self
             .0
             .segments
@@ -72,7 +72,7 @@ impl RustType {
     }
 
     /// Returns the type without the path, but with type arguments, e.g. `SmallNet<NodeId>`.
-    pub fn ty(&self) -> TokenStream {
+    pub(crate) fn ty(&self) -> TokenStream {
         let ident = self.ident();
         let args = self.final_type_arg_ident();
 
@@ -80,14 +80,14 @@ impl RustType {
     }
 
     /// Returns the full type as it was given in the macro call.
-    pub fn as_given(&self) -> &Path {
+    pub(crate) fn as_given(&self) -> &Path {
         &self.0
     }
 
     /// Returns the module name that canonically would contain the type, e.g. `small_net`.
     ///
     /// Based on the identifier only, i.e. will discard any actual path.
-    pub fn module_ident(&self) -> Ident {
+    pub(crate) fn module_ident(&self) -> Ident {
         to_ident(&to_snake_case(&self.ident().to_string()))
     }
 }

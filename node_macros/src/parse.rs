@@ -54,51 +54,51 @@ pub(crate) struct ReactorDefinition {
 
 impl ReactorDefinition {
     /// Returns the reactor's type's identifier (e.g. `ExampleReactor`).
-    pub fn reactor_ident(&self) -> Ident {
+    pub(crate) fn reactor_ident(&self) -> Ident {
         self.reactor_type_ident.clone()
     }
 
     /// Returns the reactor's associated event type's identifier (e.g. `ExampleReactorEvent`).
-    pub fn event_ident(&self) -> Ident {
+    pub(crate) fn event_ident(&self) -> Ident {
         let mut event_str = self.reactor_ident().to_string();
         event_str.push_str("Event");
         to_ident(&event_str)
     }
 
     /// Returns the reactor's associated error type's identifier (e.g. `ExampleReactorError`).
-    pub fn error_ident(&self) -> Ident {
+    pub(crate) fn error_ident(&self) -> Ident {
         let mut event_str = self.reactor_ident().to_string();
         event_str.push_str("Error");
         to_ident(&event_str)
     }
 
     /// Returns an iterator over all announcement mappings.
-    pub fn announcements(&self) -> impl Iterator<Item = &AnnouncementDefinition> {
+    pub(crate) fn announcements(&self) -> impl Iterator<Item = &AnnouncementDefinition> {
         self.announcements.iter()
     }
 
     /// Returns an iterator over all component definitions.
-    pub fn components(&self) -> impl Iterator<Item = &ComponentDefinition> {
+    pub(crate) fn components(&self) -> impl Iterator<Item = &ComponentDefinition> {
         self.components.values()
     }
 
     /// Returns the configuration type.
-    pub fn config_type(&self) -> &RustType {
+    pub(crate) fn config_type(&self) -> &RustType {
         &self.config_type
     }
 
     /// Returns an iterator over all request mappings.
-    pub fn requests(&self) -> impl Iterator<Item = &RequestDefinition> {
+    pub(crate) fn requests(&self) -> impl Iterator<Item = &RequestDefinition> {
         self.requests.iter()
     }
 
     /// Returns the a full component by ident.
-    pub fn component(&self, ident: &Ident) -> &ComponentDefinition {
+    pub(crate) fn component(&self, ident: &Ident) -> &ComponentDefinition {
         &self.components[ident]
     }
 
     /// Returns the type for the event associated with a specific component.
-    pub fn component_event(&self, component: &ComponentDefinition) -> TokenStream {
+    pub(crate) fn component_event(&self, component: &ComponentDefinition) -> TokenStream {
         let component_type = component.component_type();
         let module_ident = component_type.module_ident();
 
@@ -114,7 +114,7 @@ impl ReactorDefinition {
     }
 
     /// Update a parsed reactor to include control announcements.
-    pub fn inject_control_announcements(&mut self) {
+    pub(crate) fn inject_control_announcements(&mut self) {
         // For now, we allow no manual control announcements implementation.
         let ty: Type = syn::parse_str("crate::effect::announcements::ControlAnnouncement")
             .expect("Hardcoded ControlAnnouncement type could not be parsed");
@@ -273,7 +273,7 @@ impl ComponentDefinition {
     }
 
     /// Returns an ident identifying the component that is suitable for a variant, e.g. `Net`.
-    pub fn variant_ident(&self) -> Ident {
+    pub(crate) fn variant_ident(&self) -> Ident {
         to_ident(&to_pascal_case(&self.field_ident().to_string()))
     }
 
@@ -284,7 +284,7 @@ impl ComponentDefinition {
 
     /// Returns the full path for a component by prefixing it with `crate::components::`, e.g.
     /// `crate::components::small_net::SmallNet<NodeId>`
-    pub fn full_component_type(&self) -> TokenStream {
+    pub(crate) fn full_component_type(&self) -> TokenStream {
         let component_type = self.component_type();
         let module_ident = component_type.module_ident();
         let ty = component_type.ty();
@@ -292,18 +292,18 @@ impl ComponentDefinition {
     }
 
     /// Returns the full path for a component's event e.g. `crate::components::small_net::Error`
-    pub fn full_error_type(&self, reactor_event_type: TokenStream) -> TokenStream {
+    pub(crate) fn full_error_type(&self, reactor_event_type: TokenStream) -> TokenStream {
         let comp_type = self.full_component_type();
         quote!(<#comp_type as crate::components::Component<#reactor_event_type>>::ConstructionError)
     }
 
     /// Returns whether or not the component returns effects upon instantiation.
-    pub fn has_effects(&self) -> bool {
+    pub(crate) fn has_effects(&self) -> bool {
         self.has_effects
     }
 
     /// Returns whether the component always returns a component directly instead of a `Result`.
-    pub fn is_infallible(&self) -> bool {
+    pub(crate) fn is_infallible(&self) -> bool {
         self.is_infallible
     }
 }
@@ -361,9 +361,9 @@ impl Parse for ComponentDefinition {
 #[derive(Debug)]
 pub(crate) struct EventDefinition {
     /// Identifier of the components.
-    pub name: Ident,
+    pub(crate) name: Ident,
     /// Event type to use.
-    pub event_type: RustType,
+    pub(crate) event_type: RustType,
 }
 
 impl Parse for EventDefinition {
@@ -383,14 +383,14 @@ impl Parse for EventDefinition {
 #[derive(Debug)]
 /// A definition of a request routing.
 pub(crate) struct RequestDefinition {
-    pub request_type: RustType,
-    pub target: Target,
+    pub(crate) request_type: RustType,
+    pub(crate) target: Target,
 }
 
 impl RequestDefinition {
     /// Returns an ident identifying the request that is suitable for a variant, e.g.
     /// `NetworkRequest`.
-    pub fn variant_ident(&self) -> Ident {
+    pub(crate) fn variant_ident(&self) -> Ident {
         self.request_type.stringified_ident()
     }
 
@@ -405,7 +405,7 @@ impl RequestDefinition {
     }
 
     /// Returns the full path for a request.
-    pub fn full_request_type(&self) -> TokenStream {
+    pub(crate) fn full_request_type(&self) -> TokenStream {
         let request_type = self.request_type();
         let ty = request_type.ty();
         quote!(crate::effect::requests::#ty)
@@ -429,8 +429,8 @@ impl Parse for RequestDefinition {
 #[derive(Debug)]
 /// A definition of an announcement.
 pub(crate) struct AnnouncementDefinition {
-    pub announcement_type: RustType,
-    pub targets: Vec<Target>,
+    pub(crate) announcement_type: RustType,
+    pub(crate) targets: Vec<Target>,
 }
 
 impl AnnouncementDefinition {
@@ -458,7 +458,7 @@ impl AnnouncementDefinition {
 
     /// Returns an ident identifying the announcement that is suitable for a variant, e.g.
     /// `NetworkAnnouncement`.
-    pub fn variant_ident(&self) -> Ident {
+    pub(crate) fn variant_ident(&self) -> Ident {
         self.announcement_type.stringified_ident()
     }
 }
