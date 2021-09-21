@@ -1,16 +1,16 @@
-//! Costs of standard payment system contract.
+//! Costs of the standard payment system contract.
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-/// Default cost of `pay` standard payment entry point.
+/// Default cost of the `pay` standard payment entry point.
 const DEFAULT_PAY_COST: u32 = 10_000;
 
-/// Description of costs of calling standard payment entrypoints.
+/// Description of the costs of calling standard payment entry points.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StandardPaymentCosts {
-    /// Cost for calling the `pay` entry point.
+    /// Cost of calling the `pay` entry point.
     pub pay: u32,
 }
 

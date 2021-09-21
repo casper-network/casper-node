@@ -36,7 +36,7 @@ pub const DEFAULT_CONVERSION_COST: u32 = 420;
 pub const DEFAULT_UNREACHABLE_COST: u32 = 270;
 /// Default cost of the `nop` WASM opcode.
 pub const DEFAULT_NOP_COST: u32 = 200;
-// TODO: This value is not researched
+// TODO: This value is not researched.
 /// Default cost of the `current_memory` WASM opcode.
 pub const DEFAULT_CURRENT_MEMORY_COST: u32 = 290;
 /// Default cost of the `grow_memory` WASM opcode.

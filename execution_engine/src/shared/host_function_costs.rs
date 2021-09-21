@@ -81,15 +81,15 @@ const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
 pub(crate) const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
     HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
 
-/// Representation of a host function cost
+/// Representation of a host function cost.
 ///
-/// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
-/// the data.
+/// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
+/// of the data.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
 pub struct HostFunction<T> {
-    /// How much user is charged for cost only
+    /// How much the user is charged for calling the host function.
     cost: Cost,
-    /// Weights of arguments.
+    /// Weights of the function arguments.
     arguments: T,
 }
 
@@ -103,12 +103,12 @@ where
 }
 
 impl<T> HostFunction<T> {
-    /// Creates a new instance of a `HostFunction` with a fixed cost of a call, and weights of arguments.
+    /// Creates a new instance of `HostFunction` with a fixed call cost and argument weights.
     pub const fn new(cost: Cost, arguments: T) -> Self {
         Self { cost, arguments }
     }
 
-    /// Returns the cost of the host function call.
+    /// Returns the base gas fee for calling the host function.
     pub fn cost(&self) -> Cost {
         self.cost
     }
@@ -118,7 +118,7 @@ impl<T> HostFunction<T>
 where
     T: Default,
 {
-    /// Creates a new fixed host function cost with weights of arguments set to zeros.
+    /// Creates a new fixed host function cost with argument weights of zero.
     pub fn fixed(cost: Cost) -> Self {
         Self {
             cost,
@@ -131,7 +131,7 @@ impl<T> HostFunction<T>
 where
     T: AsRef<[Cost]>,
 {
-    /// Returns a slice of argument weights.
+    /// Returns a slice containing the argument weights.
     pub fn arguments(&self) -> &[Cost] {
         self.arguments.as_ref()
     }
@@ -195,7 +195,7 @@ where
     }
 }
 
-/// Definition of host function cost table.
+/// Definition of a host function cost table.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HostFunctionCosts {
     /// Cost of calling the `read_value` host function.

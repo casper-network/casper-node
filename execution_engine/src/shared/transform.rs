@@ -1,4 +1,4 @@
-//! Support of transforms produced during smart contracts execution.
+//! Support for transforms produced during execution.
 use std::{
     any,
     convert::TryFrom,
@@ -52,7 +52,7 @@ impl From<CLValueError> for Error {
     }
 }
 
-/// Representation of a single transformation as occurred during execution.
+/// Representation of a single transformation ocurring during execution.
 #[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Transform {
@@ -62,7 +62,8 @@ pub enum Transform {
     Identity,
     /// Writes a new value in the global state.
     Write(StoredValue),
-    /// Adds a numeric value to existing entry in the global state. It assumes existing value is a number.
+    /// Adds a numeric value to an existing entry in the global state.
+    /// Assumes the existing value is a number.
     ///
     /// Produced by add operations.
     AddInt32(i32),
@@ -70,15 +71,15 @@ pub enum Transform {
     AddUInt64(u64),
     /// Adds an unsigned 128-bit integer to an existing entry in the global state.
     AddUInt128(U128),
-    /// Adds an unisnged 256-bit integer to an existing entry in the global state.
+    /// Adds an unsigned 256-bit integer to an existing entry in the global state.
     AddUInt256(U256),
     /// Adds an unsigned 512-bit integer to an existing entry in the global state.
     AddUInt512(U512),
-    /// Adds new named keys in existing entry in the global state.
+    /// Adds new named keys to an existing entry in the global state.
     ///
-    /// This transform assumes that existing stored value is either an Account or a Contract.
+    /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
-    /// Represents a case when applying a transform would cause an error.
+    /// Represents the case where applying a transform would cause an error.
     Failure(Error),
 }
 
@@ -156,11 +157,12 @@ where
 }
 
 impl Transform {
-    /// Applies transformation on a specified stored value instance.
+    /// Applies the transformation on a specified stored value instance.
     ///
-    /// This method produces new [`StoredValue`] instance based on [`Transform`] variant.
+    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
     ///
-    /// It is important to note that all arithmetic operations are deterministic and produces wrapped values.
+    /// It is important to note that all arithmetic operations are deterministic and produce
+    /// wrapped values.
     pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
         match self {
             Transform::Identity => Ok(stored_value),

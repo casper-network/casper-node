@@ -55,19 +55,22 @@ pub struct Preprocessor {
 }
 
 impl Preprocessor {
-    /// Creates new instance of a preprocessor.
+    /// Creates a new instance of the preprocessor.
     pub fn new(wasm_config: WasmConfig) -> Self {
         Self { wasm_config }
     }
 
-    /// Preprocess WASM bytes and returns a module.
+    /// Preprocesses WASM bytes and returns a module.
     ///
-    /// This process consists of few steps:
-    /// - Validates if given module contains a memory section, and ensures the limits of maximum memory pages a code can use.
-    /// - Injects gas counter into the code which makes it possible for the executed WASM to be charged for opcodes. This also validates opcodes and ensures that there are no forbidden opcodes used such as floats.
-    /// - Ensures that a stack of the code has a maximum height.
+    /// This process consists of a few steps:
+    /// - Validate that the given bytes contain a memory section, and check the memory page limit.
+    /// - Inject gas counters into the code, which makes it possible for the executed WASM
+    ///   to be charged for opcodes; this also validates opcodes and ensures that there are no
+    ///   forbidden opcodes in use, such as floating point opcodes.
+    /// - Ensure that the code has a maximum stack height.
     ///
-    /// In any case the preprocessing rules can't be applied an error is returned, otherwise this method returns a valid module ready to be executed safely on the host.
+    /// In case the preprocessing rules can't be applied, an error is returned.
+    /// Otherwise, this method returns a valid module ready to be executed safely on the host.
     pub fn preprocess(&self, module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
         let module = deserialize(module_bytes)?;
 
@@ -90,7 +93,7 @@ impl Preprocessor {
     }
 }
 
-/// Returns a parity Module from bytes without making modifications or limits
+/// Returns a parity Module from the given bytes without making modifications or checking limits.
 pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
     parity_wasm::deserialize_buffer::<Module>(module_bytes).map_err(Into::into)
 }

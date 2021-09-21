@@ -1,36 +1,36 @@
-//! Costs of mint system contract.
+//! Costs of the mint system contract.
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-/// Default cost of `mint` mint entry point.
+/// Default cost of the `mint` mint entry point.
 pub const DEFAULT_MINT_COST: u32 = 2_500_000_000;
-/// Default cost of `reduce_total_supply` mint entry point.
+/// Default cost of the `reduce_total_supply` mint entry point.
 pub const DEFAULT_REDUCE_TOTAL_SUPPLY_COST: u32 = 10_000;
-/// Default cost of `create` mint entry point.
+/// Default cost of the `create` mint entry point.
 pub const DEFAULT_CREATE_COST: u32 = 2_500_000_000;
-/// Default cost of `balance` mint entry point.
+/// Default cost of the `balance` mint entry point.
 pub const DEFAULT_BALANCE_COST: u32 = 10_000;
-/// Default cost of `transfer` mint entry point.
+/// Default cost of the `transfer` mint entry point.
 pub const DEFAULT_TRANSFER_COST: u32 = 10_000;
-/// Default cost of `read_base_round_reward` mint entry point.
+/// Default cost of the `read_base_round_reward` mint entry point.
 pub const DEFAULT_READ_BASE_ROUND_REWARD_COST: u32 = 10_000;
 
-/// Description of costs of calling mint entrypoints.
+/// Description of the costs of calling mint entry points.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct MintCosts {
-    /// Cost for calling the `mint` entry point.
+    /// Cost of calling the `mint` entry point.
     pub mint: u32,
-    /// Cost for calling the `reduce_total_supply` entry point.
+    /// Cost of calling the `reduce_total_supply` entry point.
     pub reduce_total_supply: u32,
-    /// Cost for calling the `create` entry point.
+    /// Cost of calling the `create` entry point.
     pub create: u32,
-    /// Cost for calling the `balance` entry point.
+    /// Cost of calling the `balance` entry point.
     pub balance: u32,
-    /// Cost for calling the `transfer` entry point.
+    /// Cost of calling the `transfer` entry point.
     pub transfer: u32,
-    /// Cost for calling the `read_base_round_reward` entry point.
+    /// Cost of calling the `read_base_round_reward` entry point.
     pub read_base_round_reward: u32,
 }
 

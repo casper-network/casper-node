@@ -1,4 +1,4 @@
-//! Definition of costs of running code in the system.
+//! Definition of the costs of running code in the system.
 pub mod auction_costs;
 pub mod handle_payment_costs;
 pub mod mint_costs;
@@ -15,12 +15,13 @@ use self::{
     standard_payment_costs::StandardPaymentCosts,
 };
 
-/// Default gas cost for a wasmless transfer cost.
+/// Default gas cost for a wasmless transfer.
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
 
 /// Definition of costs in the system.
 ///
-/// This structure contains costs of all system contract's entry points and additionally it defines a wasmless transfer cost as well.
+/// This structure contains the costs of all the system contract's entry points and, additionally,
+/// it defines a wasmless transfer cost.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
@@ -62,22 +63,22 @@ impl SystemConfig {
         self.wasmless_transfer_cost
     }
 
-    /// Returns costs of executing auction entry points.
+    /// Returns the costs of executing auction entry points.
     pub fn auction_costs(&self) -> &AuctionCosts {
         &self.auction_costs
     }
 
-    /// Returns costs of executing mint entry points.
+    /// Returns the costs of executing mint entry points.
     pub fn mint_costs(&self) -> &MintCosts {
         &self.mint_costs
     }
 
-    /// Returns costs of executing handle payment entry points.
+    /// Returns the costs of executing `handle_payment` entry points.
     pub fn handle_payment_costs(&self) -> &HandlePaymentCosts {
         &self.handle_payment_costs
     }
 
-    /// Returns costs of executing standard payment entry points.
+    /// Returns the costs of executing `standard_payment` entry points.
     pub fn standard_payment_costs(&self) -> &StandardPaymentCosts {
         &self.standard_payment_costs
     }

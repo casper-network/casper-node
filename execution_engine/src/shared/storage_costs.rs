@@ -8,10 +8,10 @@ use casper_types::{
     Gas, U512,
 };
 
-/// Default cost of gas per byte stored.
+/// Default gas cost per byte stored.
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 
-/// Represents cost table for storage costs.
+/// Represents a cost table for storage costs.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StorageCosts {
     /// Gas charged per byte stored in the global state.
@@ -19,7 +19,7 @@ pub struct StorageCosts {
 }
 
 impl StorageCosts {
-    /// Creates new `StorageCosts`
+    /// Creates new `StorageCosts`.
     pub const fn new(gas_per_byte: u32) -> Self {
         Self { gas_per_byte }
     }
