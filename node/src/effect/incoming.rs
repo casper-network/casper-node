@@ -56,6 +56,7 @@ pub(crate) type FinalitySignatureIncoming = MessageIncoming<NodeId, Box<Finality
 ///       same component. If this changes, split up this type (see `TrieRequestIncoming` for an
 ///       example).
 #[derive(DataSize, Debug, Serialize)]
+#[repr(u8)]
 pub(crate) enum NetRequest {
     /// Request for a deploy.
     Deploy(Vec<u8>),

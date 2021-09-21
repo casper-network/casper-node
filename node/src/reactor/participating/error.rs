@@ -31,7 +31,7 @@ pub(crate) enum Error {
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
-    Storage(#[from] storage::Error),
+    Storage(#[from] storage::FatalStorageError),
 
     /// `Consensus` component error.
     #[error("consensus error: {0}")]

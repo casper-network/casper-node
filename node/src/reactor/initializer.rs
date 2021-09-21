@@ -139,7 +139,7 @@ pub(crate) enum Error {
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
-    Storage(#[from] storage::Error),
+    Storage(#[from] storage::FatalStorageError),
 
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
