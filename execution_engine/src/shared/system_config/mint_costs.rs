@@ -1,23 +1,36 @@
+//! Costs of mint system contract.
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
+/// Default cost of `mint` mint entry point.
 pub const DEFAULT_MINT_COST: u32 = 2_500_000_000;
+/// Default cost of `reduce_total_supply` mint entry point.
 pub const DEFAULT_REDUCE_TOTAL_SUPPLY_COST: u32 = 10_000;
+/// Default cost of `create` mint entry point.
 pub const DEFAULT_CREATE_COST: u32 = 2_500_000_000;
+/// Default cost of `balance` mint entry point.
 pub const DEFAULT_BALANCE_COST: u32 = 10_000;
+/// Default cost of `transfer` mint entry point.
 pub const DEFAULT_TRANSFER_COST: u32 = 10_000;
+/// Default cost of `read_base_round_reward` mint entry point.
 pub const DEFAULT_READ_BASE_ROUND_REWARD_COST: u32 = 10_000;
 
 /// Description of costs of calling mint entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct MintCosts {
+    /// Cost for calling the `mint` entry point.
     pub mint: u32,
+    /// Cost for calling the `reduce_total_supply` entry point.
     pub reduce_total_supply: u32,
+    /// Cost for calling the `create` entry point.
     pub create: u32,
+    /// Cost for calling the `balance` entry point.
     pub balance: u32,
+    /// Cost for calling the `transfer` entry point.
     pub transfer: u32,
+    /// Cost for calling the `read_base_round_reward` entry point.
     pub read_base_round_reward: u32,
 }
 
@@ -94,6 +107,7 @@ impl Distribution<MintCosts> for Standard {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{num, prop_compose};

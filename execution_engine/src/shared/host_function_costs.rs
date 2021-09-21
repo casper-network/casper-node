@@ -1,3 +1,4 @@
+//! Support for host function gas cost tables.
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
@@ -88,6 +89,7 @@ pub(crate) const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
 pub struct HostFunction<T> {
     /// How much user is charged for cost only
     cost: Cost,
+    /// Weights of arguments.
     arguments: T,
 }
 
@@ -101,10 +103,12 @@ where
 }
 
 impl<T> HostFunction<T> {
+    /// Creates a new instance of a `HostFunction` with a fixed cost of a call, and weights of arguments.
     pub const fn new(cost: Cost, arguments: T) -> Self {
         Self { cost, arguments }
     }
 
+    /// Returns the cost of the host function call.
     pub fn cost(&self) -> Cost {
         self.cost
     }
@@ -114,6 +118,7 @@ impl<T> HostFunction<T>
 where
     T: Default,
 {
+    /// Creates a new fixed host function cost with weights of arguments set to zeros.
     pub fn fixed(cost: Cost) -> Self {
         Self {
             cost,
@@ -126,6 +131,7 @@ impl<T> HostFunction<T>
 where
     T: AsRef<[Cost]>,
 {
+    /// Returns a slice of argument weights.
     pub fn arguments(&self) -> &[Cost] {
         self.arguments.as_ref()
     }
@@ -189,51 +195,94 @@ where
     }
 }
 
+/// Definition of host function cost table.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HostFunctionCosts {
+    /// Cost of calling the `read_value` host function.
     pub read_value: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `dictionary_get` host function.
     #[serde(alias = "read_value_local")]
     pub dictionary_get: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `write` host function.
     pub write: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `dictionary_put` host function.
     #[serde(alias = "write_local")]
     pub dictionary_put: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `add` host function.
     pub add: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `new_uref` host function.
     pub new_uref: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `load_named_keys` host function.
     pub load_named_keys: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `ret` host function.
     pub ret: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `get_key` host function.
     pub get_key: HostFunction<[Cost; 5]>,
+    /// Cost of calling the `has_key` host function.
     pub has_key: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `put_key` host function.
     pub put_key: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `remove_key` host function.
     pub remove_key: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `revert` host function.
     pub revert: HostFunction<[Cost; 1]>,
+    /// Cost of calling the `is_valid_uref` host function.
     pub is_valid_uref: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `add_associated_key` host function.
     pub add_associated_key: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `remove_associated_key` host function.
     pub remove_associated_key: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `update_associated_key` host function.
     pub update_associated_key: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `set_action_threshold` host function.
     pub set_action_threshold: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `get_caller` host function.
     pub get_caller: HostFunction<[Cost; 1]>,
+    /// Cost of calling the `get_blocktime` host function.
     pub get_blocktime: HostFunction<[Cost; 1]>,
+    /// Cost of calling the `create_purse` host function.
     pub create_purse: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `transfer_to_account` host function.
     pub transfer_to_account: HostFunction<[Cost; 7]>,
+    /// Cost of calling the `transfer_from_purse_to_account` host function.
     pub transfer_from_purse_to_account: HostFunction<[Cost; 9]>,
+    /// Cost of calling the `transfer_from_purse_to_purse` host function.
     pub transfer_from_purse_to_purse: HostFunction<[Cost; 8]>,
+    /// Cost of calling the `get_balance` host function.
     pub get_balance: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `get_phase` host function.
     pub get_phase: HostFunction<[Cost; 1]>,
+    /// Cost of calling the `get_system_contract` host function.
     pub get_system_contract: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `get_main_purse` host function.
     pub get_main_purse: HostFunction<[Cost; 1]>,
+    /// Cost of calling the `read_host_buffer` host function.
     pub read_host_buffer: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `create_contract_package_at_hash` host function.
     pub create_contract_package_at_hash: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `create_contract_user_group` host function.
     pub create_contract_user_group: HostFunction<[Cost; 8]>,
+    /// Cost of calling the `add_contract_version` host function.
     pub add_contract_version: HostFunction<[Cost; 10]>,
+    /// Cost of calling the `disable_contract_version` host function.
     pub disable_contract_version: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `call_contract` host function.
     pub call_contract: HostFunction<[Cost; 7]>,
+    /// Cost of calling the `call_versioned_contract` host function.
     pub call_versioned_contract: HostFunction<[Cost; 9]>,
+    /// Cost of calling the `get_named_arg_size` host function.
     pub get_named_arg_size: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `get_named_arg` host function.
     pub get_named_arg: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `remove_contract_user_group` host function.
     pub remove_contract_user_group: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `provision_contract_user_group_uref` host function.
     pub provision_contract_user_group_uref: HostFunction<[Cost; 5]>,
+    /// Cost of calling the `remove_contract_user_group_urefs` host function.
     pub remove_contract_user_group_urefs: HostFunction<[Cost; 6]>,
+    /// Cost of calling the `print` host function.
     pub print: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `blake2b` host function.
     pub blake2b: HostFunction<[Cost; 4]>,
 }
 
@@ -593,6 +642,7 @@ impl Distribution<HostFunctionCosts> for Standard {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;

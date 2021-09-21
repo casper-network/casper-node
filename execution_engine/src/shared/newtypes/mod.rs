@@ -5,14 +5,17 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 use uuid::Uuid;
 
+/// A correlation id that is an unique represenatation of an event occuring     in the system passes through different components.
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Serialize)]
 pub struct CorrelationId(Uuid);
 
 impl CorrelationId {
+    /// Creates new unique `CorrelationId`
     pub fn new() -> CorrelationId {
         CorrelationId(Uuid::new_v4())
     }
 
+    /// Returns true if given unique identifier is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_nil()
     }

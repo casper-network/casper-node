@@ -1,3 +1,4 @@
+//! Support of transforms produced during smart contracts execution.
 use std::{
     any,
     convert::TryFrom,
@@ -23,8 +24,10 @@ use casper_types::{
 /// cause an overflow).
 #[derive(PartialEq, Eq, Debug, Clone, thiserror::Error)]
 pub enum Error {
+    /// Error while (de)serializing data.
     #[error("{0}")]
     Serialization(bytesrepr::Error),
+    /// Type mismatch error.
     #[error("{0}")]
     TypeMismatch(StoredValueTypeMismatch),
 }
@@ -49,17 +52,33 @@ impl From<CLValueError> for Error {
     }
 }
 
+/// Representation of a single transformation as occurred during execution.
 #[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Transform {
+    /// An identity transformation that does not modify a value in the global state.
+    ///
+    /// Created as part of a read from the global state.
     Identity,
+    /// Writes a new value in the global state.
     Write(StoredValue),
+    /// Adds a numeric value to existing entry in the global state. It assumes existing value is a number.
+    ///
+    /// Produced by add operations.
     AddInt32(i32),
+    /// Adds an unsigned 64-bit integer to an existing entry in the global state.
     AddUInt64(u64),
+    /// Adds an unsigned 128-bit integer to an existing entry in the global state.
     AddUInt128(U128),
+    /// Adds an unisnged 256-bit integer to an existing entry in the global state.
     AddUInt256(U256),
+    /// Adds an unsigned 512-bit integer to an existing entry in the global state.
     AddUInt512(U512),
+    /// Adds new named keys in existing entry in the global state.
+    ///
+    /// This transform assumes that existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
+    /// Represents a case when applying a transform would cause an error.
     Failure(Error),
 }
 
@@ -137,6 +156,11 @@ where
 }
 
 impl Transform {
+    /// Applies transformation on a specified stored value instance.
+    ///
+    /// This method produces new [`StoredValue`] instance based on [`Transform`] variant.
+    ///
+    /// It is important to note that all arithmetic operations are deterministic and produces wrapped values.
     pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
         match self {
             Transform::Identity => Ok(stored_value),
@@ -354,6 +378,7 @@ impl From<&Transform> for casper_types::Transform {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{collection::vec, prelude::*};
