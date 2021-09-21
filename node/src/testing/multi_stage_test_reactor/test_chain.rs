@@ -449,7 +449,7 @@ async fn test_archival_sync() {
     assert_eq!(
         chain.network.nodes().len(),
         2,
-        "There should be two validators in the network (one bonded and one read only)"
+        "There should be two nodes in the network (one bonded validator and one read only)"
     );
 
     let synchronized_era = era_to_join + 1;

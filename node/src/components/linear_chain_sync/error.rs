@@ -132,7 +132,7 @@ pub(crate) enum LinearChainSyncError {
 
     #[error(
         "Trusted block header has expired. \
-         You will need to get an recent block hash to join the network. \
+         You will need to get a recent block hash to join the network. \
          Current time: {current_time}, \
          Trusted hash time to expiration: {trusted_hash_time_to_expiration:?}, \
          Trusted hash: {trusted_hash:?}, \

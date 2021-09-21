@@ -417,12 +417,12 @@ async fn sync_trie_store(
     Ok(())
 }
 
-/// Fetches the current header and fast-syncs too it.
+/// Fetches the current header and fast-syncs to it.
 ///
 /// Performs the following:
 ///
 ///  1. Fetches the most recent block header.
-///  2. Fetches deploys for replay attacks and historical switch block info.
+///  2. Fetches deploys for replay detection and historical switch block info.
 ///  3. The historical switch block info is needed by the [`EraSupervisor`].
 ///  4. Fetches global state for the current block header.
 ///
