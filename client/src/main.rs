@@ -55,7 +55,7 @@ enum DisplayOrder {
     GetAccountInfo,
     GetEraInfo,
     GetAuctionInfo,
-    GetValidatorInfo,
+    GetValidatorChanges,
     Keygen,
     GenerateCompletion,
     GetRpcs,
@@ -88,7 +88,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         ))
         .subcommand(GetAuctionInfo::build(DisplayOrder::GetAuctionInfo as usize))
         .subcommand(GetValidatorChanges::build(
-            DisplayOrder::GetValidatorInfo as usize,
+            DisplayOrder::GetValidatorChanges as usize,
         ))
         .subcommand(Keygen::build(DisplayOrder::Keygen as usize))
         .subcommand(GenerateCompletion::build(

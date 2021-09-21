@@ -3,7 +3,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::str;
+use std::{collections::BTreeMap, str};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -45,12 +45,12 @@ static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     peers: GetStatusResult::doc_example().peers.clone(),
 });
 static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
-    let era_changes = JsonEraChange::new(EraId::new(1), ValidatorChange::Added);
+    let change = JsonValidatorStatusChange::new(EraId::new(1), ValidatorChange::Added);
     let public_key = PublicKey::doc_example().clone();
-    let validator_info = vec![JsonValidatorInfo::new(public_key, vec![era_changes])];
+    let changes = vec![JsonValidatorChanges::new(public_key, vec![change])];
     GetValidatorChangesResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        changes_to_validators: validator_info,
+        changes,
     }
 });
 
@@ -237,38 +237,41 @@ impl RpcWithoutParamsExt for GetStatus {
     }
 }
 
-/// A single change to a validator's status between two eras.
+/// A single change to a validator's status in the given era.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JsonEraChange {
+pub struct JsonValidatorStatusChange {
     /// The era in which the change occurred.
     era_id: EraId,
     /// The change in validator status.
     validator_change: ValidatorChange,
 }
 
-impl JsonEraChange {
+impl JsonValidatorStatusChange {
     pub(crate) fn new(era_id: EraId, validator_change: ValidatorChange) -> Self {
-        JsonEraChange {
+        JsonValidatorStatusChange {
             era_id,
             validator_change,
         }
     }
 }
 
-/// The changes in a validator's status between any two eras.
+/// The changes in a validator's status.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JsonValidatorInfo {
-    /// The public key of a given validator.
+pub struct JsonValidatorChanges {
+    /// The public key of the validator.
     public_key: PublicKey,
     /// The set of changes to the validator's status.
-    status_changes: Vec<JsonEraChange>,
+    status_changes: Vec<JsonValidatorStatusChange>,
 }
 
-impl JsonValidatorInfo {
-    pub(crate) fn new(public_key: PublicKey, status_changes: Vec<JsonEraChange>) -> Self {
-        JsonValidatorInfo {
+impl JsonValidatorChanges {
+    pub(crate) fn new(
+        public_key: PublicKey,
+        status_changes: Vec<JsonValidatorStatusChange>,
+    ) -> Self {
+        JsonValidatorChanges {
             public_key,
             status_changes,
         }
@@ -282,8 +285,33 @@ pub struct GetValidatorChangesResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
-    /// The validator information.
-    pub changes_to_validators: Vec<JsonValidatorInfo>,
+    /// The validators' status changes.
+    pub changes: Vec<JsonValidatorChanges>,
+}
+
+impl GetValidatorChangesResult {
+    pub(crate) fn new(
+        api_version: ProtocolVersion,
+        changes: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>,
+    ) -> Self {
+        let changes = changes
+            .into_iter()
+            .map(|(public_key, mut validator_changes)| {
+                validator_changes.sort();
+                let status_changes = validator_changes
+                    .into_iter()
+                    .map(|(era_id, validator_change)| {
+                        JsonValidatorStatusChange::new(era_id, validator_change)
+                    })
+                    .collect();
+                JsonValidatorChanges::new(public_key, status_changes)
+            })
+            .collect();
+        GetValidatorChangesResult {
+            api_version,
+            changes,
+        }
+    }
 }
 
 impl DocExample for GetValidatorChangesResult {
@@ -307,25 +335,8 @@ impl RpcWithoutParamsExt for GetValidatorChanges {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            // Get the validator info.
-            let validator_info = effect_builder
-                .get_consensus_validator_changes()
-                .await
-                .into_iter()
-                .map(|(public_key, era_changes)| {
-                    let era_changes = era_changes
-                        .into_iter()
-                        .map(|(era_id, validator_change)| {
-                            JsonEraChange::new(era_id, validator_change)
-                        })
-                        .collect();
-                    JsonValidatorInfo::new(public_key, era_changes)
-                })
-                .collect();
-            let result = Self::ResponseResult {
-                api_version,
-                changes_to_validators: validator_info,
-            };
+            let changes = effect_builder.get_consensus_validator_changes().await;
+            let result = Self::ResponseResult::new(api_version, changes);
             Ok(response_builder.success(result)?)
         }
         .boxed()
