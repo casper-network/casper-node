@@ -45,12 +45,12 @@ static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     peers: GetStatusResult::doc_example().peers.clone(),
 });
 static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
-    let era_changes = JsonEraChange::new(EraId::new(1), ValidatorChange::Added);
+    let change = JsonValidatorStatusChange::new(EraId::new(1), ValidatorChange::Added);
     let public_key = PublicKey::doc_example().clone();
-    let validator_info = vec![JsonValidatorChanges::new(public_key, vec![era_changes])];
+    let changes = vec![JsonValidatorChanges::new(public_key, vec![change])];
     GetValidatorChangesResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        changes: validator_info,
+        changes,
     }
 });
 
@@ -240,16 +240,16 @@ impl RpcWithoutParamsExt for GetStatus {
 /// A single change to a validator's status in the given era.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JsonEraChange {
+pub struct JsonValidatorStatusChange {
     /// The era in which the change occurred.
     era_id: EraId,
     /// The change in validator status.
     validator_change: ValidatorChange,
 }
 
-impl JsonEraChange {
+impl JsonValidatorStatusChange {
     pub(crate) fn new(era_id: EraId, validator_change: ValidatorChange) -> Self {
-        JsonEraChange {
+        JsonValidatorStatusChange {
             era_id,
             validator_change,
         }
@@ -263,11 +263,14 @@ pub struct JsonValidatorChanges {
     /// The public key of the validator.
     public_key: PublicKey,
     /// The set of changes to the validator's status.
-    status_changes: Vec<JsonEraChange>,
+    status_changes: Vec<JsonValidatorStatusChange>,
 }
 
 impl JsonValidatorChanges {
-    pub(crate) fn new(public_key: PublicKey, status_changes: Vec<JsonEraChange>) -> Self {
+    pub(crate) fn new(
+        public_key: PublicKey,
+        status_changes: Vec<JsonValidatorStatusChange>,
+    ) -> Self {
         JsonValidatorChanges {
             public_key,
             status_changes,
@@ -297,7 +300,9 @@ impl GetValidatorChangesResult {
                 validator_changes.sort();
                 let status_changes = validator_changes
                     .into_iter()
-                    .map(|(era_id, validator_change)| JsonEraChange::new(era_id, validator_change))
+                    .map(|(era_id, validator_change)| {
+                        JsonValidatorStatusChange::new(era_id, validator_change)
+                    })
                     .collect();
                 JsonValidatorChanges::new(public_key, status_changes)
             })

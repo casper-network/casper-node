@@ -8,7 +8,7 @@ use casper_node::rpcs::info::GetValidatorChanges;
 
 use crate::{command::ClientCommand, common, Success};
 
-/// This struct defines the order in which the args are shown for this subcommand's help message.
+/// This enum defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
     Verbose,
     NodeAddress,

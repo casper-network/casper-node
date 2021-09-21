@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.  The format
 * New histogram metrics `deploy_acceptor_accepted_deploy` and `deploy_acceptor_rejected_deploy` that track how long the initial verification took.
 * Add gzip content negotiation (using accept-encoding header) to rpc endpoints.
 * Add `state_get_trie` JSON-RPC endpoint.
-* Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes`  that return the status changes of active validators.
+* Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes` that return the status changes of active validators.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):

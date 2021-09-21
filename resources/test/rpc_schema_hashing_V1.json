@@ -1610,7 +1610,7 @@
             ],
             "type": "object"
           },
-          "JsonEraChange": {
+          "JsonValidatorStatusChange": {
             "additionalProperties": false,
             "description": "A single change to a validator's status in the given era.",
             "properties": {
@@ -1765,7 +1765,7 @@
               "status_changes": {
                 "description": "The set of changes to the validator's status.",
                 "items": {
-                  "$ref": "#/components/schemas/JsonEraChange"
+                  "$ref": "#/components/schemas/JsonValidatorStatusChange"
                 },
                 "type": "array"
               }

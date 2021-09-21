@@ -28,32 +28,29 @@ impl ValidatorChanges {
     pub(super) fn new<I>(era0: &Era<I>, era1: &Era<I>) -> Self {
         let era0_metadata = EraMetadata::from(era0);
         let era1_metadata = EraMetadata::from(era1);
-        ValidatorChanges(Self::new_from_metadata(era0_metadata, era1_metadata))
+        Self::new_from_metadata(era0_metadata, era1_metadata)
     }
 
-    fn new_from_metadata(
-        era0_metadata: EraMetadata,
-        era1_metadata: EraMetadata,
-    ) -> Vec<(PublicKey, ValidatorChange)> {
-        // Validators in `era0` but not `era1` are labelled `Removed`.
+    fn new_from_metadata(era0_metadata: EraMetadata, era1_metadata: EraMetadata) -> Self {
+        // Validators in `era0` but not `era1` are labeled `Removed`.
         let removed_iter = era0_metadata
             .validators
             .difference(&era1_metadata.validators)
             .map(|&public_key| (public_key.clone(), ValidatorChange::Removed));
 
-        // Validators in `era1` but not `era0` are labelled `Added`.
+        // Validators in `era1` but not `era0` are labeled `Added`.
         let added_iter = era1_metadata
             .validators
             .difference(&era0_metadata.validators)
             .map(|&public_key| (public_key.clone(), ValidatorChange::Added));
 
-        // Only those seen as faulty in `era1` are labelled `SeenAsFaulty`.
+        // Only those seen as faulty in `era1` are labeled `SeenAsFaulty`.
         let faulty_iter = era1_metadata
             .seen_as_faulty
             .iter()
             .map(|&public_key| (public_key.clone(), ValidatorChange::SeenAsFaulty));
 
-        // Faulty peers in `era1` but not `era0` which are also validators in `era1` are labelled
+        // Faulty peers in `era1` but not `era0` which are also validators in `era1` are labeled
         // `Banned`.
         let banned_iter = era1_metadata
             .faulty
@@ -67,7 +64,7 @@ impl ValidatorChanges {
             });
 
         // Peers which cannot propose in `era1` but can in `era0` and which are also validators in
-        // `era1` are labelled `CannotPropose`.
+        // `era1` are labeled `CannotPropose`.
         let cannot_propose_iter = era1_metadata
             .cannot_propose
             .difference(era0_metadata.cannot_propose)
@@ -79,12 +76,14 @@ impl ValidatorChanges {
                 }
             });
 
-        removed_iter
-            .chain(faulty_iter)
-            .chain(added_iter)
-            .chain(banned_iter)
-            .chain(cannot_propose_iter)
-            .collect()
+        ValidatorChanges(
+            removed_iter
+                .chain(faulty_iter)
+                .chain(added_iter)
+                .chain(banned_iter)
+                .chain(cannot_propose_iter)
+                .collect(),
+        )
     }
 }
 
@@ -147,7 +146,7 @@ mod tests {
 
         let expected_change = vec![(added_validator.clone(), ValidatorChange::Added)];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert_eq!(expected_change, actual_change);
+        assert_eq!(expected_change, actual_change.0);
     }
 
     #[test]
@@ -168,7 +167,7 @@ mod tests {
 
         let expected_change = vec![(removed_validator.clone(), ValidatorChange::Removed)];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert_eq!(expected_change, actual_change)
+        assert_eq!(expected_change, actual_change.0)
     }
 
     #[test]
@@ -195,7 +194,7 @@ mod tests {
             ValidatorChange::SeenAsFaulty,
         )];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert_eq!(expected_change, actual_change)
+        assert_eq!(expected_change, actual_change.0)
     }
 
     #[test]
@@ -218,7 +217,7 @@ mod tests {
 
         let expected_change = vec![(faulty.clone(), ValidatorChange::Banned)];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert_eq!(expected_change, actual_change)
+        assert_eq!(expected_change, actual_change.0)
     }
 
     #[test]
@@ -237,7 +236,7 @@ mod tests {
         let era1_metadata = era0_metadata.clone();
 
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert!(actual_change.is_empty());
+        assert!(actual_change.0.is_empty());
     }
 
     #[test]
@@ -259,7 +258,7 @@ mod tests {
         era1_metadata.faulty = &faulty_set;
 
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert!(actual_change.is_empty());
+        assert!(actual_change.0.is_empty());
     }
 
     #[test]
@@ -282,7 +281,7 @@ mod tests {
 
         let expected_change = vec![(cannot_propose.clone(), ValidatorChange::CannotPropose)];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert_eq!(expected_change, actual_change)
+        assert_eq!(expected_change, actual_change.0)
     }
 
     #[test]
@@ -301,7 +300,7 @@ mod tests {
         let era1_metadata = era0_metadata.clone();
 
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert!(actual_change.is_empty());
+        assert!(actual_change.0.is_empty());
     }
 
     #[test]
@@ -323,7 +322,7 @@ mod tests {
         era1_metadata.cannot_propose = &cannot_propose_set;
 
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert!(actual_change.is_empty());
+        assert!(actual_change.0.is_empty());
     }
 
     #[test]
@@ -345,6 +344,6 @@ mod tests {
         };
 
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
-        assert!(actual_change.is_empty());
+        assert!(actual_change.0.is_empty());
     }
 }
