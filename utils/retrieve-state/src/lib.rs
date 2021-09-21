@@ -176,7 +176,7 @@ pub async fn download_block_with_deploys(
     })
 }
 
-/// Download block files from the highest (provided) block hash to genesis.
+/// Download block files from the block hash or height to genesis.
 pub async fn download_blocks(
     client: &mut Client,
     url: &str,
