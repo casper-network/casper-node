@@ -347,7 +347,7 @@ pub mod offline {
         chain_download_path: impl AsRef<Path>,
         comparator: impl Fn(u64, u64) -> u64,
     ) -> Result<Option<u64>, anyhow::Error> {
-        let lowest = if chain_download_path.as_ref().exists() {
+        let maybe_height = if chain_download_path.as_ref().exists() {
             let existing_chain = walkdir::WalkDir::new(chain_download_path);
             let mut height_comparison = None;
             for entry in existing_chain {
@@ -364,7 +364,7 @@ pub mod offline {
         } else {
             None
         };
-        Ok(lowest)
+        Ok(maybe_height)
     }
 
     /// Walks the chain-download directory and finds blocks that have already been downloaded.
