@@ -65,7 +65,7 @@ minimum_round_exponent = 15
 # Integer between 0 and 255.  Must be greater than `minimum_round_exponent`.  The power of two that is the number of
 # milliseconds in the maximum round length, and therefore the maximum delay between a block and its child.  E.g. 19
 # means 2^19 milliseconds, i.e. about 8.7 minutes.
-maximum_round_exponent = 18
+maximum_round_exponent = 17
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
