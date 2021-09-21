@@ -15,9 +15,8 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::warn;
 
-use crate::components::contract_runtime::ContractRuntime;
 use crate::{
-    components::{consensus::EraSupervisor, storage::Storage},
+    components::{consensus::EraSupervisor, contract_runtime::ContractRuntime, storage::Storage},
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::{
         initializer::Reactor as InitializerReactor,
