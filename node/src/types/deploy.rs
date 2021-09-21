@@ -200,6 +200,15 @@ pub enum DeployConfigurationFailure {
         /// The attempted transfer amount.
         attempted: U512,
     },
+
+    /// The amount of approvals on the deploy exceeds the max_associated_keys limit.
+    #[error("number of associated keys {got} exceeds the maximum {max_associated_keys}")]
+    ExcessiveApprovals {
+        /// Number of approvals on the deploy.
+        got: u32,
+        /// The chainspec limit for max_associated_keys.
+        max_associated_keys: u32,
+    },
 }
 
 /// Error returned when a Deploy is too large.
@@ -729,6 +738,7 @@ impl Deploy {
         &self,
         chain_name: &str,
         config: &DeployConfig,
+        max_associated_keys: u32,
     ) -> Result<(), DeployConfigurationFailure> {
         self.is_valid_size(config.max_deploy_size)?;
 
@@ -769,6 +779,19 @@ impl Deploy {
             return Err(DeployConfigurationFailure::ExcessiveTimeToLive {
                 max_ttl: config.max_ttl,
                 got: header.ttl(),
+            });
+        }
+
+        if self.approvals.len() > max_associated_keys as usize {
+            info!(
+                deploy_hash = %self.id(),
+                number_of_associated_keys = %self.approvals.len(),
+                max_associated_keys = %max_associated_keys,
+                "number of associated keys exceeds the maximum limit"
+            );
+            return Err(DeployConfigurationFailure::ExcessiveApprovals {
+                got: self.approvals.len() as u32,
+                max_associated_keys,
             });
         }
 
@@ -850,7 +873,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn valid_native_transfer(rng: &mut TestRng) -> Self {
+    pub(crate) fn random_valid_native_transfer(rng: &mut TestRng) -> Self {
         let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
         let gas_price = rng.gen_range(1..100);
@@ -896,7 +919,10 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_valid_custom_payment_contract_by_name(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_valid_custom_payment_contract_by_name(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Self {
         let payment = ExecutableDeployItem::StoredContractByName {
             name: "Test".to_string(),
             entry_point: "call".to_string(),
@@ -918,7 +944,10 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_payment_contract_by_hash(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_missing_payment_contract_by_hash(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Self {
         let payment = ExecutableDeployItem::StoredContractByHash {
             hash: [19; 32].into(),
             entry_point: "non-existent-entry-point".to_string(),
@@ -940,7 +969,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_entry_point_in_payment_contract(
+    pub(crate) fn random_with_missing_entry_point_in_payment_contract(
         &mut self,
         rng: &mut TestRng,
     ) -> Self {
@@ -965,7 +994,10 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_valid_custom_payment_package_by_name(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_valid_custom_payment_package_by_name(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Self {
         let payment = ExecutableDeployItem::StoredVersionedContractByName {
             name: "Test".to_string(),
             version: None,
@@ -989,7 +1021,10 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_payment_package_by_hash(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_missing_payment_package_by_hash(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Self {
         let payment = ExecutableDeployItem::StoredVersionedContractByHash {
             hash: Default::default(),
             version: None,
@@ -1012,7 +1047,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_nonexistent_contract_version_in_payment_package(
+    pub(crate) fn random_with_nonexistent_contract_version_in_payment_package(
         &mut self,
         rng: &mut TestRng,
     ) -> Self {
@@ -1039,7 +1074,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_valid_session_contract_by_name(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_valid_session_contract_by_name(&mut self, rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::StoredContractByName {
             name: "Test".to_string(),
             entry_point: "call".to_string(),
@@ -1061,7 +1096,10 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_session_contract_by_hash(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_missing_session_contract_by_hash(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Self {
         let session = ExecutableDeployItem::StoredContractByHash {
             hash: Default::default(),
             entry_point: "call".to_string(),
@@ -1083,7 +1121,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_entry_point_in_session_contract(
+    pub(crate) fn random_with_missing_entry_point_in_session_contract(
         &mut self,
         rng: &mut TestRng,
     ) -> Self {
@@ -1108,7 +1146,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_valid_session_package_by_name(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_valid_session_package_by_name(&mut self, rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::StoredVersionedContractByName {
             name: "Test".to_string(),
             version: None,
@@ -1132,7 +1170,10 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_missing_session_package_by_hash(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_missing_session_package_by_hash(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Self {
         let session = ExecutableDeployItem::StoredVersionedContractByHash {
             hash: Default::default(),
             version: None,
@@ -1155,7 +1196,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_nonexistent_contract_version_in_session_package(
+    pub(crate) fn random_with_nonexistent_contract_version_in_session_package(
         &mut self,
         rng: &mut TestRng,
     ) -> Self {
@@ -1182,7 +1223,7 @@ impl Deploy {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_empty_session_module_bytes(&mut self, rng: &mut TestRng) -> Self {
+    pub(crate) fn random_with_empty_session_module_bytes(&mut self, rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::ModuleBytes {
             module_bytes: casper_types::bytesrepr::Bytes::new(),
             args: Default::default(),
@@ -1197,6 +1238,34 @@ impl Deploy {
             self.header().chain_name().to_string(),
             self.payment().clone(),
             session,
+            &secret_key,
+            None,
+        )
+    }
+
+    // Create a deploy with native transfer as payment code
+    #[cfg(test)]
+    pub(crate) fn random_with_native_transfer_in_payment_logic(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Self {
+        let transfer_args = runtime_args! {
+            "amount" => *MAX_PAYMENT,
+            "source" => PublicKey::random(rng).to_account_hash(),
+            "target" => PublicKey::random(rng).to_account_hash(),
+        };
+        let invalid_payment = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        let secret_key = SecretKey::random(rng);
+        Deploy::new(
+            self.header().timestamp(),
+            self.header().ttl(),
+            self.header().gas_price(),
+            self.header().dependencies().clone(),
+            self.header().chain_name().to_string(),
+            invalid_payment,
+            self.payment().clone(),
             &secret_key,
             None,
         )
@@ -1417,6 +1486,8 @@ mod tests {
     use super::*;
     use crate::crypto::AsymmetricKeyExt;
 
+    const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+
     #[test]
     fn json_roundtrip() {
         let mut rng = crate::new_rng();
@@ -1587,7 +1658,7 @@ mod tests {
             chain_name,
         );
         deploy
-            .is_config_compliant(chain_name, &deploy_config)
+            .is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
             .expect("should be acceptable");
     }
 
@@ -1611,7 +1682,11 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(expected_chain_name, &deploy_config),
+            deploy.is_config_compliant(
+                expected_chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1641,7 +1716,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config),
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
             Err(expected_error)
         );
         assert!(
@@ -1671,7 +1746,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config),
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
             Err(expected_error)
         );
         assert!(
@@ -1718,7 +1793,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config),
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
             Err(expected_error)
         );
         assert!(
@@ -1766,7 +1841,30 @@ mod tests {
 
         assert_eq!(
             Ok(()),
-            deploy.is_config_compliant(chain_name, &deploy_config)
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+        )
+    }
+
+    #[test]
+    fn not_acceptable_due_to_excessive_approvals() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies as usize,
+            chain_name,
+        );
+        // This test to ensure a given limit is being checked.
+        // Therefore, set the limit to one less than the approvals in the deploy.
+        let max_associated_keys = (deploy.approvals.len() - 1) as u32;
+        assert_eq!(
+            Err(DeployConfigurationFailure::ExcessiveApprovals {
+                got: deploy.approvals.len() as u32,
+                max_associated_keys: (deploy.approvals.len() - 1) as u32
+            }),
+            deploy.is_config_compliant(chain_name, &deploy_config, max_associated_keys)
         )
     }
 }

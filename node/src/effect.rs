@@ -1474,12 +1474,7 @@ impl<REv> EffectBuilder<REv> {
     {
         let query_request = QueryRequest::new(prestate_hash, account_key, vec![]);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => {
-                if let StoredValue::Account(account) = *value {
-                    return Some(account);
-                }
-                None
-            }
+            Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
             Ok(_) | Err(_) => None,
         }
     }
@@ -1517,12 +1512,7 @@ impl<REv> EffectBuilder<REv> {
     {
         let query_request = QueryRequest::new(prestate_hash, query_key, path);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => {
-                if let StoredValue::Contract(contract) = *value {
-                    return Some(contract);
-                }
-                None
-            }
+            Ok(QueryResult::Success { value, .. }) => value.as_contract().cloned(),
             Ok(_) | Err(_) => None,
         }
     }
@@ -1539,12 +1529,7 @@ impl<REv> EffectBuilder<REv> {
     {
         let query_request = QueryRequest::new(prestate_hash, query_key, path);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => {
-                if let StoredValue::ContractPackage(contract_package) = *value {
-                    return Some(contract_package);
-                }
-                None
-            }
+            Ok(QueryResult::Success { value, .. }) => value.as_contract_package().cloned(),
             Ok(_) | Err(_) => None,
         }
     }

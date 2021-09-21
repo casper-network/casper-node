@@ -21,13 +21,13 @@ use casper_types::{
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(crate) deploy: Box<Deploy>,
-    pub(crate) source: Source<NodeId>,
-    pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
+    pub(super) deploy: Box<Deploy>,
+    pub(super) source: Source<NodeId>,
+    pub(super) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
-    pub(crate) fn new(
+    pub(super) fn new(
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
@@ -37,18 +37,6 @@ impl EventMetadata {
             source,
             maybe_responder,
         }
-    }
-
-    pub(crate) fn deploy(&self) -> &Deploy {
-        &self.deploy
-    }
-
-    pub(crate) fn source(&self) -> &Source<NodeId> {
-        &self.source
-    }
-
-    pub(crate) fn take_maybe_responder(self) -> Option<Responder<Result<(), Error>>> {
-        self.maybe_responder
     }
 }
 
@@ -140,13 +128,13 @@ impl Display for Event {
                     write!(
                         formatter,
                         "put new {} to storage",
-                        event_metadata.deploy().id()
+                        event_metadata.deploy.id()
                     )
                 } else {
                     write!(
                         formatter,
                         "had already stored {}",
-                        event_metadata.deploy().id()
+                        event_metadata.deploy.id()
                     )
                 }
             }
@@ -154,21 +142,21 @@ impl Display for Event {
                 write!(
                     formatter,
                     "received highest block from storage to validate deploy with hash: {}.",
-                    event_metadata.deploy().id()
+                    event_metadata.deploy.id()
                 )
             }
             Event::GetAccountResult { event_metadata, .. } => {
                 write!(
                     formatter,
                     "verifying account to validate deploy with hash {}.",
-                    event_metadata.deploy().id()
+                    event_metadata.deploy.id()
                 )
             }
             Event::GetBalanceResult { event_metadata, .. } => {
                 write!(
                     formatter,
                     "verifying account balance to validate deploy with hash {}.",
-                    event_metadata.deploy().id()
+                    event_metadata.deploy.id()
                 )
             }
             Event::GetContractResult {
@@ -179,7 +167,7 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying contract to validate deploy with hash {} with state hash: {}.",
-                    event_metadata.deploy().id(),
+                    event_metadata.deploy.id(),
                     prestate_hash
                 )
             }
@@ -191,7 +179,7 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying contract package to validate deploy with hash {} with state hash: {}.",
-                    event_metadata.deploy().id(),
+                    event_metadata.deploy.id(),
                     prestate_hash
                 )
             }
@@ -199,7 +187,7 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying deploy cryptographic validity for deploy with hash {}.",
-                    event_metadata.deploy().id(),
+                    event_metadata.deploy.id(),
                 )
             }
         }

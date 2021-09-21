@@ -116,7 +116,6 @@ enum ContractPackageScenario {
     MissingContractVersion,
 }
 
-#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum TestScenario {
     FromPeerInvalidDeploy,
@@ -134,7 +133,9 @@ enum TestScenario {
     DeployWithCustomPaymentContractPackage(ContractPackageScenario),
     DeployWithSessionContract(ContractScenario),
     DeployWithSessionContractPackage(ContractPackageScenario),
+    DeployWithNativeTransferInPayment,
     DeployWithEmptySessionModuleBytes,
+    BalanceCheckForDeploySentByPeer,
 }
 
 impl TestScenario {
@@ -142,7 +143,8 @@ impl TestScenario {
         match self {
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromPeerValidDeploy
-            | TestScenario::FromPeerRepeatedValidDeploy => Source::Peer(NodeId::random(rng)),
+            | TestScenario::FromPeerRepeatedValidDeploy
+            | TestScenario::BalanceCheckForDeploySentByPeer => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidDeploy
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
@@ -155,12 +157,13 @@ impl TestScenario {
             | TestScenario::DeployWithCustomPaymentContractPackage(_)
             | TestScenario::DeployWithSessionContract(_)
             | TestScenario::DeployWithSessionContractPackage(_)
-            | TestScenario::DeployWithEmptySessionModuleBytes => Source::Client,
+            | TestScenario::DeployWithEmptySessionModuleBytes
+            | TestScenario::DeployWithNativeTransferInPayment => Source::Client,
         }
     }
 
     fn deploy(&self, rng: &mut NodeRng) -> Deploy {
-        let mut deploy = Deploy::valid_native_transfer(rng);
+        let mut deploy = Deploy::random_valid_native_transfer(rng);
         match self {
             TestScenario::FromPeerInvalidDeploy | TestScenario::FromClientInvalidDeploy => {
                 deploy.invalidate();
@@ -174,17 +177,18 @@ impl TestScenario {
             | TestScenario::FromClientRepeatedValidDeploy
             | TestScenario::AccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithInsufficientWeight
-            | TestScenario::AccountWithUnknownBalance => deploy,
+            | TestScenario::AccountWithUnknownBalance
+            | TestScenario::BalanceCheckForDeploySentByPeer => deploy,
             TestScenario::DeployWithCustomPaymentContract(contract_scenario) => {
                 match contract_scenario {
                     ContractScenario::Valid | ContractScenario::MissingContractAtName => {
-                        deploy.with_valid_custom_payment_contract_by_name(rng)
+                        deploy.random_with_valid_custom_payment_contract_by_name(rng)
                     }
                     ContractScenario::MissingEntryPoint => {
-                        deploy.with_missing_entry_point_in_payment_contract(rng)
+                        deploy.random_with_missing_entry_point_in_payment_contract(rng)
                     }
                     ContractScenario::MissingContractAtHash => {
-                        deploy.with_missing_payment_contract_by_hash(rng)
+                        deploy.random_with_missing_payment_contract_by_hash(rng)
                     }
                 }
             }
@@ -192,43 +196,46 @@ impl TestScenario {
                 match contract_package_scenario {
                     ContractPackageScenario::Valid
                     | ContractPackageScenario::MissingPackageAtName => {
-                        deploy.with_valid_custom_payment_package_by_name(rng)
+                        deploy.random_with_valid_custom_payment_package_by_name(rng)
                     }
                     ContractPackageScenario::MissingPackageAtHash => {
-                        deploy.with_missing_payment_package_by_hash(rng)
+                        deploy.random_with_missing_payment_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.with_nonexistent_contract_version_in_payment_package(rng)
+                        deploy.random_with_nonexistent_contract_version_in_payment_package(rng)
                     }
                 }
             }
             TestScenario::DeployWithSessionContract(contract_scenario) => match contract_scenario {
                 ContractScenario::Valid | ContractScenario::MissingContractAtName => {
-                    deploy.with_valid_session_contract_by_name(rng)
+                    deploy.random_with_valid_session_contract_by_name(rng)
                 }
                 ContractScenario::MissingContractAtHash => {
-                    deploy.with_missing_session_contract_by_hash(rng)
+                    deploy.random_with_missing_session_contract_by_hash(rng)
                 }
                 ContractScenario::MissingEntryPoint => {
-                    deploy.with_missing_entry_point_in_session_contract(rng)
+                    deploy.random_with_missing_entry_point_in_session_contract(rng)
                 }
             },
             TestScenario::DeployWithSessionContractPackage(contract_package_scenario) => {
                 match contract_package_scenario {
                     ContractPackageScenario::Valid
                     | ContractPackageScenario::MissingPackageAtName => {
-                        deploy.with_valid_session_package_by_name(rng)
+                        deploy.random_with_valid_session_package_by_name(rng)
                     }
                     ContractPackageScenario::MissingPackageAtHash => {
-                        deploy.with_missing_session_package_by_hash(rng)
+                        deploy.random_with_missing_session_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.with_nonexistent_contract_version_in_session_package(rng)
+                        deploy.random_with_nonexistent_contract_version_in_session_package(rng)
                     }
                 }
             }
             TestScenario::DeployWithEmptySessionModuleBytes => {
-                deploy.with_empty_session_module_bytes(rng)
+                deploy.random_with_empty_session_module_bytes(rng)
+            }
+            TestScenario::DeployWithNativeTransferInPayment => {
+                deploy.random_with_native_transfer_in_payment_logic(rng)
             }
         }
     }
@@ -245,20 +252,27 @@ impl TestScenario {
             | TestScenario::FromClientInvalidDeploy
             | TestScenario::AccountWithInsufficientWeight
             | TestScenario::AccountWithInvalidAssociatedKeys
-            | TestScenario::AccountWithUnknownBalance => false,
-            TestScenario::DeployWithCustomPaymentContract(ContractScenario::Valid)
-            | TestScenario::DeployWithSessionContract(ContractScenario::Valid) => true,
-            TestScenario::DeployWithCustomPaymentContract(_)
-            | TestScenario::DeployWithSessionContract(_) => false,
-            TestScenario::DeployWithCustomPaymentContractPackage(
-                ContractPackageScenario::Valid,
-            )
-            | TestScenario::DeployWithSessionContractPackage(ContractPackageScenario::Valid) => {
-                true
+            | TestScenario::AccountWithUnknownBalance
+            | TestScenario::DeployWithEmptySessionModuleBytes
+            | TestScenario::DeployWithNativeTransferInPayment
+            | TestScenario::BalanceCheckForDeploySentByPeer => false,
+            TestScenario::DeployWithCustomPaymentContract(contract_scenario)
+            | TestScenario::DeployWithSessionContract(contract_scenario) => match contract_scenario
+            {
+                ContractScenario::Valid => true,
+                ContractScenario::MissingContractAtName
+                | ContractScenario::MissingContractAtHash
+                | ContractScenario::MissingEntryPoint => false,
+            },
+            TestScenario::DeployWithCustomPaymentContractPackage(contract_package_scenario)
+            | TestScenario::DeployWithSessionContractPackage(contract_package_scenario) => {
+                match contract_package_scenario {
+                    ContractPackageScenario::Valid => true,
+                    ContractPackageScenario::MissingPackageAtName
+                    | ContractPackageScenario::MissingPackageAtHash
+                    | ContractPackageScenario::MissingContractVersion => false,
+                }
             }
-            TestScenario::DeployWithCustomPaymentContractPackage(_)
-            | TestScenario::DeployWithSessionContractPackage(_) => false,
-            TestScenario::DeployWithEmptySessionModuleBytes => false,
         }
     }
 
@@ -545,6 +559,29 @@ fn schedule_accept_deploy(
     }
 }
 
+fn inject_balance_check_for_peer(
+    deploy: Box<Deploy>,
+    source: Source<NodeId>,
+    responder: Responder<Result<(), super::Error>>,
+) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    |effect_builder: EffectBuilder<Event>| {
+        let event_metadata = EventMetadata::new(deploy, source, Some(responder));
+        effect_builder
+            .into_inner()
+            .schedule(
+                super::Event::GetBalanceResult {
+                    event_metadata,
+                    prestate_hash: Default::default(),
+                    maybe_balance_value: None,
+                    account_hash: Default::default(),
+                    verification_start_timestamp: Timestamp::now(),
+                },
+                QueueKind::Regular,
+            )
+            .ignore()
+    }
+}
+
 async fn run_deploy_acceptor_without_timeout(
     test_scenario: TestScenario,
 ) -> Result<(), super::Error> {
@@ -596,6 +633,22 @@ async fn run_deploy_acceptor_without_timeout(
             // Check that the "previously seen" deploy is present in storage.
             assert!(injected_receiver.await.unwrap());
         }
+
+        if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {
+            let fatal_deploy = Box::new(deploy.clone());
+            let (deploy_sender, _) = oneshot::channel();
+            let deploy_responder = Responder::create(deploy_sender);
+            runner
+                .process_injected_effects(inject_balance_check_for_peer(
+                    fatal_deploy,
+                    source.clone(),
+                    deploy_responder,
+                ))
+                .await;
+            while runner.try_crank(&mut rng).await.is_none() {
+                time::sleep(POLL_INTERVAL).await;
+            }
+        }
     }
 
     runner
@@ -618,7 +671,8 @@ async fn run_deploy_acceptor_without_timeout(
             | TestScenario::DeployWithEmptySessionModuleBytes
             | TestScenario::AccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithInsufficientWeight
-            | TestScenario::AccountWithUnknownBalance => {
+            | TestScenario::AccountWithUnknownBalance
+            | TestScenario::DeployWithNativeTransferInPayment => {
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
@@ -627,6 +681,9 @@ async fn run_deploy_acceptor_without_timeout(
                     })
                 )
             }
+            // Check that executable items with valid contracts are successfully stored.
+            // Conversely, ensure that invalid contracts will raise the invalid deploy
+            // announcement.
             TestScenario::DeployWithCustomPaymentContract(contract_scenario)
             | TestScenario::DeployWithSessionContract(contract_scenario) => match contract_scenario
             {
@@ -645,6 +702,9 @@ async fn run_deploy_acceptor_without_timeout(
                     )
                 ),
             },
+            // Check that executable items with valid contract packages are successfully stored.
+            // Conversely, ensure that invalid contract packages will raise the invalid deploy
+            // announcement.
             TestScenario::DeployWithCustomPaymentContractPackage(contract_package_scenario)
             | TestScenario::DeployWithSessionContractPackage(contract_package_scenario) => {
                 match contract_package_scenario {
@@ -666,7 +726,7 @@ async fn run_deploy_acceptor_without_timeout(
             }
             // Check that invalid deploys sent by a peer raise the `InvalidDeploy` announcement
             // with the appropriate source.
-            TestScenario::FromPeerInvalidDeploy => {
+            TestScenario::FromPeerInvalidDeploy | TestScenario::BalanceCheckForDeploySentByPeer => {
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
@@ -1069,4 +1129,25 @@ async fn should_reject_deploy_with_empty_module_bytes_in_session() {
             ..
         })
     ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_with_transfer_in_payment() {
+    let test_scenario = TestScenario::DeployWithNativeTransferInPayment;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployParameters {
+            failure: DeployParameterFailure::InvalidPaymentVariant,
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+#[should_panic]
+async fn should_panic_when_balance_checking_for_deploy_sent_by_peer() {
+    let test_scenario = TestScenario::BalanceCheckForDeploySentByPeer;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(result.is_ok())
 }
