@@ -6,7 +6,6 @@ use datasize::DataSize;
 
 #[derive(DataSize, Debug, PartialEq)]
 pub enum StopReason {
-    None,
     ForUpgrade,
     ForDowngrade,
 }

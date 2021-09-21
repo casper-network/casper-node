@@ -78,7 +78,7 @@ pub(crate) struct LinearChainSync<I> {
     /// When we download the switch block of an era immediately before the activation point,
     /// we need to shut down for an upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
-    stop_reason: StopReason,
+    stop_reason: Option<StopReason>,
     /// Key for storing the linear chain sync state.
     state_key: Vec<u8>,
     /// Shortest era that is allowed with the given protocol configuration.
@@ -167,7 +167,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 state,
                 metrics: LinearChainSyncMetrics::new(registry)?,
                 next_upgrade_activation_point,
-                stop_reason: StopReason::None,
+                stop_reason: None,
                 state_key,
                 shortest_era,
                 min_round_length: chainspec.highway_config.min_round_length(),
@@ -206,7 +206,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
             next_upgrade_activation_point,
-            stop_reason: StopReason::None,
+            stop_reason: None,
             state_key,
             shortest_era,
             min_round_length: chainspec.highway_config.min_round_length(),
@@ -233,12 +233,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we should stop for upgrade.
     pub(crate) fn stopped_for_upgrade(&self) -> bool {
-        self.stop_reason == StopReason::ForUpgrade
+        self.stop_reason == Some(StopReason::ForUpgrade)
     }
 
     /// Returns `true` if we should stop for downgrade.
     pub(crate) fn stopped_for_downgrade(&self) -> bool {
-        self.stop_reason == StopReason::ForDowngrade
+        self.stop_reason == Some(StopReason::ForDowngrade)
     }
 
     fn block_downloaded<REv>(
@@ -878,7 +878,7 @@ where
             }
             Event::Shutdown(reason) => {
                 info!(?reason, "ready for shutdown");
-                self.stop_reason = reason;
+                self.stop_reason = Some(reason);
                 Effects::new()
             }
             Event::InitializeTimeout => {
