@@ -229,6 +229,34 @@ fn has_passed_by_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> 
     }
 }
 
+/// Check that all nodes have downloaded the state root under the genesis block.
+fn all_have_genesis_state(nodes: &Nodes<MultiStageTestReactor>) -> bool {
+    nodes.values().all(|runner| {
+        let reactor = runner.reactor().inner();
+        let genesis_state_root = if let Some(genesis_state_root) = reactor
+            .storage()
+            .and_then(|storage| {
+                storage
+                    .read_block_header_by_height(0)
+                    .expect("Could not read block at height 0")
+            })
+            .map(|genesis_block_header| *genesis_block_header.state_root_hash())
+        {
+            genesis_state_root
+        } else {
+            return false;
+        };
+        reactor
+            .contract_runtime()
+            .map_or(false, move |contract_runtime| {
+                contract_runtime
+                    .trie_store_check(vec![genesis_state_root.into()])
+                    .expect("Could not read DB")
+                    .is_empty()
+            })
+    })
+}
+
 #[tokio::test]
 async fn run_participating_network() {
     testing::init_logging();
@@ -461,6 +489,11 @@ async fn test_archival_sync() {
             has_passed_by_era(synchronized_era),
             Duration::from_secs(600),
         )
+        .await;
+
+    chain
+        .network
+        .settle_on(&mut rng, all_have_genesis_state, Duration::from_secs(600))
         .await;
 }
 

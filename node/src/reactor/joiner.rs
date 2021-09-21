@@ -946,4 +946,9 @@ impl Reactor {
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
+
+    /// Inspect the contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
+    }
 }
