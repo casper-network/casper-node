@@ -3,9 +3,10 @@ use thiserror::Error;
 
 use datasize::DataSize;
 
+use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
-use crate::{core::engine_state::error::Error, shared::newtypes::Blake2bHash};
+use crate::core::engine_state::error::Error;
 
 /// An enum that represents all possible error conditions of a `get_era_validators` request.
 #[derive(Debug, Error, DataSize)]
@@ -31,13 +32,13 @@ impl GetEraValidatorsError {
 /// Represents a `get_era_validators` request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetEraValidatorsRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     protocol_version: ProtocolVersion,
 }
 
 impl GetEraValidatorsRequest {
     /// Creates a new [`GetEraValidatorsRequest`].
-    pub fn new(state_hash: Blake2bHash, protocol_version: ProtocolVersion) -> Self {
+    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
         GetEraValidatorsRequest {
             state_hash,
             protocol_version,
@@ -45,7 +46,7 @@ impl GetEraValidatorsRequest {
     }
 
     /// Returns the state root hash.
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 

@@ -13,6 +13,7 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
@@ -20,6 +21,7 @@ use casper_types::{
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
+use super::engine_state::EngineConfig;
 use crate::{
     core::{
         engine_state::{execution_effect::ExecutionEffect, op::Op},
@@ -27,13 +29,11 @@ use crate::{
     },
     shared::{
         additive_map::AdditiveMap,
-        newtypes::{Blake2bHash, CorrelationId},
+        newtypes::CorrelationId,
         transform::{self, Transform},
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
-
-use super::engine_state::EngineConfig;
 
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {
@@ -631,7 +631,7 @@ impl From<bytesrepr::Error> for ValidationError {
 ///
 /// Returns [`ValidationError`] for any of
 pub fn validate_query_proof(
-    hash: &Blake2bHash,
+    hash: &Digest,
     proofs: &[TrieMerkleProof<Key, StoredValue>],
     expected_first_key: &Key,
     path: &[String],
@@ -688,7 +688,7 @@ pub fn validate_query_proof(
 
 /// Validates a proof of a balance request.
 pub fn validate_balance_proof(
-    hash: &Blake2bHash,
+    hash: &Digest,
     balance_proof: &TrieMerkleProof<Key, StoredValue>,
     expected_purse_key: Key,
     expected_motes: &U512,

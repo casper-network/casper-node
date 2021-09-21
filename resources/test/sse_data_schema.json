@@ -231,15 +231,31 @@
       ],
       "properties": {
         "hash": {
-          "$ref": "#/definitions/BlockHash"
+          "description": "`BlockHash`",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
         },
         "header": {
-          "$ref": "#/definitions/JsonBlockHeader"
+          "description": "JSON-friendly block header.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/JsonBlockHeader"
+            }
+          ]
         },
         "body": {
-          "$ref": "#/definitions/JsonBlockBody"
+          "description": "JSON-friendly block body.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/JsonBlockBody"
+            }
+          ]
         },
         "proofs": {
+          "description": "JSON-friendly list of proofs for this block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/JsonProof"
@@ -264,21 +280,43 @@
       ],
       "properties": {
         "parent_hash": {
-          "$ref": "#/definitions/BlockHash"
+          "description": "The parent hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
         },
         "state_root_hash": {
-          "$ref": "#/definitions/Digest"
+          "description": "The state root hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
         },
         "body_hash": {
-          "$ref": "#/definitions/Digest"
+          "description": "The body hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
         },
         "random_bit": {
+          "description": "Randomness bit.",
           "type": "boolean"
         },
         "accumulated_seed": {
-          "$ref": "#/definitions/Digest"
+          "description": "Accumulated seed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
         },
         "era_end": {
+          "description": "The era end.",
           "anyOf": [
             {
               "$ref": "#/definitions/JsonEraEnd"
@@ -289,18 +327,34 @@
           ]
         },
         "timestamp": {
-          "$ref": "#/definitions/Timestamp"
+          "description": "The block timestamp.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Timestamp"
+            }
+          ]
         },
         "era_id": {
-          "$ref": "#/definitions/EraId"
+          "description": "The block era id.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
         },
         "height": {
+          "description": "The block height.",
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
         "protocol_version": {
-          "$ref": "#/definitions/ProtocolVersion"
+          "description": "The protocol version.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ProtocolVersion"
+            }
+          ]
         }
       },
       "additionalProperties": false

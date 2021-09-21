@@ -2,6 +2,7 @@
 use datasize::DataSize;
 use thiserror::Error;
 
+use casper_hashing::Digest;
 use casper_types::{bytesrepr, system::mint, ApiError, ProtocolVersion};
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
         engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
         execution,
     },
-    shared::{newtypes::Blake2bHash, wasm_prep},
+    shared::wasm_prep,
     storage,
     storage::global_state::CommitError,
 };
@@ -19,7 +20,7 @@ use crate::{
 pub enum Error {
     /// Specified state root hash is not found.
     #[error("Root not found: {0}")]
-    RootNotFound(Blake2bHash),
+    RootNotFound(Digest),
     /// Protocol version used in the deploy is invalid.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),

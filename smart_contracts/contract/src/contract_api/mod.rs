@@ -5,14 +5,10 @@ pub mod runtime;
 pub mod storage;
 pub mod system;
 
-#[cfg(feature = "no-std")]
-use ::alloc::{
+use alloc::{
     alloc::{alloc, Layout},
     vec::Vec,
 };
-#[cfg(feature = "std")]
-use std::alloc::{alloc, Layout};
-
 use core::{mem, ptr::NonNull};
 
 use casper_types::{bytesrepr::ToBytes, ApiError};

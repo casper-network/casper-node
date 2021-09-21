@@ -30,7 +30,7 @@ use casper_execution_engine::{
     shared::{
         additive_map::AdditiveMap,
         logging::{self, Settings, Style},
-        newtypes::{Blake2bHash, CorrelationId},
+        newtypes::CorrelationId,
         transform::Transform,
         utils::OS_PAGE_SIZE,
     },
@@ -43,10 +43,10 @@ use casper_execution_engine::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{self},
-    runtime_args,
+    bytesrepr, runtime_args,
     system::{
         auction::{
             Bids, EraValidators, UnbondingPurses, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
@@ -85,8 +85,8 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
-    genesis_hash: Option<Blake2bHash>,
-    post_state_hash: Option<Blake2bHash>,
+    genesis_hash: Option<Digest>,
+    post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
     transforms: Vec<AdditiveMap<Key, Transform>>,
@@ -172,7 +172,7 @@ impl InMemoryWasmTestBuilder {
     pub fn new(
         global_state: InMemoryGlobalState,
         engine_config: EngineConfig,
-        post_state_hash: Blake2bHash,
+        post_state_hash: Digest,
     ) -> Self {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
@@ -259,7 +259,7 @@ impl LmdbWasmTestBuilder {
     pub fn open<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         engine_config: EngineConfig,
-        post_state_hash: Blake2bHash,
+        post_state_hash: Digest,
     ) -> Self {
         let global_state_path = Self::global_state_dir(data_dir);
         Self::open_raw(global_state_path, engine_config, post_state_hash)
@@ -271,7 +271,7 @@ impl LmdbWasmTestBuilder {
     pub fn open_raw<T: AsRef<Path>>(
         global_state_dir: T,
         engine_config: EngineConfig,
-        post_state_hash: Blake2bHash,
+        post_state_hash: Digest,
     ) -> Self {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
@@ -403,7 +403,7 @@ where
 
     pub fn query(
         &self,
-        maybe_post_state: Option<Blake2bHash>,
+        maybe_post_state: Option<Digest>,
         base_key: Key,
         path: &[String],
     ) -> Result<StoredValue, String> {
@@ -427,7 +427,7 @@ where
 
     pub fn query_dictionary_item(
         &self,
-        maybe_post_state: Option<Blake2bHash>,
+        maybe_post_state: Option<Digest>,
         dictionary_seed_uref: URef,
         dictionary_item_key: &str,
     ) -> Result<StoredValue, String> {
@@ -439,7 +439,7 @@ where
 
     pub fn query_with_proof(
         &self,
-        maybe_post_state: Option<Blake2bHash>,
+        maybe_post_state: Option<Digest>,
         base_key: Key,
         path: &[String],
     ) -> Result<(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>), String> {
@@ -463,7 +463,7 @@ where
         panic! {"{:?}", query_result};
     }
 
-    pub fn total_supply(&self, maybe_post_state: Option<Blake2bHash>) -> U512 {
+    pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
         let mint_key: Key = self
             .mint_contract_hash
             .expect("should have mint_contract_hash")
@@ -521,7 +521,7 @@ where
     /// overwrites existing cached post state hash with a new one.
     pub fn commit_transforms(
         &mut self,
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> &mut Self {
         let post_state_hash = self
@@ -691,12 +691,12 @@ where
             .expect("should have genesis transforms")
     }
 
-    pub fn get_genesis_hash(&self) -> Blake2bHash {
+    pub fn get_genesis_hash(&self) -> Digest {
         self.genesis_hash
             .expect("Genesis hash should be present. Should be called after run_genesis.")
     }
 
-    pub fn get_post_state_hash(&self) -> Blake2bHash {
+    pub fn get_post_state_hash(&self) -> Digest {
         self.post_state_hash.expect("Should have post-state hash.")
     }
 
@@ -760,8 +760,7 @@ where
 
     pub fn get_purse_balance_result(&self, purse: URef) -> BalanceResult {
         let correlation_id = CorrelationId::new();
-        let state_root_hash: Blake2bHash =
-            self.post_state_hash.expect("should have post_state_hash");
+        let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         self.engine_state
             .get_purse_balance(correlation_id, state_root_hash, purse)
             .expect("should get purse balance")
@@ -769,8 +768,7 @@ where
 
     pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
         let correlation_id = CorrelationId::new();
-        let state_root_hash: Blake2bHash =
-            self.post_state_hash.expect("should have post_state_hash");
+        let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         self.engine_state
             .get_balance(correlation_id, state_root_hash, public_key)
             .expect("should get purse balance using public key")

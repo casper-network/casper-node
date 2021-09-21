@@ -256,7 +256,7 @@ impl SwitchBlocks {
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
         let correlation_id = Default::default();
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
-        let request = GetBidsRequest::new(state_root_hash.into());
+        let request = GetBidsRequest::new(state_root_hash);
         let runner = nodes.values().next().expect("missing node");
         let engine_state = runner.participating().contract_runtime().engine_state();
         let bids_result = engine_state

@@ -5,8 +5,9 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -82,7 +83,8 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
 /// the ContractWasmHash
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasmHash(HashAddr);
 
 impl ContractWasmHash {
@@ -207,7 +209,7 @@ impl TryFrom<&Vec<u8>> for ContractWasmHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractWasmHash {
     fn schema_name() -> String {
         String::from("ContractWasmHash")

@@ -14,8 +14,9 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -198,7 +199,7 @@ impl Display for FromStrError {
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// associated with one or more user groups which are allowed to call it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Group(String);
 
 impl Group {
@@ -316,7 +317,8 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
 /// A newtype wrapping a `HashAddr` which references a [`Contract`] in the global state.
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractHash(HashAddr);
 
 impl ContractHash {
@@ -446,7 +448,7 @@ impl TryFrom<&Vec<u8>> for ContractHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractHash {
     fn schema_name() -> String {
         String::from("ContractHash")
@@ -461,7 +463,8 @@ impl JsonSchema for ContractHash {
 }
 
 /// A newtype wrapping a `HashAddr` which references a [`ContractPackage`] in the global state.
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackageHash(HashAddr);
 
 impl ContractPackageHash {
@@ -587,7 +590,7 @@ impl TryFrom<&Vec<u8>> for ContractPackageHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractPackageHash {
     fn schema_name() -> String {
         String::from("ContractPackageHash")
@@ -1132,7 +1135,7 @@ impl Default for Contract {
 /// Context of method execution
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
     Session = 0,
@@ -1176,7 +1179,7 @@ pub type Parameters = Vec<Parameter>;
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
     args: Parameters,
@@ -1307,7 +1310,7 @@ impl FromBytes for EntryPoint {
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
     Public,
@@ -1370,7 +1373,7 @@ impl FromBytes for EntryPointAccess {
 
 /// Parameter to a method
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Parameter {
     name: String,
     cl_type: CLType,

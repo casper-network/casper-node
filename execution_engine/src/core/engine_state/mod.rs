@@ -30,6 +30,7 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
@@ -79,9 +80,7 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        additive_map::AdditiveMap,
-        newtypes::{Blake2bHash, CorrelationId},
-        transform::Transform,
+        additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform,
         wasm_prep::Preprocessor,
     },
     storage::{
@@ -164,7 +163,7 @@ where
     pub fn commit_genesis(
         &self,
         correlation_id: CorrelationId,
-        genesis_config_hash: Blake2bHash,
+        genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
     ) -> Result<GenesisSuccess, Error> {
@@ -427,10 +426,7 @@ where
     }
 
     /// Creates a new tracking copy instance.
-    pub fn tracking_copy(
-        &self,
-        hash: Blake2bHash,
-    ) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
+    pub fn tracking_copy(&self, hash: Digest) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
         match self.state.checkout(hash).map_err(Into::into)? {
             Some(tc) => Ok(Some(TrackingCopy::new(tc))),
             None => Ok(None),
@@ -548,7 +544,7 @@ where
     pub fn get_purse_balance(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
         let tracking_copy = match self.tracking_copy(state_hash)? {
@@ -576,7 +572,7 @@ where
         correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
-        prestate_hash: Blake2bHash,
+        prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
@@ -1167,7 +1163,7 @@ where
         correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
-        prestate_hash: Blake2bHash,
+        prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
@@ -1718,9 +1714,9 @@ where
     pub fn apply_effect(
         &self,
         correlation_id: CorrelationId,
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Blake2bHash, Error>
+    ) -> Result<Digest, Error>
     where
         Error: From<S::Error>,
     {
@@ -1729,17 +1725,17 @@ where
             .map_err(Error::from)
     }
 
-    /// Reads a trie object for given state root hash.
-    pub fn read_trie(
+    /// Gets a trie object for given state root hash.
+    pub fn get_trie(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Error>
     where
         Error: From<S::Error>,
     {
         self.state
-            .read_trie(correlation_id, &trie_key)
+            .get_trie(correlation_id, &trie_key)
             .map_err(Error::from)
     }
 
@@ -1748,7 +1744,7 @@ where
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<Vec<Blake2bHash>, Error>
+    ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
@@ -1763,8 +1759,8 @@ where
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Error>
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
@@ -1833,7 +1829,7 @@ where
                 .into_bytes()
                 .map_err(Error::from)?
                 .to_vec();
-            DeployHash::new(Blake2bHash::new(&bytes).value())
+            DeployHash::new(Digest::hash(&bytes).value())
         };
 
         let get_era_validators_call_stack = {
@@ -1969,7 +1965,7 @@ where
         let deploy_hash = {
             // seeds address generator w/ protocol version
             let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
-            DeployHash::new(Blake2bHash::new(&bytes).value())
+            DeployHash::new(Digest::hash(&bytes).value())
         };
 
         let base_key = Key::from(*auction_contract_hash);
@@ -2146,7 +2142,7 @@ where
     pub fn get_balance(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
         public_key: PublicKey,
     ) -> Result<BalanceResult, Error> {
         // Look up the account, get the main purse, and then do the existing balance check
@@ -2193,7 +2189,7 @@ where
     fn get_system_contract_registry(
         &self,
         correlation_id: CorrelationId,
-        state_root_hash: Blake2bHash,
+        state_root_hash: Digest,
     ) -> Result<SystemContractRegistry, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
@@ -2213,7 +2209,7 @@ where
     pub fn get_system_mint_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let mint_hash = registry.get(MINT).ok_or_else(|| {
@@ -2227,7 +2223,7 @@ where
     pub fn get_system_auction_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let auction_hash = registry.get(AUCTION).ok_or_else(|| {
@@ -2241,7 +2237,7 @@ where
     pub fn get_handle_payment_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
@@ -2255,7 +2251,7 @@ where
     pub fn get_standard_payment_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {

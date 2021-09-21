@@ -1,9 +1,9 @@
 //! Support for global state queries.
+use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
 
 use crate::{
-    core::tracking_copy::TrackingCopyQueryResult, shared::newtypes::Blake2bHash,
-    storage::trie::merkle_proof::TrieMerkleProof,
+    core::tracking_copy::TrackingCopyQueryResult, storage::trie::merkle_proof::TrieMerkleProof,
 };
 
 /// Result of a global state query request.
@@ -32,14 +32,14 @@ pub enum QueryResult {
 /// Request for a global state query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     key: Key,
     path: Vec<String>,
 }
 
 impl QueryRequest {
     /// Creates new request object.
-    pub fn new(state_hash: Blake2bHash, key: Key, path: Vec<String>) -> Self {
+    pub fn new(state_hash: Digest, key: Key, path: Vec<String>) -> Self {
         QueryRequest {
             state_hash,
             key,
@@ -48,7 +48,7 @@ impl QueryRequest {
     }
 
     /// Returns state root hash.
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 

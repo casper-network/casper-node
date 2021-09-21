@@ -4,6 +4,7 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 use num_rational::Ratio;
 use thiserror::Error;
 
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr,
     system::{
@@ -15,7 +16,7 @@ use casper_types::{
 
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
-    shared::newtypes::{Blake2bHash, CorrelationId},
+    shared::newtypes::CorrelationId,
     storage::global_state::StateProvider,
 };
 
@@ -23,7 +24,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
-    pub post_state_hash: Blake2bHash,
+    pub post_state_hash: Digest,
     /// Effects of executing an upgrade request.
     pub execution_effect: ExecutionEffect,
 }
@@ -41,7 +42,7 @@ impl fmt::Display for UpgradeSuccess {
 /// Represents the configuration of a protocol upgrade.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpgradeConfig {
-    pre_state_hash: Blake2bHash,
+    pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
@@ -57,7 +58,7 @@ impl UpgradeConfig {
     /// Create new upgrade config.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
         activation_point: Option<EraId>,
@@ -83,7 +84,7 @@ impl UpgradeConfig {
     }
 
     /// Returns the current state root state hash
-    pub fn pre_state_hash(&self) -> Blake2bHash {
+    pub fn pre_state_hash(&self) -> Digest {
         self.pre_state_hash
     }
 
@@ -133,7 +134,7 @@ impl UpgradeConfig {
     }
 
     /// Sets new pre state hash.
-    pub fn with_pre_state_hash(&mut self, pre_state_hash: Blake2bHash) {
+    pub fn with_pre_state_hash(&mut self, pre_state_hash: Digest) {
         self.pre_state_hash = pre_state_hash;
     }
 }
@@ -154,11 +155,17 @@ pub enum ProtocolUpgradeError {
     #[error("Failed to disable previous version of system contract: {0}")]
     FailedToDisablePreviousVersion(String),
     /// (De)serialization error.
-    #[error(transparent)]
-    Bytesrepr(#[from] bytesrepr::Error),
+    #[error("{0}")]
+    Bytesrepr(bytesrepr::Error),
     /// Failed to create system contract registry.
     #[error("Failed to insert system contract registry")]
     FailedToCreateSystemRegistry,
+}
+
+impl From<bytesrepr::Error> for ProtocolUpgradeError {
+    fn from(error: bytesrepr::Error) -> Self {
+        ProtocolUpgradeError::Bytesrepr(error)
+    }
 }
 
 /// The system upgrader deals with conducting an actual protocol upgrade.

@@ -23,10 +23,16 @@ use casper_types::{
 /// cause an overflow).
 #[derive(PartialEq, Eq, Debug, Clone, thiserror::Error)]
 pub enum Error {
-    #[error(transparent)]
+    #[error("{0}")]
     Serialization(bytesrepr::Error),
-    #[error(transparent)]
-    TypeMismatch(#[from] StoredValueTypeMismatch),
+    #[error("{0}")]
+    TypeMismatch(StoredValueTypeMismatch),
+}
+
+impl From<StoredValueTypeMismatch> for Error {
+    fn from(error: StoredValueTypeMismatch) -> Self {
+        Error::TypeMismatch(error)
+    }
 }
 
 impl From<CLValueError> for Error {

@@ -4,16 +4,14 @@
 //! rewards.
 use std::{collections::BTreeMap, vec::Vec};
 
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, ProtocolVersion, PublicKey,
 };
 
-use crate::{
-    core::{
-        engine_state::{execution_effect::ExecutionEffect, Error},
-        execution,
-    },
-    shared::newtypes::Blake2bHash,
+use crate::core::{
+    engine_state::{execution_effect::ExecutionEffect, Error},
+    execution,
 };
 
 /// The definition of a slash item.
@@ -67,7 +65,7 @@ impl EvictItem {
 #[derive(Debug)]
 pub struct StepRequest {
     /// State root hash.
-    pub pre_state_hash: Blake2bHash,
+    pub pre_state_hash: Digest,
     /// Protocol version for this request.
     pub protocol_version: ProtocolVersion,
     /// List of validators to be slashed.
@@ -96,7 +94,7 @@ impl StepRequest {
     /// Creates new step request.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
@@ -143,7 +141,7 @@ impl StepRequest {
 pub enum StepError {
     /// Invalid state root hash.
     #[error("Root not found: {0:?}")]
-    RootNotFound(Blake2bHash),
+    RootNotFound(Digest),
     /// Error creating a tracking copy instance.
     #[error("Tracking copy error: {0}")]
     TrackingCopyError(Error),
@@ -166,11 +164,11 @@ pub enum StepError {
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
     /// Error while (de)serializing data.
-    #[error(transparent)]
-    BytesRepr(#[from] bytesrepr::Error),
+    #[error("{0}")]
+    BytesRepr(bytesrepr::Error),
     /// Error converting `CLValue`.
-    #[error(transparent)]
-    CLValueError(#[from] CLValueError),
+    #[error("{0}")]
+    CLValueError(CLValueError),
     #[error("Other engine state error: {0}")]
     /// Other engine state error.
     OtherEngineStateError(#[from] Error),
@@ -179,11 +177,23 @@ pub enum StepError {
     ExecutionError(#[from] execution::Error),
 }
 
+impl From<bytesrepr::Error> for StepError {
+    fn from(error: bytesrepr::Error) -> Self {
+        StepError::BytesRepr(error)
+    }
+}
+
+impl From<CLValueError> for StepError {
+    fn from(error: CLValueError) -> Self {
+        StepError::CLValueError(error)
+    }
+}
+
 /// Represents a successfully executed step request.
 #[derive(Debug)]
 pub struct StepSuccess {
     /// New state root hash generated after effects were applied.
-    pub post_state_hash: Blake2bHash,
+    pub post_state_hash: Digest,
     /// Effects of executing a step request.
     pub execution_effect: ExecutionEffect,
 }

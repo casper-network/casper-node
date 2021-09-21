@@ -26,10 +26,9 @@ use casper_execution_engine::{
         query::{QueryRequest, QueryResult},
         upgrade::{UpgradeConfig, UpgradeSuccess},
     },
-    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
-
+use casper_hashing::Digest;
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
     StoredValue, Transfer, URef,
@@ -46,7 +45,6 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
-    crypto::hash::Digest,
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
@@ -755,19 +753,19 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
-    /// Read a trie by its hash key
-    ReadTrie {
-        /// The hash of the value to get from the `TrieStore`
-        trie_key: Blake2bHash,
+    /// Get a trie by its hash key.
+    GetTrie {
+        /// The hash of the value to get from the `TrieStore`.
+        trie_key: Digest,
         /// Responder to call with the result.
-        responder: Responder<Option<Trie<Key, StoredValue>>>,
+        responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
     },
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
         trie: Box<Trie<Key, StoredValue>>,
         /// Responder to call with the result.
-        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
+        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
     },
     /// Execute a provided protoblock
     ExecuteBlock {
@@ -834,7 +832,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
-            ContractRuntimeRequest::ReadTrie { trie_key, .. } => {
+            ContractRuntimeRequest::GetTrie { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
             ContractRuntimeRequest::PutTrie { trie, .. } => {
