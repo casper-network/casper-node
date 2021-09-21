@@ -864,8 +864,8 @@ impl Storage {
                     false,
                 )? {
                     error!(
-                        "Could not insert block header (maybe already inserted?): {}",
-                        block_header
+                        ?block_header,
+                        "Could not insert block header (maybe already inserted?)",
                     );
                     txn.abort();
                     return Ok(responder.respond(false).ignore());
