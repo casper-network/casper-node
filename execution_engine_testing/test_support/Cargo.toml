@@ -11,9 +11,9 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_en
 license-file = "../../LICENSE"
 
 [dependencies]
-casper-contract = { version = "1.0.0", path = "../../smart_contracts/contract", default-features = false, features = ["std"] }
+casper-contract = { version = "1.0.0", path = "../../smart_contracts/contract", default-features = false }
 casper-execution-engine = { version = "1.0.0", path = "../../execution_engine", features = ["gens"] }
-casper-types = { version = "1.0.0", path = "../../types", default-features = false, features = ["std"] }
+casper-types = { version = "1.0.0", path = "../../types" }
 casper-hashing = { version = "1.0.0", path = "../../hashing" }
 lmdb = "0.8.0"
 log = "0.4.8"

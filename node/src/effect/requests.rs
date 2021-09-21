@@ -37,7 +37,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
@@ -752,12 +752,12 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
-    /// Read a trie by its hash key
-    ReadTrie {
-        /// The hash of the value to get from the `TrieStore`
+    /// Get a trie by its hash key.
+    GetTrie {
+        /// The hash of the value to get from the `TrieStore`.
         trie_key: Digest,
         /// Responder to call with the result.
-        responder: Responder<Option<Trie<Key, StoredValue>>>,
+        responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
     },
     /// Insert a trie into global storage
     PutTrie {
@@ -831,7 +831,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
-            ContractRuntimeRequest::ReadTrie { trie_key, .. } => {
+            ContractRuntimeRequest::GetTrie { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
             ContractRuntimeRequest::PutTrie { trie, .. } => {
@@ -920,6 +920,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
+    /// Request for a list of validator status changes, by public key.
+    ValidatorChanges(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
 }
 
 /// ChainspecLoader component requests.

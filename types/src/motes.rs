@@ -7,6 +7,7 @@ use core::{
     ops::{Add, Div, Mul, Sub},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::Zero;
 use serde::{Deserialize, Serialize};
@@ -17,9 +18,8 @@ use crate::{
 };
 
 /// A struct representing a number of `Motes`.
-#[derive(
-    DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
-)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Motes(U512);
 
 impl Motes {

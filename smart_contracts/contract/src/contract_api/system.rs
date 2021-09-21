@@ -1,6 +1,5 @@
 //! Functions for interacting with the system contracts.
 
-#[cfg(feature = "no-std")]
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 

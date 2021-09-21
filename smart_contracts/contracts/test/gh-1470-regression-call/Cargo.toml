@@ -12,11 +12,9 @@ doctest = false
 test = false
 
 [features]
-default = ["no-std"]
-no-std = ["casper-contract/no-std", "casper-types/no-std", "gh-1470-regression/no-std"]
-std = ["casper-contract/std", "casper-types/std", "gh-1470-regression/std"]
+default = ["casper-contract/default", "gh-1470-regression/default"]
 
 [dependencies]
 casper-contract = { path = "../../../contract", default-features = false }
-casper-types = { path = "../../../../types", default-features = false }
+casper-types = { path = "../../../../types" }
 gh-1470-regression = { path = "../gh-1470-regression", default-features = false }

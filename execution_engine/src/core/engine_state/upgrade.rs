@@ -132,10 +132,16 @@ pub enum ProtocolUpgradeError {
     UnableToRetrieveSystemContractPackage(String),
     #[error("Failed to disable previous version of system contract: {0}")]
     FailedToDisablePreviousVersion(String),
-    #[error(transparent)]
-    Bytesrepr(#[from] bytesrepr::Error),
+    #[error("{0}")]
+    Bytesrepr(bytesrepr::Error),
     #[error("Failed to insert system contract registry")]
     FailedToCreateSystemRegistry,
+}
+
+impl From<bytesrepr::Error> for ProtocolUpgradeError {
+    fn from(error: bytesrepr::Error) -> Self {
+        ProtocolUpgradeError::Bytesrepr(error)
+    }
 }
 
 pub(crate) struct SystemUpgrader<S>

@@ -101,7 +101,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -210,9 +210,9 @@ impl<T> Drop for Responder<T> {
         if self.0.is_some() {
             // This is usually a very serious error, as another component will now be stuck.
             error!(
-                "{} dropped without being responded to --- \
-                 this is always a bug and will likely cause another component to be stuck!",
-                self
+                responder=?self,
+                "dropped without being responded to --- \
+                 this is always a bug and will likely cause another component to be stuck!"
             );
         }
     }
@@ -448,8 +448,8 @@ impl<REv> EffectBuilder<REv> {
             Err(err) => {
                 // The channel should never be closed, ever. If it is, we pretend nothing happened
                 // though, instead of crashing.
-                error!(%err, ?queue_kind, "request for {} channel closed, this may be a bug? \
-                       check if a component is stuck from now on ", type_name::<T>());
+                error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
+                       check if a component is stuck from now on ");
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
@@ -943,13 +943,16 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Read a trie by its hash key
-    pub(crate) async fn read_trie(self, trie_key: Digest) -> Option<Trie<Key, StoredValue>>
+    /// Get a trie by its hash key.
+    pub(crate) async fn get_trie(
+        self,
+        trie_key: Digest,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::ReadTrie {
+            |responder| ContractRuntimeRequest::GetTrie {
                 trie_key,
                 responder,
             },
@@ -1717,6 +1720,17 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ConsensusRequest>,
     {
         self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+            .await
+    }
+
+    /// Returns a list of validator status changes, by public key.
+    pub(crate) async fn get_consensus_validator_changes(
+        self,
+    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
             .await
     }
 

@@ -9,19 +9,16 @@ mod weight;
 
 use serde::Serialize;
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    contracts::NamedKeys,
-    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
-};
 use alloc::{collections::BTreeSet, vec::Vec};
+use core::{
+    convert::TryFrom,
+    fmt::{self, Debug, Display, Formatter},
+};
+
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-use core::{convert::TryFrom, fmt::Debug};
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
@@ -30,6 +27,11 @@ pub use self::{
     associated_keys::AssociatedKeys,
     error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
+};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::NamedKeys,
+    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// Represents an Account in the global state.
@@ -300,28 +302,29 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum AddKeyFailure {
     /// There are already maximum [`AccountHash`]s associated with the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key because maximum amount of keys is reached")
-    )]
     MaxKeysLimit = 1,
     /// The given [`AccountHash`] is already associated with the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key because given key already exists")
-    )]
     DuplicateKey = 2,
     /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key due to insufficient permissions")
-    )]
     PermissionDenied = 3,
+}
+
+impl Display for AddKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            AddKeyFailure::MaxKeysLimit => formatter.write_str(
+                "Unable to add new associated key because maximum amount of keys is reached",
+            ),
+            AddKeyFailure::DuplicateKey => formatter
+                .write_str("Unable to add new associated key because given key already exists"),
+            AddKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to add new associated key due to insufficient permissions"),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -341,26 +344,31 @@ impl TryFrom<i32> for AddKeyFailure {
 
 /// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum RemoveKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[cfg_attr(feature = "std", error("Unable to remove a key that does not exist"))]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to remove associated key due to insufficient permissions")
-    )]
     PermissionDenied = 2,
     /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
     /// `AccountHash`s to fall below one of the action thresholds for the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to remove a key which would violate action threshold constraints")
-    )]
     ThresholdViolation = 3,
+}
+
+impl Display for RemoveKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            RemoveKeyFailure::MissingKey => {
+                formatter.write_str("Unable to remove a key that does not exist")
+            }
+            RemoveKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to remove associated key due to insufficient permissions"),
+            RemoveKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to remove a key which would violate action threshold constraints",
+            ),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -385,30 +393,32 @@ impl TryFrom<i32> for RemoveKeyFailure {
 /// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
 /// associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum UpdateKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update the value under an associated key that does not exist")
-    )]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update associated key due to insufficient permissions")
-    )]
     PermissionDenied = 2,
     /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
     /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
     /// account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update weight that would fall below any of action thresholds")
-    )]
     ThresholdViolation = 3,
+}
+
+impl Display for UpdateKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            UpdateKeyFailure::MissingKey => formatter.write_str(
+                "Unable to update the value under an associated key that does not exist",
+            ),
+            UpdateKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to update associated key due to insufficient permissions"),
+            UpdateKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to update weight that would fall below any of action thresholds",
+            ),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.

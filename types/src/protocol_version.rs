@@ -1,9 +1,9 @@
 use alloc::{format, string::String, vec::Vec};
 use core::{convert::TryFrom, fmt, str::FromStr};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -13,7 +13,8 @@ use crate::{
 };
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
-#[derive(Copy, Clone, DataSize, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ProtocolVersion(SemVer);
 
 /// The result of [`ProtocolVersion::check_next_version`].
@@ -168,7 +169,7 @@ impl<'de> Deserialize<'de> for ProtocolVersion {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ProtocolVersion {
     fn schema_name() -> String {
         String::from("ProtocolVersion")

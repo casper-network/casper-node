@@ -12,11 +12,9 @@ doctest = false
 test = false
 
 [features]
-default = ["no-std"]
-no-std = ["casper-contract/no-std", "casper-types/no-std", "dictionary/no-std"]
-std = ["casper-contract/std", "casper-types/std", "dictionary/std"]
+default = ["casper-contract/default", "dictionary/default"]
 
 [dependencies]
 casper-contract = { path = "../../../contract", default-features = false }
-casper-types = { path = "../../../../types", default-features = false }
+casper-types = { path = "../../../../types" }
 dictionary = { path = "../dictionary", default-features = false }

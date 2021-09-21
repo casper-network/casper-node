@@ -8,12 +8,13 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -31,7 +32,8 @@ pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 
 /// A newtype wrapping a <code>[u8; [DEPLOY_HASH_LENGTH]]</code> which is the raw bytes of the
 /// deploy hash.
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct DeployHash([u8; DEPLOY_HASH_LENGTH]);
 
 impl DeployHash {
@@ -51,7 +53,7 @@ impl DeployHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for DeployHash {
     fn schema_name() -> String {
         String::from("DeployHash")
@@ -113,7 +115,7 @@ impl Distribution<DeployHash> for Standard {
 
 /// Represents a transfer from one purse to another
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Transfer {
     /// Deploy that created the transfer
@@ -249,7 +251,8 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a <code>[u8; [TRANSFER_ADDR_LENGTH]]</code> which is the raw bytes of the
 /// transfer address.
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct TransferAddr([u8; TRANSFER_ADDR_LENGTH]);
 
 impl TransferAddr {
@@ -287,7 +290,7 @@ impl TransferAddr {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for TransferAddr {
     fn schema_name() -> String {
         String::from("TransferAddr")

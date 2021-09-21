@@ -129,14 +129,26 @@ pub enum StepError {
     TypeMismatch(StoredValueTypeMismatch),
     #[error("Era validators missing: {0}")]
     EraValidatorsMissing(EraId),
-    #[error(transparent)]
-    BytesRepr(#[from] bytesrepr::Error),
-    #[error(transparent)]
-    CLValueError(#[from] CLValueError),
+    #[error("{0}")]
+    BytesRepr(bytesrepr::Error),
+    #[error("{0}")]
+    CLValueError(CLValueError),
     #[error("Other engine state error: {0}")]
     OtherEngineStateError(#[from] Error),
     #[error(transparent)]
     ExecutionError(#[from] execution::Error),
+}
+
+impl From<bytesrepr::Error> for StepError {
+    fn from(error: bytesrepr::Error) -> Self {
+        StepError::BytesRepr(error)
+    }
+}
+
+impl From<CLValueError> for StepError {
+    fn from(error: CLValueError) -> Self {
+        StepError::CLValueError(error)
+    }
 }
 
 #[derive(Debug)]

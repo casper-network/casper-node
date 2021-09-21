@@ -96,7 +96,7 @@ pub trait StateProvider {
     fn empty_root(&self) -> Digest;
 
     /// Reads a `Trie` from the state if it is present
-    fn read_trie(
+    fn get_trie(
         &self,
         correlation_id: CorrelationId,
         trie_key: &Digest,
