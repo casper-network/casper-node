@@ -12,8 +12,8 @@ pub struct NodeConfig {
     pub trusted_hash: Option<BlockHash>,
 
     /// An (optional) time to expiration for the header for the trusted hash. If the timestamp of
-    /// the trusted hash is less than the current time minus this expiration time, the node will not
-    /// join the network.
+    /// the trusted hash is less than the current time minus this expiration time, the node will
+    /// not join the network.
     pub trusted_hash_time_to_expiration: Option<TimeDiff>,
 
     /// Whether to run in archival-sync mode. Archival-sync mode captures all data (blocks, deploys
