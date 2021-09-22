@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -55,7 +55,7 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
             TrieResponseIncoming,
         },
@@ -442,44 +442,12 @@ impl Reactor {
         serialized_id: &[u8],
     ) -> Effects<<Self as reactor::Reactor>::Event> {
         match tag {
-            Tag::Deploy => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |deploy_hash| {
-                    self.storage.get_deploy(deploy_hash)
-                })
-            }
-            Tag::Block => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_hash| {
-                    self.storage.read_block(&block_hash)
-                })
-            }
-            Tag::BlockAndMetadataByHeight => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
-                    self.storage
-                        .read_block_and_sufficient_finality_signatures_by_height(block_height)
-                })
-            }
-            Tag::GossipedAddress => {
-                warn!("received get request for gossiped-address from {}", sender);
-                Effects::new()
-            }
-            Tag::BlockHeaderByHash => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_hash| {
-                    self.storage.read_block_header_by_hash(&block_hash)
-                })
-            }
-            Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
-                    self.storage
-                        .read_block_header_and_sufficient_finality_signatures_by_height(
-                            block_height,
-                        )
-                })
-            }
             Tag::Trie => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_key| {
                     self.contract_runtime.read_trie(trie_key)
                 })
             }
+            _ => todo!("already handled"),
         }
     }
 
@@ -1188,28 +1156,11 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            ParticipatingEvent::NetRequestIncoming(NetRequestIncoming { sender, message }) => {
-                // TODO: Code to be refactored, as it recreates the tag to call `handle_get_request`
-                //       instead of using the `enum` directly.
-                let (tag, serialized_id) = match message {
-                    NetRequest::Deploy(ref serialized_id) => (Tag::Deploy, serialized_id),
-                    NetRequest::Block(ref serialized_id) => (Tag::Block, serialized_id),
-                    NetRequest::GossipedAddress(ref serialized_id) => {
-                        (Tag::GossipedAddress, serialized_id)
-                    }
-                    NetRequest::BlockAndMetadataByHeight(ref serialized_id) => {
-                        (Tag::BlockAndMetadataByHeight, serialized_id)
-                    }
-                    NetRequest::BlockHeaderByHash(ref serialized_id) => {
-                        (Tag::BlockHeaderByHash, serialized_id)
-                    }
-                    NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_id) => {
-                        (Tag::BlockHeaderAndFinalitySignaturesByHeight, serialized_id)
-                    }
-                };
-
-                self.handle_get_request(effect_builder, sender, tag, serialized_id)
-            }
+            ParticipatingEvent::NetRequestIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             ParticipatingEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
                 // TODO: Code to be refactored, we do not want to handle all this logic inside the
                 //       routing function.
