@@ -57,7 +57,6 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
-
 extern crate alloc;
 
 pub mod contract_api;

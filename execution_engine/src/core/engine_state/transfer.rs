@@ -17,13 +17,21 @@ use crate::{
     storage::global_state::StateReader,
 };
 
+/// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
+/// will have to create a new account first.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TransferTargetMode {
+    /// Unknown target mode.
     Unknown,
+    /// Native transfer arguments resolved into a transfer to a purse.
     PurseExists(URef),
+    /// Native transfer arguments resolved into a transfer to an account.
     CreateAccount(AccountHash),
 }
 
+/// Mint's transfer arguments.
+///
+/// A struct has a benefit of static typing, which is helpful while resolving the arguments.
 #[derive(Debug, Clone, Copy)]
 pub struct TransferArgs {
     to: Option<AccountHash>,
@@ -34,6 +42,7 @@ pub struct TransferArgs {
 }
 
 impl TransferArgs {
+    /// Creates new transfer arguments.
     pub fn new(
         to: Option<AccountHash>,
         source: URef,
@@ -50,18 +59,22 @@ impl TransferArgs {
         }
     }
 
+    /// Returns `to` field.
     pub fn to(&self) -> Option<AccountHash> {
         self.to
     }
 
+    /// Returns `source` field.
     pub fn source(&self) -> URef {
         self.source
     }
 
+    /// Returns `arg_id` field.
     pub fn arg_id(&self) -> Option<u64> {
         self.arg_id
     }
 
+    /// Returns `amount` field.
     pub fn amount(&self) -> U512 {
         self.amount
     }
@@ -83,6 +96,10 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
     }
 }
 
+/// State of a builder of a `TransferArgs`.
+///
+/// Purpose of this builder is to resolve native tranfer args into [`TransferTargetMode`] and a
+/// [`TransferArgs`] instance to execute actual token transfer on the mint contract.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
@@ -91,6 +108,9 @@ pub struct TransferRuntimeArgsBuilder {
 }
 
 impl TransferRuntimeArgsBuilder {
+    /// Creates new transfer args builder.
+    ///
+    /// Takes an incoming runtime args that represents native transfer's arguments.
     pub fn new(imputed_runtime_args: RuntimeArgs) -> TransferRuntimeArgsBuilder {
         TransferRuntimeArgsBuilder {
             inner: imputed_runtime_args,
@@ -99,6 +119,7 @@ impl TransferRuntimeArgsBuilder {
         }
     }
 
+    /// Checks if a purse exists.
     fn purse_exists<R>(
         &self,
         uref: URef,
@@ -122,6 +143,12 @@ impl TransferRuntimeArgsBuilder {
             .is_ok()
     }
 
+    /// Resolves the source purse of the transfer.
+    ///
+    /// User can optionally pass a "source" argument which should refer to an [`URef`] existing in
+    /// user's named keys. When the "source" argument is missing then user's main purse is assumed.
+    ///
+    /// Returns resolved [`URef`].
     fn resolve_source_uref<R>(
         &self,
         account: &Account,
@@ -181,6 +208,13 @@ impl TransferRuntimeArgsBuilder {
         }
     }
 
+    /// Resolves a transfer target mode.
+    ///
+    /// User has to specify a "target" argument which could be either an existing purse [`URef`] or
+    /// an account hash. If the "target" account hash is not existing, then a special variant is
+    /// returned that indicates that the system has to create new account first.
+    ///
+    /// Returns [`TransferTargetMode`] with a resolved variant.
     fn resolve_transfer_target_mode<R>(
         &mut self,
         correlation_id: CorrelationId,
@@ -237,6 +271,9 @@ impl TransferRuntimeArgsBuilder {
         }
     }
 
+    /// Resolves amount.
+    ///
+    /// User has to specify "amount" argument that could be either a [`U512`] or a u64.
     fn resolve_amount(&self) -> Result<U512, Error> {
         let imputed_runtime_args = &self.inner;
 
@@ -272,7 +309,8 @@ impl TransferRuntimeArgsBuilder {
         Ok(id)
     }
 
-    pub fn transfer_target_mode<R>(
+    /// Returns a resolved [`TransferTargetMode`].
+    pub(crate) fn transfer_target_mode<R>(
         &mut self,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -294,6 +332,7 @@ impl TransferRuntimeArgsBuilder {
         }
     }
 
+    /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
         from: &Account,

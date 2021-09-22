@@ -1,3 +1,5 @@
+//! Support for legacy `RunGenesisRequest`/`GenesisConfig` that is not used by the node's contract
+//! runtime component anymore.
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -9,6 +11,7 @@ use casper_types::ProtocolVersion;
 
 use super::genesis::ExecConfig;
 
+/// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {
     #[serde(
@@ -21,6 +24,7 @@ pub struct RunGenesisRequest {
 }
 
 impl RunGenesisRequest {
+    /// Creates new genesis request.
     pub fn new(
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
@@ -33,18 +37,22 @@ impl RunGenesisRequest {
         }
     }
 
+    /// Returns genesis config hash.
     pub fn genesis_config_hash(&self) -> Digest {
         self.genesis_config_hash
     }
 
+    /// Returns protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
+    /// Returns EE config.
     pub fn ee_config(&self) -> &ExecConfig {
         &self.ee_config
     }
 
+    /// Returns a EE config and consumes the object.
     pub fn take_ee_config(self) -> ExecConfig {
         self.ee_config
     }
