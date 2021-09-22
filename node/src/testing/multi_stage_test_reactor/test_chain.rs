@@ -495,6 +495,34 @@ async fn test_archival_sync() {
         .network
         .settle_on(&mut rng, all_have_genesis_state, Duration::from_secs(600))
         .await;
+
+    for (_, node) in chain.network.nodes() {
+        let reactor = node.reactor().inner();
+        let storage = reactor.storage().expect("must have storage");
+        let highest_block_header = storage
+            .read_highest_block_header()
+            .expect("must read from storage")
+            .expect("must have highest block header");
+        // Check every block and its state root going back to genesis
+        let mut block_hash = highest_block_header.hash();
+        loop {
+            let block = storage
+                .read_block(&block_hash)
+                .expect("must read from storage")
+                .expect("must have block");
+            let missing_tries = reactor
+                .contract_runtime()
+                .expect("must have contract runtime")
+                .trie_store_check(vec![(*block.state_root_hash()).into()])
+                .expect("must read tries");
+            assert_eq!(missing_tries, vec![], "should be no missing tries");
+            if let Some(parent_hash) = block.parent() {
+                block_hash = *parent_hash;
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 /// Test a node joining to a single node network
