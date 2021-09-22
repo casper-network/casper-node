@@ -22,7 +22,8 @@ use crate::{
     reactor::joiner::JoinerEvent,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, Timestamp,
+        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
+        Timestamp,
     },
 };
 
@@ -618,16 +619,20 @@ pub(crate) async fn run_fast_sync_task(
     // Fetch the trusted header
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
-    if let Some(trusted_hash_time_to_expiration) = node_config.trusted_hash_time_to_expiration {
-        let current_time = Timestamp::now();
-        if trusted_block_header.timestamp() + trusted_hash_time_to_expiration < current_time {
-            return Err(LinearChainSyncError::TrustedBlockHeaderHasExpired {
-                current_time,
-                trusted_hash_time_to_expiration,
-                trusted_hash,
-                trusted_block_header,
-            });
-        }
+    let era_duration: TimeDiff = std::cmp::max(
+        chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
+        chainspec.core_config.era_duration,
+    );
+
+    if trusted_block_header.timestamp()
+        + era_duration
+            * chainspec
+                .core_config
+                .unbonding_delay
+                .saturating_sub(chainspec.core_config.auction_delay)
+        < Timestamp::now()
+    {
+        warn!(?trusted_block_header, "Timestamp of trusted hash is older than era_duration * (auction_delay - auction_delay)");
     }
 
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;

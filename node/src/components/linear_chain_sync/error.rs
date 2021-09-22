@@ -17,7 +17,7 @@ use crate::{
     crypto,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Deploy, NodeId, TimeDiff, Timestamp,
+        Deploy, NodeId,
     },
 };
 
@@ -129,19 +129,4 @@ pub(crate) enum LinearChainSyncError {
     /// Error getting era validators from the execution engine.
     #[error(transparent)]
     GetEraValidatorsError(#[from] GetEraValidatorsError),
-
-    #[error(
-        "Trusted block header has expired. \
-         You will need to get a recent block hash to join the network. \
-         Current time: {current_time}, \
-         Trusted hash time to expiration: {trusted_hash_time_to_expiration:?}, \
-         Trusted hash: {trusted_hash:?}, \
-         Trusted block header: {trusted_block_header:?}"
-    )]
-    TrustedBlockHeaderHasExpired {
-        current_time: Timestamp,
-        trusted_hash_time_to_expiration: TimeDiff,
-        trusted_hash: BlockHash,
-        trusted_block_header: Box<BlockHeader>,
-    },
 }
