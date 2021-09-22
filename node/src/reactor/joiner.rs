@@ -647,7 +647,7 @@ impl reactor::Reactor for Reactor {
                     let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(sender),
-                        responder: None,
+                        maybe_responder: None,
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }

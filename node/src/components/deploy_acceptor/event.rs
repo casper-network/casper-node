@@ -6,9 +6,39 @@ use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{Deploy, NodeId, Timestamp},
+    types::{Block, Deploy, NodeId, Timestamp},
 };
-use casper_types::Key;
+
+use casper_execution_engine::core::engine_state::executable_deploy_item::{
+    ContractIdentifier, ContractPackageIdentifier,
+};
+use casper_hashing::Digest;
+use casper_types::{
+    account::{Account, AccountHash},
+    Contract, ContractPackage, U512,
+};
+
+/// A utility struct to hold duplicated information across events.
+#[derive(Debug, Serialize)]
+pub(crate) struct EventMetadata {
+    pub(super) deploy: Box<Deploy>,
+    pub(super) source: Source<NodeId>,
+    pub(super) maybe_responder: Option<Responder<Result<(), Error>>>,
+}
+
+impl EventMetadata {
+    pub(super) fn new(
+        deploy: Box<Deploy>,
+        source: Source<NodeId>,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
+    ) -> Self {
+        EventMetadata {
+            deploy,
+            source,
+            maybe_responder,
+        }
+    }
+}
 
 /// `DeployAcceptor` events.
 #[derive(Debug, Serialize)]
@@ -17,23 +47,56 @@ pub(crate) enum Event {
     Accept {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
-        responder: Option<Responder<Result<(), Error>>>,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {
-        deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        event_metadata: EventMetadata,
         is_new: bool,
-        maybe_responder: Option<Responder<Result<(), Error>>>,
         verification_start_timestamp: Timestamp,
     },
-    /// The result of verifying `Account` exists and has meets minimum balance requirements.
-    AccountVerificationResult {
-        deploy: Box<Deploy>,
-        source: Source<NodeId>,
-        account_key: Key,
-        verified: Option<bool>,
-        maybe_responder: Option<Responder<Result<(), Error>>>,
+    /// The result of querying the highest available `Block` from the storage component.
+    GetBlockResult {
+        event_metadata: EventMetadata,
+        maybe_block: Box<Option<Block>>,
+        verification_start_timestamp: Timestamp,
+    },
+    /// The result of querying global state for the `Account` associated with the `Deploy`.
+    GetAccountResult {
+        event_metadata: EventMetadata,
+        prestate_hash: Digest,
+        maybe_account: Option<Account>,
+        verification_start_timestamp: Timestamp,
+    },
+    /// The result of querying the balance of the `Account` associated with the `Deploy`.
+    GetBalanceResult {
+        event_metadata: EventMetadata,
+        prestate_hash: Digest,
+        maybe_balance_value: Option<U512>,
+        account_hash: AccountHash,
+        verification_start_timestamp: Timestamp,
+    },
+    /// The result of querying global state for a `Contract` to verify the executable logic.
+    GetContractResult {
+        event_metadata: EventMetadata,
+        prestate_hash: Digest,
+        is_payment: bool,
+        contract_identifier: ContractIdentifier,
+        maybe_contract: Option<Contract>,
+        verification_start_timestamp: Timestamp,
+    },
+    /// The result of querying global state for a `ContractPackage` to verify the executable logic.
+    GetContractPackageResult {
+        event_metadata: EventMetadata,
+        prestate_hash: Digest,
+        is_payment: bool,
+        contract_package_identifier: ContractPackageIdentifier,
+        maybe_contract_package: Option<ContractPackage>,
+        verification_start_timestamp: Timestamp,
+    },
+    /// The event to initiate the verification of the `Deploy`'s cryptographic validity.
+    VerifyDeployCryptographicValidity {
+        event_metadata: EventMetadata,
         verification_start_timestamp: Timestamp,
     },
 }
@@ -44,7 +107,7 @@ impl From<RpcServerAnnouncement> for Event {
             RpcServerAnnouncement::DeployReceived { deploy, responder } => Event::Accept {
                 deploy,
                 source: Source::<NodeId>::Client,
-                responder,
+                maybe_responder: responder,
             },
         }
     }
@@ -56,26 +119,75 @@ impl Display for Event {
             Event::Accept { deploy, source, .. } => {
                 write!(formatter, "accept {} from {}", deploy.id(), source)
             }
-            Event::PutToStorageResult { deploy, is_new, .. } => {
-                if *is_new {
-                    write!(formatter, "put new {} to storage", deploy.id())
-                } else {
-                    write!(formatter, "had already stored {}", deploy.id())
-                }
-            }
-            Event::AccountVerificationResult {
-                deploy,
-                account_key,
-                verified,
+            Event::PutToStorageResult {
+                event_metadata,
+                is_new,
                 ..
             } => {
-                let prefix = if verified.unwrap_or(false) { "" } else { "in" };
+                if *is_new {
+                    write!(
+                        formatter,
+                        "put new {} to storage",
+                        event_metadata.deploy.id()
+                    )
+                } else {
+                    write!(
+                        formatter,
+                        "had already stored {}",
+                        event_metadata.deploy.id()
+                    )
+                }
+            }
+            Event::GetBlockResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "{}valid deploy {} from account {}",
-                    prefix,
-                    deploy.id(),
-                    account_key
+                    "received highest block from storage to validate deploy with hash: {}.",
+                    event_metadata.deploy.id()
+                )
+            }
+            Event::GetAccountResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying account to validate deploy with hash {}.",
+                    event_metadata.deploy.id()
+                )
+            }
+            Event::GetBalanceResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying account balance to validate deploy with hash {}.",
+                    event_metadata.deploy.id()
+                )
+            }
+            Event::GetContractResult {
+                event_metadata,
+                prestate_hash,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "verifying contract to validate deploy with hash {} with state hash: {}.",
+                    event_metadata.deploy.id(),
+                    prestate_hash
+                )
+            }
+            Event::GetContractPackageResult {
+                event_metadata,
+                prestate_hash,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "verifying contract package to validate deploy with hash {} with state hash: {}.",
+                    event_metadata.deploy.id(),
+                    prestate_hash
+                )
+            }
+            Event::VerifyDeployCryptographicValidity { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying deploy cryptographic validity for deploy with hash {}.",
+                    event_metadata.deploy.id(),
                 )
             }
         }
