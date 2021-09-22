@@ -351,7 +351,14 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), node_with_deploy));
+    // The deploy, while being stored, gets validated and hence updates its internal state to
+    // reflect this.  We call `is_valid()` on the deploy here to mirror that.
+    let mut validated_deploy = deploy.clone();
+    let _ = validated_deploy.is_valid();
+    let expected_result = Some(FetchResult::FromPeer(
+        Box::new(validated_deploy),
+        node_with_deploy,
+    ));
     assert_settled(
         &node_without_deploy,
         deploy_hash,

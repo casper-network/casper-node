@@ -817,10 +817,10 @@ impl DeployAcceptor {
     fn validate_deploy_cryptography<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        mut event_metadata: EventMetadata,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
-        if let Err(deploy_configuration_failure) = event_metadata.deploy.clone().is_valid() {
+        if let Err(deploy_configuration_failure) = event_metadata.deploy.is_valid() {
             // The client has submitted a deploy with one or more invalid signatures.
             // Return an error to the RPC component via the responder.
             debug!("deploy is cryptographically invalid");
