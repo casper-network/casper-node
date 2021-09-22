@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.  The format
 * Improve doc comments to clarify behavior of the bidding functionality.
 * Documented `core` module and children.
 * Changed parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
+* Documented `shared` module and children.
 
 ### Fixed
 * Fix a case where user could potentially supply a refund purse as a payment purse.
