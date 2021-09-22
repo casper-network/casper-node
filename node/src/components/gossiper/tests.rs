@@ -48,6 +48,8 @@ use crate::{
     NodeRng,
 };
 
+const MAX_ASSOCIATED_KEYS: u32 = 100;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -201,6 +203,7 @@ impl reactor::Reactor for Reactor {
             &contract_runtime_config,
             WasmConfig::default(),
             SystemConfig::default(),
+            MAX_ASSOCIATED_KEYS,
             registry,
         )
         .unwrap();
