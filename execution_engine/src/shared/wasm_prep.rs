@@ -64,9 +64,9 @@ impl Preprocessor {
     ///
     /// This process consists of a few steps:
     /// - Validate that the given bytes contain a memory section, and check the memory page limit.
-    /// - Inject gas counters into the code, which makes it possible for the executed WASM
-    ///   to be charged for opcodes; this also validates opcodes and ensures that there are no
-    ///   forbidden opcodes in use, such as floating point opcodes.
+    /// - Inject gas counters into the code, which makes it possible for the executed WASM to be
+    ///   charged for opcodes; this also validates opcodes and ensures that there are no forbidden
+    ///   opcodes in use, such as floating point opcodes.
     /// - Ensure that the code has a maximum stack height.
     ///
     /// In case the preprocessing rules can't be applied, an error is returned.

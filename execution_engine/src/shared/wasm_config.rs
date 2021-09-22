@@ -12,7 +12,7 @@ use super::{
 /// Default maximum number of pages of the WASM memory.
 pub const DEFAULT_WASM_MAX_MEMORY: u32 = 64;
 /// Default maximum stack height.
-pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64*1024;
+pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 
 /// Configuration of the WASM execution environment.
 ///
