@@ -9,7 +9,7 @@ use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
 
-use casper_execution_engine::core::engine_state::query::GetBidsRequest;
+use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     EraId, Motes, PublicKey, SecretKey, U512,
@@ -262,7 +262,7 @@ impl SwitchBlocks {
         let bids_result = engine_state
             .get_bids(correlation_id, request)
             .expect("get_bids failed");
-        bids_result.bids().expect("no bids returned").clone()
+        bids_result.into_success().expect("no bids returned")
     }
 }
 

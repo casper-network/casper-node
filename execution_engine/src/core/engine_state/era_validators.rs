@@ -1,3 +1,4 @@
+//! Support for querying era validators.
 use thiserror::Error;
 
 use datasize::DataSize;
@@ -7,6 +8,7 @@ use casper_types::ProtocolVersion;
 
 use crate::core::engine_state::error::Error;
 
+/// An enum that represents all possible error conditions of a `get_era_validators` request.
 #[derive(Debug, Error, DataSize)]
 pub enum GetEraValidatorsError {
     /// Invalid state hash was used to make this request
@@ -21,11 +23,13 @@ pub enum GetEraValidatorsError {
 }
 
 impl GetEraValidatorsError {
+    /// Returns `true` if the result represents missing era validators.
     pub fn is_era_validators_missing(&self) -> bool {
         matches!(self, GetEraValidatorsError::EraValidatorsMissing)
     }
 }
 
+/// Represents a `get_era_validators` request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetEraValidatorsRequest {
     state_hash: Digest,
@@ -33,6 +37,7 @@ pub struct GetEraValidatorsRequest {
 }
 
 impl GetEraValidatorsRequest {
+    /// Creates a new [`GetEraValidatorsRequest`].
     pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
         GetEraValidatorsRequest {
             state_hash,
@@ -40,10 +45,12 @@ impl GetEraValidatorsRequest {
         }
     }
 
+    /// Returns the state root hash.
     pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
+    /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }

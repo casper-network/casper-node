@@ -1,14 +1,20 @@
+//! Operations occuring during execution.
 use std::{
     default::Default,
     fmt::{self, Display, Formatter},
     ops::{Add, AddAssign},
 };
 
+/// Representation of a single operation during execution.
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Op {
+    /// Read value from a `Key`.
     Read,
+    /// Write value under a `Key`.
     Write,
+    /// Add a value into a `Key`.
     Add,
+    /// No operation.
     NoOp,
 }
 

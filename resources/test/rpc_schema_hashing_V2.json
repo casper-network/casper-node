@@ -998,12 +998,18 @@
             "anyOf": [
               {
                 "additionalProperties": false,
+                "description": "Executable specified as raw bytes that represent WASM code and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "ModuleBytes": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "module_bytes": {
                         "description": "Hex-encoded raw Wasm bytes.",
@@ -1024,14 +1030,21 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredContractByHash": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Name of an entry point.",
                         "type": "string"
                       },
                       "hash": {
@@ -1054,17 +1067,25 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredContractByName": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Name of an entry point.",
                         "type": "string"
                       },
                       "name": {
+                        "description": "Named key.",
                         "type": "string"
                       }
                     },
@@ -1083,14 +1104,21 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredVersionedContractByHash": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Entry point name.",
                         "type": "string"
                       },
                       "hash": {
@@ -1098,6 +1126,7 @@
                         "type": "string"
                       },
                       "version": {
+                        "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                         "format": "uint32",
                         "minimum": 0.0,
                         "type": [
@@ -1121,20 +1150,29 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored versioned contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredVersionedContractByName": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Entry point name.",
                         "type": "string"
                       },
                       "name": {
+                        "description": "Named key.",
                         "type": "string"
                       },
                       "version": {
+                        "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                         "format": "uint32",
                         "minimum": 0.0,
                         "type": [
@@ -1158,12 +1196,18 @@
               },
               {
                 "additionalProperties": false,
+                "description": "A native transfer which does not contain or reference a WASM code.",
                 "properties": {
                   "Transfer": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       }
                     },
                     "required": [
@@ -1177,7 +1221,8 @@
                 ],
                 "type": "object"
               }
-            ]
+            ],
+            "description": "Represents possible variants of an executable deploy."
           },
           "ExecutionEffect": {
             "additionalProperties": false,
