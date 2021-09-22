@@ -632,7 +632,11 @@ pub(crate) async fn run_fast_sync_task(
                 .saturating_sub(chainspec.core_config.auction_delay)
         < Timestamp::now()
     {
-        warn!(?trusted_block_header, "Timestamp of trusted hash is older than era_duration * (auction_delay - auction_delay)");
+        warn!(
+            ?trusted_block_header,
+            "Timestamp of trusted hash is older than \
+             era_duration * (unbonding_delay - auction_delay)"
+        );
     }
 
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
