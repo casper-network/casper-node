@@ -323,53 +323,11 @@ impl reactor::Reactor for Reactor {
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            Event::NetRequestIncoming(NetRequestIncoming { sender, message }) => match message {
-                NetRequest::Deploy(ref serialized_id) => {
-                    // Note: unlike the validator reactor, we emit fatal events when something
-                    // unexpected happens
-                    let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id) {
-                        Ok(hash) => hash,
-                        Err(error) => {
-                            return fatal!(
-                                effect_builder,
-                                "failed to decode {:?} from {}: {}",
-                                serialized_id,
-                                sender,
-                                error
-                            )
-                            .ignore();
-                        }
-                    };
-
-                    let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash) {
-                        Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
-                        _ => FetchedOrNotFound::NotFound(deploy_hash),
-                    };
-
-                    match NodeMessage::new_get_response(&fetched_or_not_found_deploy) {
-                        Ok(message) => {
-                            return effect_builder.send_message(sender, message).ignore();
-                        }
-                        Err(error) => {
-                            return fatal!(
-                                effect_builder,
-                                "failed to create get-response: {}",
-                                error
-                            )
-                            .ignore();
-                        }
-                    }
-                }
-                other
-                @
-                (NetRequest::Block(_)
-                | NetRequest::GossipedAddress(_)
-                | NetRequest::BlockAndMetadataByHeight(_)
-                | NetRequest::BlockHeaderByHash(_)
-                | NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_)) => {
-                    fatal!(effect_builder, "unexpected net request: {:?}", other).ignore()
-                }
-            },
+            Event::NetRequestIncoming(incoming) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
                 NetResponse::Deploy(ref serialized_item) => {
                     let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(

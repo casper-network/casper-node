@@ -16,7 +16,7 @@ use crate::{
     },
     effect::{
         announcements::DeployAcceptorAnnouncement,
-        incoming::{NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming},
+        incoming::{NetResponse, NetResponseIncoming},
         Responder,
     },
     fatal,
@@ -109,7 +109,7 @@ cfg.fetcher_config, registry);     }
 
         // The `handle_net_request` function implements the entire "custom" logic found in this test
         // reactor, outside of routing.
-        NetRequestIncoming -> [fn handle_net_request];
+        NetRequestIncoming -> [storage];
         NetResponseIncoming -> [fn handle_net_response];
 
         // There is no deploy gossiping going on.
@@ -129,48 +129,6 @@ cfg.fetcher_config, registry);     }
 });
 
 impl Reactor {
-    fn handle_net_request(
-        &mut self,
-        effect_builder: EffectBuilder<ReactorEvent>,
-        _rng: &mut NodeRng,
-        request: NetRequestIncoming,
-    ) -> Effects<ReactorEvent> {
-        match request.message {
-            NetRequest::Deploy(ref serialized_id) => {
-                let deploy_hash: DeployHash = match bincode::deserialize(serialized_id) {
-                    Ok(hash) => hash,
-                    Err(error) => {
-                        error!(
-                            "failed to decode {:?} from {}: {}",
-                            serialized_id, request.sender, error
-                        );
-                        return Effects::new();
-                    }
-                };
-
-                let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash) {
-                    Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
-                    _ => FetchedOrNotFound::NotFound(deploy_hash),
-                };
-
-                match Message::new_get_response(&fetched_or_not_found_deploy) {
-                    Ok(message) => effect_builder
-                        .send_message(request.sender, message)
-                        .ignore(),
-                    Err(error) => {
-                        error!("failed to create get-response: {}", error);
-                        Effects::new()
-                    }
-                }
-            }
-            _ => fatal!(
-                effect_builder,
-                "no support for anything but deploy requests in fetcher test"
-            )
-            .ignore(),
-        }
-    }
-
     fn handle_net_response(
         &mut self,
         effect_builder: EffectBuilder<ReactorEvent>,
