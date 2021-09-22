@@ -496,7 +496,7 @@ async fn test_archival_sync() {
         .settle_on(&mut rng, all_have_genesis_state, Duration::from_secs(600))
         .await;
 
-    for (_, node) in chain.network.nodes() {
+    for node in chain.network.nodes().values() {
         let reactor = node.reactor().inner();
         let storage = reactor.storage().expect("must have storage");
         let highest_block_header = storage
