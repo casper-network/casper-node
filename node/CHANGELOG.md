@@ -51,7 +51,10 @@ All notable changes to this project will be documented in this file.  The format
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
 
 ### Fixed
-* Resolved an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
+* Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
+* Resolve issue of duplicated config option `max_associated_keys`.
+
+
 
 ## [1.3.2] - 2021-08-02
 
@@ -59,10 +62,14 @@ All notable changes to this project will be documented in this file.  The format
 * Resolve an issue in the `state_get_dictionary_item` JSON-RPC when a `ContractHash` is used.
 * Corrected network state engine to hold in blocked state for full 10 minutes when encountering out of order race condition.
 
+
+
 ## [1.3.1] - 2021-07-26
 
 ### Fixed
 * Parametrized sync_timeout and increased value to stop possible post upgrade restart loop.
+
+
 
 ## [1.3.0] - 2021-07-19
 
