@@ -6,16 +6,15 @@ use crate::{
     Digest,
 };
 
+use serde::Deserialize;
+
 use casper_types::{
     allocate_buffer,
     bytesrepr::{Bytes, FromBytes, ToBytes},
 };
 
-#[cfg_attr(
-    feature = "std",
-    derive(serde::Deserialize),
-    serde(deny_unknown_fields)
-)]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChunkWithProofDeserializeValidator {
     proof: IndexedMerkleProof,
     chunk: Vec<u8>,
@@ -36,18 +35,9 @@ impl TryFrom<ChunkWithProofDeserializeValidator> for ChunkWithProof {
     }
 }
 
-#[cfg_attr(
-    feature = "std",
-    derive(
-        PartialEq,
-        Debug,
-        schemars::JsonSchema,
-        serde::Serialize,
-        serde::Deserialize
-    ),
-    schemars(with = "String", description = "Hex-encoded hash digest."),
-    serde(deny_unknown_fields, try_from = "ChunkWithProofDeserializeValidator")
-)]
+#[derive(PartialEq, Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+#[schemars(with = "String", description = "Hex-encoded hash digest.")]
+#[serde(deny_unknown_fields, try_from = "ChunkWithProofDeserializeValidator")]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
     chunk: Vec<u8>,

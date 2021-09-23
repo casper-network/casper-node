@@ -7,12 +7,11 @@ use casper_types::{
 };
 #[cfg(test)]
 use itertools::Itertools;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-#[cfg_attr(
-    feature = "std",
-    derive(serde::Deserialize,),
-    serde(deny_unknown_fields)
-)]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IndexedMerkleProofDeserializeValidator {
     index: u64,
     count: u64,
@@ -37,19 +36,10 @@ impl TryFrom<IndexedMerkleProofDeserializeValidator> for IndexedMerkleProof {
     }
 }
 
-#[cfg_attr(
-    feature = "std",
-    derive(
-        PartialEq,
-        Debug,
-        schemars::JsonSchema,
-        serde::Serialize,
-        serde::Deserialize,
-    ),
-    serde(
-        deny_unknown_fields,
-        try_from = "IndexedMerkleProofDeserializeValidator"
-    )
+#[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
+#[serde(
+    deny_unknown_fields,
+    try_from = "IndexedMerkleProofDeserializeValidator"
 )]
 pub struct IndexedMerkleProof {
     index: u64,
