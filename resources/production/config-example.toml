@@ -7,7 +7,7 @@
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
 # Whether to synchronize all data back to genesis when joining.
-archival_sync = false
+archival_sync = true
 
 # =================================
 # Configuration options for logging
