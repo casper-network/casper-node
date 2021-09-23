@@ -1,4 +1,4 @@
-//! Preprocessing of WASM modules.
+//! Preprocessing of Wasm modules.
 use std::fmt::{self, Display, Formatter};
 
 use parity_wasm::elements::{self, MemorySection, Module, Section};
@@ -9,16 +9,16 @@ use super::wasm_config::WasmConfig;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
 
-/// An error emitted by the WASM preprocessor.
+/// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
 pub enum PreprocessingError {
-    /// Unable to deserialize WASM bytes.
+    /// Unable to deserialize Wasm bytes.
     Deserialize(String),
     /// Found opcodes forbidden by gas rules.
     OperationForbiddenByGasRules,
     /// Stack limiter was unable to instrument the binary.
     StackLimiter,
-    /// WASM bytes is missing memory section.
+    /// Wasm bytes is missing memory section.
     MissingMemorySection,
 }
 
@@ -49,7 +49,7 @@ fn memory_section(module: &Module) -> Option<&MemorySection> {
     None
 }
 
-/// WASM preprocessor.
+/// Wasm preprocessor.
 pub struct Preprocessor {
     wasm_config: WasmConfig,
 }
@@ -60,11 +60,11 @@ impl Preprocessor {
         Self { wasm_config }
     }
 
-    /// Preprocesses WASM bytes and returns a module.
+    /// Preprocesses Wasm bytes and returns a module.
     ///
     /// This process consists of a few steps:
     /// - Validate that the given bytes contain a memory section, and check the memory page limit.
-    /// - Inject gas counters into the code, which makes it possible for the executed WASM to be
+    /// - Inject gas counters into the code, which makes it possible for the executed Wasm to be
     ///   charged for opcodes; this also validates opcodes and ensures that there are no forbidden
     ///   opcodes in use, such as floating point opcodes.
     /// - Ensure that the code has a maximum stack height.

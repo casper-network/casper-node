@@ -1,4 +1,4 @@
-//! Configuration of the WASM execution engine.
+//! Configuration of the Wasm execution engine.
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
@@ -9,14 +9,14 @@ use super::{
     host_function_costs::HostFunctionCosts, opcode_costs::OpcodeCosts, storage_costs::StorageCosts,
 };
 
-/// Default maximum number of pages of the WASM memory.
+/// Default maximum number of pages of the Wasm memory.
 pub const DEFAULT_WASM_MAX_MEMORY: u32 = 64;
 /// Default maximum stack height.
 pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 
-/// Configuration of the WASM execution environment.
+/// Configuration of the Wasm execution environment.
 ///
-/// This structure contains various WASM execution configuration options, such as memory limits,
+/// This structure contains various Wasm execution configuration options, such as memory limits,
 /// stack limits and costs.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
@@ -33,7 +33,7 @@ pub struct WasmConfig {
 }
 
 impl WasmConfig {
-    /// Creates new WASM config.
+    /// Creates new Wasm config.
     pub const fn new(
         max_memory: u32,
         max_stack_height: u32,

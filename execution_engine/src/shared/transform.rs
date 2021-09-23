@@ -53,6 +53,11 @@ impl From<CLValueError> for Error {
 }
 
 /// Representation of a single transformation ocurring during execution.
+///
+/// It is important to note that all arithmetic operations represented by different varaints are
+/// deterministic and produce wrapped values. In other words we're aiming to make all variants of
+/// [`Transform`] commutative which means that a given collection of them can be executed in any
+/// order to produce the same end result.
 #[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Transform {
@@ -162,9 +167,6 @@ impl Transform {
     /// Applies the transformation on a specified stored value instance.
     ///
     /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
-    ///
-    /// It is important to note that all arithmetic operations are deterministic and produce
-    /// wrapped values.
     pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
         match self {
             Transform::Identity => Ok(stored_value),

@@ -1,4 +1,4 @@
-//! WASM helpers.
+//! Wasm helpers.
 use parity_wasm::{builder, elements::Module};
 
 use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
@@ -26,7 +26,7 @@ pub fn do_nothing_bytes() -> Vec<u8> {
     parity_wasm::serialize(module).expect("should serialize")
 }
 
-/// Creates a module which is a valid WASM but does nothing.
+/// Creates a module which is a valid Wasm but does nothing.
 pub fn do_nothing_module(preprocessor: &Preprocessor) -> Result<Module, PreprocessingError> {
     let do_nothing_bytes = do_nothing_bytes();
     preprocessor.preprocess(&do_nothing_bytes)
