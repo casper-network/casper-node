@@ -229,6 +229,12 @@ impl MockServerHandle {
             .await
             .map(|_| ())
     }
+
+    async fn get_validator_changes(&self) -> Result<(), Error> {
+        casper_client::get_validator_changes("1", &self.url(), 0)
+            .await
+            .map(|_| ())
+    }
 }
 
 impl Drop for MockServerHandle {
@@ -840,6 +846,21 @@ mod get_auction_info {
     async fn should_succeed() {
         let server_handle = MockServerHandle::spawn_without_params(GetAuctionInfo::METHOD);
         assert!(matches!(server_handle.get_auction_info("").await, Ok(())));
+    }
+}
+
+mod get_validator_changes {
+    use super::*;
+
+    use casper_node::rpcs::{info::GetValidatorChanges, RpcWithoutParams};
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn should_succeed() {
+        let server_handle = MockServerHandle::spawn_without_params(GetValidatorChanges::METHOD);
+        assert!(matches!(
+            server_handle.get_validator_changes().await,
+            Ok(())
+        ))
     }
 }
 

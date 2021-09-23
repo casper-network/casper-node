@@ -1,6 +1,5 @@
 //! Functions for interacting with the current runtime.
 
-#[cfg(feature = "no-std")]
 use alloc::{vec, vec::Vec};
 use core::mem::MaybeUninit;
 

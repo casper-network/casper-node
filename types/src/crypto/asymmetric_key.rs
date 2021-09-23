@@ -14,6 +14,7 @@ use core::{
     marker::Copy,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use ed25519_dalek::{
     ed25519::signature::Signature as _Signature, PUBLIC_KEY_LENGTH as ED25519_PUBLIC_KEY_LENGTH,
@@ -24,7 +25,7 @@ use k256::ecdsa::{
     Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
     VerifyingKey as Secp256k1PublicKey,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -108,15 +109,16 @@ where
 }
 
 /// A secret or private asymmetric key.
-#[derive(DataSize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum SecretKey {
     /// System secret key.
     System,
     /// Ed25519 secret key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
+    // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::SecretKey),
     /// secp256k1 secret key.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1SecretKey),
 }
 
@@ -181,15 +183,16 @@ impl Tagged<u8> for SecretKey {
 }
 
 /// A public asymmetric key.
-#[derive(Clone, DataSize, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum PublicKey {
     /// System public key.
     System,
     /// Ed25519 public key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Ed25519(ed25519_dalek::PublicKey),
     /// secp256k1 public key.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1PublicKey),
 }
 
@@ -388,7 +391,7 @@ impl<'de> Deserialize<'de> for PublicKey {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for PublicKey {
     fn schema_name() -> String {
         String::from("PublicKey")
@@ -412,15 +415,16 @@ impl CLTyped for PublicKey {
 }
 
 /// A signature of given data.
-#[derive(Clone, Copy, DataSize)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum Signature {
     /// System signature.  Cannot be verified.
     System,
     /// Ed25519 signature.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Ed25519(ed25519_dalek::Signature),
     /// Secp256k1 signature.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1Signature),
 }
 
@@ -641,7 +645,7 @@ impl From<Signature> for Vec<u8> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for Signature {
     fn schema_name() -> String {
         String::from("Signature")

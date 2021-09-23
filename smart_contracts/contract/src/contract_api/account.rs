@@ -1,6 +1,5 @@
 //! Functions for managing accounts.
 
-#[cfg(feature = "no-std")]
 use alloc::vec::Vec;
 use core::convert::TryFrom;
 

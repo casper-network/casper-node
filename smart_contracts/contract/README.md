@@ -6,35 +6,45 @@
 [![Documentation](https://docs.rs/casper-contract/badge.svg)](https://docs.rs/casper-contract)
 [![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
 
-A library for developing CasperLabs smart contracts.
+A library for developing Casper network smart contracts.
+
+## no_std
+
+The crate is `no_std`, but uses the `core` and `alloc` crates.  It is recommended to build Wasm smart contracts in a
+`no_std` environment as this generally yields smaller, and hence cheaper, binaries.
 
 ## Compile-time features
 
-The crate provides a `no-std` feature which is enabled by default.  It is recommended to use the library with this
-default feature enabled to provide a `no_std` environment.  Compiling a Wasm smart contract with `no-std` enabled
-generally yields a smaller, and hence cheaper, binary.
+### `no-std-helpers`
 
-Given that the library is intended to be consumed by smart-contract binaries, and that in a no-std environment these
+Enabled by default.
+
+Given that the library is intended to be consumed by smart-contract binaries, and that in a `no_std` environment these
 will all require to provide an [alloc error handler](https://github.com/rust-lang/rust/issues/51540) and an
 [eh_personality](https://doc.rust-lang.org/unstable-book/language-features/lang-items.html#more-about-the-language-items),
-then this crate provides these when `no-std` is enabled.  This unfortunately requires the use of nightly Rust.
+then this crate provides these when `no-std-helpers` is enabled.  This unfortunately requires the use of nightly Rust.
 
-For further convenience, the crate provides a global allocator suitable for use in a `no_std` environment via the
-`provide-allocator` feature.  This is only valid if `no-std` is also enabled, and it is also enabled by default.  If you
-wish to work in a `no_std` environment with a different global allocator, then add the following to your Cargo.toml:
+For further convenience, enabling this feature also provides a global allocator suitable for use in a `no_std`
+environment.
 
-```toml
-casper-contract = { version = "1.0.0", default-features = false, features = ["no-std"] }
-```
-
-If you wish to work outside a `no_std` environment, then disable the default features and enable the `std` feature of
-this crate.  For example:
+If you wish to use a different global allocator, or provide different panic/out-of-memory handlers, then add the
+following to your Cargo.toml:
 
 ```toml
-casper-contract = { version = "1.0.0", default-features = false, features = ["std"] }
+casper-contract = { version = "1", default-features = false }
 ```
 
-The crate requires either the `no-std` feature or the `std` feature to be enabled.
+### `test-support`
+
+Disabled by default.
+
+To help support smart contract debugging, enabling the `test-support` feature makes the function
+`contract_api::runtime::print(text: &str)` available.  If the contract is being tested offchain using the
+`casper-engine-test-support` crate, then the contract can output text to the console for debugging.
+
+```toml
+casper-contract = { version = "1", features = ["test-support"] }
+```
 
 ## License
 

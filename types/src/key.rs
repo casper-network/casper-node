@@ -1,3 +1,5 @@
+//! Key types.
+
 use alloc::{
     format,
     string::{String, ToString},
@@ -14,6 +16,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
@@ -95,7 +98,8 @@ pub enum KeyTag {
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
 #[repr(C)]
-#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, DataSize)]
+#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum Key {
     /// A `Key` under which a user account is stored.
     Account(AccountHash),
@@ -122,19 +126,32 @@ pub enum Key {
     SystemContractRegistry,
 }
 
+/// Errors produced when converting a `String` into a `Key`.
 #[derive(Debug)]
 pub enum FromStrError {
+    /// Account parse error.
     Account(account::FromStrError),
+    /// Hash parse error.
     Hash(String),
+    /// URef parse error.
     URef(uref::FromStrError),
+    /// Transfer parse error.
     Transfer(TransferFromStrError),
+    /// DeployInfo parse error.
     DeployInfo(String),
+    /// EraInfo parse error.
     EraInfo(String),
+    /// Balance parse error.
     Balance(String),
+    /// Bid parse error.
     Bid(String),
+    /// Withdraw parse error.
     Withdraw(String),
+    /// Dictionary parse error.
     Dictionary(String),
+    /// System contract registry parse error.
     SystemContractRegistry(String),
+    /// Unknown prefix.
     UnknownPrefix,
 }
 

@@ -126,6 +126,11 @@ impl<C: Context> Vertex<C> {
             _ => None,
         }
     }
+
+    /// Returns true whether unit is a proposal.
+    pub(crate) fn is_proposal(&self) -> bool {
+        self.value().is_some()
+    }
 }
 
 #[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]

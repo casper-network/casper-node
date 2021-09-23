@@ -3,6 +3,7 @@
 mod memory_metrics;
 
 use std::{
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
@@ -437,12 +438,10 @@ impl reactor::Reactor for Reactor {
                 {
                     if Timestamp::now() > start_time + era_duration {
                         error!(
-                            "Node started with no trusted hash after the expected end of \
-                             the genesis era! Please specify a trusted hash and restart. \
-                             Time: {}, End of genesis era: {}",
-                            Timestamp::now(),
-                            start_time + era_duration
-                        );
+                            now=?Timestamp::now(),
+                            genesis_era_end=?start_time + era_duration,
+                            "node started with no trusted hash after the expected end of \
+                             the genesis era! Please specify a trusted hash and restart.");
                         panic!("should have trusted hash after genesis era")
                     }
                 }
@@ -482,8 +481,11 @@ impl reactor::Reactor for Reactor {
         let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
             Fetcher::new("block_header_by_hash", config.fetcher, registry)?;
 
-        let deploy_acceptor =
-            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            &*chainspec_loader.chainspec(),
+            registry,
+        )?;
 
         contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -645,7 +647,7 @@ impl reactor::Reactor for Reactor {
                     let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(sender),
-                        responder: None,
+                        maybe_responder: None,
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }
@@ -908,6 +910,10 @@ impl reactor::Reactor for Reactor {
             ) => {
                 // Upcoming validators are not used by joiner reactor
                 Effects::new()
+            }
+            JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                // no consensus, respond with empty map
+                responder.respond(BTreeMap::new()).ignore()
             }
         }
     }

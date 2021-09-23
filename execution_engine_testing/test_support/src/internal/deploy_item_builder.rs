@@ -1,9 +1,9 @@
 use std::{collections::BTreeSet, path::Path};
 
-use casper_execution_engine::{
-    core::engine_state::{deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem},
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::engine_state::{
+    deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem,
 };
+use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash, HashAddr,
     RuntimeArgs,
@@ -231,7 +231,7 @@ impl DeployItemBuilder {
     }
 
     pub fn with_deploy_hash(mut self, hash: [u8; 32]) -> Self {
-        let digest: Blake2bHash = hash.into();
+        let digest: Digest = hash.into();
         self.deploy_item.deploy_hash = DeployHash::new(digest.value());
         self
     }

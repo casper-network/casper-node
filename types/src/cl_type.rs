@@ -9,8 +9,10 @@ use alloc::{
 };
 use core::mem;
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use num_rational::Ratio;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -47,7 +49,8 @@ const CL_TYPE_TAG_PUBLIC_KEY: u8 = 22;
 ///
 /// Provides a description of the underlying data type of a [`CLValue`](crate::CLValue).
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum CLType {
     /// `bool` primitive.
@@ -79,25 +82,32 @@ pub enum CLType {
     /// [`PublicKey`](crate::PublicKey) system type.
     PublicKey,
     /// `Option` of a `CLType`.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Option(Box<CLType>),
     /// Variable-length list of a single `CLType` (comparable to a `Vec`).
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     List(Box<CLType>),
     /// Fixed-length list of a single `CLType` (comparable to a Rust array).
     ByteArray(u32),
     /// `Result` with `Ok` and `Err` variants of `CLType`s.
     #[allow(missing_docs)] // generated docs are explicit enough.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Result { ok: Box<CLType>, err: Box<CLType> },
     /// Map with keys of a single `CLType` and values of a single `CLType`.
     #[allow(missing_docs)] // generated docs are explicit enough.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Map {
         key: Box<CLType>,
         value: Box<CLType>,
     },
     /// 1-ary tuple of a `CLType`.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Tuple1([Box<CLType>; 1]),
     /// 2-ary tuple of `CLType`s.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Tuple2([Box<CLType>; 2]),
     /// 3-ary tuple of `CLType`s.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Tuple3([Box<CLType>; 3]),
     /// Unspecified type.
     Any,

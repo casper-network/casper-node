@@ -3,8 +3,6 @@ use core::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
 };
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
@@ -51,33 +49,16 @@ impl Display for FromStrError {
 /// various actions) on an account.
 #[repr(i32)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 pub enum SetThresholdFailure {
     /// Setting the key-management threshold to a value lower than the deployment threshold is
     /// disallowed.
-    #[cfg_attr(
-        feature = "std",
-        error("New threshold should be greater than or equal to deployment threshold")
-    )]
     KeyManagementThreshold = 1,
     /// Setting the deployment threshold to a value greater than any other threshold is disallowed.
-    #[cfg_attr(
-        feature = "std",
-        error("New threshold should be lower than or equal to key management threshold")
-    )]
     DeploymentThreshold = 2,
     /// Caller doesn't have sufficient permissions to set new thresholds.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to set action threshold due to insufficient permissions")
-    )]
     PermissionDeniedError = 3,
     /// Setting a threshold to a value greater than the total weight of associated keys is
     /// disallowed.
-    #[cfg_attr(
-        feature = "std",
-        error("New threshold should be lower or equal than total weight of associated keys")
-    )]
     InsufficientTotalWeight = 4,
 }
 
@@ -101,6 +82,23 @@ impl TryFrom<i32> for SetThresholdFailure {
                 Ok(SetThresholdFailure::InsufficientTotalWeight)
             }
             _ => Err(TryFromIntError(())),
+        }
+    }
+}
+
+impl Display for SetThresholdFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            SetThresholdFailure::KeyManagementThreshold => formatter
+                .write_str("New threshold should be greater than or equal to deployment threshold"),
+            SetThresholdFailure::DeploymentThreshold => formatter.write_str(
+                "New threshold should be lower than or equal to key management threshold",
+            ),
+            SetThresholdFailure::PermissionDeniedError => formatter
+                .write_str("Unable to set action threshold due to insufficient permissions"),
+            SetThresholdFailure::InsufficientTotalWeight => formatter.write_str(
+                "New threshold should be lower or equal than total weight of associated keys",
+            ),
         }
     }
 }

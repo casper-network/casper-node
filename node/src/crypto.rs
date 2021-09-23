@@ -3,7 +3,6 @@
 mod asymmetric_key;
 mod asymmetric_key_ext;
 mod error;
-pub mod hash;
 
 #[cfg(test)]
 pub(crate) use asymmetric_key::generate_ed25519_keypair;

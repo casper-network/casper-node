@@ -2,13 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use casper_types::{bytesrepr, PublicKey, U512};
 use thiserror::Error;
 
-use crate::{
-    crypto::hash::Digest,
-    types::{block::EraReport, Block, BlockHash},
-};
+use casper_hashing::Digest;
+use casper_types::{bytesrepr, PublicKey, U512};
+
+use crate::types::{block::EraReport, Block, BlockHash};
 
 /// An error that can arise when creating a block from a finalized block and other components
 #[derive(Error, Debug)]
@@ -27,19 +26,14 @@ pub enum BlockCreationError {
         /// An optional map of the next era validator weights used to construct an `EraEnd`
         maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     },
-
-    /// Wrapper of [`blake2::digest::InvalidOutputSize`]; occurs when trying to construct
-    /// an `EraEnd`.
-    #[error(transparent)]
-    Blake2bDigestInvalidOutputSize(#[from] blake2::digest::InvalidOutputSize),
 }
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes
 #[derive(Error, Debug)]
 pub enum BlockValidationError {
     /// Problem serializing some of a block's data into bytes
-    #[error(transparent)]
-    BytesReprError(#[from] bytesrepr::Error),
+    #[error("{0}")]
+    BytesReprError(bytesrepr::Error),
 
     /// The body hash in the header is not the same as the hash of the body of the block
     #[error(
@@ -66,4 +60,10 @@ pub enum BlockValidationError {
         /// The actual hash of the block's `BlockHeader`
         actual_block_header_hash: BlockHash,
     },
+}
+
+impl From<bytesrepr::Error> for BlockValidationError {
+    fn from(error: bytesrepr::Error) -> Self {
+        BlockValidationError::BytesReprError(error)
+    }
 }

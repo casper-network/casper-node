@@ -15,6 +15,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
+use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -33,8 +34,7 @@ use crate::{
                 Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
                 Vertex, VertexError,
             },
-            state,
-            state::{Observation, Panorama},
+            state::{self, IndexObservation, IndexPanorama, Observation, Panorama},
             synchronizer::Synchronizer,
             validators::{ValidatorIndex, Validators},
         },
@@ -407,6 +407,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         if self.highway.has_vertex(vv.inner()) {
             return vec![];
         }
+        if !vv.inner().is_proposal() {
+            if let Some(hash) = vv.inner().unit_hash() {
+                trace!(?hash, "adding unit to the protocol state");
+            } else {
+                trace!(vertex=?vv.inner(), "adding vertex to the protocol state");
+            }
+        }
         self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
@@ -531,14 +538,60 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return true;
         };
         info!(
-            %hash,
+            ?hash,
             ?creator,
             creator_index = wire_unit.creator.0,
             timestamp = %wire_unit.timestamp,
             round_exp = wire_unit.round_exp,
+            seq_number = wire_unit.seq_number,
             "{}", msg
         );
         true
+    }
+
+    // Logs the details about the received vertex.
+    fn log_received_vertex(&self, vertex: &Vertex<C>) {
+        let creator = if let Some(creator) = vertex
+            .creator()
+            .and_then(|vid| self.highway.validators().id(vid))
+        {
+            creator
+        } else {
+            error!(?vertex, "invalid creator");
+            return;
+        };
+
+        match vertex {
+            Vertex::Unit(swu) => {
+                let wire_unit = swu.wire_unit();
+                let hash = swu.hash();
+
+                if vertex.is_proposal() {
+                    info!(
+                        ?hash,
+                        ?creator,
+                        creator_index = wire_unit.creator.0,
+                        timestamp = %wire_unit.timestamp,
+                        round_exp = wire_unit.round_exp,
+                        seq_number = wire_unit.seq_number,
+                        "received a proposal"
+                    );
+                } else {
+                    trace!(
+                        ?hash,
+                        ?creator,
+                        creator_index = wire_unit.creator.0,
+                        timestamp = %wire_unit.timestamp,
+                        round_exp = wire_unit.round_exp,
+                        seq_number = wire_unit.seq_number,
+                        "received a non-proposal unit"
+                    );
+                };
+            }
+            Vertex::Evidence(evidence) => trace!(?evidence, "received an evidence"),
+            Vertex::Endorsements(endorsement) => trace!(?endorsement, "received an endorsement"),
+            Vertex::Ping(ping) => trace!(?ping, "received ping"),
+        }
     }
 
     /// Prevalidates the vertex but checks the cache for previously validated vertices.
@@ -558,9 +611,67 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Creates a message to send our panorama to a random peer.
     fn latest_state_request(&self) -> ProtocolOutcomes<I, C> {
-        let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+        let request: HighwayMessage<C> = HighwayMessage::LatestStateRequest(
+            IndexPanorama::from_panorama(self.highway.state().panorama(), self.highway.state()),
+        );
         let payload = (&request).serialize();
         vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)]
+    }
+
+    /// Creates a batch of dependency requests.
+    fn batch_request(
+        &self,
+        vid: ValidatorIndex,
+        our_seq: u64,
+        their_seq: u64,
+    ) -> Vec<HighwayMessage<C>> {
+        let state = self.highway.state();
+        if our_seq < their_seq {
+            // We're behind. Request missing vertices.
+            (our_seq..=their_seq)
+                .take(self.config.max_request_batch_size)
+                .map(|unit_seq_number| {
+                    let uuid = thread_rng().next_u64();
+                    debug!(?uuid, ?vid, ?unit_seq_number, "requesting dependency");
+                    HighwayMessage::RequestDependencyByHeight {
+                        uuid,
+                        vid,
+                        unit_seq_number,
+                    }
+                })
+                .into_iter()
+                .collect()
+        } else {
+            // We're ahead.
+            match state.panorama().get(vid) {
+                None => {
+                    error!(?vid, "received a request for non-existing validator");
+                    vec![]
+                }
+                Some(latest_obs) => match latest_obs {
+                    Observation::None | Observation::Faulty => {
+                        let index_panorama = format!("correct({:?})", our_seq);
+                        error!(
+                            ?vid,
+                            ?index_panorama,
+                            panorama=?latest_obs,
+                            "`IndexPanorama` doesn't match `state.panorama` for validator"
+                        );
+                        vec![]
+                    }
+                    Observation::Correct(hash) => (their_seq..=our_seq)
+                        .take(self.config.max_request_batch_size)
+                        .filter_map(|seq_num| {
+                            let unit = state.find_ancestor_unit(hash, seq_num).unwrap();
+                            state
+                                .wire_unit(unit, *self.highway.instance_id())
+                                .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                        })
+                        .into_iter()
+                        .collect(),
+                },
+            }
+        }
     }
 }
 
@@ -571,8 +682,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 ))]
 pub(crate) enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
-    RequestDependency(Dependency<C>),
-    LatestStateRequest(Panorama<C>),
+    // A dependency request. u64 is a random UUID identifying the request.
+    RequestDependency(u64, Dependency<C>),
+    RequestDependencyByHeight {
+        uuid: u64,
+        vid: ValidatorIndex,
+        unit_seq_number: u64,
+    },
+    LatestStateRequest(IndexPanorama),
 }
 
 impl<C: Context> HighwayMessage<C> {
@@ -657,18 +774,16 @@ where
                     _ => {
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
-                        if !self.log_proposal(pvv.inner(), "received a proposal") {
-                            trace!("received a valid vertex");
-                        }
+                        self.log_received_vertex(pvv.inner());
                         self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
             }
-            Ok(HighwayMessage::RequestDependency(dep)) => {
-                trace!("received a request for a dependency");
+            Ok(HighwayMessage::RequestDependency(uuid, dep)) => {
+                trace!(?uuid, dependency=?dep, "received a request for a dependency");
                 match self.highway.get_dependency(&dep) {
                     GetDepOutcome::None => {
-                        info!(?dep, ?sender, "requested dependency doesn't exist");
+                        info!(?dep, peer_id=?sender, "requested dependency doesn't exist");
                         vec![]
                     }
                     GetDepOutcome::Evidence(vid) => {
@@ -681,60 +796,90 @@ where
                     )],
                 }
             }
-            Ok(HighwayMessage::LatestStateRequest(panorama)) => {
+            Ok(HighwayMessage::RequestDependencyByHeight {
+                uuid,
+                vid,
+                unit_seq_number,
+            }) => {
+                debug!(
+                    ?uuid,
+                    ?vid,
+                    ?unit_seq_number,
+                    "received a request for a dependency"
+                );
+                match self.highway.get_dependency_by_index(vid, unit_seq_number) {
+                    GetDepOutcome::None => {
+                        info!(
+                            ?vid,
+                            ?unit_seq_number,
+                            ?sender,
+                            "requested dependency doesn't exist"
+                        );
+                        vec![]
+                    }
+                    GetDepOutcome::Evidence(vid) => {
+                        vec![ProtocolOutcome::SendEvidence(sender, vid)]
+                    }
+                    // TODO: Should this be done via a gossip service?
+                    GetDepOutcome::Vertex(vv) => {
+                        vec![ProtocolOutcome::CreatedTargetedMessage(
+                            HighwayMessage::NewVertex(vv.into()).serialize(),
+                            sender,
+                        )]
+                    }
+                }
+            }
+            Ok(HighwayMessage::LatestStateRequest(their_index_panorama)) => {
                 trace!("received a request for the latest state");
                 let state = self.highway.state();
 
                 let create_message = |((vid, our_obs), their_obs): (
-                    (ValidatorIndex, &Observation<C>),
-                    &Observation<C>,
+                    (ValidatorIndex, &IndexObservation),
+                    &IndexObservation,
                 )| {
                     match (our_obs, their_obs) {
-                        (our_obs, their_obs) if our_obs == their_obs => None,
+                        (our_obs, their_obs) if our_obs == their_obs => vec![],
 
-                        (Observation::None, Observation::None) => None,
+                        (IndexObservation::None, IndexObservation::None) => vec![],
 
-                        (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
-                            HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
-                        }),
+                        (IndexObservation::Faulty, _) => state
+                            .maybe_evidence(vid)
+                            .map(|evidence| {
+                                HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
+                            })
+                            .into_iter()
+                            .collect(),
 
-                        (_, Observation::Faulty) => {
-                            Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                        (_, IndexObservation::Faulty) => {
+                            let dependency = Dependency::Evidence(vid);
+                            let uuid = thread_rng().next_u64();
+                            debug!(?uuid, "requesting evidence");
+                            vec![HighwayMessage::RequestDependency(uuid, dependency)]
                         }
 
-                        (Observation::None, Observation::Correct(hash)) => {
-                            Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                        (IndexObservation::None, IndexObservation::Correct(their_seq_number)) => {
+                            self.batch_request(vid, 0, *their_seq_number)
                         }
 
-                        (Observation::Correct(hash), Observation::None) => state
-                            .wire_unit(hash, *self.highway.instance_id())
-                            .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
-
-                        (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
-                            if state.has_unit(their_hash)
-                                && state.panorama().sees_correct(state, their_hash)
-                            {
-                                state
-                                    .wire_unit(our_hash, *self.highway.instance_id())
-                                    .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
-                            } else if !state.has_unit(their_hash) {
-                                Some(HighwayMessage::RequestDependency(Dependency::Unit(
-                                    *their_hash,
-                                )))
-                            } else {
-                                None
-                            }
+                        (IndexObservation::Correct(our_seq_num), IndexObservation::None) => {
+                            self.batch_request(vid, *our_seq_num, 0)
                         }
+
+                        (
+                            IndexObservation::Correct(our_seq),
+                            IndexObservation::Correct(their_seq),
+                        ) => self.batch_request(vid, *our_seq, *their_seq),
                     }
                 };
 
-                state
-                    .panorama()
+                IndexPanorama::from_panorama(state.panorama(), state)
                     .enumerate()
-                    .zip(&panorama)
-                    .filter_map(create_message)
-                    .map(|msg| {
-                        ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender.clone())
+                    .zip(&their_index_panorama)
+                    .map(create_message)
+                    .flat_map(|msgs| {
+                        msgs.into_iter().map(|msg| {
+                            ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender.clone())
+                        })
                     })
                     .collect()
             }

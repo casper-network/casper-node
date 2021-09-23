@@ -13,37 +13,28 @@ use std::{
     time::Instant,
 };
 
-pub(crate) use announcements::ContractRuntimeAnnouncement;
-pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError};
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
-
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
         GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{Key, ProtocolVersion, StoredValue};
+use casper_hashing::Digest;
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
-    crypto::hash::Digest,
     effect::{
         announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
         EffectExt, Effects,
@@ -52,6 +43,10 @@ use crate::{
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
+pub(crate) use announcements::ContractRuntimeAnnouncement;
+pub(crate) use config::Config;
+pub(crate) use error::{BlockExecutionError, ConfigError};
+pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
@@ -135,7 +130,7 @@ pub(crate) struct ContractRuntimeMetrics {
     get_bids: Histogram,
     missing_trie_keys: Histogram,
     put_trie: Histogram,
-    read_trie: Histogram,
+    get_trie: Histogram,
     chain_height: IntGauge,
     exec_block: Histogram,
 }
@@ -171,8 +166,8 @@ const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators in seconds.";
 const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
 const GET_BIDS_HELP: &str = "tracking run of engine_state.get_bids in seconds.";
-const READ_TRIE_NAME: &str = "contract_runtime_read_trie";
-const READ_TRIE_HELP: &str = "tracking run of engine_state.read_trie in seconds.";
+const GET_TRIE_NAME: &str = "contract_runtime_get_trie";
+const GET_TRIE_HELP: &str = "tracking run of engine_state.get_trie in seconds.";
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "tracking run of engine_state.put_trie in seconds.";
 const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
@@ -229,7 +224,7 @@ impl ContractRuntimeMetrics {
                 GET_ERA_VALIDATORS_HELP,
             )?,
             get_bids: register_histogram_metric(registry, GET_BIDS_NAME, GET_BIDS_HELP)?,
-            read_trie: register_histogram_metric(registry, READ_TRIE_NAME, READ_TRIE_HELP)?,
+            get_trie: register_histogram_metric(registry, GET_TRIE_NAME, GET_TRIE_HELP)?,
             put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
             missing_trie_keys: register_histogram_metric(
                 registry,
@@ -319,8 +314,7 @@ where
                 trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                let request =
-                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                let request = GetEraValidatorsRequest::new(state_root_hash, protocol_version);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
@@ -357,21 +351,19 @@ where
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::ReadTrie {
+            ContractRuntimeRequest::GetTrie {
                 trie_key,
                 responder,
             } => {
-                trace!(?trie_key, "read_trie request");
-                let result = self.read_trie(trie_key);
+                trace!(?trie_key, "get_trie request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(?error, "read_trie_request");
-                            None
-                        }
-                    };
-                    trace!(?result, "read_trie response");
+                    let correlation_id = CorrelationId::new();
+                    let start = Instant::now();
+                    let result = engine_state.get_trie(correlation_id, trie_key);
+                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get_trie response");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -498,6 +490,7 @@ impl ContractRuntime {
         contract_runtime_config: &Config,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
+        max_associated_keys: u32,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -524,7 +517,7 @@ impl ContractRuntime {
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
-            contract_runtime_config.max_associated_keys(),
+            max_associated_keys,
             wasm_config,
             system_config,
         );
@@ -554,7 +547,7 @@ impl ContractRuntime {
         let ee_config = chainspec.into();
         self.engine_state.commit_genesis(
             correlation_id,
-            genesis_config_hash.into(),
+            genesis_config_hash,
             protocol_version,
             &ee_config,
         )
@@ -579,8 +572,8 @@ impl ContractRuntime {
     /// Retrieve trie keys for the integrity check.
     pub(crate) fn trie_store_check(
         &self,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, engine_state::Error> {
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         self.engine_state
             .missing_trie_keys(correlation_id, trie_keys)
@@ -663,20 +656,6 @@ impl ContractRuntime {
                 .enqueue_block_for_execution(finalized_block, deploys, transfers)
                 .await
         }
-    }
-
-    /// Read a [Trie<Key, StoredValue>] from the trie store.
-    pub(crate) fn read_trie(
-        &self,
-        trie_key: Blake2bHash,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
-        let correlation_id = CorrelationId::new();
-        let start = Instant::now();
-        let result = self.engine_state.read_trie(correlation_id, trie_key);
-        self.metrics
-            .read_trie
-            .observe(start.elapsed().as_secs_f64());
-        result
     }
 
     /// Returns the engine state, for testing only.

@@ -5,12 +5,10 @@ use alloc::{
 use core::{
     cmp, fmt,
     iter::FromIterator,
-    mem,
     ops::{Deref, Index, Range, RangeFrom, RangeFull, RangeTo},
     slice,
 };
 
-use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -192,13 +190,14 @@ impl IntoIterator for Bytes {
     }
 }
 
-impl DataSize for Bytes {
+#[cfg(feature = "datasize")]
+impl datasize::DataSize for Bytes {
     const IS_DYNAMIC: bool = true;
 
     const STATIC_HEAP_SIZE: usize = 0;
 
     fn estimate_heap_size(&self) -> usize {
-        self.0.capacity() * mem::size_of::<u8>()
+        self.0.capacity() * std::mem::size_of::<u8>()
     }
 }
 

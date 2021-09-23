@@ -3,14 +3,14 @@ use std::{
     convert::TryInto,
 };
 
-use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshot, Key,
     PublicKey, StoredValue,
 };
 
-/// Parses a Blake2bHash from a string. Panics if parsing fails.
-pub fn hash_from_str(hex_str: &str) -> Blake2bHash {
+/// Parses a Digest from a string. Panics if parsing fails.
+pub fn hash_from_str(hex_str: &str) -> Digest {
     (&checksummed_hex::decode(hex_str).unwrap()[..])
         .try_into()
         .unwrap()

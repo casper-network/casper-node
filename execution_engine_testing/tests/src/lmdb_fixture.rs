@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
-use casper_execution_engine::{
-    core::engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig},
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::engine_state::{
+    run_genesis_request::RunGenesisRequest, EngineConfig,
 };
+use casper_hashing::Digest;
 use casper_types::{
     checksummed_hex::{CheckSummedHex, CheckSummedHexForm},
     ProtocolVersion,
@@ -34,8 +34,8 @@ pub struct LmdbFixtureState {
     /// Serializes as unstructured JSON value because [`RunGenesisRequest`] might change over time
     /// and likely old fixture might not deserialize cleanly in the future.
     pub genesis_request: serde_json::Value,
-    #[serde(with = "CheckSummedHexForm::<Blake2bHash>")]
-    pub post_state_hash: Blake2bHash,
+    #[serde(with = "CheckSummedHexForm::<Digest>")]
+    pub post_state_hash: Digest,
 }
 
 impl LmdbFixtureState {

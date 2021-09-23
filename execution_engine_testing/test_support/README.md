@@ -11,4 +11,4 @@ A library to support testing of Wasm smart contracts for use on the Casper netwo
 
 ## License
 
-Licensed under the [Apache License Version 2.0]](https://github.com/casper-node/casper-node/blob/master/LICENSE).
+Licensed under the [Apache License Version 2.0](../../LICENSE).

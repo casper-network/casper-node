@@ -9,7 +9,7 @@ use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
 
-use casper_execution_engine::core::engine_state::query::GetBidsRequest;
+use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     EraId, Motes, PublicKey, SecretKey, U512,
@@ -256,13 +256,13 @@ impl SwitchBlocks {
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
         let correlation_id = Default::default();
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
-        let request = GetBidsRequest::new(state_root_hash.into());
+        let request = GetBidsRequest::new(state_root_hash);
         let runner = nodes.values().next().expect("missing node");
         let engine_state = runner.participating().contract_runtime().engine_state();
         let bids_result = engine_state
             .get_bids(correlation_id, request)
             .expect("get_bids failed");
-        bids_result.bids().expect("no bids returned").clone()
+        bids_result.into_success().expect("no bids returned")
     }
 }
 
