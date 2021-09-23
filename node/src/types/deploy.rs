@@ -866,412 +866,18 @@ impl Deploy {
 
         Ok(())
     }
+}
 
-    #[cfg(test)]
-    pub(crate) fn invalidate(&mut self) {
-        self.header.chain_name.clear();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_valid_native_transfer(rng: &mut TestRng) -> Self {
+#[cfg(test)]
+impl Deploy {
+    /// Generates a completely random instance.
+    pub fn random(rng: &mut TestRng) -> Self {
         let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
-        let gas_price = rng.gen_range(1..100);
-
-        let dependencies = vec![
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-        ];
-        let chain_name = String::from("casper-example");
-
-        let transfer_args = runtime_args! {
-            "amount" => *MAX_PAYMENT,
-            "source" => PublicKey::random(rng).to_account_hash(),
-            "target" => PublicKey::random(rng).to_account_hash(),
-        };
-
-        let payment_args = runtime_args! {
-            "amount" => U512::from(10),
-        };
-
-        let session = ExecutableDeployItem::Transfer {
-            args: transfer_args,
-        };
-
-        let payment = ExecutableDeployItem::ModuleBytes {
-            module_bytes: Bytes::new(),
-            args: payment_args,
-        };
-
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            timestamp,
-            ttl,
-            gas_price,
-            dependencies,
-            chain_name,
-            payment,
-            session,
-            &secret_key,
-            None,
-        )
+        Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
     }
 
-    #[cfg(test)]
-    pub(crate) fn random_with_valid_custom_payment_contract_by_name(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let payment = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
-            entry_point: "call".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            payment,
-            self.session().clone(),
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_missing_payment_contract_by_hash(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let payment = ExecutableDeployItem::StoredContractByHash {
-            hash: [19; 32].into(),
-            entry_point: "non-existent-entry-point".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            payment,
-            self.session().clone(),
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_missing_entry_point_in_payment_contract(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let payment = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
-            entry_point: "non-existent-entry-point".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            payment,
-            self.session().clone(),
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_valid_custom_payment_package_by_name(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let payment = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
-            version: None,
-            entry_point: "call".to_string(),
-            args: Default::default(),
-        };
-
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            payment,
-            self.session().clone(),
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_missing_payment_package_by_hash(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let payment = ExecutableDeployItem::StoredVersionedContractByHash {
-            hash: Default::default(),
-            version: None,
-            entry_point: "call".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            payment,
-            self.session().clone(),
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_nonexistent_contract_version_in_payment_package(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let payment = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
-            version: Some(6u32),
-            entry_point: "non-existent-entry-point".to_string(),
-            args: Default::default(),
-        };
-
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            payment,
-            self.session().clone(),
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_valid_session_contract_by_name(&mut self, rng: &mut TestRng) -> Self {
-        let session = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
-            entry_point: "call".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            self.payment().clone(),
-            session,
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_missing_session_contract_by_hash(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let session = ExecutableDeployItem::StoredContractByHash {
-            hash: Default::default(),
-            entry_point: "call".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            self.payment().clone(),
-            session,
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_missing_entry_point_in_session_contract(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let session = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
-            entry_point: "non-existent-entry-point".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            self.payment().clone(),
-            session,
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_valid_session_package_by_name(&mut self, rng: &mut TestRng) -> Self {
-        let session = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
-            version: None,
-            entry_point: "call".to_string(),
-            args: Default::default(),
-        };
-
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            self.payment().clone(),
-            session,
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_missing_session_package_by_hash(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let session = ExecutableDeployItem::StoredVersionedContractByHash {
-            hash: Default::default(),
-            version: None,
-            entry_point: "call".to_string(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            self.payment().clone(),
-            session,
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_nonexistent_contract_version_in_session_package(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let session = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
-            version: Some(6u32),
-            entry_point: "non-existent-entry-point".to_string(),
-            args: Default::default(),
-        };
-
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            self.payment().clone(),
-            session,
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn random_with_empty_session_module_bytes(&mut self, rng: &mut TestRng) -> Self {
-        let session = ExecutableDeployItem::ModuleBytes {
-            module_bytes: casper_types::bytesrepr::Bytes::new(),
-            args: Default::default(),
-        };
-        let secret_key = SecretKey::random(rng);
-
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            self.payment().clone(),
-            session,
-            &secret_key,
-            None,
-        )
-    }
-
-    // Create a deploy with native transfer as payment code
-    #[cfg(test)]
-    pub(crate) fn random_with_native_transfer_in_payment_logic(
-        &mut self,
-        rng: &mut TestRng,
-    ) -> Self {
-        let transfer_args = runtime_args! {
-            "amount" => *MAX_PAYMENT,
-            "source" => PublicKey::random(rng).to_account_hash(),
-            "target" => PublicKey::random(rng).to_account_hash(),
-        };
-        let invalid_payment = ExecutableDeployItem::Transfer {
-            args: transfer_args,
-        };
-        let secret_key = SecretKey::random(rng);
-        Deploy::new(
-            self.header().timestamp(),
-            self.header().ttl(),
-            self.header().gas_price(),
-            self.header().dependencies().clone(),
-            self.header().chain_name().to_string(),
-            invalid_payment,
-            self.payment().clone(),
-            &secret_key,
-            None,
-        )
-    }
-
-    #[cfg(test)]
+    /// Generates a random instance but using the specified `timestamp` and `ttl`.
     pub fn random_with_timestamp_and_ttl(
         rng: &mut TestRng,
         timestamp: Timestamp,
@@ -1286,8 +892,7 @@ impl Deploy {
         ];
         let chain_name = String::from("casper-example");
 
-        // We need "amount" in order to be able to
-        // get correct info via `deploy_info()`
+        // We need "amount" in order to be able to get correct info via `deploy_info()`.
         let payment_args = runtime_args! {
             "amount" => U512::from(10),
         };
@@ -1314,12 +919,214 @@ impl Deploy {
         )
     }
 
-    /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let timestamp = Timestamp::random(rng);
-        let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
-        Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
+    /// Turns `self` into an invalid deploy by clearing the `chain_name`, invalidating the deploy
+    /// hash.
+    pub(crate) fn invalidate(&mut self) {
+        self.header.chain_name.clear();
+    }
+
+    pub(crate) fn random_valid_native_transfer(rng: &mut TestRng) -> Self {
+        let deploy = Self::random(rng);
+        let transfer_args = runtime_args! {
+            "amount" => *MAX_PAYMENT,
+            "source" => PublicKey::random(rng).to_account_hash(),
+            "target" => PublicKey::random(rng).to_account_hash(),
+        };
+        let payment_args = runtime_args! {
+            "amount" => U512::from(10),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: payment_args,
+        };
+        let secret_key = SecretKey::random(rng);
+        Deploy::new(
+            deploy.header.timestamp,
+            deploy.header.ttl,
+            deploy.header.gas_price,
+            deploy.header.dependencies,
+            deploy.header.chain_name,
+            payment,
+            session,
+            &secret_key,
+            None,
+        )
+    }
+
+    pub(crate) fn random_with_valid_custom_payment_contract_by_name(rng: &mut TestRng) -> Self {
+        let payment = ExecutableDeployItem::StoredContractByName {
+            name: "Test".to_string(),
+            entry_point: "call".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    pub(crate) fn random_with_missing_payment_contract_by_hash(rng: &mut TestRng) -> Self {
+        let payment = ExecutableDeployItem::StoredContractByHash {
+            hash: [19; 32].into(),
+            entry_point: "non-existent-entry-point".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    pub(crate) fn random_with_missing_entry_point_in_payment_contract(rng: &mut TestRng) -> Self {
+        let payment = ExecutableDeployItem::StoredContractByName {
+            name: "Test".to_string(),
+            entry_point: "non-existent-entry-point".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    pub(crate) fn random_with_valid_custom_payment_package_by_name(rng: &mut TestRng) -> Self {
+        let payment = ExecutableDeployItem::StoredVersionedContractByName {
+            name: "Test".to_string(),
+            version: None,
+            entry_point: "call".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    pub(crate) fn random_with_missing_payment_package_by_hash(rng: &mut TestRng) -> Self {
+        let payment = ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: Default::default(),
+            version: None,
+            entry_point: "call".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    pub(crate) fn random_with_nonexistent_contract_version_in_payment_package(
+        rng: &mut TestRng,
+    ) -> Self {
+        let payment = ExecutableDeployItem::StoredVersionedContractByName {
+            name: "Test".to_string(),
+            version: Some(6u32),
+            entry_point: "non-existent-entry-point".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    pub(crate) fn random_with_valid_session_contract_by_name(rng: &mut TestRng) -> Self {
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "Test".to_string(),
+            entry_point: "call".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_with_missing_session_contract_by_hash(rng: &mut TestRng) -> Self {
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: Default::default(),
+            entry_point: "call".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_with_missing_entry_point_in_session_contract(rng: &mut TestRng) -> Self {
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "Test".to_string(),
+            entry_point: "non-existent-entry-point".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_with_valid_session_package_by_name(rng: &mut TestRng) -> Self {
+        let session = ExecutableDeployItem::StoredVersionedContractByName {
+            name: "Test".to_string(),
+            version: None,
+            entry_point: "call".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_with_missing_session_package_by_hash(rng: &mut TestRng) -> Self {
+        let session = ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: Default::default(),
+            version: None,
+            entry_point: "call".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_with_nonexistent_contract_version_in_session_package(
+        rng: &mut TestRng,
+    ) -> Self {
+        let session = ExecutableDeployItem::StoredVersionedContractByName {
+            name: "Test".to_string(),
+            version: Some(6u32),
+            entry_point: "non-existent-entry-point".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_with_empty_session_module_bytes(rng: &mut TestRng) -> Self {
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    /// Creates a deploy with native transfer as payment code.
+    pub(crate) fn random_with_native_transfer_in_payment_logic(rng: &mut TestRng) -> Self {
+        let transfer_args = runtime_args! {
+            "amount" => *MAX_PAYMENT,
+            "source" => PublicKey::random(rng).to_account_hash(),
+            "target" => PublicKey::random(rng).to_account_hash(),
+        };
+        let payment = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    fn random_transfer_with_payment(rng: &mut TestRng, payment: ExecutableDeployItem) -> Self {
+        let deploy = Self::random_valid_native_transfer(rng);
+        let secret_key = SecretKey::random(rng);
+
+        Deploy::new(
+            deploy.header.timestamp,
+            deploy.header.ttl,
+            deploy.header.gas_price,
+            deploy.header.dependencies,
+            deploy.header.chain_name,
+            payment,
+            deploy.session,
+            &secret_key,
+            None,
+        )
+    }
+
+    fn random_transfer_with_session(rng: &mut TestRng, session: ExecutableDeployItem) -> Self {
+        let deploy = Self::random_valid_native_transfer(rng);
+        let secret_key = SecretKey::random(rng);
+
+        Deploy::new(
+            deploy.header.timestamp,
+            deploy.header.ttl,
+            deploy.header.gas_price,
+            deploy.header.dependencies,
+            deploy.header.chain_name,
+            deploy.payment,
+            session,
+            &secret_key,
+            None,
+        )
     }
 }
 

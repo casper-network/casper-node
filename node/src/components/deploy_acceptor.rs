@@ -45,7 +45,6 @@ pub(crate) use event::Event;
 use event::EventMetadata;
 
 const ARG_TARGET: &str = "target";
-const ARG_SOURCE: &str = "source";
 
 #[derive(Debug, Error, Serialize)]
 pub(crate) enum Error {
@@ -106,24 +105,21 @@ pub(crate) enum DeployParameterFailure {
     /// Transfer is not valid for payment code.
     #[error("transfer is not valid for payment code")]
     InvalidPaymentVariant,
-    /// Missing payment amount.
-    #[error("missing payment argument amount")]
+    /// Missing payment "amount" runtime argument.
+    #[error("missing payment 'amount' runtime argument")]
     MissingPaymentAmount,
-    /// Failed to parse payment amount.
-    #[error("failed to parse payment amount as U512")]
+    /// Failed to parse payment "amount" runtime argument.
+    #[error("failed to parse payment 'amount' runtime argument as U512")]
     FailedToParsePaymentAmount,
-    /// Failed to parse transfer amount.
-    #[error("failed to parse transfer amount as U512")]
+    /// Failed to parse transfer "amount" runtime argument.
+    #[error("failed to parse transfer 'amount' runtime argument as U512")]
     FailedToParseTransferAmount,
-    /// Missing transfer amount.
-    #[error("missing transfer amount")]
+    /// Missing transfer "amount" runtime argument.
+    #[error("missing transfer 'amount' runtime argument")]
     MissingTransferAmount,
-    /// Missing transfer target argument.
-    #[error("missing transfer target argument")]
-    MissingTransferTargetArgument,
-    /// Missing transfer source argument.
-    #[error("missing transfer source argument")]
-    MissingTransferSourceArgument,
+    /// Missing transfer "target" runtime argument.
+    #[error("missing transfer 'target' runtime argument")]
+    MissingTransferTarget,
     /// Module bytes for session code cannot be empty.
     #[error("module bytes for session code cannot be empty")]
     MissingModuleBytes,
@@ -404,44 +400,54 @@ impl DeployAcceptor {
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
-        let payment_executable_deploy_item = event_metadata.deploy.payment();
-        let mut maybe_failure: Option<DeployParameterFailure> = None;
-        if let ExecutableDeployItem::Transfer { .. } = payment_executable_deploy_item {
-            debug!("invalid payment variant in payment logic");
-            maybe_failure = Some(DeployParameterFailure::InvalidPaymentVariant);
-        }
+        let payment = event_metadata.deploy.payment();
 
-        if let ExecutableDeployItem::ModuleBytes { module_bytes, args } =
-            payment_executable_deploy_item
-        {
-            if !module_bytes.is_empty() {
-                if let Some(value) = args.get(ARG_AMOUNT) {
-                    let _ = value.clone().into_t::<U512>().map_err(|_| {
-                        debug!("failed to parse payment amount in payment logic");
-                        maybe_failure = Some(DeployParameterFailure::FailedToParsePaymentAmount)
-                    });
-                } else {
-                    debug!("payment amount missing in payment logic");
-                    maybe_failure = Some(DeployParameterFailure::MissingPaymentAmount)
+        let make_error = |failure: DeployParameterFailure| Error::InvalidDeployParameters {
+            prestate_hash,
+            failure,
+        };
+
+        match payment {
+            ExecutableDeployItem::Transfer { .. } => {
+                debug!("invalid payment variant in payment logic");
+                return self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    make_error(DeployParameterFailure::InvalidPaymentVariant),
+                    verification_start_timestamp,
+                );
+            }
+            ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
+                if !module_bytes.is_empty() {
+                    if let Some(value) = args.get(ARG_AMOUNT) {
+                        if value.clone().into_t::<U512>().is_err() {
+                            debug!("failed to parse payment amount in payment logic");
+                            return self.handle_invalid_deploy_result(
+                                effect_builder,
+                                event_metadata,
+                                make_error(DeployParameterFailure::FailedToParsePaymentAmount),
+                                verification_start_timestamp,
+                            );
+                        }
+                    } else {
+                        debug!("payment amount missing in payment logic");
+                        return self.handle_invalid_deploy_result(
+                            effect_builder,
+                            event_metadata,
+                            make_error(DeployParameterFailure::MissingPaymentAmount),
+                            verification_start_timestamp,
+                        );
+                    }
                 }
             }
+            ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredContractByName { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { .. } => (),
         }
 
-        if let Some(failure) = maybe_failure {
-            let error = Error::InvalidDeployParameters {
-                prestate_hash,
-                failure,
-            };
-            return self.handle_invalid_deploy_result(
-                effect_builder,
-                event_metadata,
-                error,
-                verification_start_timestamp,
-            );
-        }
-        let payment_executable_deploy_item_identifier = payment_executable_deploy_item.identifier();
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
-        match payment_executable_deploy_item_identifier {
+        match payment.identifier() {
             ExecutableDeployItemIdentifier::Module | ExecutableDeployItemIdentifier::Transfer => {
                 self.verify_session_logic(
                     effect_builder,
@@ -511,51 +517,64 @@ impl DeployAcceptor {
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
-        let executable_deploy_item = event_metadata.deploy.session();
-        let mut maybe_failure: Option<DeployParameterFailure> = None;
-        if let ExecutableDeployItem::Transfer { args } = executable_deploy_item {
-            if let Some(value) = args.get(ARG_AMOUNT) {
-                let _ = value.clone().into_t::<U512>().map_err(|_| {
-                    debug!("failed to parse transfer amount in native transfer object");
-                    maybe_failure = Some(DeployParameterFailure::FailedToParseTransferAmount)
-                });
-            } else {
-                debug!("native transfer object is missing transfer amount");
-                maybe_failure = Some(DeployParameterFailure::MissingTransferAmount)
+        let session = event_metadata.deploy.session();
+
+        let make_error = |failure: DeployParameterFailure| Error::InvalidDeployParameters {
+            prestate_hash,
+            failure,
+        };
+
+        match session {
+            ExecutableDeployItem::Transfer { args } => {
+                if let Some(value) = args.get(ARG_AMOUNT) {
+                    if value.clone().into_t::<U512>().is_err() {
+                        debug!("failed to parse transfer amount in native transfer object");
+                        return self.handle_invalid_deploy_result(
+                            effect_builder,
+                            event_metadata,
+                            make_error(DeployParameterFailure::FailedToParseTransferAmount),
+                            verification_start_timestamp,
+                        );
+                    }
+                } else {
+                    debug!("native transfer object is missing transfer amount");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        make_error(DeployParameterFailure::MissingTransferAmount),
+                        verification_start_timestamp,
+                    );
+                }
+
+                if args.get(ARG_TARGET).is_none() {
+                    debug!("native transfer object is missing transfer argument");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        make_error(DeployParameterFailure::MissingTransferTarget),
+                        verification_start_timestamp,
+                    );
+                }
             }
-            if args.get(ARG_TARGET).is_none() {
-                debug!("native transfer object is missing transfer argument");
-                maybe_failure = Some(DeployParameterFailure::MissingTransferTargetArgument)
+            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
+                if module_bytes.is_empty() {
+                    debug!("module bytes in session logic is empty");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        make_error(DeployParameterFailure::MissingModuleBytes),
+                        verification_start_timestamp,
+                    );
+                }
             }
-            if args.get(ARG_SOURCE).is_none() {
-                debug!("native transfer object is missing source argument");
-                maybe_failure = Some(DeployParameterFailure::MissingTransferSourceArgument)
-            }
+            ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredContractByName { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { .. } => (),
         }
 
-        if let ExecutableDeployItem::ModuleBytes { module_bytes, .. } = executable_deploy_item {
-            if module_bytes.is_empty() {
-                debug!("module bytes in session logic is empty");
-                maybe_failure = Some(DeployParameterFailure::MissingModuleBytes)
-            }
-        }
-
-        if let Some(failure) = maybe_failure {
-            let error = Error::InvalidDeployParameters {
-                prestate_hash,
-                failure,
-            };
-            return self.handle_invalid_deploy_result(
-                effect_builder,
-                event_metadata,
-                error,
-                verification_start_timestamp,
-            );
-        }
-
-        let executable_deploy_item_identifier = executable_deploy_item.identifier();
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
-        match executable_deploy_item_identifier {
+        match session.identifier() {
             ExecutableDeployItemIdentifier::Module | ExecutableDeployItemIdentifier::Transfer => {
                 self.validate_deploy_cryptography(
                     effect_builder,

@@ -163,9 +163,9 @@ impl TestScenario {
     }
 
     fn deploy(&self, rng: &mut NodeRng) -> Deploy {
-        let mut deploy = Deploy::random_valid_native_transfer(rng);
         match self {
             TestScenario::FromPeerInvalidDeploy | TestScenario::FromClientInvalidDeploy => {
+                let mut deploy = Deploy::random_valid_native_transfer(rng);
                 deploy.invalidate();
                 deploy
             }
@@ -178,17 +178,19 @@ impl TestScenario {
             | TestScenario::AccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithInsufficientWeight
             | TestScenario::AccountWithUnknownBalance
-            | TestScenario::BalanceCheckForDeploySentByPeer => deploy,
+            | TestScenario::BalanceCheckForDeploySentByPeer => {
+                Deploy::random_valid_native_transfer(rng)
+            }
             TestScenario::DeployWithCustomPaymentContract(contract_scenario) => {
                 match contract_scenario {
                     ContractScenario::Valid | ContractScenario::MissingContractAtName => {
-                        deploy.random_with_valid_custom_payment_contract_by_name(rng)
+                        Deploy::random_with_valid_custom_payment_contract_by_name(rng)
                     }
                     ContractScenario::MissingEntryPoint => {
-                        deploy.random_with_missing_entry_point_in_payment_contract(rng)
+                        Deploy::random_with_missing_entry_point_in_payment_contract(rng)
                     }
                     ContractScenario::MissingContractAtHash => {
-                        deploy.random_with_missing_payment_contract_by_hash(rng)
+                        Deploy::random_with_missing_payment_contract_by_hash(rng)
                     }
                 }
             }
@@ -196,46 +198,46 @@ impl TestScenario {
                 match contract_package_scenario {
                     ContractPackageScenario::Valid
                     | ContractPackageScenario::MissingPackageAtName => {
-                        deploy.random_with_valid_custom_payment_package_by_name(rng)
+                        Deploy::random_with_valid_custom_payment_package_by_name(rng)
                     }
                     ContractPackageScenario::MissingPackageAtHash => {
-                        deploy.random_with_missing_payment_package_by_hash(rng)
+                        Deploy::random_with_missing_payment_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.random_with_nonexistent_contract_version_in_payment_package(rng)
+                        Deploy::random_with_nonexistent_contract_version_in_payment_package(rng)
                     }
                 }
             }
             TestScenario::DeployWithSessionContract(contract_scenario) => match contract_scenario {
                 ContractScenario::Valid | ContractScenario::MissingContractAtName => {
-                    deploy.random_with_valid_session_contract_by_name(rng)
+                    Deploy::random_with_valid_session_contract_by_name(rng)
                 }
                 ContractScenario::MissingContractAtHash => {
-                    deploy.random_with_missing_session_contract_by_hash(rng)
+                    Deploy::random_with_missing_session_contract_by_hash(rng)
                 }
                 ContractScenario::MissingEntryPoint => {
-                    deploy.random_with_missing_entry_point_in_session_contract(rng)
+                    Deploy::random_with_missing_entry_point_in_session_contract(rng)
                 }
             },
             TestScenario::DeployWithSessionContractPackage(contract_package_scenario) => {
                 match contract_package_scenario {
                     ContractPackageScenario::Valid
                     | ContractPackageScenario::MissingPackageAtName => {
-                        deploy.random_with_valid_session_package_by_name(rng)
+                        Deploy::random_with_valid_session_package_by_name(rng)
                     }
                     ContractPackageScenario::MissingPackageAtHash => {
-                        deploy.random_with_missing_session_package_by_hash(rng)
+                        Deploy::random_with_missing_session_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.random_with_nonexistent_contract_version_in_session_package(rng)
+                        Deploy::random_with_nonexistent_contract_version_in_session_package(rng)
                     }
                 }
             }
             TestScenario::DeployWithEmptySessionModuleBytes => {
-                deploy.random_with_empty_session_module_bytes(rng)
+                Deploy::random_with_empty_session_module_bytes(rng)
             }
             TestScenario::DeployWithNativeTransferInPayment => {
-                deploy.random_with_native_transfer_in_payment_logic(rng)
+                Deploy::random_with_native_transfer_in_payment_logic(rng)
             }
         }
     }
