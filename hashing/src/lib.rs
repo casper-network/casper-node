@@ -414,7 +414,6 @@ mod test {
     }
 
     #[test]
-    //#[ignore] // TODO[RC]: Check expected value with Matt
     fn test_hash_merkle_odd() {
         let hashes = vec![
             Digest([1u8; 32]),
@@ -429,12 +428,11 @@ mod test {
 
         assert_eq!(
             hash_lower_hex,
-            "c18aaf359f7b4643991f68fbfa8c503eb460da497399cdff7d8a2b1bc4399589"
+            "9ba070a55c7f72600d7f3fee2c0a6e52ec89237d97a8677eb0612132fb34df60"
         );
     }
 
     #[test]
-    #[ignore] // TODO[RC]: Check expected value with Matt
     fn test_hash_merkle_even() {
         let hashes = vec![
             Digest([1u8; 32]),
@@ -450,12 +448,11 @@ mod test {
 
         assert_eq!(
             hash_lower_hex,
-            "0470ecc8abdcd6ecd3a4c574431b80bb8751c7a43337d5966dadf07899f8804b"
+            "8768e1ca1b86ed3d722fb1b7d7a0228349c7d448058d0ce1e314f99dbd1c8573"
         );
     }
 
     #[test]
-    #[ignore] // TODO[RC]: Check expected value with Matt
     fn test_hash_btreemap() {
         let mut map = BTreeMap::new();
         let _ = map.insert(Digest([1u8; 32]), Digest([2u8; 32]));
@@ -469,7 +466,7 @@ mod test {
 
         assert_eq!(
             hash_lower_hex,
-            "f3bc94beb2470d5c09f575b439d5f238bdc943233774c7aa59e597cc2579e148"
+            "aae1660ca492ed9af6b2ead22f88b390aeb2ec0719654824d084aa6c6553ceeb"
         );
     }
 }

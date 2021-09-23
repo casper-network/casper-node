@@ -137,7 +137,7 @@ impl<VID> EraReport<VID> {
         {
             Digest::hash_merkle_tree(slice_of_validators.iter().map(|validator| {
                 Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
-            })) // TODO[RC]: Double check this! The hashes produced by `hash_vec_merkle_tree` and `hash_merkle_tree` differ!
+            }))
         }
 
         // Pattern match here leverages compiler to ensure every field is accounted for

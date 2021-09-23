@@ -618,7 +618,7 @@ impl EraEnd {
             })
             .collect();
         let hashed_next_era_validator_weights =
-            Digest::hash_merkle_tree(descending_validator_weight_hashed_pairs); // TODO[RC]: Double check this! The hashes produced by `hash_vec_merkle_tree` and `hash_merkle_tree` differ!
+            Digest::hash_merkle_tree(descending_validator_weight_hashed_pairs);
         let hashed_era_report: Digest = era_report.hash();
         Digest::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
     }
