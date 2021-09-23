@@ -167,12 +167,12 @@ pub enum DeployConfigurationFailure {
         got: usize,
     },
 
-    /// Missing payment amount.
-    #[error("missing payment argument amount")]
+    /// Missing payment "amount" runtime argument.
+    #[error("missing payment 'amount' runtime argument ")]
     MissingPaymentAmount,
 
-    /// Failed to parse payment amount.
-    #[error("failed to parse payment amount as U512")]
+    /// Failed to parse payment "amount" runtime argument.
+    #[error("failed to parse payment 'amount' as U512")]
     FailedToParsePaymentAmount,
 
     /// The payment amount associated with the deploy exceeds the block gas limit.
@@ -184,12 +184,12 @@ pub enum DeployConfigurationFailure {
         got: U512,
     },
 
-    /// Missing transfer amount.
-    #[error("missing transfer amount")]
+    /// Missing payment "amount" runtime argument
+    #[error("missing transfer 'amount' runtime argument")]
     MissingTransferAmount,
 
-    /// Invalid transfer amount.
-    #[error("invalid transfer amount")]
+    /// Failed to parse transfer "amount" runtime argument.
+    #[error("failed to parse transfer 'amount' as U512")]
     FailedToParseTransferAmount,
 
     /// Insufficient transfer amount.
