@@ -35,7 +35,7 @@
     "asbuild:test": "npm run asbuild:test:runtime_args && npm run asbuild:test:bytesrepr && npm run asbuild:test:bignum && npm run asbuild:test:utils",
     "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized",
     "preinstall": "npx npm-force-resolutions",
-    "prepublish-docs": "rm -rf apidoc && mkdir apidoc && node_modules/.bin/typedoc assembly/*.ts assembly/collections/*.ts --theme markdown --readme none --ignoreCompilerErrors --hideBreadcrumbs --skipSidebar --excludePrivate --excludeNotExported --out temp-apidoc/ && concat-md --decrease-title-levels --dir-name-as-title temp-apidoc >> README2.md",
+    "prepublish-docs": "rm -rf apidoc && mkdir apidoc && node_modules/.bin/typedoc assembly/*.ts assembly/collections/*.ts --theme markdown --readme none --ignoreCompilerErrors --hideBreadcrumbs --skipSidebar --excludePrivate --excludeNotExported --out temp-apidoc/ && concat-md --decrease-title-levels --dir-name-as-title temp-apidoc >> README.md",
     "prepublishOnly": "cp README.md ._README.md && npm run prepublish-docs",
     "postpublish": "rm -rf temp-apidoc && mv ._README.md README.md"
   },
