@@ -418,7 +418,8 @@ impl DeployAcceptor {
                 );
             }
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                if !module_bytes.is_empty() {
+                // module bytes being empty implies the payment executable is standard payment.
+                if module_bytes.is_empty() {
                     if let Some(value) = args.get(ARG_AMOUNT) {
                         if value.clone().into_t::<U512>().is_err() {
                             debug!("failed to parse payment amount in payment logic");

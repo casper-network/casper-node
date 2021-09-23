@@ -956,6 +956,25 @@ impl Deploy {
         )
     }
 
+    pub(crate) fn random_without_payment_amount(rng: &mut TestRng) -> Self {
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: RuntimeArgs::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    pub(crate) fn random_with_mangled_payment_amount(rng: &mut TestRng) -> Self {
+        let payment_args = runtime_args! {
+            "amount" => "invalid-argument"
+        };
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: payment_args,
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
     pub(crate) fn random_with_valid_custom_payment_contract_by_name(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredContractByName {
             name: "Test".to_string(),
@@ -1070,6 +1089,40 @@ impl Deploy {
             version: Some(6u32),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_without_transfer_target(rng: &mut TestRng) -> Self {
+        let transfer_args = runtime_args! {
+            "amount" => *MAX_PAYMENT,
+            "source" => PublicKey::random(rng).to_account_hash(),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_without_transfer_amount(rng: &mut TestRng) -> Self {
+        let transfer_args = runtime_args! {
+            "source" => PublicKey::random(rng).to_account_hash(),
+            "target" => PublicKey::random(rng).to_account_hash(),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_with_mangled_transfer_amount(rng: &mut TestRng) -> Self {
+        let transfer_args = runtime_args! {
+            "amount" => "mangled-transfer-amount",
+            "source" => PublicKey::random(rng).to_account_hash(),
+            "target" => PublicKey::random(rng).to_account_hash(),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
         };
         Self::random_transfer_with_session(rng, session)
     }
