@@ -54,9 +54,9 @@ impl From<CLValueError> for Error {
 
 /// Representation of a single transformation ocurring during execution.
 ///
-/// It is important to note that all arithmetic operations represented by different varaints are
-/// deterministic and produce wrapped values. In other words we're aiming to make all variants of
-/// [`Transform`] commutative which means that a given collection of them can be executed in any
+/// It is important to note that all arithmetic operations represented by different variants are
+/// deterministic and produce wrapped values. In other words, we're aiming to make all variants of
+/// [`Transform`] commutative, which means that a given collection of them can be executed in any
 /// order to produce the same end result.
 #[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
