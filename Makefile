@@ -111,9 +111,16 @@ lint: lint-contracts-rs
 	$(CARGO) clippy --all-targets --all-features -- -D warnings -A renamed_and_removed_lints
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
 
-.PHONY: audit
-audit:
+.PHONY: audit-rs
+audit-rs:
 	$(CARGO) audit
+
+.PHONY: audit-as
+audit-as:
+	cd smart_contracts/contract_as && $(NPM) audit
+
+.PHONY: audit
+audit: audit-rs audit-as
 
 .PHONY: doc
 doc:
