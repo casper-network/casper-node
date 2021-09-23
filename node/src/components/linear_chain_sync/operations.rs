@@ -11,7 +11,6 @@ use casper_types::{EraId, Key, PublicKey, U512};
 
 use crate::{
     components::{
-        consensus,
         consensus::check_sufficient_finality_signatures,
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
@@ -524,12 +523,9 @@ async fn fast_sync_to_most_recent(
         }
     }
 
-    // The era supervisor needs validator information from previous eras.
-    // The number of previous eras is determined by a *delay* in which consensus participants become
-    // bonded validators or unbond.
-    let delay = consensus::bonded_eras(&chainspec.into());
-    // The era supervisor requires at least to 3*delay + 1 eras back to be stored in the database.
-    let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
+    // The era supervisor requires at least auction_delay + 3 eras back to be stored in the
+    // database.
+    let historical_eras_needed = chainspec.core_config.auction_delay.saturating_add(3);
     let earliest_era_needed_by_era_supervisor = most_recent_block_header
         .era_id()
         .saturating_sub(historical_eras_needed);

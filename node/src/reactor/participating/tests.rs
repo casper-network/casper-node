@@ -14,7 +14,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::{consensus, gossiper, small_network, storage},
+    components::{gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, participating, ReactorExit, Runner},
     testing::{self, network::Network, TestRng},
@@ -241,7 +241,6 @@ async fn run_equivocator_network() {
     keys.push(alice_sk);
 
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
-    let protocol_config = (&*chain.chainspec).into();
 
     let mut net = chain
         .create_initialized_network(&mut rng)
@@ -291,10 +290,7 @@ async fn run_equivocator_network() {
         );
 
         // Make sure we waited long enough for this test to include unbonding and dropping eras.
-        let oldest_bonded_era_id = consensus::oldest_bonded_era(&protocol_config, era_id);
-        let oldest_evidence_era_id =
-            consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
-        if oldest_evidence_era_id.is_genesis() || era_number < 3 {
+        if era_number < 4 {
             continue;
         }
 
@@ -316,6 +312,12 @@ async fn run_equivocator_network() {
             .contains_key(&alice_pk),
         "Alice should have been evicted."
     );
+
+    // The first era should have been removed from memory.
+    for runner in net.nodes().values() {
+        let consensus = runner.reactor().inner().consensus();
+        assert!(consensus.active_era_ids().all(|era_id| era_id.value() != 1));
+    }
 
     // The auction delay is 1, so if Alice's equivocation was detected before the switch block in
     // era N, the switch block of era N should list her as faulty. Starting with the switch block
