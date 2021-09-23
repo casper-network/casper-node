@@ -62,18 +62,20 @@ pub enum Transform {
     Identity,
     /// Writes a new value in the global state.
     Write(StoredValue),
-    /// Adds a numeric value to an existing entry in the global state.
-    /// Assumes the existing value is a number.
-    ///
-    /// Produced by add operations.
+    /// A wrapping addition of an `i32` to an existing numeric value (not necessarily an `i32`) in
+    /// the global state.
     AddInt32(i32),
-    /// Adds an unsigned 64-bit integer to an existing entry in the global state.
+    /// A wrapping addition of a `u64` to an existing numeric value (not necessarily an `u64`) in
+    /// the global state.
     AddUInt64(u64),
-    /// Adds an unsigned 128-bit integer to an existing entry in the global state.
+    /// A wrapping addition of a `U128` to an existing numeric value (not necessarily an `U128`) in
+    /// the global state.
     AddUInt128(U128),
-    /// Adds an unsigned 256-bit integer to an existing entry in the global state.
+    /// A wrapping addition of a `U256` to an existing numeric value (not necessarily an `U256`) in
+    /// the global state.
     AddUInt256(U256),
-    /// Adds an unsigned 512-bit integer to an existing entry in the global state.
+    /// A wrapping addition of a `U512` to an existing numeric value (not necessarily an `U512`) in
+    /// the global state.
     AddUInt512(U512),
     /// Adds new named keys to an existing entry in the global state.
     ///

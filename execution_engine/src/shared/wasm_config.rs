@@ -20,7 +20,7 @@ pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 /// stack limits and costs.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
-    /// Maximum amount of heap memory (represented in 64kb pages) each contract can use.
+    /// Maximum amount of heap memory (represented in 64kB pages) each contract can use.
     pub max_memory: u32,
     /// Max stack height (native WebAssembly stack limiter).
     pub max_stack_height: u32,
@@ -50,7 +50,7 @@ impl WasmConfig {
         }
     }
 
-    /// Return opcode costs.
+    /// Returns opcode costs.
     pub fn opcode_costs(&self) -> OpcodeCosts {
         self.opcode_costs
     }
