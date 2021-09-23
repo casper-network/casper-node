@@ -852,18 +852,22 @@ impl Deploy {
                 .args()
                 .get(ARG_AMOUNT)
                 .ok_or_else(|| {
-                    info!("missing transfer amount");
+                    info!("missing transfer 'amount' runtime argument");
                     DeployConfigurationFailure::MissingTransferAmount
                 })?
                 .clone()
                 .into_t::<U512>()
                 .map_err(|_| {
-                    info!("failed to parse transfer amount");
+                    info!("failed to parse transfer 'amount' runtime argument as a U512");
                     DeployConfigurationFailure::FailedToParseTransferAmount
                 })?;
             let minimum = U512::from(config.native_transfer_minimum_motes);
             if attempted < minimum {
-                info!("insufficient transfer amount");
+                info!(
+                    minimum = %config.native_transfer_minimum_motes,
+                    amount = %attempted,
+                    "insufficient transfer amount"
+                );
                 return Err(DeployConfigurationFailure::InsufficientTransferAmount {
                     minimum,
                     attempted,
