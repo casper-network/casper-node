@@ -98,7 +98,7 @@ impl Digest {
 
     /// Hashes a `impl IntoIterator` of [`Digest`]s into a single [`Digest`] by
     /// constructing a [Merkle tree][1]. Reduces pairs of elements in the collection by repeatedly
-    /// calling [hash_pair].
+    /// calling [Digest::hash_pair].
     ///
     /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
     ///
@@ -117,7 +117,7 @@ impl Digest {
     /// Finally hashes the number of elements resulting hash. In the example above the final output
     /// would be `hash_pair(u64_as_slice(6), l)`.
     ///
-    /// Returns [`SENTINEL_MERKLE_TREE`] when the input is empty.
+    /// Returns [`Digest::SENTINEL_MERKLE_TREE`] when the input is empty.
     ///
     /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
     /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
