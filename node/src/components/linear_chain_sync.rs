@@ -791,11 +791,25 @@ where
                             .cmp(&block_to_execute.protocol_version())
                         {
                             Ordering::Less => {
+                                warn!(
+                                    block_hash = %block_to_execute.hash(),
+                                    our_version = %self.protocol_version,
+                                    block_version = %block_to_execute.protocol_version(),
+                                    "attempting to execute a block with a newer protocol version;\
+                                    shutting down to upgrade"
+                                );
                                 return effect_builder
                                     .immediately()
                                     .event(|_| Event::Shutdown(StopReason::ForUpgrade));
                             }
                             Ordering::Greater => {
+                                warn!(
+                                    block_hash = %block_to_execute.hash(),
+                                    our_version = %self.protocol_version,
+                                    block_version = %block_to_execute.protocol_version(),
+                                    "attempting to execute a block with an older protocol version;\
+                                    shutting down to downgrade"
+                                );
                                 return effect_builder
                                     .immediately()
                                     .event(|_| Event::Shutdown(StopReason::ForDowngrade));
