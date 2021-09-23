@@ -407,7 +407,7 @@ async fn sync_trie_store(
 ) -> Result<(), LinearChainSyncError> {
     info!(
         state_root_hash = ?state_root_hash,
-        "Syncing trie store",
+        "syncing trie store",
     );
     let mut outstanding_trie_keys = vec![Blake2bHash::from(state_root_hash)];
     while let Some(trie_key) = outstanding_trie_keys.pop() {
