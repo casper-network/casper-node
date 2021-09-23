@@ -1,3 +1,4 @@
+//! Definition of the costs of running code in the system.
 pub mod auction_costs;
 pub mod handle_payment_costs;
 pub mod mint_costs;
@@ -14,8 +15,13 @@ use self::{
     standard_payment_costs::StandardPaymentCosts,
 };
 
+/// Default gas cost for a wasmless transfer.
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
 
+/// Definition of costs in the system.
+///
+/// This structure contains the costs of all the system contract's entry points and, additionally,
+/// it defines a wasmless transfer cost.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
@@ -35,6 +41,7 @@ pub struct SystemConfig {
 }
 
 impl SystemConfig {
+    /// Creates new system config instance.
     pub fn new(
         wasmless_transfer_cost: u32,
         auction_costs: AuctionCosts,
@@ -51,22 +58,27 @@ impl SystemConfig {
         }
     }
 
+    /// Returns wasmless transfer cost.
     pub fn wasmless_transfer_cost(&self) -> u32 {
         self.wasmless_transfer_cost
     }
 
+    /// Returns the costs of executing auction entry points.
     pub fn auction_costs(&self) -> &AuctionCosts {
         &self.auction_costs
     }
 
+    /// Returns the costs of executing mint entry points.
     pub fn mint_costs(&self) -> &MintCosts {
         &self.mint_costs
     }
 
+    /// Returns the costs of executing `handle_payment` entry points.
     pub fn handle_payment_costs(&self) -> &HandlePaymentCosts {
         &self.handle_payment_costs
     }
 
+    /// Returns the costs of executing `standard_payment` entry points.
     pub fn standard_payment_costs(&self) -> &StandardPaymentCosts {
         &self.standard_payment_costs
     }
@@ -138,6 +150,7 @@ impl FromBytes for SystemConfig {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{num, prop_compose};
