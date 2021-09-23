@@ -54,8 +54,8 @@ impl From<CLValueError> for Error {
 
 /// Representation of a single transformation ocurring during execution.
 ///
-/// Note that all variants of [`Transform`] are commutative which means that a given collection of
-/// them can be executed in any order to produce the same end result.
+/// Note that all arithmetic variants of [`Transform`] are commutative which means that a given
+/// collection of them can be executed in any order to produce the same end result.
 #[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Transform {
