@@ -1,11 +1,11 @@
 use std::convert::TryFrom;
 
 use crate::{error, Digest};
-use blake2::digest::Update;
 use casper_types::{
     allocate_buffer,
     bytesrepr::{FromBytes, ToBytes},
 };
+#[cfg(test)]
 use itertools::Itertools;
 
 #[cfg_attr(
@@ -91,7 +91,8 @@ impl FromBytes for IndexedMerkleProof {
 }
 
 impl IndexedMerkleProof {
-    pub fn new<I>(
+    #[cfg(test)]
+    pub(crate) fn new<I>(
         leaves: I,
         index: u64,
     ) -> Result<IndexedMerkleProof, error::MerkleConstructionError>
@@ -149,7 +150,10 @@ impl IndexedMerkleProof {
 
     #[cfg(test)]
     pub(crate) fn root_hash(&self) -> Digest {
-        use blake2::{digest::VariableOutput, VarBlake2b};
+        use blake2::{
+            digest::{Update, VariableOutput},
+            VarBlake2b,
+        };
 
         let IndexedMerkleProof {
             index: _,
@@ -408,7 +412,7 @@ mod test {
                 return Digest::SENTINEL_MERKLE_TREE;
             }
             if leaf_count == 1 {
-                return proof[0].clone();
+                return proof[0];
             }
             let half = 1u64 << (63 - (leaf_count - 1).leading_zeros());
             let last = proof.len() - 1;
