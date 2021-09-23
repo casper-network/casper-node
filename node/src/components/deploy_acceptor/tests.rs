@@ -135,6 +135,11 @@ enum TestScenario {
     DeployWithSessionContractPackage(ContractPackageScenario),
     DeployWithNativeTransferInPayment,
     DeployWithEmptySessionModuleBytes,
+    DeployWithoutPaymentAmount,
+    DeployWithMangledPaymentAmount,
+    DeployWithMangledTransferAmount,
+    DeployWithoutTransferTarget,
+    DeployWithoutTransferAmount,
     BalanceCheckForDeploySentByPeer,
 }
 
@@ -153,6 +158,11 @@ impl TestScenario {
             | TestScenario::AccountWithInsufficientWeight
             | TestScenario::AccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithUnknownBalance
+            | TestScenario::DeployWithoutPaymentAmount
+            | TestScenario::DeployWithMangledPaymentAmount
+            | TestScenario::DeployWithMangledTransferAmount
+            | TestScenario::DeployWithoutTransferAmount
+            | TestScenario::DeployWithoutTransferTarget
             | TestScenario::DeployWithCustomPaymentContract(_)
             | TestScenario::DeployWithCustomPaymentContractPackage(_)
             | TestScenario::DeployWithSessionContract(_)
@@ -163,9 +173,9 @@ impl TestScenario {
     }
 
     fn deploy(&self, rng: &mut NodeRng) -> Deploy {
-        let mut deploy = Deploy::random_valid_native_transfer(rng);
         match self {
             TestScenario::FromPeerInvalidDeploy | TestScenario::FromClientInvalidDeploy => {
+                let mut deploy = Deploy::random_valid_native_transfer(rng);
                 deploy.invalidate();
                 deploy
             }
@@ -178,17 +188,33 @@ impl TestScenario {
             | TestScenario::AccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithInsufficientWeight
             | TestScenario::AccountWithUnknownBalance
-            | TestScenario::BalanceCheckForDeploySentByPeer => deploy,
+            | TestScenario::BalanceCheckForDeploySentByPeer => {
+                Deploy::random_valid_native_transfer(rng)
+            }
+            TestScenario::DeployWithoutPaymentAmount => Deploy::random_without_payment_amount(rng),
+            TestScenario::DeployWithMangledPaymentAmount => {
+                Deploy::random_with_mangled_payment_amount(rng)
+            }
+            TestScenario::DeployWithoutTransferTarget => {
+                Deploy::random_without_transfer_target(rng)
+            }
+            TestScenario::DeployWithoutTransferAmount => {
+                Deploy::random_without_transfer_amount(rng)
+            }
+            TestScenario::DeployWithMangledTransferAmount => {
+                Deploy::random_with_mangled_transfer_amount(rng)
+            }
+
             TestScenario::DeployWithCustomPaymentContract(contract_scenario) => {
                 match contract_scenario {
                     ContractScenario::Valid | ContractScenario::MissingContractAtName => {
-                        deploy.random_with_valid_custom_payment_contract_by_name(rng)
+                        Deploy::random_with_valid_custom_payment_contract_by_name(rng)
                     }
                     ContractScenario::MissingEntryPoint => {
-                        deploy.random_with_missing_entry_point_in_payment_contract(rng)
+                        Deploy::random_with_missing_entry_point_in_payment_contract(rng)
                     }
                     ContractScenario::MissingContractAtHash => {
-                        deploy.random_with_missing_payment_contract_by_hash(rng)
+                        Deploy::random_with_missing_payment_contract_by_hash(rng)
                     }
                 }
             }
@@ -196,46 +222,46 @@ impl TestScenario {
                 match contract_package_scenario {
                     ContractPackageScenario::Valid
                     | ContractPackageScenario::MissingPackageAtName => {
-                        deploy.random_with_valid_custom_payment_package_by_name(rng)
+                        Deploy::random_with_valid_custom_payment_package_by_name(rng)
                     }
                     ContractPackageScenario::MissingPackageAtHash => {
-                        deploy.random_with_missing_payment_package_by_hash(rng)
+                        Deploy::random_with_missing_payment_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.random_with_nonexistent_contract_version_in_payment_package(rng)
+                        Deploy::random_with_nonexistent_contract_version_in_payment_package(rng)
                     }
                 }
             }
             TestScenario::DeployWithSessionContract(contract_scenario) => match contract_scenario {
                 ContractScenario::Valid | ContractScenario::MissingContractAtName => {
-                    deploy.random_with_valid_session_contract_by_name(rng)
+                    Deploy::random_with_valid_session_contract_by_name(rng)
                 }
                 ContractScenario::MissingContractAtHash => {
-                    deploy.random_with_missing_session_contract_by_hash(rng)
+                    Deploy::random_with_missing_session_contract_by_hash(rng)
                 }
                 ContractScenario::MissingEntryPoint => {
-                    deploy.random_with_missing_entry_point_in_session_contract(rng)
+                    Deploy::random_with_missing_entry_point_in_session_contract(rng)
                 }
             },
             TestScenario::DeployWithSessionContractPackage(contract_package_scenario) => {
                 match contract_package_scenario {
                     ContractPackageScenario::Valid
                     | ContractPackageScenario::MissingPackageAtName => {
-                        deploy.random_with_valid_session_package_by_name(rng)
+                        Deploy::random_with_valid_session_package_by_name(rng)
                     }
                     ContractPackageScenario::MissingPackageAtHash => {
-                        deploy.random_with_missing_session_package_by_hash(rng)
+                        Deploy::random_with_missing_session_package_by_hash(rng)
                     }
                     ContractPackageScenario::MissingContractVersion => {
-                        deploy.random_with_nonexistent_contract_version_in_session_package(rng)
+                        Deploy::random_with_nonexistent_contract_version_in_session_package(rng)
                     }
                 }
             }
             TestScenario::DeployWithEmptySessionModuleBytes => {
-                deploy.random_with_empty_session_module_bytes(rng)
+                Deploy::random_with_empty_session_module_bytes(rng)
             }
             TestScenario::DeployWithNativeTransferInPayment => {
-                deploy.random_with_native_transfer_in_payment_logic(rng)
+                Deploy::random_with_native_transfer_in_payment_logic(rng)
             }
         }
     }
@@ -255,6 +281,11 @@ impl TestScenario {
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::DeployWithEmptySessionModuleBytes
             | TestScenario::DeployWithNativeTransferInPayment
+            | TestScenario::DeployWithoutPaymentAmount
+            | TestScenario::DeployWithMangledPaymentAmount
+            | TestScenario::DeployWithMangledTransferAmount
+            | TestScenario::DeployWithoutTransferAmount
+            | TestScenario::DeployWithoutTransferTarget
             | TestScenario::BalanceCheckForDeploySentByPeer => false,
             TestScenario::DeployWithCustomPaymentContract(contract_scenario)
             | TestScenario::DeployWithSessionContract(contract_scenario) => match contract_scenario
@@ -672,7 +703,12 @@ async fn run_deploy_acceptor_without_timeout(
             | TestScenario::AccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithInsufficientWeight
             | TestScenario::AccountWithUnknownBalance
-            | TestScenario::DeployWithNativeTransferInPayment => {
+            | TestScenario::DeployWithNativeTransferInPayment
+            | TestScenario::DeployWithoutPaymentAmount
+            | TestScenario::DeployWithMangledPaymentAmount
+            | TestScenario::DeployWithMangledTransferAmount
+            | TestScenario::DeployWithoutTransferTarget
+            | TestScenario::DeployWithoutTransferAmount => {
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
@@ -1141,6 +1177,69 @@ async fn should_reject_deploy_with_transfer_in_payment() {
             failure: DeployParameterFailure::InvalidPaymentVariant,
             ..
         })
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_without_payment_amount() {
+    let test_scenario = TestScenario::DeployWithoutPaymentAmount;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployParameters {
+            failure: DeployParameterFailure::MissingPaymentAmount,
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_with_mangled_payment_amount() {
+    let test_scenario = TestScenario::DeployWithMangledPaymentAmount;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployParameters {
+            failure: DeployParameterFailure::FailedToParsePaymentAmount,
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_without_transfer_amount() {
+    let test_scenario = TestScenario::DeployWithoutTransferAmount;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployConfiguration(
+            DeployConfigurationFailure::MissingTransferAmount
+        ))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_without_transfer_target() {
+    let test_scenario = TestScenario::DeployWithoutTransferTarget;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployParameters {
+            failure: DeployParameterFailure::MissingTransferTarget,
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_with_mangled_transfer_amount() {
+    let test_scenario = TestScenario::DeployWithMangledTransferAmount;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployConfiguration(
+            DeployConfigurationFailure::FailedToParseTransferAmount
+        ))
     ))
 }
 
