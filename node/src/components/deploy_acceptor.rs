@@ -111,12 +111,6 @@ pub(crate) enum DeployParameterFailure {
     /// Failed to parse payment "amount" runtime argument.
     #[error("failed to parse payment 'amount' runtime argument as U512")]
     FailedToParsePaymentAmount,
-    /// Failed to parse transfer "amount" runtime argument.
-    #[error("failed to parse transfer 'amount' runtime argument as U512")]
-    FailedToParseTransferAmount,
-    /// Missing transfer "amount" runtime argument.
-    #[error("missing transfer 'amount' runtime argument")]
-    MissingTransferAmount,
     /// Missing transfer "target" runtime argument.
     #[error("missing transfer 'target' runtime argument")]
     MissingTransferTarget,
@@ -527,25 +521,8 @@ impl DeployAcceptor {
 
         match session {
             ExecutableDeployItem::Transfer { args } => {
-                if let Some(value) = args.get(ARG_AMOUNT) {
-                    if value.clone().into_t::<U512>().is_err() {
-                        debug!("failed to parse transfer amount in native transfer object");
-                        return self.handle_invalid_deploy_result(
-                            effect_builder,
-                            event_metadata,
-                            make_error(DeployParameterFailure::FailedToParseTransferAmount),
-                            verification_start_timestamp,
-                        );
-                    }
-                } else {
-                    debug!("native transfer object is missing transfer amount");
-                    return self.handle_invalid_deploy_result(
-                        effect_builder,
-                        event_metadata,
-                        make_error(DeployParameterFailure::MissingTransferAmount),
-                        verification_start_timestamp,
-                    );
-                }
+                // We rely on the `Deploy::is_config_compliant` to check
+                // that the transfer amount arg is present and is a valid U512.
 
                 if args.get(ARG_TARGET).is_none() {
                     debug!("native transfer object is missing transfer argument");

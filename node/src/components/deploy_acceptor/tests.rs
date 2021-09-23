@@ -1238,7 +1238,7 @@ async fn should_reject_deploy_with_mangled_transfer_amount() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployConfiguration(
-            DeployConfigurationFailure::InvalidTransferAmount
+            DeployConfigurationFailure::FailedToParseTransferAmount
         ))
     ))
 }

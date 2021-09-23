@@ -190,7 +190,7 @@ pub enum DeployConfigurationFailure {
 
     /// Invalid transfer amount.
     #[error("invalid transfer amount")]
-    InvalidTransferAmount,
+    FailedToParseTransferAmount,
 
     /// Insufficient transfer amount.
     #[error("insufficient transfer amount; minimum: {minimum} attempted: {attempted}")]
@@ -851,12 +851,19 @@ impl Deploy {
             let attempted = item
                 .args()
                 .get(ARG_AMOUNT)
-                .ok_or(DeployConfigurationFailure::MissingTransferAmount)?
+                .ok_or_else(|| {
+                    info!("missing transfer amount");
+                    DeployConfigurationFailure::MissingTransferAmount
+                })?
                 .clone()
                 .into_t::<U512>()
-                .map_err(|_| DeployConfigurationFailure::InvalidTransferAmount)?;
+                .map_err(|_| {
+                    info!("failed to parse transfer amount");
+                    DeployConfigurationFailure::FailedToParseTransferAmount
+                })?;
             let minimum = U512::from(config.native_transfer_minimum_motes);
             if attempted < minimum {
+                info!("insufficient transfer amount");
                 return Err(DeployConfigurationFailure::InsufficientTransferAmount {
                     minimum,
                     attempted,
@@ -1716,7 +1723,7 @@ mod tests {
             deploy_config.max_dependencies as usize,
             chain_name,
         );
-        // This test to ensure a given limit is being checked.
+        // This test is to ensure a given limit is being checked.
         // Therefore, set the limit to one less than the approvals in the deploy.
         let max_associated_keys = (deploy.approvals.len() - 1) as u32;
         assert_eq!(
@@ -1725,6 +1732,58 @@ mod tests {
                 max_associated_keys: (deploy.approvals.len() - 1) as u32
             }),
             deploy.is_config_compliant(chain_name, &deploy_config, max_associated_keys)
+        )
+    }
+
+    #[test]
+    fn not_acceptable_due_to_missing_transfer_amount() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies as usize,
+            chain_name,
+        );
+
+        let transfer_args = RuntimeArgs::default();
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        deploy.session = session;
+
+        assert_eq!(
+            Err(DeployConfigurationFailure::MissingTransferAmount),
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+        )
+    }
+
+    #[test]
+    fn not_acceptable_due_to_mangled_transfer_amount() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies as usize,
+            chain_name,
+        );
+
+        let transfer_args = runtime_args! {
+            "amount" => "mangled-amount",
+            "source" => PublicKey::random(&mut rng).to_account_hash(),
+            "target" => PublicKey::random(&mut rng).to_account_hash(),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        deploy.session = session;
+
+        assert_eq!(
+            Err(DeployConfigurationFailure::FailedToParseTransferAmount),
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
         )
     }
 }
