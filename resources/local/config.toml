@@ -325,8 +325,8 @@ verify_accounts = true
 
 # Enable manual synchronizing to disk.
 #
-# If unset, defaults to true.
-#enable_manual_sync = true
+# If unset, defaults to false.
+#enable_manual_sync = false
 
 
 # ========================================================

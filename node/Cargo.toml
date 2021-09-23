@@ -23,7 +23,7 @@ bytes = "1.0.1"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node-macros = { version = "1.0.0", path = "../node_macros" }
 casper-hashing = { version = "1.0.0", path = "../hashing" }
-casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std", "gens"] }
+casper-types = { version = "1.0.0", path = "../types", features = ["datasize", "gens", "json-schema"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
@@ -94,7 +94,7 @@ tracing-subscriber = { version = "0.2.10", features = ["fmt", "json"] }
 uint = "0.9.0"
 untrusted = "0.7.1"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-warp = "0.3.0"
+warp = { version = "0.3.0", features = ["compression"] }
 warp-json-rpc = "0.3.0"
 wheelbuf = "0.2.0"
 
@@ -112,6 +112,7 @@ reqwest = { version = "0.11.3", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]
+default = ['casper-mainnet']
 vendored-openssl = ['openssl/vendored']
 casper-mainnet = []
 

@@ -167,7 +167,7 @@ pub(crate) fn validate_query_response(
                 .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
             serde_json::from_value(value.to_owned())?
         };
-        match json_compatibility::StoredValue::try_from(proof_value) {
+        match json_compatibility::StoredValue::try_from(proof_value.clone()) {
             Ok(json_proof_value) if json_proof_value == value => (),
             _ => return Err(ValidateResponseError::SerializedValueNotContainedInProof),
         }

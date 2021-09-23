@@ -34,18 +34,20 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
     clippy::reversed_empty_ranges
 )]
 mod macro_code {
+    #[cfg(feature = "datasize")]
+    use datasize::DataSize;
     use uint::construct_uint;
 
     construct_uint! {
-        #[derive(datasize::DataSize)]
+        #[cfg_attr(feature = "datasize", derive(DataSize))]
         pub struct U512(8);
     }
     construct_uint! {
-        #[derive(datasize::DataSize)]
+        #[cfg_attr(feature = "datasize", derive(DataSize))]
         pub struct U256(4);
     }
     construct_uint! {
-        #[derive(datasize::DataSize)]
+        #[cfg_attr(feature = "datasize", derive(DataSize))]
         pub struct U128(2);
     }
 }
@@ -440,7 +442,7 @@ macro_rules! impl_traits_for_uint {
             }
         }
 
-        #[cfg(feature = "std")]
+        #[cfg(feature = "json-schema")]
         impl schemars::JsonSchema for $type {
             fn schema_name() -> String {
                 format!("U{}", $total_bytes * 8)

@@ -1,6 +1,7 @@
+//! This module is responsible for resolving host functions from within the WASM engine.
 pub mod error;
 pub mod memory_resolver;
-pub mod v1_function_index;
+pub(crate) mod v1_function_index;
 mod v1_resolver;
 
 use wasmi::ModuleImportResolver;
@@ -13,7 +14,7 @@ use crate::{core::resolvers::memory_resolver::MemoryResolver, shared::wasm_confi
 /// Creates a module resolver for given protocol version.
 ///
 /// * `protocol_version` Version of the protocol. Can't be lower than 1.
-pub fn create_module_resolver(
+pub(crate) fn create_module_resolver(
     protocol_version: ProtocolVersion,
     wasm_config: &WasmConfig,
 ) -> Result<impl ModuleImportResolver + MemoryResolver, ResolverError> {

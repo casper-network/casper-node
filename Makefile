@@ -72,11 +72,8 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 
 .PHONY: test-rs
 test-rs: resources/local/chainspec.toml
-	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS)
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-types
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-types --no-default-features --features=std
-	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS)
-	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=std
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features $(CARGO_FLAGS)
+	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
 
 .PHONY: test-as
 test-as: setup-as
@@ -111,11 +108,8 @@ lint-contracts-rs:
 .PHONY: lint
 lint: lint-contracts-rs
 	$(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
-	$(LEGACY) $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
-	$(CARGO) clippy --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
-	$(CARGO) clippy --no-default-features --features=no-std --all-targets -p casper-types -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets --all-features -- -D warnings -A renamed_and_removed_lints
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
-	$(CARGO) clippy --no-default-features --features=std --all-targets --manifest-path=smart_contracts/contract/Cargo.toml -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: audit
 audit:
@@ -124,8 +118,7 @@ audit:
 .PHONY: doc
 doc:
 	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps
-	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-types
-	cd smart_contracts/contract && RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps -p casper-contract
+	cd smart_contracts/contract && RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps
 
 .PHONY: check-rs
 check-rs: \
@@ -202,4 +195,4 @@ setup-as: smart_contracts/contract_as/package.json
 	cd smart_contracts/contract_as && $(NPM) ci
 
 .PHONY: setup
-setup: setup-rs setup-audit setup-as
+setup: setup-rs setup-as

@@ -235,7 +235,7 @@ impl StateProvider for InMemoryGlobalState {
         self.empty_root_hash
     }
 
-    fn read_trie(
+    fn get_trie(
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,

@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +14,7 @@ use crate::{
 
 /// Unbonding purse.
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct UnbondingPurse {
     /// Bonding Purse

@@ -46,30 +46,30 @@ pub enum StoredValue {
     Withdraw(Vec<UnbondingPurse>),
 }
 
-impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
+impl TryFrom<ExecutionEngineStoredValue> for StoredValue {
     type Error = bytesrepr::Error;
 
-    fn try_from(ee_stored_value: &ExecutionEngineStoredValue) -> Result<Self, Self::Error> {
+    fn try_from(ee_stored_value: ExecutionEngineStoredValue) -> Result<Self, Self::Error> {
         let stored_value = match ee_stored_value {
-            ExecutionEngineStoredValue::CLValue(cl_value) => StoredValue::CLValue(cl_value.clone()),
-            ExecutionEngineStoredValue::Account(account) => StoredValue::Account(account.into()),
+            ExecutionEngineStoredValue::CLValue(cl_value) => StoredValue::CLValue(cl_value),
+            ExecutionEngineStoredValue::Account(account) => StoredValue::Account((&account).into()),
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
-                StoredValue::ContractWasm(hex::encode(&contract_wasm.to_bytes()?))
+                StoredValue::ContractWasm(hex::encode(contract_wasm.to_bytes()?))
             }
             ExecutionEngineStoredValue::Contract(contract) => {
-                StoredValue::Contract(contract.into())
+                StoredValue::Contract((&contract).into())
             }
             ExecutionEngineStoredValue::ContractPackage(contract_package) => {
-                StoredValue::ContractPackage(contract_package.into())
+                StoredValue::ContractPackage((&contract_package).into())
             }
-            ExecutionEngineStoredValue::Transfer(transfer) => StoredValue::Transfer(*transfer),
+            ExecutionEngineStoredValue::Transfer(transfer) => StoredValue::Transfer(transfer),
             ExecutionEngineStoredValue::DeployInfo(deploy_info) => {
-                StoredValue::DeployInfo(deploy_info.clone())
+                StoredValue::DeployInfo(deploy_info)
             }
-            ExecutionEngineStoredValue::EraInfo(era_info) => StoredValue::EraInfo(era_info.clone()),
-            ExecutionEngineStoredValue::Bid(bid) => StoredValue::Bid(bid.clone()),
+            ExecutionEngineStoredValue::EraInfo(era_info) => StoredValue::EraInfo(era_info),
+            ExecutionEngineStoredValue::Bid(bid) => StoredValue::Bid(bid),
             ExecutionEngineStoredValue::Withdraw(unbonding_purses) => {
-                StoredValue::Withdraw(unbonding_purses.clone())
+                StoredValue::Withdraw(unbonding_purses)
             }
         };
 

@@ -7,6 +7,7 @@ use core::{
     ops::{Add, Div, Mul, Sub},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::Zero;
 use serde::{Deserialize, Serialize};
@@ -17,9 +18,8 @@ use crate::{
 };
 
 /// A struct representing a number of `Motes`.
-#[derive(
-    DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
-)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Motes(U512);
 
 impl Motes {
@@ -31,6 +31,11 @@ impl Motes {
     /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
+    }
+
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if underflow occurred.
+    pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
+        self.0.checked_sub(rhs.value()).map(Self::new)
     }
 
     /// Returns the inner `U512` value.

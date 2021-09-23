@@ -12,8 +12,8 @@ license-file = "../LICENSE"
 [dependencies]
 blake2 = "0.9.0"
 base16 = "0.2.1"
-casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std", "gens"] }
-datasize = { version = "0.2.9", default-features = false, optional = true}
+casper-types = { version = "1.0.0", path = "../types", features = ["gens"] }
+datasize = "0.2.9"
 hex = { version = "0.4.2", default-features = false, features = ["serde"] }
 itertools = "0.10.1"
 schemars = { version  = "0.8.3", optional = true }

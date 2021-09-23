@@ -65,7 +65,6 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
-
 mod account;
 mod code;
 mod error;
