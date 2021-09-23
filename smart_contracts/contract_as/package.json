@@ -10,7 +10,9 @@
   },
   "main": "index.js",
   "ascMain": "assembly/index.ts",
-  "dependencies": {},
+  "dependencies": {
+    "npm-force-resolutions": "0.0.10"
+  },
   "devDependencies": {
     "@assemblyscript/loader": "^0.9.4",
     "assemblyscript": "^0.10.0",
@@ -18,7 +20,7 @@
     "concat-md": "^0.3.5",
     "ts-loader": "^6.2.1",
     "ts-node": "^8.5.4",
-    "typedoc": "^0.19.1",
+    "typedoc": "^0.19.2",
     "typedoc-plugin-markdown": "^2.2.17",
     "typescript": "^3.8.3"
   },
@@ -32,9 +34,15 @@
     "asbuild:test:runtime_args": "asc tests/assembly/runtime_args.spec.as.ts -b build/runtime_args.spec.as.wasm -t build/runtime_args.spec.as.wat --sourceMap  --optimize",
     "asbuild:test": "npm run asbuild:test:runtime_args && npm run asbuild:test:bytesrepr && npm run asbuild:test:bignum && npm run asbuild:test:utils",
     "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized",
-    "prepublish-docs": "rm -rf apidoc && mkdir apidoc && node_modules/.bin/typedoc assembly/*.ts assembly/collections/*.ts --theme markdown --readme none --ignoreCompilerErrors --hideBreadcrumbs --skipSidebar --excludePrivate --excludeNotExported --out temp-apidoc/ && concat-md --decrease-title-levels --dir-name-as-title temp-apidoc >> README.md",
+    "preinstall": "npx npm-force-resolutions",
+    "prepublish-docs": "rm -rf apidoc && mkdir apidoc && node_modules/.bin/typedoc assembly/*.ts assembly/collections/*.ts --theme markdown --readme none --ignoreCompilerErrors --hideBreadcrumbs --skipSidebar --excludePrivate --excludeNotExported --out temp-apidoc/ && concat-md --decrease-title-levels --dir-name-as-title temp-apidoc >> README2.md",
     "prepublishOnly": "cp README.md ._README.md && npm run prepublish-docs",
     "postpublish": "rm -rf temp-apidoc && mv ._README.md README.md"
+  },
+  "resolutions": {
+    "trim": "^0.0.3",
+    "underscore": "^1.12.1",
+    "marked": "^3.0.4"
   },
   "author": "Michał Papierski <michal@papierski.net>",
   "license": "Apache-2.0",
