@@ -1627,6 +1627,86 @@ mod tests {
     }
 
     #[test]
+    fn not_acceptable_due_to_missing_payment_amount() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: RuntimeArgs::default(),
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+
+        deploy.payment = payment;
+        deploy.session = session;
+
+        assert_eq!(
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
+            Err(DeployConfigurationFailure::MissingPaymentAmount)
+        );
+        assert!(
+            deploy.is_valid.is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
+    }
+
+    #[test]
+    fn not_acceptable_due_to_mangled_payment_amount() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => "mangled-amount"
+            },
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+
+        deploy.payment = payment;
+        deploy.session = session;
+
+        assert_eq!(
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
+            Err(DeployConfigurationFailure::FailedToParsePaymentAmount)
+        );
+        assert!(
+            deploy.is_valid.is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
+    }
+
+    #[test]
     fn not_acceptable_due_to_excessive_payment_amount() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1787,6 +1867,40 @@ mod tests {
 
         assert_eq!(
             Err(DeployConfigurationFailure::FailedToParseTransferAmount),
+            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+        )
+    }
+
+    #[test]
+    fn not_acceptable_due_to_insufficient_transfer_amount() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies as usize,
+            chain_name,
+        );
+
+        let amount = deploy_config.native_transfer_minimum_motes - 1;
+        let insufficient_amount = U512::from(amount);
+
+        let transfer_args = runtime_args! {
+            "amount" => insufficient_amount,
+            "source" => PublicKey::random(&mut rng).to_account_hash(),
+            "target" => PublicKey::random(&mut rng).to_account_hash(),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        deploy.session = session;
+
+        assert_eq!(
+            Err(DeployConfigurationFailure::InsufficientTransferAmount {
+                minimum: U512::from(deploy_config.native_transfer_minimum_motes),
+                attempted: insufficient_amount,
+            }),
             deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
         )
     }
