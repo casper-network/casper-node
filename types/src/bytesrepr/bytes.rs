@@ -290,7 +290,7 @@ impl Serialize for Bytes {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            checksummed_hex::checksum_encode_if_small(&self.0).serialize(serializer)
+            checksummed_hex::encode(&self.0).serialize(serializer)
         } else {
             serializer.serialize_bytes(&self.0)
         }

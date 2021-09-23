@@ -192,7 +192,7 @@ impl Serialize for CLValue {
         if serializer.is_human_readable() {
             CLValueJson {
                 cl_type: self.cl_type.clone(),
-                bytes: checksummed_hex::checksum_encode_if_small(&self.bytes),
+                bytes: checksummed_hex::encode(&self.bytes),
                 parsed: jsonrepr::cl_value_to_json(self),
             }
             .serialize(serializer)

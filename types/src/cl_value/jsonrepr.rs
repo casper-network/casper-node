@@ -55,7 +55,7 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
         }
         CLType::ByteArray(length) => {
             let (bytes, remainder) = bytesrepr::safe_split_at(bytes, *length as usize).ok()?;
-            let hex_encoded_bytes = checksummed_hex::checksum_encode_if_small(&bytes);
+            let hex_encoded_bytes = checksummed_hex::encode(&bytes);
             Some((json![hex_encoded_bytes], remainder))
         }
         CLType::Result { ok, err } => {

@@ -14,7 +14,7 @@ use serde::{
     Deserializer, Serializer,
 };
 
-/// The number of input bytes, at or below which [`checksum_encode_if_small`] will checksum-encode
+/// The number of input bytes, at or below which [`encode`] and [`encode_iter`] will checksum-encode
 /// the output.
 pub const SMALL_BYTES_COUNT: usize = 75;
 
@@ -55,6 +55,9 @@ fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
 ///   - Uses Blake2b hashes rather than Keccak
 ///   - Uses hash bits rather than nibbles
 ///
+/// **Note:** mixed-case checksummed hex will be output only if the length is <=
+/// [`SMALL_BYTES_COUNT`], otherwise, the output hex will be lowercase.
+///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
 pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
     encode_iter(input).collect()
@@ -74,16 +77,6 @@ pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = 
         }
         HEX_CHARS[nibble as usize]
     })
-}
-
-/// Returns checksummed hex-encoded output (as per [`encode`]) if `input.len()` is less than or
-/// equal to [`SMALL_BYTES_COUNT`], otherwise returns lowercase hex output.
-pub fn checksum_encode_if_small(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
-    if input.as_ref().len() <= SMALL_BYTES_COUNT {
-        encode(input)
-    } else {
-        base16::encode_lower(input)
-    }
 }
 
 /// Returns true if all chars in a string are uppercase or lowercase.
@@ -511,10 +504,10 @@ mod tests {
     #[test]
     fn should_checksum_encode_only_if_small() {
         let input = [255; SMALL_BYTES_COUNT + 1];
-        let small_output = checksum_encode_if_small(&input[..SMALL_BYTES_COUNT]);
+        let small_output = encode(&input[..SMALL_BYTES_COUNT]);
         assert!(!string_is_same_case(&small_output));
 
-        let large_output = checksum_encode_if_small(&input);
+        let large_output = encode(&input);
         assert!(string_is_same_case(&large_output));
     }
 
