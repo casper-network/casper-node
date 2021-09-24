@@ -75,9 +75,9 @@ impl RpcCall {
         }
     }
 
-
     pub(crate) async fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {
-        let hash = Digest::from_hex(deploy_hash).map_err(|error| map_hashing_error(error)("deploy"))?;
+        let hash =
+            Digest::from_hex(deploy_hash).map_err(|error| map_hashing_error(error)("deploy"))?;
         let params = GetDeployParams {
             deploy_hash: DeployHash::new(hash),
         };
@@ -90,8 +90,8 @@ impl RpcCall {
         key: &str,
         path: &str,
     ) -> Result<JsonRpc> {
-        let state_root_hash =
-            Digest::from_hex(state_root_hash).map_err(|error| map_hashing_error(error)("deploy"))?;
+        let state_root_hash = Digest::from_hex(state_root_hash)
+            .map_err(|error| map_hashing_error(error)("state_root_hash"))?;
 
         let key = {
             if let Ok(key) = Key::from_formatted_str(key) {
@@ -124,8 +124,8 @@ impl RpcCall {
         state_root_hash: &str,
         dictionary_str_params: DictionaryItemStrParams<'_>,
     ) -> Result<JsonRpc> {
-        let state_root_hash =
-            Digest::from_hex(state_root_hash).map_err(|error| map_hashing_error(error)("state_root_hash"))?;
+        let state_root_hash = Digest::from_hex(state_root_hash)
+            .map_err(|error| map_hashing_error(error)("state_root_hash"))?;
 
         let dictionary_identifier = dictionary_str_params.try_into()?;
 
@@ -154,8 +154,8 @@ impl RpcCall {
         purse_uref: &str,
     ) -> Result<JsonRpc> {
         // state_root_hash
-        let state_root_hash =
-            Digest::from_hex(state_root_hash).map_err(|error| map_hashing_error(error)("state_root_hash"))?;
+        let state_root_hash = Digest::from_hex(state_root_hash)
+            .map_err(|error| map_hashing_error(error)("state_root_hash"))?;
         let uref =
             URef::from_formatted_str(purse_uref).map_err(|error| Error::FailedToParseURef {
                 context: "purse_uref",
@@ -326,8 +326,8 @@ impl RpcCall {
         }
 
         if maybe_block_identifier.len() == (Digest::LENGTH * 2) {
-            let hash =
-                Digest::from_hex(maybe_block_identifier).map_err(|error| map_hashing_error(error)("block_identifier"))?;
+            let hash = Digest::from_hex(maybe_block_identifier)
+                .map_err(|error| map_hashing_error(error)("block_identifier"))?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
             let height =
@@ -394,22 +394,23 @@ impl RpcCall {
     }
 }
 
+/// Takes an external error and returns a [`casper_hashing::Error`] variant and allows you to pass
+/// along error context.
 pub fn map_hashing_error(hashing_error: casper_hashing::Error) -> impl Fn(&'static str) -> Error {
     move |context: &'static str| match &hashing_error {
         casper_hashing::Error::Base16DecodeError(decode_error) => Error::CryptoError {
             context,
             error: crypto::Error::FromHex(decode_error.clone()),
         },
-        casper_hashing::Error::IncorrectDigestLength(length) => {
-            Error::InvalidArgument {
-                context,
-                error: format!("The deploy hash provided had an invalid length of {}.", length)
-            }
-        }
+        casper_hashing::Error::IncorrectDigestLength(length) => Error::InvalidArgument {
+            context,
+            error: format!(
+                "The deploy hash provided had an invalid length of {}.",
+                length
+            ),
+        },
     }
 }
-
-
 
 /// General purpose client trait for making requests to casper node's HTTP endpoints.
 #[async_trait]
