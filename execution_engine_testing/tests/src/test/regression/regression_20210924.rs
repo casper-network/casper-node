@@ -1,13 +1,18 @@
-use casper_engine_test_support::{DEFAULT_ACCOUNT_ADDR, internal::{DEFAULT_RUN_GENESIS_REQUEST, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder}};
-use casper_execution_engine::core::engine_state::MAX_PAYMENT;
-use casper_types::{Gas, RuntimeArgs, U512, runtime_args};
+use casper_engine_test_support::{
+    internal::{
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+        DEFAULT_RUN_GENESIS_REQUEST,
+    },
+    DEFAULT_ACCOUNT_ADDR,
+};
 use casper_execution_engine::{
     core::{
-        engine_state::{Error as CoreError, ExecuteRequest},
+        engine_state::{Error as CoreError, ExecuteRequest, MAX_PAYMENT},
         execution::Error as ExecError,
     },
     shared::wasm,
 };
+use casper_types::{runtime_args, Gas, RuntimeArgs, U512};
 use num_traits::Zero;
 
 const CONTRACT_DO_NOTHING: &str = "do_nothing.wasm";
@@ -45,7 +50,7 @@ fn should_charge_minimum_for_do_nothing() {
     let do_nothing_request = {
         let account_hash = *DEFAULT_ACCOUNT_ADDR;
         let session_args = RuntimeArgs::default();
-        let deploy_hash =  [42; 32];
+        let deploy_hash = [42; 32];
 
         let deploy = DeployItemBuilder::new()
             .with_address(account_hash)
@@ -68,10 +73,8 @@ fn should_charge_minimum_for_do_nothing() {
     let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    builder
-        .exec(do_nothing_request)
-        .commit();
-        // .expect_success();
+    builder.exec(do_nothing_request).commit();
+    // .expect_success();
 
     let error = builder.get_error().unwrap();
     assert!(
@@ -85,7 +88,6 @@ fn should_charge_minimum_for_do_nothing() {
 
     let balance_after = builder.get_purse_balance(account.main_purse());
     assert_eq!(balance_before - U512::from(*MAX_PAYMENT), balance_after);
-
 }
 
 // #[ignore]
