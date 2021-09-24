@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.  The format
 * Improve doc comments to clarify behavior of the bidding functionality.
 * Document `core` and `shared` modules and their children.
 * Change parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
+* Increased price of native transfer to 100 million motes (0.1 CSPR).
 
 ### Fixed
 * Fix a case where user could potentially supply a refund purse as a payment purse.
