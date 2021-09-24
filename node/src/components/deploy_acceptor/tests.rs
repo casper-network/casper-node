@@ -117,6 +117,12 @@ enum ContractPackageScenario {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum AccountScenario {
+    Client,
+    Peer,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum TestScenario {
     FromPeerInvalidDeploy,
     FromPeerValidDeploy,
@@ -126,8 +132,8 @@ enum TestScenario {
     FromClientInsufficientBalance,
     FromClientValidDeploy,
     FromClientRepeatedValidDeploy,
-    AccountWithInsufficientWeight,
-    AccountWithInvalidAssociatedKeys,
+    AccountWithInsufficientWeight(AccountScenario),
+    AccountWithInvalidAssociatedKeys(AccountScenario),
     AccountWithUnknownBalance,
     DeployWithCustomPaymentContract(ContractScenario),
     DeployWithCustomPaymentContractPackage(ContractPackageScenario),
@@ -149,14 +155,18 @@ impl TestScenario {
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromPeerValidDeploy
             | TestScenario::FromPeerRepeatedValidDeploy
-            | TestScenario::BalanceCheckForDeploySentByPeer => Source::Peer(NodeId::random(rng)),
+            | TestScenario::BalanceCheckForDeploySentByPeer
+            | TestScenario::AccountWithInsufficientWeight(AccountScenario::Peer)
+            | TestScenario::AccountWithInvalidAssociatedKeys(AccountScenario::Peer) => {
+                Source::Peer(NodeId::random(rng))
+            }
             TestScenario::FromClientInvalidDeploy
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientValidDeploy
             | TestScenario::FromClientRepeatedValidDeploy
-            | TestScenario::AccountWithInsufficientWeight
-            | TestScenario::AccountWithInvalidAssociatedKeys
+            | TestScenario::AccountWithInsufficientWeight(AccountScenario::Client)
+            | TestScenario::AccountWithInvalidAssociatedKeys(AccountScenario::Client)
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::DeployWithoutPaymentAmount
             | TestScenario::DeployWithMangledPaymentAmount
@@ -185,8 +195,8 @@ impl TestScenario {
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientValidDeploy
             | TestScenario::FromClientRepeatedValidDeploy
-            | TestScenario::AccountWithInvalidAssociatedKeys
-            | TestScenario::AccountWithInsufficientWeight
+            | TestScenario::AccountWithInvalidAssociatedKeys(_)
+            | TestScenario::AccountWithInsufficientWeight(_)
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::BalanceCheckForDeploySentByPeer => {
                 Deploy::random_valid_native_transfer(rng)
@@ -276,8 +286,8 @@ impl TestScenario {
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInvalidDeploy
-            | TestScenario::AccountWithInsufficientWeight
-            | TestScenario::AccountWithInvalidAssociatedKeys
+            | TestScenario::AccountWithInsufficientWeight(_)
+            | TestScenario::AccountWithInvalidAssociatedKeys(_)
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::DeployWithEmptySessionModuleBytes
             | TestScenario::DeployWithNativeTransferInPayment
@@ -397,7 +407,7 @@ impl reactor::Reactor for Reactor {
                         QueryResult::ValueNotFound(String::new())
                     } else if let Key::Account(account_hash) = query_request.key() {
                         if query_request.path().is_empty() {
-                            let account = if let TestScenario::AccountWithInvalidAssociatedKeys =
+                            let account = if let TestScenario::AccountWithInvalidAssociatedKeys(_) =
                                 self.test_scenario
                             {
                                 Account::create(
@@ -405,7 +415,7 @@ impl reactor::Reactor for Reactor {
                                     BTreeMap::new(),
                                     URef::default(),
                                 )
-                            } else if let TestScenario::AccountWithInsufficientWeight =
+                            } else if let TestScenario::AccountWithInsufficientWeight(_) =
                                 self.test_scenario
                             {
                                 let preset =
@@ -700,8 +710,6 @@ async fn run_deploy_acceptor_without_timeout(
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::DeployWithEmptySessionModuleBytes
-            | TestScenario::AccountWithInvalidAssociatedKeys
-            | TestScenario::AccountWithInsufficientWeight
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::DeployWithNativeTransferInPayment
             | TestScenario::DeployWithoutPaymentAmount
@@ -716,6 +724,35 @@ async fn run_deploy_acceptor_without_timeout(
                         ..
                     })
                 )
+            }
+            TestScenario::AccountWithInvalidAssociatedKeys(account_scenario)
+            | TestScenario::AccountWithInsufficientWeight(account_scenario) => {
+                match account_scenario {
+                    AccountScenario::Client => {
+                        matches!(
+                            event,
+                            Event::DeployAcceptorAnnouncement(
+                                DeployAcceptorAnnouncement::InvalidDeploy {
+                                    source: Source::Client,
+                                    ..
+                                }
+                            )
+                        )
+                    }
+                    // Invalid scenario for this case should never be raised
+                    // as account checks should not occur on deploys from a peer
+                    AccountScenario::Peer => {
+                        matches!(
+                            event,
+                            Event::DeployAcceptorAnnouncement(
+                                DeployAcceptorAnnouncement::InvalidDeploy {
+                                    source: Source::Peer(_),
+                                    ..
+                                }
+                            )
+                        )
+                    }
+                }
             }
             // Check that executable items with valid contracts are successfully stored.
             // Conversely, ensure that invalid contracts will raise the invalid deploy
@@ -891,8 +928,11 @@ async fn should_reject_valid_deploy_from_client_for_missing_account() {
 }
 
 #[tokio::test]
-async fn should_reject_valid_deploy_for_account_with_invalid_associated_keys() {
-    let result = run_deploy_acceptor(TestScenario::AccountWithInvalidAssociatedKeys).await;
+async fn should_reject_valid_deploy_from_client_for_account_with_invalid_associated_keys() {
+    let result = run_deploy_acceptor(TestScenario::AccountWithInvalidAssociatedKeys(
+        AccountScenario::Client,
+    ))
+    .await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
@@ -903,8 +943,11 @@ async fn should_reject_valid_deploy_for_account_with_invalid_associated_keys() {
 }
 
 #[tokio::test]
-async fn should_reject_valid_deploy_for_account_with_insufficient_weight() {
-    let result = run_deploy_acceptor(TestScenario::AccountWithInsufficientWeight).await;
+async fn should_reject_valid_deploy_from_client_for_account_with_insufficient_weight() {
+    let result = run_deploy_acceptor(TestScenario::AccountWithInsufficientWeight(
+        AccountScenario::Client,
+    ))
+    .await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
@@ -912,6 +955,22 @@ async fn should_reject_valid_deploy_for_account_with_insufficient_weight() {
             ..
         })
     ))
+}
+
+#[tokio::test]
+async fn should_timeout_deploy_acceptor_for_associated_keys_checks_on_peer() {
+    let test_scenario = TestScenario::AccountWithInvalidAssociatedKeys(AccountScenario::Peer);
+    let timeout_result =
+        time::timeout(TIMEOUT, run_deploy_acceptor_without_timeout(test_scenario)).await;
+    assert!(timeout_result.is_err())
+}
+
+#[tokio::test]
+async fn should_timeout_deploy_acceptor_for_account_weight_checks_on_peer() {
+    let test_scenario = TestScenario::AccountWithInsufficientWeight(AccountScenario::Peer);
+    let timeout_result =
+        time::timeout(TIMEOUT, run_deploy_acceptor_without_timeout(test_scenario)).await;
+    assert!(timeout_result.is_err())
 }
 
 #[tokio::test]
