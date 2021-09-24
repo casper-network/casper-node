@@ -1425,19 +1425,19 @@ where
 
         let payment_result_cost = payment_result.cost();
 
-        if payment_result.cost().is_zero() && account_hash != PublicKey::System.to_account_hash() {
-            match ExecutionResult::new_payment_code_error(
-                Error::InsufficientPayment,
-                max_payment_cost,
-                account_main_purse_balance,
-                payment_result.cost(),
-                account_main_purse_balance_key,
-                proposer_main_purse_balance_key,
-            ) {
-                Ok(execution_result) => return Ok(execution_result),
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            }
-        }
+        // if payment_result.cost().is_zero() && account_hash != PublicKey::System.to_account_hash() {
+        //     match ExecutionResult::new_payment_code_error(
+        //         Error::InsufficientPayment,
+        //         max_payment_cost,
+        //         account_main_purse_balance,
+        //         payment_result.cost(),
+        //         account_main_purse_balance_key,
+        //         proposer_main_purse_balance_key,
+        //     ) {
+        //         Ok(execution_result) => return Ok(execution_result),
+        //         Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+        //     }
+        // }
 
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
