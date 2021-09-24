@@ -5,7 +5,6 @@ use casper_types::{
     allocate_buffer,
     bytesrepr::{FromBytes, ToBytes},
 };
-#[cfg(test)]
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -81,7 +80,6 @@ impl FromBytes for IndexedMerkleProof {
 }
 
 impl IndexedMerkleProof {
-    #[cfg(test)]
     pub(crate) fn new<I>(
         leaves: I,
         index: u64,

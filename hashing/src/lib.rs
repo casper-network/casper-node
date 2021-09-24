@@ -22,6 +22,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+use chunk_with_proof::ChunkWithProof;
 use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use itertools::Itertools;
@@ -64,14 +65,33 @@ impl Digest {
     /// Sentinel hash to be used by `hash_merkle_tree` in the case of an empty list.
     pub const SENTINEL_MERKLE_TREE: Digest = Digest([2u8; Digest::LENGTH]);
 
-    /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
+    /// Depending on the size of the data it either:
+    /// 1. Creates a 32-byte BLAKE2b hash digest from a given a piece of data, or
+    /// 2. Splits the data into chunks and creates hash digest of the merkle tree
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
+        if Self::should_hash_with_chunks(&data) {
+            Self::hash_merkle_tree(
+                data.as_ref()
+                    .chunks(ChunkWithProof::CHUNK_SIZE)
+                    .map(Self::blake2b_hash),
+            )
+        } else {
+            Self::blake2b_hash(data)
+        }
+    }
+
+    /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
+    pub(crate) fn blake2b_hash<T: AsRef<[u8]>>(data: T) -> Digest {
         let mut ret = [0u8; Digest::LENGTH];
         // NOTE: Safe to unwrap here because our digest length is constant and valid
         let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
         hasher.update(data);
         hasher.finalize_variable(|hash| ret.clone_from_slice(hash));
         Digest(ret)
+    }
+
+    fn should_hash_with_chunks<T: AsRef<[u8]>>(data: T) -> bool {
+        data.as_ref().len() > ChunkWithProof::CHUNK_SIZE
     }
 
     /// Hashes a pair of byte slices.
@@ -290,7 +310,16 @@ mod test {
     }
 
     #[test]
-    fn blake2b_hash_known() {
+    fn hash_known() {
+        // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE]
+        // are hashed using Blake2B algorithm.
+        // Larger data are chunked and merkle tree hash is calculated.
+        //
+        // Please note that [ChunkWithProof::CHUNK_SIZE] is `test` configuration
+        // is smaller than in production, to allow testing with more chunks
+        // with still reasonable time and memory consumption.
+        //
+        // See: [Digest::hash]
         let inputs_and_digests = [
             (
                 "",
@@ -301,8 +330,16 @@ mod test {
                 "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319",
             ),
             (
+                "0123456789",
+                "7b6cb8d374484e221785288b035dc53fc9ddf000607f473fc2a3258d89a70398",
+            ),
+            (
+                "01234567890",
+                "fdd6751337c5578e994128ba9c29faa9bf924c4d8fbb59ae23a4205e37ac8509",
+            ),
+            (
                 "The quick brown fox jumps over the lazy dog",
-                "01718cec35cd3d796dd00020e0bfecb473ad23457d063b75eff29c0ffa2e58a9",
+                "04b7444d65231e095ee47851398c6c3db6243fb1d06f99038ba9369a212cdd5f",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {
@@ -466,7 +503,22 @@ mod test {
 
         assert_eq!(
             hash_lower_hex,
-            "aae1660ca492ed9af6b2ead22f88b390aeb2ec0719654824d084aa6c6553ceeb"
+            "19c95ced6f7f0e6c18cdc440db5d447d6ac1410f134d09dfa0544ef0eedb4c6f"
+        );
+    }
+
+    #[test]
+    fn picks_correct_hashing_method() {
+        let data_smaller_than_chunk_size = vec![];
+        assert_eq!(
+            false,
+            Digest::should_hash_with_chunks(data_smaller_than_chunk_size)
+        );
+
+        let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE * 2];
+        assert_eq!(
+            true,
+            Digest::should_hash_with_chunks(data_bigger_than_chunk_size)
         );
     }
 }
