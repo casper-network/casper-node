@@ -240,14 +240,23 @@ impl DeployAcceptor {
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
-        effect_builder
-            .get_account_from_global_state(prestate_hash, account_key)
-            .event(move |maybe_account| Event::GetAccountResult {
+        if event_metadata.source.from_client() {
+            effect_builder
+                .get_account_from_global_state(prestate_hash, account_key)
+                .event(move |maybe_account| Event::GetAccountResult {
+                    event_metadata,
+                    maybe_account,
+                    prestate_hash,
+                    verification_start_timestamp,
+                })
+        } else {
+            self.verify_payment_logic(
+                effect_builder,
                 event_metadata,
-                maybe_account,
                 prestate_hash,
                 verification_start_timestamp,
-            })
+            )
+        }
     }
 
     fn handle_get_account_result<REv: ReactorEventT>(
@@ -277,56 +286,47 @@ impl DeployAcceptor {
                 )
             }
             Some(account) => {
-                if event_metadata.source.from_client() {
-                    let authorization_keys = event_metadata
-                        .deploy
-                        .approvals()
-                        .iter()
-                        .map(|approval| approval.signer().to_account_hash())
-                        .collect();
-                    if !account.can_authorize(&authorization_keys) {
-                        let error = Error::InvalidDeployParameters {
-                            prestate_hash,
-                            failure: DeployParameterFailure::InvalidAssociatedKeys,
-                        };
-                        debug!(?authorization_keys, "account authorization invalid");
-                        return self.handle_invalid_deploy_result(
-                            effect_builder,
-                            event_metadata,
-                            error,
-                            verification_start_timestamp,
-                        );
-                    }
-                    if !account.can_deploy_with(&authorization_keys) {
-                        let error = Error::InvalidDeployParameters {
-                            prestate_hash,
-                            failure: DeployParameterFailure::InsufficientDeploySignatureWeight,
-                        };
-                        debug!(?authorization_keys, "insufficient deploy signature weight");
-                        return self.handle_invalid_deploy_result(
-                            effect_builder,
-                            event_metadata,
-                            error,
-                            verification_start_timestamp,
-                        );
-                    }
-                    effect_builder
-                        .check_purse_balance(prestate_hash, account.main_purse())
-                        .event(move |maybe_balance_value| Event::GetBalanceResult {
-                            event_metadata,
-                            prestate_hash,
-                            maybe_balance_value,
-                            account_hash: account.account_hash(),
-                            verification_start_timestamp,
-                        })
-                } else {
-                    self.verify_payment_logic(
+                let authorization_keys = event_metadata
+                    .deploy
+                    .approvals()
+                    .iter()
+                    .map(|approval| approval.signer().to_account_hash())
+                    .collect();
+                if !account.can_authorize(&authorization_keys) {
+                    let error = Error::InvalidDeployParameters {
+                        prestate_hash,
+                        failure: DeployParameterFailure::InvalidAssociatedKeys,
+                    };
+                    debug!(?authorization_keys, "account authorization invalid");
+                    return self.handle_invalid_deploy_result(
                         effect_builder,
                         event_metadata,
-                        prestate_hash,
+                        error,
                         verification_start_timestamp,
-                    )
+                    );
                 }
+                if !account.can_deploy_with(&authorization_keys) {
+                    let error = Error::InvalidDeployParameters {
+                        prestate_hash,
+                        failure: DeployParameterFailure::InsufficientDeploySignatureWeight,
+                    };
+                    debug!(?authorization_keys, "insufficient deploy signature weight");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        error,
+                        verification_start_timestamp,
+                    );
+                }
+                effect_builder
+                    .check_purse_balance(prestate_hash, account.main_purse())
+                    .event(move |maybe_balance_value| Event::GetBalanceResult {
+                        event_metadata,
+                        prestate_hash,
+                        maybe_balance_value,
+                        account_hash: account.account_hash(),
+                        verification_start_timestamp,
+                    })
             }
         }
     }

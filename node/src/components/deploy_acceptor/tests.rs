@@ -127,6 +127,7 @@ enum TestScenario {
     FromPeerInvalidDeploy,
     FromPeerValidDeploy,
     FromPeerRepeatedValidDeploy,
+    FromPeerMissingAccount,
     FromClientInvalidDeploy,
     FromClientMissingAccount,
     FromClientInsufficientBalance,
@@ -156,6 +157,7 @@ impl TestScenario {
             | TestScenario::FromPeerValidDeploy
             | TestScenario::FromPeerRepeatedValidDeploy
             | TestScenario::BalanceCheckForDeploySentByPeer
+            | TestScenario::FromPeerMissingAccount
             | TestScenario::AccountWithInsufficientWeight(AccountScenario::Peer)
             | TestScenario::AccountWithInvalidAssociatedKeys(AccountScenario::Peer) => {
                 Source::Peer(NodeId::random(rng))
@@ -191,6 +193,7 @@ impl TestScenario {
             }
             TestScenario::FromPeerValidDeploy
             | TestScenario::FromPeerRepeatedValidDeploy
+            | TestScenario::FromPeerMissingAccount
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientValidDeploy
@@ -283,6 +286,7 @@ impl TestScenario {
             | TestScenario::FromClientRepeatedValidDeploy
             | TestScenario::FromClientValidDeploy => true,
             TestScenario::FromPeerInvalidDeploy
+            | TestScenario::FromPeerMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInvalidDeploy
@@ -403,6 +407,7 @@ impl reactor::Reactor for Reactor {
                 } => {
                     let query_result = if self.test_scenario
                         == TestScenario::FromClientMissingAccount
+                        || self.test_scenario == TestScenario::FromPeerMissingAccount
                     {
                         QueryResult::ValueNotFound(String::new())
                     } else if let Key::Account(account_hash) = query_request.key() {
@@ -725,6 +730,15 @@ async fn run_deploy_acceptor_without_timeout(
                     })
                 )
             }
+            TestScenario::FromPeerMissingAccount => {
+                matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
+                        source: Source::Peer(_),
+                        ..
+                    })
+                )
+            }
             TestScenario::AccountWithInvalidAssociatedKeys(account_scenario)
             | TestScenario::AccountWithInsufficientWeight(account_scenario) => {
                 match account_scenario {
@@ -955,6 +969,14 @@ async fn should_reject_valid_deploy_from_client_for_account_with_insufficient_we
             ..
         })
     ))
+}
+
+#[tokio::test]
+async fn should_timeout_deploy_acceptor_for_missing_account_sent_by_peer() {
+    let test_scenario = TestScenario::FromPeerMissingAccount;
+    let timeout_result =
+        time::timeout(TIMEOUT, run_deploy_acceptor_without_timeout(test_scenario)).await;
+    assert!(timeout_result.is_err())
 }
 
 #[tokio::test]
