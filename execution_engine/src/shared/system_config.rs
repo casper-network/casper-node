@@ -16,7 +16,7 @@ use self::{
 };
 
 /// Default gas cost for a wasmless transfer.
-pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
+pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 100_000_000;
 
 /// Definition of costs in the system.
 ///
