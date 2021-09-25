@@ -1,5 +1,4 @@
 use assert_matches::assert_matches;
-use num_traits::Zero;
 use parity_wasm::{
     builder,
     elements::{BlockType, Instruction, Instructions},
@@ -14,27 +13,6 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core::engine_state::Error, shared::wasm_prep::PreprocessingError};
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
-
-/// Creates minimal session code that does nothing
-fn make_minimal_do_nothing() -> Vec<u8> {
-    let module = builder::module()
-        .function()
-        // A signature with 0 params and no return type
-        .signature()
-        .build()
-        .body()
-        .build()
-        .build()
-        // Export above function
-        .export()
-        .field(DEFAULT_ENTRY_POINT_NAME)
-        .build()
-        // Memory section is mandatory
-        .memory()
-        .build()
-        .build();
-    parity_wasm::serialize(module).expect("should serialize")
-}
 
 /// Prepare malicious payload with amount of opcodes that could potentially overflow injected gas
 /// counter.

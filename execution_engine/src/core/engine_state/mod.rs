@@ -103,24 +103,6 @@ pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT)
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 
-// // Function below creates an ExecutionResult with precomputed effects of "finalize_payment".
-// fn make_charged_execution_failure(error: Error, wasmless_transfer_motes: Motes,
-// account_main_purse_balance: Motes, account_main_purse_balance_key: Key,
-// wasmless_transfer_gas_cost: Gas, proposer_main_purse_balance_key: Key) -> ExecutionResult {   // Function
-// below creates an ExecutionResult with precomputed effects of "finalize_payment".
-//   match ExecutionResult::new_payment_code_error(
-//     error,
-//     wasmless_transfer_motes,
-//     account_main_purse_balance,
-//     wasmless_transfer_gas_cost,
-//     account_main_purse_balance_key,
-//     proposer_main_purse_balance_key,
-// ) {
-//     Ok(execution_result) => execution_result,
-//     Err(error) => ExecutionResult::precondition_failure(error),
-// }
-// }
-
 /// Main implementation of an execution engine state.
 ///
 /// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
@@ -1217,9 +1199,9 @@ where
 
         // Get account from tracking copy
         // validation_spec_3: account validity
-        let account_hash = deploy_item.address;
-
         let account = {
+            let account_hash = deploy_item.address;
+
             match self.get_authorized_account(
                 correlation_id,
                 account_hash,
@@ -1300,39 +1282,69 @@ where
             Default::default(),
         );
 
-        // [`ExecutionResultBuilder`] handles merging of multiple execution results
-        let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
-        // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
-        // gas_price)
-        let payment_gas_limit = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
-            Some(gas) => gas,
-            None => {
-                return Ok(ExecutionResult::precondition_failure(
-                    Error::GasConversionOverflow,
-                ))
+        let proposer_account: Account = match tracking_copy
+            .borrow_mut()
+            .get_account(correlation_id, AccountHash::from(&proposer))
+        {
+            Ok(account) => account,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
             }
         };
+        // the proposer of the block this deploy is in receives the gas from this deploy execution
+        let proposer_purse = proposer_account.main_purse();
+        // Get rewards purse balance key
+        // payment_code_spec_6: system contract validity
+        let proposer_main_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, proposer_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)?;
+
+        // [`ExecutionResultBuilder`] handles merging of multiple execution results
+        let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
+
+        // Create payment code module from bytes
+        // validation_spec_1: valid wasm bytes
+        let phase = Phase::Payment;
+        let payment_metadata = match payment.get_deploy_metadata(
+            Rc::clone(&tracking_copy),
+            &account,
+            correlation_id,
+            &preprocessor,
+            &protocol_version,
+            system_contract_registry,
+            phase,
+        ) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error));
+            }
+        };
+        let is_standard_payment = payment_metadata.kind == DeployKind::System;
+
         // Execute provided payment code
         let payment_result = {
-            let system_contract_registry = tracking_copy
-                .borrow_mut()
-                .get_system_contracts(correlation_id)?;
-
-            // Create payment code module from bytes
-            // validation_spec_1: valid wasm bytes
-            let phase = Phase::Payment;
-            let payment_metadata = match payment.get_deploy_metadata(
-                Rc::clone(&tracking_copy),
-                &account,
-                correlation_id,
-                &preprocessor,
-                &protocol_version,
-                system_contract_registry,
-                phase,
-            ) {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error));
+            // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
+            // gas_price)
+            let payment_gas_limit = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
+                Some(gas) => gas,
+                None => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::GasConversionOverflow,
+                    ))
                 }
             };
 
@@ -1340,7 +1352,6 @@ where
 
             // payment_code_spec_2: execute payment code
             let payment_base_key = payment_metadata.base_key;
-            let is_standard_payment = payment_metadata.kind == DeployKind::System;
             let payment_package = payment_metadata.contract_package;
             let payment_module = payment_metadata.module;
             let mut payment_named_keys = if payment_metadata.kind == DeployKind::Contract {
@@ -1396,48 +1407,7 @@ where
 
         debug!("Payment result: {:?}", payment_result);
 
-        let proposer_account: Account = match tracking_copy
-            .borrow_mut()
-            .get_account(correlation_id, AccountHash::from(&proposer))
-        {
-            Ok(account) => account,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
-        // the proposer of the block this deploy is in receives the gas from this deploy execution
-        let proposer_purse = proposer_account.main_purse();
-        // Get rewards purse balance key
-        // payment_code_spec_6: system contract validity
-        let proposer_main_purse_balance_key = {
-            // Get reward purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, proposer_purse.into())
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
-
         let payment_result_cost = payment_result.cost();
-
-        // if payment_result.cost().is_zero() && account_hash != PublicKey::System.to_account_hash() {
-        //     match ExecutionResult::new_payment_code_error(
-        //         Error::InsufficientPayment,
-        //         max_payment_cost,
-        //         account_main_purse_balance,
-        //         payment_result.cost(),
-        //         account_main_purse_balance_key,
-        //         proposer_main_purse_balance_key,
-        //     ) {
-        //         Ok(execution_result) => return Ok(execution_result),
-        //         Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-        //     }
-        // }
 
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
@@ -1474,6 +1444,7 @@ where
             Some(key) => *key,
             None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
         };
+
         let purse_balance_key = match tracking_copy
             .borrow_mut()
             .get_purse_balance_key(correlation_id, payment_purse_key)
@@ -1483,6 +1454,7 @@ where
                 return Ok(ExecutionResult::precondition_failure(error.into()));
             }
         };
+
         let payment_purse_balance: Motes = {
             match tracking_copy
                 .borrow_mut()
@@ -1494,6 +1466,30 @@ where
                 }
             }
         };
+
+        if !is_standard_payment
+            && payment_result_cost.is_zero()
+            && payment_purse_balance < max_payment_cost
+        {
+            // When payment code structure is invalid but still has 0 cost we should propagate the
+            // error.
+            let error = payment_result
+                .as_error()
+                .cloned()
+                .unwrap_or(Error::InsufficientPayment);
+
+            match ExecutionResult::new_payment_code_error(
+                error,
+                max_payment_cost,
+                account_main_purse_balance,
+                payment_result.cost(),
+                account_main_purse_balance_key,
+                proposer_main_purse_balance_key,
+            ) {
+                Ok(execution_result) => return Ok(execution_result),
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            }
+        }
 
         if let Some(forced_transfer) =
             payment_result.check_forced_transfer(payment_purse_balance, deploy_item.gas_price)
@@ -1608,36 +1604,26 @@ where
 
         // Session execution was zero cost.
         // Check if the payment purse can cover the minimum floor for session execution.
-        if session_result.cost().is_zero() {
-            if payment_purse_balance < max_payment_cost {
-                match ExecutionResult::new_payment_code_error(
-                    Error::InsufficientPayment,
-                    max_payment_cost,
-                    account_main_purse_balance,
-                    session_result.cost(),
-                    account_main_purse_balance_key,
-                    proposer_main_purse_balance_key,
-                ) {
-                    Ok(execution_result) => return Ok(execution_result),
-                    Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-                }
+        if session_result.cost().is_zero() && payment_purse_balance < max_payment_cost {
+            // When session code structure is invalid but still has 0 cost we should propagate the
+            // error.
+            let error = session_result
+                .as_error()
+                .cloned()
+                .unwrap_or(Error::InsufficientPayment);
+
+            match ExecutionResult::new_payment_code_error(
+                error,
+                max_payment_cost,
+                account_main_purse_balance,
+                session_result.cost(),
+                account_main_purse_balance_key,
+                proposer_main_purse_balance_key,
+            ) {
+                Ok(execution_result) => return Ok(execution_result),
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             }
         }
-
-
-        // if session_result.cost().is_zero() && account_hash != PublicKey::System.to_account_hash() {
-        //     match ExecutionResult::new_payment_code_error(
-        //         Error::InsufficientPayment,
-        //         max_payment_cost,
-        //         account_main_purse_balance,
-        //         session_result.cost(),
-        //         account_main_purse_balance_key,
-        //         proposer_main_purse_balance_key,
-        //     ) {
-        //         Ok(execution_result) => return Ok(execution_result),
-        //         Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-        //     }
-        // }
 
         let post_session_rc = if session_result.is_failure() {
             // If session code fails we do not include its effects,
