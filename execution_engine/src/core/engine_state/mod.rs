@@ -1294,30 +1294,30 @@ where
                     return Ok(ExecutionResult::precondition_failure(
                         Error::GasConversionOverflow,
                     ))
-            }
-        };
+                }
+            };
 
-        let system_contract_registry = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)?;
+            let system_contract_registry = tracking_copy
+                .borrow_mut()
+                .get_system_contracts(correlation_id)?;
 
-        // Create payment code module from bytes
-        // validation_spec_1: valid wasm bytes
-        let phase = Phase::Payment;
-        let payment_metadata = match payment.get_deploy_metadata(
-            Rc::clone(&tracking_copy),
-            &account,
-            correlation_id,
-            &preprocessor,
-            &protocol_version,
-            system_contract_registry,
-            phase,
-        ) {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
-        };
+            // Create payment code module from bytes
+            // validation_spec_1: valid wasm bytes
+            let phase = Phase::Payment;
+            let payment_metadata = match payment.get_deploy_metadata(
+                Rc::clone(&tracking_copy),
+                &account,
+                correlation_id,
+                &preprocessor,
+                &protocol_version,
+                system_contract_registry,
+                phase,
+            ) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error));
+                }
+            };
 
             let payment_call_stack = payment_metadata.initial_call_stack()?;
 
@@ -1441,11 +1441,11 @@ where
             let proposer_account: Account = match tracking_copy
                 .borrow_mut()
                 .get_account(correlation_id, AccountHash::from(&proposer))
-        {
+            {
                 Ok(account) => account,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
+                }
             };
             proposer_account.main_purse()
         };
