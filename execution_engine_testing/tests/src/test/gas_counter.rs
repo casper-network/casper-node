@@ -209,6 +209,4 @@ fn should_correctly_measure_gas_for_opcodes() {
         "accounted costs {:?}",
         accounted_opcodes
     );
-
-    // assert_eq(gas_cost, pay_cost + add_bid_cost)
 }
