@@ -26,6 +26,7 @@ use std::{
     rc::Rc,
 };
 
+use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
@@ -1449,25 +1450,25 @@ where
             proposer_account.main_purse()
         };
 
+        let proposer_main_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, proposer_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
         if let Some(forced_transfer) =
             payment_result.check_forced_transfer(payment_purse_balance, deploy_item.gas_price)
         {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
-            let proposer_main_purse_balance_key = {
-                // Get reward purse Key from handle payment contract
-                // payment_code_spec_6: system contract validity
-                match tracking_copy
-                    .borrow_mut()
-                    .get_purse_balance_key(correlation_id, proposer_purse.into())
-                {
-                    Ok(key) => key,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error.into()));
-                    }
-                }
-            };
-
             let error = match forced_transfer {
                 ForcedTransferResult::InsufficientPayment => Error::InsufficientPayment,
                 ForcedTransferResult::GasConversionOverflow => Error::GasConversionOverflow,
@@ -1574,6 +1575,29 @@ where
                 Key::DeployInfo(deploy_hash),
                 StoredValue::DeployInfo(deploy_info),
             );
+        }
+
+        // Session execution was zero cost.
+        // Check if the payment purse can cover the minimum floor for session execution.
+        if session_result.cost().is_zero() && payment_purse_balance < max_payment_cost {
+            // When session code structure is valid but still has 0 cost we should propagate the
+            // error.
+            let error = session_result
+                .as_error()
+                .cloned()
+                .unwrap_or(Error::InsufficientPayment);
+
+            match ExecutionResult::new_payment_code_error(
+                error,
+                max_payment_cost,
+                account_main_purse_balance,
+                session_result.cost(),
+                account_main_purse_balance_key,
+                proposer_main_purse_balance_key,
+            ) {
+                Ok(execution_result) => return Ok(execution_result),
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            }
         }
 
         let post_session_rc = if session_result.is_failure() {
