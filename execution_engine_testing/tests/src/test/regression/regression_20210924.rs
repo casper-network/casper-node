@@ -131,7 +131,7 @@ fn should_execute_do_minimum_session() {
 
     let account_balance_before = builder.get_purse_balance(account.main_purse());
 
-    builder.exec(do_nothing_request).expect_success().commit();
+    builder.exec(do_minimum_request).expect_success().commit();
 
     let gas = builder.last_exec_gas_cost();
     assert_eq!(gas, Gas::from(DEFAULT_NOP_COST));
