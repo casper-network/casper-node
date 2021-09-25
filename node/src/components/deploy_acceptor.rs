@@ -240,14 +240,23 @@ impl DeployAcceptor {
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
-        effect_builder
-            .get_account_from_global_state(prestate_hash, account_key)
-            .event(move |maybe_account| Event::GetAccountResult {
+        if event_metadata.source.from_client() {
+            effect_builder
+                .get_account_from_global_state(prestate_hash, account_key)
+                .event(move |maybe_account| Event::GetAccountResult {
+                    event_metadata,
+                    maybe_account,
+                    prestate_hash,
+                    verification_start_timestamp,
+                })
+        } else {
+            self.verify_payment_logic(
+                effect_builder,
                 event_metadata,
-                maybe_account,
                 prestate_hash,
                 verification_start_timestamp,
-            })
+            )
+        }
     }
 
     fn handle_get_account_result<REv: ReactorEventT>(
@@ -309,24 +318,15 @@ impl DeployAcceptor {
                         verification_start_timestamp,
                     );
                 }
-                if event_metadata.source.from_client() {
-                    effect_builder
-                        .check_purse_balance(prestate_hash, account.main_purse())
-                        .event(move |maybe_balance_value| Event::GetBalanceResult {
-                            event_metadata,
-                            prestate_hash,
-                            maybe_balance_value,
-                            account_hash: account.account_hash(),
-                            verification_start_timestamp,
-                        })
-                } else {
-                    self.verify_payment_logic(
-                        effect_builder,
+                effect_builder
+                    .check_purse_balance(prestate_hash, account.main_purse())
+                    .event(move |maybe_balance_value| Event::GetBalanceResult {
                         event_metadata,
                         prestate_hash,
+                        maybe_balance_value,
+                        account_hash: account.account_hash(),
                         verification_start_timestamp,
-                    )
-                }
+                    })
             }
         }
     }

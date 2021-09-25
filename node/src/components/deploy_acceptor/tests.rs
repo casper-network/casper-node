@@ -20,7 +20,7 @@ use casper_execution_engine::{
     storage::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
-    account::{Account, ActionThresholds, Weight},
+    account::{Account, ActionThresholds, AssociatedKeys, Weight},
     CLValue, ProtocolVersion, StoredValue, URef, U512,
 };
 
@@ -32,6 +32,7 @@ use crate::{
         requests::ContractRuntimeRequest,
         Responder,
     },
+    logging,
     reactor::{self, EventQueueHandle, QueueKind, Runner},
     testing::ConditionCheckReactor,
     types::{Block, Chainspec, Deploy, NodeId},
@@ -121,13 +122,16 @@ enum TestScenario {
     FromPeerInvalidDeploy,
     FromPeerValidDeploy,
     FromPeerRepeatedValidDeploy,
+    FromPeerMissingAccount,
+    FromPeerAccountWithInsufficientWeight,
+    FromPeerAccountWithInvalidAssociatedKeys,
     FromClientInvalidDeploy,
     FromClientMissingAccount,
     FromClientInsufficientBalance,
     FromClientValidDeploy,
     FromClientRepeatedValidDeploy,
-    AccountWithInsufficientWeight,
-    AccountWithInvalidAssociatedKeys,
+    FromClientAccountWithInsufficientWeight,
+    FromClientAccountWithInvalidAssociatedKeys,
     AccountWithUnknownBalance,
     DeployWithCustomPaymentContract(ContractScenario),
     DeployWithCustomPaymentContractPackage(ContractPackageScenario),
@@ -149,14 +153,19 @@ impl TestScenario {
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromPeerValidDeploy
             | TestScenario::FromPeerRepeatedValidDeploy
-            | TestScenario::BalanceCheckForDeploySentByPeer => Source::Peer(NodeId::random(rng)),
+            | TestScenario::BalanceCheckForDeploySentByPeer
+            | TestScenario::FromPeerMissingAccount
+            | TestScenario::FromPeerAccountWithInsufficientWeight
+            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys => {
+                Source::Peer(NodeId::random(rng))
+            }
             TestScenario::FromClientInvalidDeploy
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientValidDeploy
             | TestScenario::FromClientRepeatedValidDeploy
-            | TestScenario::AccountWithInsufficientWeight
-            | TestScenario::AccountWithInvalidAssociatedKeys
+            | TestScenario::FromClientAccountWithInsufficientWeight
+            | TestScenario::FromClientAccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::DeployWithoutPaymentAmount
             | TestScenario::DeployWithMangledPaymentAmount
@@ -181,12 +190,15 @@ impl TestScenario {
             }
             TestScenario::FromPeerValidDeploy
             | TestScenario::FromPeerRepeatedValidDeploy
+            | TestScenario::FromPeerMissingAccount
+            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys
+            | TestScenario::FromPeerAccountWithInsufficientWeight
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientValidDeploy
             | TestScenario::FromClientRepeatedValidDeploy
-            | TestScenario::AccountWithInvalidAssociatedKeys
-            | TestScenario::AccountWithInsufficientWeight
+            | TestScenario::FromClientAccountWithInvalidAssociatedKeys
+            | TestScenario::FromClientAccountWithInsufficientWeight
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::BalanceCheckForDeploySentByPeer => {
                 Deploy::random_valid_native_transfer(rng)
@@ -270,14 +282,17 @@ impl TestScenario {
         match self {
             TestScenario::FromPeerRepeatedValidDeploy
             | TestScenario::FromPeerValidDeploy
+            | TestScenario::FromPeerMissingAccount // account check skipped if from peer
+            | TestScenario::FromPeerAccountWithInsufficientWeight // account check skipped if from peer
+            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys // account check skipped if from peer
             | TestScenario::FromClientRepeatedValidDeploy
             | TestScenario::FromClientValidDeploy => true,
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInvalidDeploy
-            | TestScenario::AccountWithInsufficientWeight
-            | TestScenario::AccountWithInvalidAssociatedKeys
+            | TestScenario::FromClientAccountWithInsufficientWeight
+            | TestScenario::FromClientAccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::DeployWithEmptySessionModuleBytes
             | TestScenario::DeployWithNativeTransferInPayment
@@ -312,6 +327,29 @@ impl TestScenario {
             self,
             TestScenario::FromClientRepeatedValidDeploy | TestScenario::FromPeerRepeatedValidDeploy
         )
+    }
+}
+
+fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Account {
+    match test_scenario {
+        TestScenario::FromPeerAccountWithInvalidAssociatedKeys
+        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => {
+            Account::create(AccountHash::default(), BTreeMap::new(), URef::default())
+        }
+        TestScenario::FromPeerAccountWithInsufficientWeight
+        | TestScenario::FromClientAccountWithInsufficientWeight => {
+            let invalid_action_threshold =
+                ActionThresholds::new(Weight::new(100u8), Weight::new(100u8))
+                    .expect("should create action threshold");
+            Account::new(
+                account_hash,
+                BTreeMap::new(),
+                URef::default(),
+                AssociatedKeys::new(account_hash, Weight::new(1)),
+                invalid_action_threshold,
+            )
+        }
+        _ => Account::create(account_hash, BTreeMap::new(), URef::default()),
     }
 }
 
@@ -393,37 +431,12 @@ impl reactor::Reactor for Reactor {
                 } => {
                     let query_result = if self.test_scenario
                         == TestScenario::FromClientMissingAccount
+                        || self.test_scenario == TestScenario::FromPeerMissingAccount
                     {
                         QueryResult::ValueNotFound(String::new())
                     } else if let Key::Account(account_hash) = query_request.key() {
                         if query_request.path().is_empty() {
-                            let account = if let TestScenario::AccountWithInvalidAssociatedKeys =
-                                self.test_scenario
-                            {
-                                Account::create(
-                                    AccountHash::default(),
-                                    BTreeMap::new(),
-                                    URef::default(),
-                                )
-                            } else if let TestScenario::AccountWithInsufficientWeight =
-                                self.test_scenario
-                            {
-                                let preset =
-                                    Account::create(account_hash, BTreeMap::new(), URef::default());
-                                let invalid_action_threshold =
-                                    ActionThresholds::new(Weight::new(100u8), Weight::new(100u8))
-                                        .expect("should create action threshold");
-                                Account::new(
-                                    preset.account_hash(),
-                                    preset.named_keys().clone(),
-                                    preset.main_purse(),
-                                    preset.associated_keys().clone(),
-                                    invalid_action_threshold,
-                                )
-                            } else {
-                                Account::create(account_hash, BTreeMap::new(), URef::default())
-                            };
-
+                            let account = create_account(account_hash, self.test_scenario);
                             QueryResult::Success {
                                 value: Box::new(StoredValue::Account(account)),
                                 proofs: vec![],
@@ -616,6 +629,7 @@ fn inject_balance_check_for_peer(
 async fn run_deploy_acceptor_without_timeout(
     test_scenario: TestScenario,
 ) -> Result<(), super::Error> {
+    let _ = logging::init();
     let mut rng = crate::new_rng();
 
     let mut runner: Runner<ConditionCheckReactor<Reactor>> =
@@ -699,9 +713,9 @@ async fn run_deploy_acceptor_without_timeout(
             TestScenario::FromClientInvalidDeploy
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
+            | TestScenario::FromClientAccountWithInvalidAssociatedKeys
+            | TestScenario::FromClientAccountWithInsufficientWeight
             | TestScenario::DeployWithEmptySessionModuleBytes
-            | TestScenario::AccountWithInvalidAssociatedKeys
-            | TestScenario::AccountWithInsufficientWeight
             | TestScenario::AccountWithUnknownBalance
             | TestScenario::DeployWithNativeTransferInPayment
             | TestScenario::DeployWithoutPaymentAmount
@@ -773,7 +787,10 @@ async fn run_deploy_acceptor_without_timeout(
             }
             // Check that a, new and valid, deploy sent by a peer raises an `AcceptedNewDeploy`
             // announcement with the appropriate source.
-            TestScenario::FromPeerValidDeploy => {
+            TestScenario::FromPeerValidDeploy
+            | TestScenario::FromPeerMissingAccount
+            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys
+            | TestScenario::FromPeerAccountWithInsufficientWeight => {
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(
@@ -864,6 +881,24 @@ async fn should_reject_invalid_deploy_from_peer() {
 }
 
 #[tokio::test]
+async fn should_accept_valid_deploy_from_peer_for_missing_account() {
+    let result = run_deploy_acceptor(TestScenario::FromPeerMissingAccount).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_valid_deploy_from_peer_for_account_with_invalid_associated_keys() {
+    let result = run_deploy_acceptor(TestScenario::FromPeerAccountWithInvalidAssociatedKeys).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_valid_deploy_from_peer_for_account_with_insufficient_weight() {
+    let result = run_deploy_acceptor(TestScenario::FromPeerAccountWithInsufficientWeight).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
 async fn should_accept_valid_deploy_from_client() {
     let result = run_deploy_acceptor(TestScenario::FromClientValidDeploy).await;
     assert!(result.is_ok())
@@ -891,8 +926,9 @@ async fn should_reject_valid_deploy_from_client_for_missing_account() {
 }
 
 #[tokio::test]
-async fn should_reject_valid_deploy_for_account_with_invalid_associated_keys() {
-    let result = run_deploy_acceptor(TestScenario::AccountWithInvalidAssociatedKeys).await;
+async fn should_reject_valid_deploy_from_client_for_account_with_invalid_associated_keys() {
+    let result =
+        run_deploy_acceptor(TestScenario::FromClientAccountWithInvalidAssociatedKeys).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
@@ -903,8 +939,8 @@ async fn should_reject_valid_deploy_for_account_with_invalid_associated_keys() {
 }
 
 #[tokio::test]
-async fn should_reject_valid_deploy_for_account_with_insufficient_weight() {
-    let result = run_deploy_acceptor(TestScenario::AccountWithInsufficientWeight).await;
+async fn should_reject_valid_deploy_from_client_for_account_with_insufficient_weight() {
+    let result = run_deploy_acceptor(TestScenario::FromClientAccountWithInsufficientWeight).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
