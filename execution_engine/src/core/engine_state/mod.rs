@@ -1605,7 +1605,7 @@ where
         // Session execution was zero cost.
         // Check if the payment purse can cover the minimum floor for session execution.
         if session_result.cost().is_zero() && payment_purse_balance < max_payment_cost {
-            // When session code structure is invalid but still has 0 cost we should propagate the
+            // When session code structure is valid but still has 0 cost we should propagate the
             // error.
             let error = session_result
                 .as_error()
