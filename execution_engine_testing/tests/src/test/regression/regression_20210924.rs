@@ -102,7 +102,7 @@ fn should_charge_minimum_for_do_nothing_session() {
 fn should_execute_do_minimum_session() {
     let minimum_deploy_payment = U512::from(DEFAULT_NOP_COST);
 
-    let do_nothing_request = {
+    let do_minimum_request = {
         let account_hash = *DEFAULT_ACCOUNT_ADDR;
         let session_args = RuntimeArgs::default();
         let deploy_hash = [42; 32];
