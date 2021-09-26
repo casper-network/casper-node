@@ -36,8 +36,8 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
-mod blob_cache;
 mod lmdb_ext;
+mod object_pool;
 
 #[cfg(test)]
 mod tests;

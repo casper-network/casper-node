@@ -1,5 +1,14 @@
-//! A reference cache for items.
-
+//! A reference pool for items/objects.
+//!
+//! Its core responsibility is to deduplicate potentially expensive loads by keeping a weak
+//! reference to any loaded object around, so that any load request for an object that is currently
+//! in active use can be satisfied using the already existing copy.
+//!
+//! It differs from a cache in that it does not hold strong references to an item itself -- once an
+//! item is no longer used, it will not be kept in the pool for a later request. As a consequence
+//! the memory pool will never consume significantly more memory than what would otherwise be
+//! required by the loaded objects that are in active use anyway and thus has an "infinite"
+//! capacity.
 use std::{
     collections::HashMap,
     hash::Hash,
@@ -8,23 +17,22 @@ use std::{
 
 use datasize::DataSize;
 
-/// A cache of serialized items.
+/// A pool of items/objects.
 ///
-/// Maintains a collection of weak references and automatically purges them in configurable
-/// intervals.
+/// Maintains a pool of weak references and automatically purges them in configurable intervals.
 #[derive(DataSize, Debug)]
-pub(super) struct BlobCache<I> {
-    /// The actual blob cache.
+pub(super) struct ObjectPool<I> {
+    /// The actual object pool.
     #[data_size(skip)]
     items: HashMap<I, Weak<Vec<u8>>>,
     /// Interval for garbage collection, will remove dead references on every n-th `put()`.
     garbage_collect_interval: u16,
-    /// Counts how many items have been added since the last garbage collect interval.
+    /// Counts how many objects have been added since the last garbage collect interval.
     put_count: u16,
 }
 
-impl<I> BlobCache<I> {
-    /// Creates a new cache.
+impl<I> ObjectPool<I> {
+    /// Creates a new object pool.
     pub(super) fn new(garbage_collect_interval: u16) -> Self {
         Self {
             items: HashMap::new(),
@@ -34,13 +42,13 @@ impl<I> BlobCache<I> {
     }
 }
 
-impl<I> BlobCache<I>
+impl<I> ObjectPool<I>
 where
     I: Hash + Eq,
 {
-    /// Stores a serialized item (blob) in the cache.
+    /// Stores a serialized object in the pool.
     ///
-    /// At configurable intervals (see `garbage_collect_interval`), the entire cache will be checked
+    /// At configurable intervals (see `garbage_collect_interval`), the entire pool will be checked
     /// and dead references pruned.
     pub(super) fn put(&mut self, id: I, item: Weak<Vec<u8>>) {
         self.items.insert(id, item);
@@ -54,7 +62,7 @@ where
         self.put_count += 1;
     }
 
-    /// Retrieves a blob from the cache, if present.
+    /// Retrieves an object from the pool, if present.
     pub(super) fn get(&self, id: &I) -> Option<Arc<Vec<u8>>> {
         self.items.get(id).and_then(Weak::upgrade)
     }
@@ -66,10 +74,10 @@ mod tests {
 
     use datasize::DataSize;
 
-    use super::BlobCache;
+    use super::ObjectPool;
     use crate::types::{Deploy, Item};
 
-    impl<I> BlobCache<I>
+    impl<I> ObjectPool<I>
     where
         I: DataSize,
     {
@@ -80,7 +88,7 @@ mod tests {
 
     #[test]
     fn can_load_and_store_items() {
-        let mut cache: BlobCache<<Deploy as Item>::Id> = BlobCache::new(5);
+        let mut pool: ObjectPool<<Deploy as Item>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
         let d1 = Deploy::random(&mut rng);
@@ -93,30 +101,30 @@ mod tests {
         let d1_shared = Arc::new(d1_serialized);
         let d2_shared = Arc::new(d2_serialized);
 
-        assert!(cache.get(&d1_id).is_none());
-        assert!(cache.get(&d2_id).is_none());
+        assert!(pool.get(&d1_id).is_none());
+        assert!(pool.get(&d2_id).is_none());
 
-        cache.put(d1_id, Arc::downgrade(&d1_shared));
+        pool.put(d1_id, Arc::downgrade(&d1_shared));
         assert!(Arc::ptr_eq(
-            &cache.get(&d1_id).expect("did not find d1"),
+            &pool.get(&d1_id).expect("did not find d1"),
             &d1_shared
         ));
-        assert!(cache.get(&d2_id).is_none());
+        assert!(pool.get(&d2_id).is_none());
 
-        cache.put(d2_id, Arc::downgrade(&d2_shared));
+        pool.put(d2_id, Arc::downgrade(&d2_shared));
         assert!(Arc::ptr_eq(
-            &cache.get(&d1_id).expect("did not find d1"),
+            &pool.get(&d1_id).expect("did not find d1"),
             &d1_shared
         ));
         assert!(Arc::ptr_eq(
-            &cache.get(&d2_id).expect("did not find d1"),
+            &pool.get(&d2_id).expect("did not find d1"),
             &d2_shared
         ));
     }
 
     #[test]
     fn frees_memory_after_reference_loss() {
-        let mut cache: BlobCache<<Deploy as Item>::Id> = BlobCache::new(5);
+        let mut pool: ObjectPool<<Deploy as Item>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
         let d1 = Deploy::random(&mut rng);
@@ -125,43 +133,43 @@ mod tests {
 
         let d1_shared = Arc::new(d1_serialized);
 
-        assert!(cache.get(&d1_id).is_none());
+        assert!(pool.get(&d1_id).is_none());
 
-        cache.put(d1_id, Arc::downgrade(&d1_shared));
+        pool.put(d1_id, Arc::downgrade(&d1_shared));
         assert!(Arc::ptr_eq(
-            &cache.get(&d1_id).expect("did not find d1"),
+            &pool.get(&d1_id).expect("did not find d1"),
             &d1_shared
         ));
 
         drop(d1_shared);
-        assert!(cache.get(&d1_id).is_none());
+        assert!(pool.get(&d1_id).is_none());
     }
 
     #[test]
     fn garbage_is_collected() {
-        let mut cache: BlobCache<<Deploy as Item>::Id> = BlobCache::new(5);
+        let mut pool: ObjectPool<<Deploy as Item>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
-        assert_eq!(cache.num_entries(), 0);
+        assert_eq!(pool.num_entries(), 0);
 
         for i in 0..5 {
             let deploy = Deploy::random(&mut rng);
             let id = *deploy.id();
             let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
             let shared = Arc::new(serialized);
-            cache.put(id, Arc::downgrade(&shared));
-            assert_eq!(cache.num_entries(), i + 1);
+            pool.put(id, Arc::downgrade(&shared));
+            assert_eq!(pool.num_entries(), i + 1);
             drop(shared);
-            assert_eq!(cache.num_entries(), i + 1);
+            assert_eq!(pool.num_entries(), i + 1);
         }
 
         let deploy = Deploy::random(&mut rng);
         let id = *deploy.id();
         let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
         let shared = Arc::new(serialized);
-        cache.put(id, Arc::downgrade(&shared));
-        assert_eq!(cache.num_entries(), 1);
+        pool.put(id, Arc::downgrade(&shared));
+        assert_eq!(pool.num_entries(), 1);
         drop(shared);
-        assert_eq!(cache.num_entries(), 1);
+        assert_eq!(pool.num_entries(), 1);
     }
 }
