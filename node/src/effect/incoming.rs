@@ -2,7 +2,7 @@
 //!
 //! Any event suffixed -`Incoming` is usually the arrival of a specific network message.
 
-use std::fmt::Display;
+use std::{fmt::Display, sync::Arc};
 
 use datasize::DataSize;
 use serde::Serialize;
@@ -131,20 +131,31 @@ impl Display for TrieRequest {
 /// A response for a net request.
 ///
 /// See `NetRequest` for notes.
-#[derive(DataSize, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 pub(crate) enum NetResponse {
     /// Response of a deploy.
-    Deploy(Vec<u8>),
+    Deploy(Arc<[u8]>),
     /// Response of a block.
-    Block(Vec<u8>),
+    Block(Arc<[u8]>),
     /// Response of a gossiped public listening address.
-    GossipedAddress(Vec<u8>),
+    GossipedAddress(Arc<[u8]>),
     /// Response of a block by its height in the linear chain.
-    BlockAndMetadataByHeight(Vec<u8>),
+    BlockAndMetadataByHeight(Arc<[u8]>),
     /// Response of a block header by its hash.
-    BlockHeaderByHash(Vec<u8>),
+    BlockHeaderByHash(Arc<[u8]>),
     /// Response of a block header and its finality signatures by its height in the linear chain.
-    BlockHeaderAndFinalitySignaturesByHeight(Vec<u8>),
+    BlockHeaderAndFinalitySignaturesByHeight(Arc<[u8]>),
+}
+
+// `NetResponse` uses `Arcs`, so we count all data as 0.
+impl DataSize for NetResponse {
+    const IS_DYNAMIC: bool = false;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
 }
 
 impl Display for NetResponse {

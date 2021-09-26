@@ -49,7 +49,7 @@ pub(crate) enum Message {
         /// The type tag of the contained item.
         tag: Tag,
         /// The serialized item.
-        serialized_item: Vec<u8>,
+        serialized_item: Arc<[u8]>,
     },
     /// Finality signature.
     #[from]
@@ -96,16 +96,15 @@ impl Message {
     {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: item.to_serialized()?,
+            serialized_item: item.to_serialized()?.into(),
         })
     }
 
     /// Creates a new get response from already serialized data.
     pub(crate) fn new_get_response_from_serialized(tag: Tag, serialized_item: Arc<[u8]>) -> Self {
-        // TODO: Actually deduplicate.
         Message::GetResponse {
             tag,
-            serialized_item: serialized_item.to_vec(),
+            serialized_item,
         }
     }
 }
@@ -247,7 +246,7 @@ where
                 .into(),
                 Tag::Trie => TrieResponseIncoming {
                     sender,
-                    message: TrieResponse(serialized_item),
+                    message: TrieResponse(serialized_item.to_vec()),
                 }
                 .into(),
             },
