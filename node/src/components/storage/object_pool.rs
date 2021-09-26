@@ -10,6 +10,7 @@
 //! required by the loaded objects that are in active use anyway and thus has an "infinite"
 //! capacity.
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     hash::Hash,
     sync::{Arc, Weak},
@@ -24,7 +25,7 @@ use datasize::DataSize;
 pub(super) struct ObjectPool<I> {
     /// The actual object pool.
     #[data_size(skip)]
-    items: HashMap<I, Weak<Vec<u8>>>,
+    items: HashMap<I, Weak<[u8]>>,
     /// Interval for garbage collection, will remove dead references on every n-th `put()`.
     garbage_collect_interval: u16,
     /// Counts how many objects have been added since the last garbage collect interval.
@@ -50,7 +51,7 @@ where
     ///
     /// At configurable intervals (see `garbage_collect_interval`), the entire pool will be checked
     /// and dead references pruned.
-    pub(super) fn put(&mut self, id: I, item: Weak<Vec<u8>>) {
+    pub(super) fn put(&mut self, id: I, item: Weak<[u8]>) {
         self.items.insert(id, item);
 
         if self.put_count >= self.garbage_collect_interval {
@@ -63,7 +64,11 @@ where
     }
 
     /// Retrieves an object from the pool, if present.
-    pub(super) fn get(&self, id: &I) -> Option<Arc<Vec<u8>>> {
+    pub(super) fn get<Q: ?Sized>(&self, id: &Q) -> Option<Arc<[u8]>>
+    where
+        I: Borrow<Q>,
+        Q: Hash + Eq,
+    {
         self.items.get(id).and_then(Weak::upgrade)
     }
 }
@@ -98,8 +103,8 @@ mod tests {
         let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
         let d2_serialized = bincode::serialize(&d2).expect("could not serialize second deploy");
 
-        let d1_shared = Arc::new(d1_serialized);
-        let d2_shared = Arc::new(d2_serialized);
+        let d1_shared = d1_serialized.into();
+        let d2_shared = d2_serialized.into();
 
         assert!(pool.get(&d1_id).is_none());
         assert!(pool.get(&d2_id).is_none());
@@ -131,7 +136,7 @@ mod tests {
         let d1_id = *d1.id();
         let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
 
-        let d1_shared = Arc::new(d1_serialized);
+        let d1_shared = d1_serialized.into();
 
         assert!(pool.get(&d1_id).is_none());
 
@@ -156,7 +161,7 @@ mod tests {
             let deploy = Deploy::random(&mut rng);
             let id = *deploy.id();
             let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
-            let shared = Arc::new(serialized);
+            let shared = serialized.into();
             pool.put(id, Arc::downgrade(&shared));
             assert_eq!(pool.num_entries(), i + 1);
             drop(shared);
@@ -166,7 +171,7 @@ mod tests {
         let deploy = Deploy::random(&mut rng);
         let id = *deploy.id();
         let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
-        let shared = Arc::new(serialized);
+        let shared = serialized.into();
         pool.put(id, Arc::downgrade(&shared));
         assert_eq!(pool.num_entries(), 1);
         drop(shared);
