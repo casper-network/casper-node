@@ -93,7 +93,7 @@ impl Message {
     {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: bincode::serialize(item)?,
+            serialized_item: item.to_serialized()?,
         })
     }
 }
