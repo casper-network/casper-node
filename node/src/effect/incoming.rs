@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::{
     components::{consensus, gossiper},
-    types::{FinalitySignature, NodeId},
+    types::{FinalitySignature, NodeId, Tag},
 };
 
 /// An envelope for an incoming message, attaching a sender address.
@@ -85,6 +85,34 @@ impl Display for NetRequest {
             NetRequest::BlockHeaderByHash(_) => f.write_str("request for block header by hash"),
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 f.write_str("request for block header and finality signatures by height")
+            }
+        }
+    }
+}
+
+impl NetRequest {
+    /// Returns the _serialized_ hash of the requested object.
+    pub(crate) fn serialized_item_id(&self) -> &[u8] {
+        match self {
+            NetRequest::Deploy(ref id) => id,
+            NetRequest::Block(ref id) => id,
+            NetRequest::GossipedAddress(ref id) => id,
+            NetRequest::BlockAndMetadataByHeight(ref id) => id,
+            NetRequest::BlockHeaderByHash(ref id) => id,
+            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref id) => id,
+        }
+    }
+
+    /// Returns the tag associated with the request.
+    pub(crate) fn tag(&self) -> Tag {
+        match self {
+            NetRequest::Deploy(_) => Tag::Deploy,
+            NetRequest::Block(_) => Tag::Block,
+            NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
+            NetRequest::BlockAndMetadataByHeight(_) => Tag::BlockAndMetadataByHeight,
+            NetRequest::BlockHeaderByHash(_) => Tag::BlockHeaderByHash,
+            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
+                Tag::BlockHeaderAndFinalitySignaturesByHeight
             }
         }
     }

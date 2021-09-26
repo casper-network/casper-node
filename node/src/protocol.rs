@@ -1,6 +1,9 @@
 //! A network message type used for communication between nodes
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use derive_more::From;
 use fmt::Debug;
@@ -95,6 +98,15 @@ impl Message {
             tag: T::TAG,
             serialized_item: item.to_serialized()?,
         })
+    }
+
+    /// Creates a new get response from already serialized data.
+    pub(crate) fn new_get_response_from_serialized(tag: Tag, serialized_item: Arc<[u8]>) -> Self {
+        // TODO: Actually deduplicate.
+        Message::GetResponse {
+            tag,
+            serialized_item: serialized_item.to_vec(),
+        }
     }
 }
 

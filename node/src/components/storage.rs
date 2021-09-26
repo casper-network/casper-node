@@ -93,6 +93,7 @@ use crate::{
     NodeRng,
 };
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
+use object_pool::ObjectPool;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -372,6 +373,12 @@ pub(crate) struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// Whether or not memory deduplication is enabled.
+    enable_mem_deduplication: bool,
+    /// An in-memory pool of already loaded serialized items.
+    ///
+    /// Keyed by serialized item ID, contains the serialized item.
+    serialized_item_pool: ObjectPool<Box<[u8]>>,
 }
 
 /// A storage component event.
@@ -640,6 +647,8 @@ impl Storage {
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
+            enable_mem_deduplication: config.enable_mem_deduplication,
+            serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
         })
     }
 
@@ -657,14 +666,31 @@ impl Storage {
         Self: Component<REv>,
         REv: From<NetworkRequest<NodeId, Message>> + Send,
     {
+        if self.enable_mem_deduplication {
+            if let Some(serialized_item) = self
+                .serialized_item_pool
+                .get(incoming.message.serialized_item_id())
+            {
+                // We found an item in the pool. We can short-circuit all
+                // deserialization/serialization and return the canned item
+                // immediately.
+                let found = Message::new_get_response_from_serialized(
+                    incoming.message.tag(),
+                    serialized_item,
+                );
+                return Ok(effect_builder.send_message(incoming.sender, found).ignore());
+            }
+        }
+
         match incoming.message {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
 
-                Ok(respond_with_opt_item(
+                Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
+                    serialized_id,
                     id,
                     opt_item,
                 )?)
@@ -673,9 +699,10 @@ impl Storage {
                 let id = decode_item_id::<Block>(serialized_id)?;
                 let opt_item = self.read_block(&id).map_err(FatalStorageError::from)?;
 
-                Ok(respond_with_opt_item(
+                Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
+                    serialized_id,
                     id,
                     opt_item,
                 )?)
@@ -687,9 +714,10 @@ impl Storage {
                     .read_block_and_sufficient_finality_signatures_by_height(item_id)
                     .map_err(FatalStorageError::from)?;
 
-                Ok(respond_with_opt_item(
+                Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
+                    serialized_id,
                     item_id,
                     opt_item,
                 )?)
@@ -700,9 +728,10 @@ impl Storage {
                     .read_block_header_by_hash(&item_id)
                     .map_err(FatalStorageError::from)?;
 
-                Ok(respond_with_opt_item(
+                Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
+                    serialized_id,
                     item_id,
                     opt_item,
                 )?)
@@ -713,9 +742,10 @@ impl Storage {
                     .read_block_header_and_sufficient_finality_signatures_by_height(item_id)
                     .map_err(FatalStorageError::from)?;
 
-                Ok(respond_with_opt_item(
+                Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
+                    serialized_id,
                     item_id,
                     opt_item,
                 )?)
@@ -1617,27 +1647,40 @@ impl Storage {
             .map_err(Into::into)
             .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
     }
-}
 
-/// Returns an effect responding to a potentially found/not found item.
-fn respond_with_opt_item<REv, T>(
-    effect_builder: EffectBuilder<REv>,
-    sender: NodeId,
-    item_id: T::Id,
-    opt_item: Option<T>,
-) -> Result<Effects<Event>, FatalStorageError>
-where
-    REv: From<NetworkRequest<NodeId, Message>> + Send,
-    T: Item,
-{
-    let fetched_or_not_found = match opt_item {
-        Some(item) => FetchedOrNotFound::Fetched(item),
-        None => FetchedOrNotFound::NotFound(item_id),
-    };
+    /// Creates a serialized representation of a `FetchedOrNotFound` and the resulting message.
+    ///
+    /// If the given item is `Some`, returns a serialization of `FetchedOrNotFound::Fetched`. If
+    /// enabled, the given serialization is also added to the in-memory pool.
+    ///
+    /// If the given item is `None`, returns a non-pooled serialization of
+    /// `FetchedOrNotFound::NotFound`.
+    pub fn update_pool_and_send<REv, T>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        sender: NodeId,
+        serialized_id: &[u8],
+        id: T::Id,
+        opt_item: Option<T>,
+    ) -> Result<Effects<Event>, FatalStorageError>
+    where
+        REv: From<NetworkRequest<NodeId, Message>> + Send,
+        T: Item,
+    {
+        let fetched_or_not_found = FetchedOrNotFound::from_opt(id, opt_item);
+        let serialized = fetched_or_not_found
+            .to_serialized()
+            .map_err(FatalStorageError::StoredItemSerializationFailure)?;
+        let shared: Arc<[u8]> = serialized.into();
 
-    let message = Message::new_get_response(&fetched_or_not_found)
-        .map_err(FatalStorageError::StoredItemSerializationFailure)?;
-    Ok(effect_builder.send_message(sender, message).ignore())
+        if self.enable_mem_deduplication && fetched_or_not_found.was_found() {
+            self.serialized_item_pool
+                .put(serialized_id.into(), Arc::downgrade(&shared));
+        }
+
+        let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);
+        Ok(effect_builder.send_message(sender, message).ignore())
+    }
 }
 
 /// Decodes an item's ID, typically from an incoming request.
@@ -1809,6 +1852,8 @@ pub(crate) struct Config {
     max_state_store_size: usize,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
+    /// How many loads before memory duplication checks for dead references.
+    mem_pool_prune_interval: u16,
 }
 
 impl Default for Config {
@@ -1820,7 +1865,8 @@ impl Default for Config {
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
             max_deploy_metadata_store_size: DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE,
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
-            enable_mem_deduplication: false,
+            enable_mem_deduplication: true,
+            mem_pool_prune_interval: 4096,
         }
     }
 }
