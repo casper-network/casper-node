@@ -98,8 +98,12 @@ impl TestChain {
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        chainspec.protocol_config.activation_point =
-            ActivationPoint::Genesis(Timestamp::now() + 45000.into());
+        let genesis_time = Timestamp::now() + 45000.into();
+        info!(
+            "creating test chain configuration, genesis: {}",
+            genesis_time
+        );
+        chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
 
         chainspec.core_config.minimum_era_height = 1;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
@@ -158,6 +162,7 @@ impl TestChain {
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
+            info!("creating node {}", idx);
             let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
@@ -183,6 +188,7 @@ impl TestChain {
                 .await
                 .into_participating_config()
                 .await?;
+            info!("node {} finished joining", idx);
 
             network
                 .add_node_with_config(config, rng)
@@ -325,19 +331,18 @@ async fn run_equivocator_network() {
         .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
         .unwrap()
         .set_filter(move |event| {
-            if !matches!(
-                event,
-                ParticipatingEvent::NetworkRequest(_)
-                    | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
-            ) {
-                return Either::Right(event);
-            }
             let now = Timestamp::now();
-            let first_message = if let Some(first_message) = maybe_first_message {
-                first_message
-            } else {
-                maybe_first_message = Some(now);
-                now
+            let first_message = match (&event, maybe_first_message) {
+                (
+                    ParticipatingEvent::NetworkRequest(_)
+                    | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
+                    Some(first_message),
+                ) => first_message,
+                (ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }), None) => {
+                    maybe_first_message = Some(now);
+                    now
+                }
+                _ => return Either::Right(event),
             };
             if now < first_message + min_round_len * 3 {
                 return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
