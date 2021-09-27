@@ -142,7 +142,7 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
 /// [`TryFrom`]`<&[u8]>`.
 ///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
-pub trait CheckSummedHex<T> {
+pub trait ChecksummedHex<T> {
     /// Error returned on unsuccessful deserialization.
     type Error: fmt::Display;
 
