@@ -429,10 +429,7 @@ async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
     state_root_hash: Digest,
 ) -> Result<(), LinearChainSyncError> {
-    info!(
-        ?state_root_hash,
-        "syncing trie store",
-    );
+    info!(?state_root_hash, "syncing trie store",);
     let mut outstanding_trie_keys = vec![Blake2bHash::from(state_root_hash)];
     while let Some(trie_key) = outstanding_trie_keys.pop() {
         let missing_descendant_trie_keys =
@@ -683,14 +680,14 @@ pub(crate) async fn run_fast_sync_task(
 
     // If we are at an upgrade:
     // 1. Sync the trie store
-    // 2. Get the trusted era validators from the last switchblock
+    // 2. Get the trusted era validators from the last switch block
     // 3. Try to get the next block by height; if there is `None` then switch to the participating
     //    reactor.
     if trusted_block_header.is_switch_block()
         && trusted_block_header.era_id().successor()
             == chainspec.protocol_config.activation_point.era_id()
     {
-        sync_trie_store(effect_builder, *trusted_block_header.state_root_hash()).await?;
+        // TODO: handle emergency updates
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
         if fetch_and_store_block_by_height(
@@ -702,6 +699,7 @@ pub(crate) async fn run_fast_sync_task(
         .await?
         .is_none()
         {
+            sync_trie_store(effect_builder, *trusted_block_header.state_root_hash()).await?;
             return Ok(*trusted_block_header);
         }
     }
