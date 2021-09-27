@@ -82,12 +82,18 @@ pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = 
 /// Returns true if all chars in a string are uppercase or lowercase.
 /// Returns false if the string is mixed case or if there are no alphabetic chars.
 fn string_is_same_case<T: AsRef<[u8]> + ?Sized>(s: &T) -> bool {
-    let mut chars = s.as_ref().iter().filter(|c| c.is_ascii_alphabetic());
+    let lower_range = 97..=102u8; // a..=f
+    let upper_range = 65..=70u8; // A..=F
+
+    let mut chars = s
+        .as_ref()
+        .iter()
+        .filter(|c| lower_range.contains(c) || upper_range.contains(c));
 
     match chars.next() {
         Some(first) => {
-            let is_upper = first.is_ascii_uppercase();
-            chars.all(|c| c.is_ascii_uppercase() == is_upper)
+            let is_upper = upper_range.contains(first);
+            chars.all(|c| upper_range.contains(c) == is_upper)
         }
         None => {
             // String has no actual characters.
