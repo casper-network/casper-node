@@ -326,25 +326,25 @@ async fn run_equivocator_network() {
         .await
         .expect("network initialization failed");
     let min_round_len = chain.chainspec.highway_config.min_round_length();
-    let mut maybe_first_message = None;
+    let mut maybe_first_message_time = None;
     net.reactors_mut()
         .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
         .unwrap()
         .set_filter(move |event| {
             let now = Timestamp::now();
-            let first_message = match (&event, maybe_first_message) {
+            let first_message_time = match (&event, maybe_first_message_time) {
                 (
                     ParticipatingEvent::NetworkRequest(_)
                     | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
-                    Some(first_message),
-                ) => first_message,
+                    Some(first_message_time),
+                ) => first_message_time,
                 (ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }), None) => {
-                    maybe_first_message = Some(now);
+                    maybe_first_message_time = Some(now);
                     now
                 }
                 _ => return Either::Right(event),
             };
-            if now < first_message + min_round_len * 3 {
+            if now < first_message_time + min_round_len * 3 {
                 return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
             }
             Either::Right(event)
