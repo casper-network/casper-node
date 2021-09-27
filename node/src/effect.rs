@@ -945,7 +945,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
+    /// Asynchronously returns any missing descendant trie keys given an ancestor.
     pub(crate) async fn find_missing_descendant_trie_keys(
         self,
         trie_key: Blake2bHash,
