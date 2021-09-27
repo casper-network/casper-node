@@ -6,8 +6,7 @@
 //! [2]: https://docs.rs/hex-buffer-serde/0.3.0/hex_buffer_serde/trait.Hex.html
 use alloc::{borrow::Cow, string::String, vec::Vec};
 use base16;
-use core::{convert::TryFrom, fmt, marker::PhantomData};
-use std::ops::RangeInclusive;
+use core::{convert::TryFrom, fmt, marker::PhantomData, ops::RangeInclusive};
 
 use blake2::{Blake2b, Digest};
 use serde::{
@@ -83,8 +82,8 @@ pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = 
 /// Returns true if all chars in a string are uppercase or lowercase.
 /// Returns false if the string is mixed case or if there are no alphabetic chars.
 fn string_is_same_case<T: AsRef<[u8]> + ?Sized>(s: &T) -> bool {
-    const LOWER_RANGE: RangeInclusive<u8> = 'a' as u8..='f' as u8;
-    const UPPER_RANGE: RangeInclusive<u8> = 'A' as u8..='F' as u8;
+    const LOWER_RANGE: RangeInclusive<u8> = b'a'..=b'f';
+    const UPPER_RANGE: RangeInclusive<u8> = b'A'..=b'F';
 
     let mut chars = s
         .as_ref()
