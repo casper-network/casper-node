@@ -605,19 +605,15 @@ mod get_item {
     #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_empty_key() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
-        let blah = server_handle
-            .get_item("<invalid state root hash>", "", "")
-            .await;
-        println!("{:?}", blah);
-        // assert!(matches!(
-        //     server_handle
-        //         .get_item("<invalid state root hash>", "", "")
-        //         .await,
-        //     Err(Error::CryptoError {
-        //         context: "state_root_hash",
-        //         error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: 25 })
-        //     })
-        // ));
+        assert!(matches!(
+            server_handle
+                .get_item("<invalid state root hash>", "", "")
+                .await,
+            Err(Error::CryptoError {
+                context: "state_root_hash",
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: 25 })
+            })
+        ));
     }
 }
 
