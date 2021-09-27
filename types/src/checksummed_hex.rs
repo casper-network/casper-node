@@ -142,7 +142,7 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
 /// [`TryFrom`]`<&[u8]>`.
 ///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
-pub trait CheckSummedHex<T> {
+pub trait ChecksummedHex<T> {
     /// Error returned on unsuccessful deserialization.
     type Error: fmt::Display;
 
@@ -220,9 +220,9 @@ pub trait CheckSummedHex<T> {
 /// implements `AsRef<[u8]>` and `TryFrom<&[u8], _>`.
 #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
 #[derive(Debug)]
-pub struct CheckSummedHexForm<T>(PhantomData<T>);
+pub struct ChecksummedHexForm<T>(PhantomData<T>);
 
-impl<T, E> CheckSummedHex<T> for CheckSummedHexForm<T>
+impl<T, E> ChecksummedHex<T> for ChecksummedHexForm<T>
 where
     T: AsRef<[u8]> + for<'a> TryFrom<&'a [u8], Error = E>,
     E: fmt::Display,
