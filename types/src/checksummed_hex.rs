@@ -220,7 +220,7 @@ pub trait ChecksummedHex<T> {
 /// implements `AsRef<[u8]>` and `TryFrom<&[u8], _>`.
 #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
 #[derive(Debug)]
-pub struct CheckSummedHexForm<T>(PhantomData<T>);
+pub struct ChecksummedHexForm<T>(PhantomData<T>);
 
 impl<T, E> CheckSummedHex<T> for CheckSummedHexForm<T>
 where
