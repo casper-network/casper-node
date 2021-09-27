@@ -26,7 +26,7 @@ use tracing::{debug, error, info, trace, warn};
 use crate::testing::network::NetworkedReactor;
 
 use casper_execution_engine::core::engine_state::{GenesisSuccess, UpgradeConfig, UpgradeSuccess};
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, ProtocolVersion, PublicKey};
 
 use crate::{
     components::{
@@ -334,6 +334,11 @@ impl ParticipatingInitConfig {
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
     }
+
+    /// Inspect the contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
+    }
 }
 
 impl Debug for ParticipatingInitConfig {
@@ -569,6 +574,13 @@ impl reactor::Reactor for Reactor {
             let chainspec = chainspec_loader.chainspec();
             match chainspec.protocol_config.activation_point {
                 ActivationPoint::Genesis(genesis_timestamp) => {
+                    // Do not run genesis on a node which is not protocol version 1.0.0
+                    if chainspec.protocol_config.version != ProtocolVersion::V1_0_0 {
+                        return Err(Error::GenesisNeedsProtocolVersion1_0_0 {
+                            chainspec_protocol_version: chainspec.protocol_config.version,
+                        });
+                    }
+
                     // Check that no blocks exist in storage so we don't try to run genesis again on
                     // an existing blockchain.
                     if let Some(highest_block_header) = storage.read_highest_block_header()? {

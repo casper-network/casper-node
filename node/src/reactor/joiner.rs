@@ -426,8 +426,16 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
+        let maybe_trusted_hash = match config.node.trusted_hash {
+            Some(trusted_hash) => Some(trusted_hash),
+            None => storage
+                .read_highest_block_header()
+                .expect("Could not read highest block header")
+                .map(|block_header| block_header.hash()),
+        };
+
         let chainspec = chainspec_loader.chainspec().clone();
-        let linear_chain_sync = match config.node.trusted_hash {
+        let linear_chain_sync = match maybe_trusted_hash {
             None => {
                 if let Some(start_time) = chainspec
                     .protocol_config
@@ -449,13 +457,15 @@ impl reactor::Reactor for Reactor {
                 LinearChainSyncState::NotGoingToSync
             }
             Some(hash) => {
-                info!(trusted_hash=%hash, "synchronizing linear chain");
+                let node_config = config.node.clone();
                 effects.extend(
                     (async move {
+                        info!(trusted_hash=%hash, "synchronizing linear chain");
                         match linear_chain_sync::run_fast_sync_task(
                             effect_builder,
                             hash,
-                            (*chainspec).clone(),
+                            chainspec,
+                            node_config,
                         )
                         .await
                         {
@@ -935,5 +945,10 @@ impl Reactor {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
+    }
+
+    /// Inspect the contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
     }
 }

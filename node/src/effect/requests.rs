@@ -735,7 +735,15 @@ pub(crate) enum ContractRuntimeRequest {
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
         trie: Box<Trie<Key, StoredValue>>,
-        /// Responder to call with the result.
+        /// Responder to call with the result. Contains the missing descendants of the inserted
+        /// trie.
+        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
+    },
+    /// Find the missing descendants for a trie key
+    FindMissingDescendantTrieKeys {
+        /// The trie key to find the missing descendants for.
+        trie_key: Blake2bHash,
+        /// The responder to call with the result.
         responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
     },
     /// Execute a provided protoblock
@@ -802,6 +810,9 @@ impl Display for ContractRuntimeRequest {
                 finalized_block, ..
             } => {
                 write!(formatter, "Execute finalized block: {}", finalized_block)
+            }
+            ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
+                write!(formatter, "Find missing descendant trie keys: {}", trie_key)
             }
         }
     }

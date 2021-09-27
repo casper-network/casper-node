@@ -8,7 +8,7 @@ use crate::{
     utils::ListeningError,
 };
 use casper_execution_engine::core::engine_state;
-use casper_types::{bytesrepr, EraId};
+use casper_types::{bytesrepr, EraId, ProtocolVersion};
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
@@ -52,6 +52,15 @@ pub(crate) enum Error {
     /// [`bytesrepr`] error.
     #[error("bytesrepr error: {0}")]
     BytesRepr(#[from] bytesrepr::Error),
+
+    /// Cannot run genesis on a non v1.0.0 blockchain.
+    #[error(
+        "Genesis must run on protocol version 1.0.0. \
+         Chainspec protocol version: {chainspec_protocol_version:?}"
+    )]
+    GenesisNeedsProtocolVersion1_0_0 {
+        chainspec_protocol_version: ProtocolVersion,
+    },
 
     /// Cannot run genesis on preexisting blockchain.
     #[error("Cannot run genesis on preexisting blockchain. First block: {highest_block_header:?}")]

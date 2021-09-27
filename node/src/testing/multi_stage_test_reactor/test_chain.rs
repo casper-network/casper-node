@@ -140,12 +140,18 @@ impl TestChain {
 
         // Add the nodes to the chain
         test_chain
-            .add_node(true, first_node_secret_key_with_stake.secret_key, None, rng)
+            .add_node(
+                true,
+                first_node_secret_key_with_stake.secret_key,
+                None,
+                false,
+                rng,
+            )
             .await;
 
         for secret_key_with_stake in other_secret_keys_with_stakes {
             test_chain
-                .add_node(false, secret_key_with_stake.secret_key, None, rng)
+                .add_node(false, secret_key_with_stake.secret_key, None, false, rng)
                 .await;
         }
 
@@ -158,6 +164,7 @@ impl TestChain {
         first_node: bool,
         secret_key: Arc<SecretKey>,
         trusted_hash: Option<BlockHash>,
+        archival_sync: bool,
         rng: &mut NodeRng,
     ) -> NodeId {
         // Set the network configuration.
@@ -172,6 +179,8 @@ impl TestChain {
             gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
         };
+
+        participating_config.node.archival_sync = archival_sync;
 
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
@@ -218,6 +227,34 @@ fn has_passed_by_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> 
                 .map_or(false, |consensus| consensus.current_era() >= era_id)
         })
     }
+}
+
+/// Check that all nodes have downloaded the state root under the genesis block.
+fn all_have_genesis_state(nodes: &Nodes<MultiStageTestReactor>) -> bool {
+    nodes.values().all(|runner| {
+        let reactor = runner.reactor().inner();
+        let genesis_state_root = if let Some(genesis_state_root) = reactor
+            .storage()
+            .and_then(|storage| {
+                storage
+                    .read_block_header_by_height(0)
+                    .expect("Could not read block at height 0")
+            })
+            .map(|genesis_block_header| *genesis_block_header.state_root_hash())
+        {
+            genesis_state_root
+        } else {
+            return false;
+        };
+        reactor
+            .contract_runtime()
+            .map_or(false, move |contract_runtime| {
+                contract_runtime
+                    .trie_store_check(vec![genesis_state_root.into()])
+                    .expect("Could not read DB")
+                    .is_empty()
+            })
+    })
 }
 
 #[tokio::test]
@@ -362,7 +399,13 @@ async fn test_joiner_at_genesis() {
     info!("Joining with trusted hash {}", trusted_hash);
     let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
     chain
-        .add_node(false, joiner_node_secret_key, Some(trusted_hash), &mut rng)
+        .add_node(
+            false,
+            joiner_node_secret_key,
+            Some(trusted_hash),
+            false,
+            &mut rng,
+        )
         .await;
 
     assert_eq!(
@@ -381,6 +424,105 @@ async fn test_joiner_at_genesis() {
             Duration::from_secs(600),
         )
         .await;
+}
+
+/// Test a node joining to a single node network
+#[tokio::test]
+async fn test_archival_sync() {
+    testing::init_logging();
+
+    const INITIAL_NETWORK_SIZE: usize = 1;
+
+    let mut rng = crate::new_rng();
+
+    // Create a chain with just one node
+    let mut chain = TestChain::new(INITIAL_NETWORK_SIZE, &mut rng).await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        INITIAL_NETWORK_SIZE,
+        "There should be just one bonded validator in the network"
+    );
+
+    // Get the first switch block hash
+    // As part of the fast sync process, we will need to retrieve the first switch block
+    let switch_block_hash = await_switch_block(1, &mut chain.network, &mut rng)
+        .await
+        .hash();
+
+    let era_to_join = 3;
+    info!("Waiting for Era {} to end", era_to_join);
+    chain
+        .network
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(era_to_join),
+            Duration::from_secs(600),
+        )
+        .await;
+
+    // Have a node join the network with that hash
+    info!("Joining with trusted hash {}", switch_block_hash);
+    let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
+    chain
+        .add_node(
+            false,
+            joiner_node_secret_key,
+            Some(switch_block_hash),
+            true,
+            &mut rng,
+        )
+        .await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        2,
+        "There should be two nodes in the network (one bonded validator and one read only)"
+    );
+
+    let synchronized_era = era_to_join + 1;
+    info!("Waiting for Era {} to end", synchronized_era);
+    chain
+        .network
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(synchronized_era),
+            Duration::from_secs(600),
+        )
+        .await;
+
+    chain
+        .network
+        .settle_on(&mut rng, all_have_genesis_state, Duration::from_secs(600))
+        .await;
+
+    for node in chain.network.nodes().values() {
+        let reactor = node.reactor().inner();
+        let storage = reactor.storage().expect("must have storage");
+        let highest_block_header = storage
+            .read_highest_block_header()
+            .expect("must read from storage")
+            .expect("must have highest block header");
+        // Check every block and its state root going back to genesis
+        let mut block_hash = highest_block_header.hash();
+        loop {
+            let block = storage
+                .read_block(&block_hash)
+                .expect("must read from storage")
+                .expect("must have block");
+            let missing_tries = reactor
+                .contract_runtime()
+                .expect("must have contract runtime")
+                .trie_store_check(vec![(*block.state_root_hash()).into()])
+                .expect("must read tries");
+            assert_eq!(missing_tries, vec![], "should be no missing tries");
+            if let Some(parent_hash) = block.parent() {
+                block_hash = *parent_hash;
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 /// Test a node joining to a single node network
@@ -426,6 +568,7 @@ async fn test_joiner() {
             false,
             joiner_node_secret_key,
             Some(switch_block_hash),
+            false,
             &mut rng,
         )
         .await;
@@ -483,6 +626,7 @@ async fn test_joiner_network() {
             false,
             joiner_node_secret_key,
             Some(trusted_block_hash),
+            false,
             &mut rng,
         )
         .await;

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
@@ -7,25 +7,27 @@ use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
 };
-use casper_types::{Key, PublicKey, U512};
+use casper_types::{EraId, Key, PublicKey, U512};
 
 use crate::{
     components::{
         consensus,
         consensus::check_sufficient_finality_signatures,
         contract_runtime::ExecutionPreState,
-        fetcher::{FetchedData, FetcherError},
+        fetcher::{FetchResult, FetchedData, FetcherError},
         linear_chain_sync::error::{LinearChainSyncError, SignatureValidationError},
     },
+    crypto::hash::Digest,
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeId, Timestamp,
+        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
+        Timestamp,
     },
 };
 
-const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
+const SLEEP_DURATION_SO_WE_DONT_SPAM: Duration = Duration::from_millis(100);
 
 /// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
 /// necessary for the item. Not suited to fetching a block header or block by height, which require
@@ -33,7 +35,7 @@ const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 async fn fetch_retry_forever<T>(
     effect_builder: EffectBuilder<JoinerEvent>,
     id: T::Id,
-) -> Result<Box<T>, FetcherError<T, NodeId>>
+) -> FetchResult<T, NodeId>
 where
     T: Item + 'static,
     JoinerEvent: From<FetcherRequest<NodeId, T>>,
@@ -47,18 +49,18 @@ where
                 peer
             );
             match effect_builder.fetch::<T, NodeId>(id, peer).await {
-                Ok(FetchedData::FromStorage { item }) => {
+                Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                     trace!(
                         "Did not get {:?} with id {:?} from {:?}, got from storage instead",
                         T::TAG,
                         id,
                         peer
                     );
-                    return Ok(item);
+                    return Ok(fetched_data);
                 }
-                Ok(FetchedData::FromPeer { item, .. }) => {
+                Ok(fetched_data @ FetchedData::FromPeer { .. }) => {
                     trace!("Fetched {:?} with id {:?} from {:?}", T::TAG, id, peer);
-                    return Ok(item);
+                    return Ok(fetched_data);
                 }
                 Err(FetcherError::Absent { .. }) => {
                     warn!(
@@ -76,10 +78,10 @@ where
                         "Peer timed out",
                     );
                 }
-                Err(error) => return Err(error),
+                Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
             }
         }
-        tokio::time::sleep(TIMEOUT_DURATION).await
+        tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await
     }
 }
 
@@ -94,11 +96,19 @@ async fn fetch_and_store_block_header(
             bogus_block_hash: block_hash,
         });
     }
-    let block_header = fetch_retry_forever::<BlockHeader>(effect_builder, block_hash).await?;
-    effect_builder
-        .put_block_header_to_storage(block_header.clone())
-        .await;
-    Ok(block_header)
+    let fetched_block_header =
+        fetch_retry_forever::<BlockHeader>(effect_builder, block_hash).await?;
+    match fetched_block_header {
+        FetchedData::FromStorage { item: block_header } => Ok(block_header),
+        FetchedData::FromPeer {
+            item: block_header, ..
+        } => {
+            effect_builder
+                .put_block_header_to_storage(block_header.clone())
+                .await;
+            Ok(block_header)
+        }
+    }
 }
 
 /// Fetches and stores a deploy.
@@ -106,18 +116,31 @@ async fn fetch_and_store_deploy(
     effect_builder: EffectBuilder<JoinerEvent>,
     deploy_or_transfer_hash: DeployHash,
 ) -> Result<Box<Deploy>, FetcherError<Deploy, NodeId>> {
-    let deploy = fetch_retry_forever::<Deploy>(effect_builder, deploy_or_transfer_hash).await?;
-    effect_builder.put_deploy_to_storage(deploy.clone()).await;
-    Ok(deploy)
+    let fetched_deploy =
+        fetch_retry_forever::<Deploy>(effect_builder, deploy_or_transfer_hash).await?;
+    match fetched_deploy {
+        FetchedData::FromStorage { item: deploy } => Ok(deploy),
+        FetchedData::FromPeer { item: deploy, .. } => {
+            effect_builder.put_deploy_to_storage(deploy.clone()).await;
+            Ok(deploy)
+        }
+    }
 }
 
 /// Verifies finality signatures for a block header
 fn validate_finality_signatures(
     block_header: &BlockHeader,
-    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    trusted_key_block_info: &KeyBlockInfo,
     finality_threshold_fraction: Ratio<u64>,
     block_signatures: &BlockSignatures,
 ) -> Result<(), SignatureValidationError> {
+    if block_header.era_id() != trusted_key_block_info.era_id {
+        return Err(SignatureValidationError::HeaderIsInWrongEra {
+            block_header: Box::new(block_header.clone()),
+            trusted_key_block_info: Box::new(trusted_key_block_info.clone()),
+        });
+    }
+
     // Check the signatures' block hash is the header's block hash
     let block_hash = block_header.hash();
     if block_signatures.block_hash != block_hash {
@@ -134,7 +157,7 @@ fn validate_finality_signatures(
     block_signatures.verify()?;
 
     check_sufficient_finality_signatures(
-        trusted_validator_weights,
+        &trusted_key_block_info.validator_weights,
         finality_threshold_fraction,
         block_signatures,
     )
@@ -145,7 +168,7 @@ fn validate_finality_signatures(
 async fn fetch_and_store_block_header_by_height(
     effect_builder: EffectBuilder<JoinerEvent>,
     height: u64,
-    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    trusted_key_block_info: &KeyBlockInfo,
     finality_threshold_fraction: Ratio<u64>,
 ) -> Result<Option<Box<BlockHeaderWithMetadata>>, FetcherError<BlockHeaderWithMetadata, NodeId>> {
     for peer in effect_builder.get_peers_in_random_order().await {
@@ -162,7 +185,7 @@ async fn fetch_and_store_block_header_by_height(
 
                 if let Err(error) = validate_finality_signatures(
                     &block_header,
-                    trusted_validator_weights,
+                    trusted_key_block_info,
                     finality_threshold_fraction,
                     &block_signatures,
                 ) {
@@ -213,26 +236,43 @@ async fn fetch_and_store_block_header_by_height(
     Ok(None)
 }
 
-pub(super) struct KeyBlockInfo {
+/// Key block info used for verifying finality signatures.
+///
+/// Can come from either:
+///   - A switch block
+///   - The global state under a genesis block
+///
+/// If the data was scraped from genesis, then `era_id` is 0.
+/// Otherwise if it came from a switch block it is that switch block's `era_id + 1`.
+#[derive(Clone, Debug)]
+pub(crate) struct KeyBlockInfo {
+    /// The block hash of the key block
+    key_block_hash: BlockHash,
+    /// The validator weights for checking finality signatures.
     validator_weights: BTreeMap<PublicKey, U512>,
+    /// The time the era started.
     era_start: Timestamp,
+    /// The height of the switch block that started this era.
     height: u64,
+    /// The era in which the validators are operating
+    era_id: EraId,
 }
 
 impl KeyBlockInfo {
-    pub(super) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
+    fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
             .map(|next_era_validator_weights| KeyBlockInfo {
+                key_block_hash: block_header.hash(),
                 validator_weights: next_era_validator_weights.clone(),
                 era_start: block_header.timestamp(),
                 height: block_header.height(),
+                era_id: block_header.era_id() + 1,
             })
     }
 }
 
-/// Get trusted switch block.
-/// Returns an error if we are still in the first era, or the era after an emergency restart.
+/// Gets the trusted key block info for a trusted block header.
 async fn get_trusted_key_block_info(
     effect_builder: EffectBuilder<JoinerEvent>,
     chainspec: &Chainspec,
@@ -264,10 +304,13 @@ async fn get_trusted_key_block_info(
         }
 
         if current_header_to_walk_back_from.height() == 0 {
-            return Err(LinearChainSyncError::CantDownloadBlockBeforeGenesis {
-                genesis_block_header: Box::new(current_header_to_walk_back_from),
-            });
+            break Err(
+                LinearChainSyncError::HitGenesisBlockTryingToGetTrustedEraValidators {
+                    trusted_header: trusted_header.clone(),
+                },
+            );
         }
+
         current_header_to_walk_back_from = *fetch_and_store_block_header(
             effect_builder,
             *current_header_to_walk_back_from.parent_hash(),
@@ -280,7 +323,7 @@ async fn get_trusted_key_block_info(
 async fn fetch_and_store_block_by_height(
     effect_builder: EffectBuilder<JoinerEvent>,
     height: u64,
-    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    trusted_key_block_info: &KeyBlockInfo,
     finality_threshold_fraction: Ratio<u64>,
 ) -> Result<Option<Box<BlockWithMetadata>>, FetcherError<BlockWithMetadata, NodeId>> {
     for peer in effect_builder.get_peers_in_random_order().await {
@@ -297,7 +340,7 @@ async fn fetch_and_store_block_by_height(
 
                 if let Err(error) = validate_finality_signatures(
                     block.header(),
-                    trusted_validator_weights,
+                    trusted_key_block_info,
                     finality_threshold_fraction,
                     finality_signatures,
                 ) {
@@ -354,11 +397,16 @@ async fn fetch_trie_and_insert_into_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
     trie_key: Blake2bHash,
 ) -> Result<Vec<Blake2bHash>, LinearChainSyncError> {
-    let trie = fetch_retry_forever::<Trie<Key, StoredValue>>(effect_builder, trie_key).await?;
-    let outstanding_tries = effect_builder
-        .put_trie_and_find_missing_descendant_trie_keys(trie)
-        .await?;
-    Ok(outstanding_tries)
+    let fetched_trie =
+        fetch_retry_forever::<Trie<Key, StoredValue>>(effect_builder, trie_key).await?;
+    match fetched_trie {
+        FetchedData::FromStorage { .. } => Ok(effect_builder
+            .find_missing_descendant_trie_keys(trie_key)
+            .await?),
+        FetchedData::FromPeer { item: trie, .. } => Ok(effect_builder
+            .put_trie_and_find_missing_descendant_trie_keys(trie)
+            .await?),
+    }
 }
 
 /// Downloads and stores a block.
@@ -366,44 +414,55 @@ async fn fetch_and_store_block_by_hash(
     effect_builder: EffectBuilder<JoinerEvent>,
     block_hash: BlockHash,
 ) -> Result<Box<Block>, FetcherError<Block, NodeId>> {
-    let block = fetch_retry_forever::<Block>(effect_builder, block_hash).await?;
-    effect_builder.put_block_to_storage(block.clone()).await;
-    Ok(block)
+    let fetched_block = fetch_retry_forever::<Block>(effect_builder, block_hash).await?;
+    match fetched_block {
+        FetchedData::FromStorage { item: block, .. } => Ok(block),
+        FetchedData::FromPeer { item: block, .. } => {
+            effect_builder.put_block_to_storage(block.clone()).await;
+            Ok(block)
+        }
+    }
 }
 
-/// Runs the fast synchronization task.
-pub(crate) async fn run_fast_sync_task(
+/// Synchronize the trie store under a given state root hash.
+async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
-    trusted_hash: BlockHash,
-    chainspec: Chainspec,
-) -> Result<BlockHeader, LinearChainSyncError> {
-    // Fetch the trusted header
-    let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
-
-    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
-    match maybe_last_emergency_restart_era_id {
-        Some(last_emergency_restart_era)
-            if last_emergency_restart_era > trusted_block_header.era_id() =>
-        {
-            return Err(
-                LinearChainSyncError::TryingToJoinBeforeLastEmergencyRestartEra {
-                    last_emergency_restart_era,
-                    trusted_hash,
-                    trusted_block_header,
-                },
-            );
-        }
-        _ => {}
+    state_root_hash: Digest,
+) -> Result<(), LinearChainSyncError> {
+    info!(?state_root_hash, "syncing trie store",);
+    let mut outstanding_trie_keys = vec![Blake2bHash::from(state_root_hash)];
+    while let Some(trie_key) = outstanding_trie_keys.pop() {
+        let missing_descendant_trie_keys =
+            fetch_trie_and_insert_into_trie_store(effect_builder, trie_key).await?;
+        outstanding_trie_keys.extend(missing_descendant_trie_keys);
     }
+    Ok(())
+}
 
+/// Fetches the current header and fast-syncs to it.
+///
+/// Performs the following:
+///
+///  1. Fetches the most recent block header.
+///  2. Fetches deploys for replay detection and historical switch block info.
+///  3. The historical switch block info is needed by the [`EraSupervisor`].
+///  4. Fetches global state for the current block header.
+///
+/// Returns the most recent block header along with the last trusted key block information for
+/// validation.
+async fn fast_sync_to_most_recent(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    trusted_block_header: BlockHeader,
+    chainspec: &Chainspec,
+) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
     let mut trusted_key_block_info =
-        get_trusted_key_block_info(effect_builder, &chainspec, &trusted_block_header).await?;
+        get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
 
     // Get the most recent header which has the same version as ours
-    // We keep fetching by height until none of our peers have a block at that height, or we reach
-    // a current era.
-    let mut most_recent_block_header = *trusted_block_header;
+    // We keep fetching by height until none of our peers have a block at that height and we are in
+    // the current era.
     let current_version = chainspec.protocol_config.version;
+    let mut most_recent_block_header = trusted_block_header;
     loop {
         // If we encounter a block header of a version which is newer than ours we return an error
         if most_recent_block_header.protocol_version() > current_version {
@@ -417,7 +476,7 @@ pub(crate) async fn run_fast_sync_task(
         let maybe_fetched_block = fetch_and_store_block_header_by_height(
             effect_builder,
             most_recent_block_header.height() + 1,
-            &trusted_key_block_info.validator_weights,
+            &trusted_key_block_info,
             chainspec.highway_config.finality_threshold_fraction,
         )
         .await?;
@@ -438,35 +497,37 @@ pub(crate) async fn run_fast_sync_task(
                 && is_current_era(
                     &most_recent_block_header,
                     &trusted_key_block_info,
-                    &chainspec,
+                    chainspec,
                 ) =>
             {
                 break
             }
             // Otherwise keep trying to fetch until we get a block with our version
-            None => tokio::time::sleep(TIMEOUT_DURATION).await,
+            None => tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await,
         }
     }
 
     // Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
     // replay detection.
-    let mut current_header = most_recent_block_header.clone();
-    while trusted_key_block_info
-        .era_start
-        .saturating_diff(current_header.timestamp())
-        < chainspec.deploy_config.max_ttl
-        && !current_header.is_genesis_child()
     {
-        current_header =
-            fetch_and_store_block_by_hash(effect_builder, *current_header.parent_hash())
-                .await?
-                .take_header();
+        let mut current_header = most_recent_block_header.clone();
+        while trusted_key_block_info
+            .era_start
+            .saturating_diff(current_header.timestamp())
+            < chainspec.deploy_config.max_ttl
+            && current_header.height() != 0
+        {
+            current_header =
+                fetch_and_store_block_by_hash(effect_builder, *current_header.parent_hash())
+                    .await?
+                    .take_header();
+        }
     }
 
     // The era supervisor needs validator information from previous eras.
     // The number of previous eras is determined by a *delay* in which consensus participants become
     // bonded validators or unbond.
-    let delay = consensus::bonded_eras(&(&chainspec).into());
+    let delay = consensus::bonded_eras(&chainspec.into());
     // The era supervisor requires at least to 3*delay + 1 eras back to be stored in the database.
     let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
     let earliest_era_needed_by_era_supervisor = most_recent_block_header
@@ -484,18 +545,170 @@ pub(crate) async fn run_fast_sync_task(
     }
 
     // Synchronize the trie store for the most recent block header.
-    info!(
-        state_root_hash = ?most_recent_block_header.state_root_hash(),
-        "Syncing trie store",
-    );
-    let mut outstanding_trie_keys = vec![Blake2bHash::from(
-        *most_recent_block_header.state_root_hash(),
-    )];
-    while let Some(trie_key) = outstanding_trie_keys.pop() {
-        let missing_descendant_trie_keys =
-            fetch_trie_and_insert_into_trie_store(effect_builder, trie_key).await?;
-        outstanding_trie_keys.extend(missing_descendant_trie_keys);
+    sync_trie_store(effect_builder, *most_recent_block_header.state_root_hash()).await?;
+
+    Ok((trusted_key_block_info, most_recent_block_header))
+}
+
+/// Downloads and saves the deploys and transfers for a block.
+async fn sync_deploys_and_transfers_and_state(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    block: &Block,
+) -> Result<(), LinearChainSyncError> {
+    for deploy_hash in block.deploy_hashes() {
+        fetch_and_store_deploy(effect_builder, *deploy_hash).await?;
     }
+    for transfer_hash in block.transfer_hashes() {
+        fetch_and_store_deploy(effect_builder, *transfer_hash).await?;
+    }
+    sync_trie_store(effect_builder, *block.header().state_root_hash()).await?;
+    Ok(())
+}
+
+/// Archival sync all the way up to the current version.
+///
+/// Performs the following:
+///
+///  1. Fetches blocks all the way back to genesis.
+///  2. Fetches global state for each block starting from genesis onwards.
+///  3. Fetches all deploys and finality signatures.
+///  4. Stops after fetching a block with the current version and its global state.
+///
+/// Returns the block header with our current version and the last trusted key block information for
+/// validation.
+async fn archival_sync(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    trusted_block_header: BlockHeader,
+    chainspec: &Chainspec,
+) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
+    // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
+    // era 0.
+    let mut trusted_key_block_info =
+        get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
+
+    let trusted_block =
+        *fetch_and_store_block_by_hash(effect_builder, trusted_block_header.hash()).await?;
+
+    // Sync to genesis
+    let mut walkback_block = trusted_block.clone();
+    loop {
+        sync_deploys_and_transfers_and_state(effect_builder, &walkback_block).await?;
+        if walkback_block.height() == 0 {
+            break;
+        } else {
+            walkback_block = *fetch_and_store_block_by_hash(
+                effect_builder,
+                *walkback_block.header().parent_hash(),
+            )
+            .await?;
+        }
+    }
+
+    // Sync forward until we are at the current version.
+    let mut most_recent_block = trusted_block;
+    while most_recent_block.header().protocol_version() < chainspec.protocol_config.version {
+        let maybe_fetched_block_with_metadata = fetch_and_store_block_by_height(
+            effect_builder,
+            most_recent_block.header().height() + 1,
+            &trusted_key_block_info,
+            chainspec.highway_config.finality_threshold_fraction,
+        )
+        .await?;
+        most_recent_block = match maybe_fetched_block_with_metadata {
+            Some(block_with_metadata) => block_with_metadata.block,
+            None => {
+                tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await;
+                continue;
+            }
+        };
+        sync_deploys_and_transfers_and_state(effect_builder, &most_recent_block).await?;
+        if let Some(key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(most_recent_block.header())
+        {
+            trusted_key_block_info = key_block_info;
+        }
+    }
+
+    Ok((trusted_key_block_info, most_recent_block.take_header()))
+}
+
+/// Runs the fast synchronization task.
+pub(crate) async fn run_fast_sync_task(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    trusted_hash: BlockHash,
+    chainspec: Arc<Chainspec>,
+    node_config: NodeConfig,
+) -> Result<BlockHeader, LinearChainSyncError> {
+    // Fetch the trusted header
+    let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
+
+    let era_duration: TimeDiff = std::cmp::max(
+        chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
+        chainspec.core_config.era_duration,
+    );
+
+    if trusted_block_header.timestamp()
+        + era_duration
+            * chainspec
+                .core_config
+                .unbonding_delay
+                .saturating_sub(chainspec.core_config.auction_delay)
+        < Timestamp::now()
+    {
+        warn!(
+            ?trusted_block_header,
+            "Timestamp of trusted hash is older than \
+             era_duration * (unbonding_delay - auction_delay)"
+        );
+    }
+
+    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
+    match maybe_last_emergency_restart_era_id {
+        Some(last_emergency_restart_era)
+            if last_emergency_restart_era > trusted_block_header.era_id() =>
+        {
+            return Err(
+                LinearChainSyncError::TryingToJoinBeforeLastEmergencyRestartEra {
+                    last_emergency_restart_era,
+                    trusted_hash,
+                    trusted_block_header,
+                },
+            );
+        }
+        _ => {}
+    }
+
+    // If we are at an upgrade:
+    // 1. Sync the trie store
+    // 2. Get the trusted era validators from the last switch block
+    // 3. Try to get the next block by height; if there is `None` then switch to the participating
+    //    reactor.
+    if trusted_block_header.is_switch_block()
+        && trusted_block_header.era_id().successor()
+            == chainspec.protocol_config.activation_point.era_id()
+    {
+        // TODO: handle emergency updates
+        let trusted_key_block_info =
+            get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
+        if fetch_and_store_block_by_height(
+            effect_builder,
+            trusted_block_header.height() + 1,
+            &trusted_key_block_info,
+            chainspec.highway_config.finality_threshold_fraction,
+        )
+        .await?
+        .is_none()
+        {
+            sync_trie_store(effect_builder, *trusted_block_header.state_root_hash()).await?;
+            return Ok(*trusted_block_header);
+        }
+    }
+
+    let (mut trusted_key_block_info, mut most_recent_block_header) = if node_config.archival_sync {
+        archival_sync(effect_builder, *trusted_block_header, &chainspec).await?
+    } else {
+        fast_sync_to_most_recent(effect_builder, *trusted_block_header, &chainspec).await?
+    };
 
     // Execute blocks to get to current.
     let mut execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
@@ -510,7 +723,7 @@ pub(crate) async fn run_fast_sync_task(
         let block = match fetch_and_store_block_by_height(
             effect_builder,
             most_recent_block_header.height() + 1,
-            &trusted_key_block_info.validator_weights,
+            &trusted_key_block_info,
             chainspec.highway_config.finality_threshold_fraction,
         )
         .await?
@@ -529,16 +742,16 @@ pub(crate) async fn run_fast_sync_task(
                     );
                     break;
                 } else {
-                    tokio::time::sleep(TIMEOUT_DURATION).await;
+                    tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await;
                     continue;
                 }
             }
             Some(block_with_metadata) => block_with_metadata.block,
         };
-        if block.protocol_version() > current_version {
+        if block.protocol_version() > chainspec.protocol_config.version {
             return Err(
                 LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                    current_version,
+                    current_version: chainspec.protocol_config.version,
                     block_header_with_future_version: Box::new(block.take_header()),
                 },
             );
@@ -621,9 +834,7 @@ fn is_current_era_given_current_timestamp(
     current_timestamp: Timestamp,
 ) -> bool {
     let KeyBlockInfo {
-        era_start,
-        height,
-        validator_weights: _,
+        era_start, height, ..
     } = trusted_key_block_info;
 
     // If the minimum era duration has not yet run out, the era is still current.
