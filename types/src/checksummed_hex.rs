@@ -222,7 +222,7 @@ pub trait ChecksummedHex<T> {
 #[derive(Debug)]
 pub struct ChecksummedHexForm<T>(PhantomData<T>);
 
-impl<T, E> CheckSummedHex<T> for CheckSummedHexForm<T>
+impl<T, E> ChecksummedHex<T> for ChecksummedHexForm<T>
 where
     T: AsRef<[u8]> + for<'a> TryFrom<&'a [u8], Error = E>,
     E: fmt::Display,
