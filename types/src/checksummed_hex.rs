@@ -1,6 +1,6 @@
 //! Checksummed hex encoding following an [EIP-55][1]-like scheme.
 //!
-//! Contains a [serde] helper trait [CheckSummedHex] which is based on [`hex_buffer_serde::Hex`][2].
+//! Contains a [serde] helper trait [ChecksummedHex] which is based on [`hex_buffer_serde::Hex`][2].
 //!
 //! [1]: https://eips.ethereum.org/EIPS/eip-55
 //! [2]: https://docs.rs/hex-buffer-serde/0.3.0/hex_buffer_serde/trait.Hex.html
@@ -174,9 +174,9 @@ pub trait ChecksummedHex<T> {
     where
         D: Deserializer<'de>,
     {
-        struct CheckSummedHexVisitor;
+        struct ChecksummedHexVisitor;
 
-        impl<'de> Visitor<'de> for CheckSummedHexVisitor {
+        impl<'de> Visitor<'de> for ChecksummedHexVisitor {
             type Value = Vec<u8>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -208,7 +208,7 @@ pub trait ChecksummedHex<T> {
         }
 
         let maybe_bytes = if deserializer.is_human_readable() {
-            deserializer.deserialize_str(CheckSummedHexVisitor)
+            deserializer.deserialize_str(ChecksummedHexVisitor)
         } else {
             deserializer.deserialize_bytes(BytesVisitor)
         };
@@ -274,7 +274,7 @@ mod tests {
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Test {
-        #[serde(with = "CheckSummedHexForm::<Buffer>")]
+        #[serde(with = "ChecksummedHexForm::<Buffer>")]
         buffer: Buffer,
         other_field: String,
     }
@@ -360,7 +360,7 @@ mod tests {
 
         struct BufferHex(());
 
-        impl CheckSummedHex<Buffer> for BufferHex {
+        impl ChecksummedHex<Buffer> for BufferHex {
             type Error = &'static str;
 
             fn create_bytes(buffer: &Buffer) -> Cow<'_, [u8]> {
@@ -417,9 +417,9 @@ mod tests {
         // is not human-readable.
         #[derive(Debug, PartialEq, Serialize, Deserialize)]
         struct Inner {
-            #[serde(with = "CheckSummedHexForm")]
+            #[serde(with = "ChecksummedHexForm")]
             x: Vec<u8>,
-            #[serde(with = "CheckSummedHexForm")]
+            #[serde(with = "ChecksummedHexForm")]
             y: [u8; 16],
         }
 

@@ -13,7 +13,7 @@ use casper_node::{
 };
 use casper_types::{
     bytesrepr,
-    checksummed_hex::{CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{ChecksummedHex, ChecksummedHexForm},
     AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs, SecretKey,
     UIntParseError, U512,
 };
@@ -147,7 +147,7 @@ mod args_complex {
     #[serde(rename_all = "snake_case")]
     enum DeployArgValue {
         /// Contains `CLValue` serialized into bytes in base16 form.
-        #[serde(with = "CheckSummedHexForm")]
+        #[serde(with = "ChecksummedHexForm")]
         RawBytes(Vec<u8>),
     }
 

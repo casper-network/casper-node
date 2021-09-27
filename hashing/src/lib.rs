@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex::{self, CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
 };
 
 /// Possible hashing errors.
@@ -58,7 +58,7 @@ pub enum Error {
 #[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
 pub struct Digest(
-    #[serde(with = "CheckSummedHexForm::<[u8; Digest::LENGTH]>")]
+    #[serde(with = "ChecksummedHexForm::<[u8; Digest::LENGTH]>")]
     #[schemars(skip, with = "String")]
     [u8; Digest::LENGTH],
 );

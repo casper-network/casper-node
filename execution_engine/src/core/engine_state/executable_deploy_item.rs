@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex::{self, CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -125,7 +125,7 @@ pub enum ExecutableDeployItem {
     /// [`RuntimeArgs`].
     StoredContractByHash {
         /// Contract hash.
-        #[serde(with = "CheckSummedHexForm")]
+        #[serde(with = "ChecksummedHexForm")]
         #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractHash,
         /// Name of an entry point.
@@ -147,7 +147,7 @@ pub enum ExecutableDeployItem {
     /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
         /// Contract package hash
-        #[serde(with = "CheckSummedHexForm")]
+        #[serde(with = "ChecksummedHexForm")]
         #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractPackageHash,
         /// An optional version of the contract to call. It will default to the highest enabled

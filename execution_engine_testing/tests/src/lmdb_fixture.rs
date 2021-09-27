@@ -14,7 +14,7 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    checksummed_hex::{CheckSummedHex, CheckSummedHexForm},
+    checksummed_hex::{ChecksummedHex, ChecksummedHexForm},
     ProtocolVersion,
 };
 
@@ -34,7 +34,7 @@ pub struct LmdbFixtureState {
     /// Serializes as unstructured JSON value because [`RunGenesisRequest`] might change over time
     /// and likely old fixture might not deserialize cleanly in the future.
     pub genesis_request: serde_json::Value,
-    #[serde(with = "CheckSummedHexForm::<Digest>")]
+    #[serde(with = "ChecksummedHexForm::<Digest>")]
     pub post_state_hash: Digest,
 }
 
