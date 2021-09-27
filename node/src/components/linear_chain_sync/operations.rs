@@ -272,7 +272,7 @@ impl KeyBlockInfo {
     }
 }
 
-/// Get the trusted key block info for a trusted block header.
+/// Gets the trusted key block info for a trusted block header.
 async fn get_trusted_key_block_info(
     effect_builder: EffectBuilder<JoinerEvent>,
     chainspec: &Chainspec,
