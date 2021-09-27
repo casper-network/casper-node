@@ -7,6 +7,7 @@ use std::{
     array::TryFromSliceError,
     cmp::Reverse,
     collections::BTreeMap,
+    convert::TryFrom,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
 };
@@ -20,7 +21,7 @@ use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
 use casper_hashing::Digest;
@@ -584,21 +585,18 @@ pub struct EraEnd {
 }
 
 impl EraEnd {
-    pub fn new(
-        era_report: EraReport,
-        next_era_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Self {
+    fn new(era_report: EraReport, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
         EraEnd {
             era_report,
             next_era_validator_weights,
         }
     }
 
-    pub fn era_report(&self) -> &EraReport {
+    fn era_report(&self) -> &EraReport {
         &self.era_report
     }
 
-    pub fn hash(&self) -> Digest {
+    fn hash(&self) -> Digest {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let EraEnd {
             next_era_validator_weights,
@@ -1265,14 +1263,29 @@ impl Display for BlockSignatures {
 
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
-#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize)]
 pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
     body: BlockBody,
 }
 
-/// The hashing algorithm used for the header and the body of a block
+/// A temporary copy of a block that has not been validated yet.
+#[derive(Debug, Deserialize)]
+struct UnverifiedBlock {
+    hash: BlockHash,
+    header: BlockHeader,
+    body: BlockBody,
+}
+
+impl<'de> Deserialize<'de> for Block {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Block::from_unverified(UnverifiedBlock::deserialize(deserializer)?)
+            .map_err(SerdeError::custom)
+    }
+}
+
+/// The hashing algorithm used for the header and the block body of a block
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum HashingAlgorithmVersion {
     /// Version 1
@@ -1427,7 +1440,7 @@ impl Block {
     }
 
     /// Check the integrity of a block by hashing its body and header
-    pub fn verify(&self) -> Result<(), BlockValidationError> {
+    fn verify(&self) -> Result<(), BlockValidationError> {
         let actual_block_header_hash = self.header().hash();
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
@@ -1500,6 +1513,13 @@ impl Block {
         )
         .expect("Could not create random block with specifics")
     }
+
+    fn from_unverified(unverified_block: UnverifiedBlock) -> Result<Block, BlockValidationError> {
+        let UnverifiedBlock { hash, header, body } = unverified_block;
+        let block = Block { hash, header, body };
+        block.verify()?;
+        Ok(block)
+    }
 }
 
 impl DocExample for Block {
@@ -1547,12 +1567,12 @@ impl ToBytes for Block {
     }
 }
 
-impl FromBytes for Block {
+impl FromBytes for UnverifiedBlock {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
         let (body, remainder) = BlockBody::from_bytes(remainder)?;
-        let block = Block { hash, header, body };
+        let block = UnverifiedBlock { hash, header, body };
         Ok((block, remainder))
     }
 }
@@ -1858,13 +1878,15 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    impl From<JsonBlock> for Block {
-        fn from(block: JsonBlock) -> Self {
-            Block {
+    impl TryFrom<JsonBlock> for Block {
+        type Error = BlockValidationError;
+
+        fn try_from(block: JsonBlock) -> Result<Self, BlockValidationError> {
+            Block::from_unverified(UnverifiedBlock {
                 hash: block.hash,
                 header: BlockHeader::from(block.header),
                 body: BlockBody::from(block.body),
-            }
+            })
         }
     }
 
@@ -1897,7 +1919,7 @@ pub(crate) mod json_compatibility {
         let block: Block = Block::random(&mut rng);
         let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
         let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
-        let block_deserialized = Block::from(json_block);
+        let block_deserialized = Block::try_from(json_block).expect("deserialize");
         assert_eq!(block, block_deserialized);
     }
 }
@@ -1993,7 +2015,23 @@ mod tests {
     fn block_bytesrepr_roundtrip() {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
-        bytesrepr::test_serialization_roundtrip(&block);
+        let serialized = ToBytes::to_bytes(&block).expect("Unable to serialize data");
+        assert_eq!(
+            serialized.len(),
+            block.serialized_length(),
+            "Length of serialized block: {},
+                serialized_length() yielded: {},
+                serialized data: {:?}, block is {:?}",
+            serialized.len(),
+            block.serialized_length(),
+            serialized,
+            block
+        );
+        let deserialized_unverified_block = bytesrepr::deserialize::<UnverifiedBlock>(serialized)
+            .expect("Unable to deserialize data");
+        let deserialized_block = Block::from_unverified(deserialized_unverified_block)
+            .expect("deserialized block was invalid");
+        assert_eq!(block, deserialized_block);
     }
 
     #[test]

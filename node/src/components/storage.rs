@@ -934,8 +934,6 @@ impl Storage {
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
-        // Validate the block prior to inserting it into the database
-        block.verify()?;
         let mut txn = self.env.begin_rw_txn()?;
         // Write the block body
         {

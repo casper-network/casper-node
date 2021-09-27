@@ -286,8 +286,7 @@ pub(crate) fn validate_get_block_response(
     } else {
         return Ok(());
     };
-    let block = Block::from(json_block);
-    block.verify()?;
+    let block = Block::try_from(json_block)?;
     match maybe_block_identifier {
         Some(BlockIdentifier::Hash(block_hash)) => {
             if block_hash != block.hash() {
