@@ -10,7 +10,6 @@ use warp::{Filter, Rejection};
 use warp_json_rpc::Builder;
 
 use casper_node::crypto::Error as CryptoError;
-use hex::FromHexError;
 
 use casper_client::{
     DeployStrParams, DictionaryItemStrParams, Error, GlobalStateStrParams, PaymentStrParams,
@@ -310,7 +309,7 @@ mod global_state_params {
     pub fn invalid_global_state_str_params() -> GlobalStateStrParams<'static> {
         GlobalStateStrParams {
             is_block_hash: false,
-            hash_value: "invalid state root has",
+            hash_value: "invalid state root hash",
         }
     }
 }
@@ -407,9 +406,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert!(matches!(
             server_handle.get_balance("", "").await,
-            Err(Error::CryptoError {
+            Err(Error::InvalidArgument {
                 context: "state_root_hash",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+                error: _
             })
         ));
     }
@@ -419,9 +418,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert!(matches!(
             server_handle.get_balance("", VALID_PURSE_UREF).await,
-            Err(Error::CryptoError {
+            Err(Error::InvalidArgument {
                 context: "state_root_hash",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+                error: _
             })
         ));
     }
@@ -445,9 +444,9 @@ mod get_balance {
             server_handle
                 .get_balance("deadbeef", VALID_PURSE_UREF)
                 .await,
-            Err(Error::CryptoError {
+            Err(Error::InvalidArgument {
                 context: "state_root_hash",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+                error: _
             })
         ));
     }
@@ -587,7 +586,7 @@ mod get_item {
                 .await,
             Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: CryptoError::FromHex(FromHexError::OddLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: 25 })
             })
         ));
     }
@@ -612,7 +611,7 @@ mod get_item {
                 .await,
             Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: CryptoError::FromHex(FromHexError::OddLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: 25 })
             })
         ));
     }
@@ -714,7 +713,7 @@ mod get_dictionary_item {
                 .await,
             Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: CryptoError::FromHex(FromHexError::OddLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: _ })
             })
         ));
     }
@@ -762,7 +761,7 @@ mod query_global_state {
                 .await,
             Err(Error::CryptoError {
                 context: "global_state_identifier",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: _ })
             })
         ));
     }
@@ -797,7 +796,7 @@ mod query_global_state {
                 .await,
             Err(Error::CryptoError {
                 context: "global_state_identifier",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+                error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: _ }),
             })
         ));
     }
@@ -822,9 +821,10 @@ mod get_deploy {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert!(matches!(
             server_handle.get_deploy("012345",).await,
-            Err(Error::CryptoError {
-                context: "deploy_hash",
-                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
+            Err(Error::InvalidArgument {
+                context: "deploy",
+                // error: "The deploy hash provided had an invalid length of 6."
+                error: _
             })
         ));
     }

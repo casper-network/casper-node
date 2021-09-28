@@ -11,7 +11,7 @@
 use std::{
     array::TryFromSliceError,
     collections::BTreeMap,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter, LowerHex, UpperHex},
 };
 
@@ -20,12 +20,25 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
-use hex_buffer_serde::{Hex, HexForm};
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
+};
+
+/// Possible hashing errors.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Incorrect digest length {0}.")]
+    /// The digest lenghth was an incorrect size.
+    IncorrectDigestLength(usize),
+    /// There was a decoding error.
+    #[error("Base16 decode error {0}.")]
+    Base16DecodeError(base16::DecodeError),
+}
 
 /// The output of the hash function.
 #[derive(
@@ -43,9 +56,9 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
     JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Hex-encoded hash digest.")]
+#[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
 pub struct Digest(
-    #[serde(with = "HexForm::<[u8; Digest::LENGTH]>")]
+    #[serde(with = "ChecksummedHexForm::<[u8; Digest::LENGTH]>")]
     #[schemars(skip, with = "String")]
     [u8; Digest::LENGTH],
 );
@@ -164,6 +177,15 @@ impl Digest {
             .iter()
             .rfold(proof, |prev, next| Digest::hash_pair(next, &prev))
     }
+
+    /// Returns a `Digest` parsed from a hex-encoded `Digest`.
+    pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self, Error> {
+        let bytes = checksummed_hex::decode(&hex_input).map_err(Error::Base16DecodeError)?;
+        let slice: [u8; Self::LENGTH] = bytes
+            .try_into()
+            .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
+        Ok(Digest(slice))
+    }
 }
 
 impl LowerHex for Digest {
@@ -190,13 +212,13 @@ impl UpperHex for Digest {
 
 impl Display for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:10}", base16::encode_lower(self))
+        write!(f, "{:10}", checksummed_hex::encode(&self.0))
     }
 }
 
 impl Debug for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{}", checksummed_hex::encode(&self.0))
     }
 }
 
@@ -245,19 +267,10 @@ impl FromBytes for Digest {
     }
 }
 
-impl hex::FromHex for Digest {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        Ok(Digest(hex::FromHex::from_hex(hex)?))
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::iter;
 
-    use hex::FromHex;
     use proptest_attr_macro::proptest;
 
     use super::*;
@@ -273,15 +286,15 @@ mod test {
         let inputs_and_digests = [
             (
                 "",
-                "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
+                "0E5751C026E543B2E8aB2eb06099dAA1d1e5dF47778F7787fAAB45Cdf12fE3A8",
             ),
             (
                 "abc",
-                "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319",
+                "BddD813c634239723171ef3feE98579b94964e3Bb1cB3E427262C8C068d52319",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "01718cec35cd3d796dd00020e0bfecb473ad23457d063b75eff29c0ffa2e58a9",
+                "01718CeC35Cd3D796Dd00020e0bFECB473Ad23457d063b75eFF29c0FFa2E58a9",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {

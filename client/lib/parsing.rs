@@ -3,25 +3,26 @@
 
 use std::{convert::TryInto, fs, io, path::PathBuf, str::FromStr};
 
-use hex::FromHex;
 use serde::{self, Deserialize};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_hashing::Digest;
 use casper_node::{
-    crypto::{self, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr, AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs,
-    SecretKey, UIntParseError, U512,
+    bytesrepr,
+    checksummed_hex::{ChecksummedHex, ChecksummedHexForm},
+    AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs, SecretKey,
+    UIntParseError, U512,
 };
 
 use crate::{
     cl_type,
     deploy::DeployParams,
     error::{Error, Result},
-    help, PaymentStrParams, SessionStrParams,
+    help, map_hashing_error, PaymentStrParams, SessionStrParams,
 };
 
 pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
@@ -60,10 +61,8 @@ fn gas_price(value: &str) -> Result<u64> {
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
     let mut hashes = Vec::with_capacity(values.len());
     for value in values {
-        let digest = Digest::from_hex(value).map_err(|error| Error::CryptoError {
-            context: "dependencies",
-            error: crypto::Error::FromHex(error),
-        })?;
+        let digest =
+            Digest::from_hex(value).map_err(|error| map_hashing_error(error)("dependencies"))?;
         hashes.push(DeployHash::new(digest))
     }
     Ok(hashes)
@@ -148,7 +147,7 @@ mod args_complex {
     #[serde(rename_all = "snake_case")]
     enum DeployArgValue {
         /// Contains `CLValue` serialized into bytes in base16 form.
-        #[serde(deserialize_with = "hex::deserialize")]
+        #[serde(with = "ChecksummedHexForm")]
         RawBytes(Vec<u8>),
     }
 

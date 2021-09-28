@@ -33,6 +33,7 @@ use crate::{
     account::AccountHash,
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex,
     crypto::Error,
     CLType, CLTyped, Tagged,
 };
@@ -74,7 +75,7 @@ where
         let bytes = iter::once(self.tag())
             .chain(self.into())
             .collect::<Vec<u8>>();
-        hex::encode(bytes)
+        checksummed_hex::encode(&bytes)
     }
 
     /// Tries to decode `Self` from its hex-representation.  The hex format should be as produced
@@ -84,19 +85,12 @@ where
             return Err(Error::AsymmetricKey("too short".to_string()));
         }
 
-        let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
-        let mut tag = [0u8; 1];
-        hex::decode_to_slice(tag_bytes, tag.as_mut())?;
+        let bytes = checksummed_hex::decode(&input)?;
+        let (tag, key_bytes) = bytes.split_at(1);
 
         match tag[0] {
-            ED25519_TAG => {
-                let bytes = hex::decode(key_bytes)?;
-                Self::ed25519_from_bytes(&bytes)
-            }
-            SECP256K1_TAG => {
-                let bytes = hex::decode(key_bytes)?;
-                Self::secp256k1_from_bytes(&bytes)
-            }
+            ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
+            SECP256K1_TAG => Self::secp256k1_from_bytes(&key_bytes),
             _ => Err(Error::AsymmetricKey(format!(
                 "invalid tag.  Expected {} or {}, got {}",
                 ED25519_TAG, SECP256K1_TAG, tag[0]
@@ -276,7 +270,7 @@ impl Debug for PublicKey {
             formatter,
             "PublicKey::{}({})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -287,7 +281,7 @@ impl Display for PublicKey {
             formatter,
             "PubKey::{}({:10})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(self))
+            HexFmt(&Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -407,7 +401,8 @@ impl JsonSchema for PublicKey {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
+            "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix."
+                .to_string(),
         );
         schema_object.into()
     }
@@ -508,7 +503,7 @@ impl Debug for Signature {
             formatter,
             "Signature::{}({})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(*self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(*self))
         )
     }
 }
@@ -519,7 +514,7 @@ impl Display for Signature {
             formatter,
             "Sig::{}({:10})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(*self))
+            HexFmt(&Into::<Vec<u8>>::into(*self))
         )
     }
 }
@@ -660,7 +655,8 @@ impl JsonSchema for Signature {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Hex-encoded cryptographic signature, including the algorithm tag prefix.".to_string(),
+            "Checksummed hex-encoded cryptographic signature, including the algorithm tag prefix."
+                .to_string(),
         );
         schema_object.into()
     }
