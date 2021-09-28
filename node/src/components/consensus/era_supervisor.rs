@@ -67,8 +67,12 @@ pub use self::era::Era;
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
+/// The number of eras across which evidence can be cited.
+/// If this is 1, you can cite evidence from the previous era, but not the one before that.
+/// To be able to detect that evidence, we also keep that number of full past eras in memory.
+const PAST_EVIDENCE_ERAS: u64 = 1;
 /// The number of active eras that are kept in memory in addition to the current one.
-const PAST_ACTIVE_ERAS: u64 = 2;
+const PAST_ACTIVE_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
 
 type ConsensusConstructor<I> = dyn Fn(
         Digest,                    // the era's unique instance ID
@@ -486,18 +490,18 @@ where
                 trace!(era = evidence_only_era_id.value(), "clearing unbonded era");
                 era.consensus.set_evidence_only();
             }
-        }
 
-        // Remove the era that has become obsolete now: We keep only three in memory.
-        if let Some(obsolete_era_id) = self.current_era.checked_sub(3) {
-            if let Some(era) = self.active_eras.remove(&obsolete_era_id) {
-                trace!(era = obsolete_era_id.value(), "removing obsolete era");
-                match fs::remove_file(self.unit_hash_file(era.consensus.instance_id())) {
-                    Ok(_) => {}
-                    Err(err) => match err.kind() {
-                        io::ErrorKind::NotFound => {}
-                        err => warn!(?err, "could not delete unit hash file"),
-                    },
+            // Remove the era that has become obsolete now: We keep only three in memory.
+            if let Some(obsolete_era_id) = evidence_only_era_id.checked_sub(1) {
+                if let Some(era) = self.active_eras.remove(&obsolete_era_id) {
+                    trace!(era = obsolete_era_id.value(), "removing obsolete era");
+                    match fs::remove_file(self.unit_hash_file(era.consensus.instance_id())) {
+                        Ok(_) => {}
+                        Err(err) => match err.kind() {
+                            io::ErrorKind::NotFound => {}
+                            err => warn!(?err, "could not delete unit hash file"),
+                        },
+                    }
                 }
             }
         }
@@ -583,12 +587,13 @@ where
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
-                if !self.active_eras.contains_key(&era_id) || era_id.successor() < self.current_era
+                if era_id.saturating_add(PAST_EVIDENCE_ERAS) < self.current_era
+                    || !self.active_eras.contains_key(&era_id)
                 {
                     trace!(era = era_id.value(), "not handling message; era too old");
                     return Effects::new();
                 }
-                self.iter_past(era_id, 1)
+                self.iter_past(era_id, PAST_EVIDENCE_ERAS)
                     .flat_map(|e_id| {
                         self.delegate_to_era(effect_builder, rng, e_id, |consensus| {
                             consensus.request_evidence(sender.clone(), &pub_key)
@@ -610,7 +615,9 @@ where
             block_payload,
             block_context,
         } = new_block_payload;
-        if !self.active_eras.contains_key(&era_id) || era_id.successor() < self.current_era {
+        if era_id.saturating_add(PAST_EVIDENCE_ERAS) < self.current_era
+            || !self.active_eras.contains_key(&era_id)
+        {
             warn!(era = era_id.value(), "new block payload in outdated era");
             return Effects::new();
         }
@@ -744,7 +751,7 @@ where
     /// Returns `true` if any of the most recent eras has evidence against the validator with key
     /// `pub_key`.
     fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
-        self.iter_past(era_id, 1)
+        self.iter_past(era_id, PAST_EVIDENCE_ERAS)
             .any(|eid| self.era(eid).consensus.has_evidence(&pub_key))
     }
 
@@ -806,7 +813,7 @@ where
                 .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock(block_context) => {
                 let accusations = self
-                    .iter_past(era_id, 1)
+                    .iter_past(era_id, PAST_EVIDENCE_ERAS)
                     .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
                     .unique()
                     .filter(|pub_key| !self.era(era_id).faulty.contains(pub_key))
@@ -884,7 +891,8 @@ where
                 sender,
                 proposed_block,
             } => {
-                if !self.active_eras.contains_key(&era_id) || era_id.successor() < self.current_era
+                if era_id.saturating_add(PAST_EVIDENCE_ERAS) < self.current_era
+                    || !self.active_eras.contains_key(&era_id)
                 {
                     return Effects::new(); // Outdated era; we don't need the value anymore.
                 }
@@ -938,7 +946,7 @@ where
                 let mut effects = effect_builder
                     .announce_fault_event(era_id, pub_key.clone(), Timestamp::now())
                     .ignore();
-                for e_id in self.iter_future(era_id, 1) {
+                for e_id in self.iter_future(era_id, PAST_EVIDENCE_ERAS) {
                     let proposed_blocks = if let Some(era) = self.active_eras.get_mut(&e_id) {
                         era.resolve_evidence_and_mark_faulty(&pub_key)
                     } else {
@@ -958,7 +966,7 @@ where
                 effects
             }
             ProtocolOutcome::SendEvidence(sender, pub_key) => self
-                .iter_past_other(era_id, 1)
+                .iter_past_other(era_id, PAST_EVIDENCE_ERAS)
                 .flat_map(|e_id| {
                     self.delegate_to_era(effect_builder, rng, e_id, |consensus| {
                         consensus.request_evidence(sender.clone(), &pub_key)
