@@ -15,7 +15,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
-use rand::{thread_rng, RngCore};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -42,6 +42,7 @@ use crate::{
         ActionId, TimerId,
     },
     types::{TimeDiff, Timestamp},
+    NodeRng,
 };
 
 use self::round_success_meter::RoundSuccessMeter;
@@ -621,6 +622,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Creates a batch of dependency requests.
     fn batch_request(
         &self,
+        rng: &mut NodeRng,
         vid: ValidatorIndex,
         our_seq: u64,
         their_seq: u64,
@@ -631,7 +633,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             (our_seq..=their_seq)
                 .take(self.config.max_request_batch_size)
                 .map(|unit_seq_number| {
-                    let uuid = thread_rng().next_u64();
+                    let uuid = rng.next_u64();
                     debug!(?uuid, ?vid, ?unit_seq_number, "requesting dependency");
                     HighwayMessage::RequestDependencyByHeight {
                         uuid,
@@ -705,6 +707,7 @@ where
 {
     fn handle_message(
         &mut self,
+        rng: &mut NodeRng,
         sender: I,
         msg: Vec<u8>,
         now: Timestamp,
@@ -852,23 +855,23 @@ where
 
                         (_, IndexObservation::Faulty) => {
                             let dependency = Dependency::Evidence(vid);
-                            let uuid = thread_rng().next_u64();
+                            let uuid = rng.next_u64();
                             debug!(?uuid, "requesting evidence");
                             vec![HighwayMessage::RequestDependency(uuid, dependency)]
                         }
 
                         (IndexObservation::None, IndexObservation::Correct(their_seq_number)) => {
-                            self.batch_request(vid, 0, *their_seq_number)
+                            self.batch_request(rng, vid, 0, *their_seq_number)
                         }
 
                         (IndexObservation::Correct(our_seq_num), IndexObservation::None) => {
-                            self.batch_request(vid, *our_seq_num, 0)
+                            self.batch_request(rng, vid, *our_seq_num, 0)
                         }
 
                         (
                             IndexObservation::Correct(our_seq),
                             IndexObservation::Correct(their_seq),
-                        ) => self.batch_request(vid, *our_seq, *their_seq),
+                        ) => self.batch_request(rng, vid, *our_seq, *their_seq),
                     }
                 };
 
