@@ -99,12 +99,10 @@ where
                 }
             }
             ED25519_TAG => {
-                let bytes = hex::decode(key_bytes)?;
-                Self::ed25519_from_bytes(&bytes)
+                Self::ed25519_from_bytes(key_bytes)
             }
             SECP256K1_TAG => {
-                let bytes = hex::decode(key_bytes)?;
-                Self::secp256k1_from_bytes(&bytes)
+                Self::secp256k1_from_bytes(key_bytes)
             }
             _ => Err(Error::AsymmetricKey(format!(
                 "failed to decode from hex: invalid tag.  Expected {}, {} or {}, got {}",
