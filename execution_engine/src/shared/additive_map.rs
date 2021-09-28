@@ -1,3 +1,4 @@
+//! Support for additive maps that add values to existing items instead of overwriting them.
 use std::{
     borrow::Borrow,
     collections::{
@@ -10,10 +11,13 @@ use std::{
     ops::{AddAssign, Index},
 };
 
+/// An associative container that looks and works like a normal `HashMap` except that, instead of
+/// overwriting existing items, it adds the new value to the existing value.
 #[derive(Clone)]
 pub struct AdditiveMap<K, V, S = RandomState>(HashMap<K, V, S>);
 
 impl<K: Eq + Hash, V> AdditiveMap<K, V, RandomState> {
+    /// Creates an empty `AdditiveMap`.
     pub fn new() -> Self {
         Self(Default::default())
     }
@@ -29,28 +33,35 @@ impl<K: Eq + Hash, V: AddAssign + Default, S: BuildHasher> AdditiveMap<K, V, S> 
 }
 
 impl<K, V, S> AdditiveMap<K, V, S> {
+    /// An iterator visiting all keys in arbitrary order. The iterator element type is `&'a K`.
     pub fn keys(&self) -> Keys<'_, K, V> {
         self.0.keys()
     }
 
+    /// An iterator visiting all values in arbitrary order. The iterator element type is `&'a V`.
     pub fn values(&self) -> Values<'_, K, V> {
         self.0.values()
     }
 
+    /// An iterator visiting all key-value pairs in arbitrary order. The iterator element type is
+    /// `(&'a K, &'a V)`.
     pub fn iter(&self) -> Iter<'_, K, V> {
         self.0.iter()
     }
 
+    /// Returns the number of keys in the map.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns `true` if the map contains no keys.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
 
 impl<K: Eq + Hash, V, S: BuildHasher> AdditiveMap<K, V, S> {
+    /// Returns a reference to the value corresponding to a key.
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -59,10 +70,16 @@ impl<K: Eq + Hash, V, S: BuildHasher> AdditiveMap<K, V, S> {
         self.0.get(key)
     }
 
+    /// Inserts a key-value pair into the map.
+    ///
+    /// If the map did not have this key present, `None` is returned.
+    /// If the map did have this key present, the value is updated, and the old value is returned.
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         self.0.insert(key, value)
     }
 
+    /// Removes a key from the map, returning the value at the key if the key was previously in the
+    /// map.
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
         K: Borrow<Q>,
@@ -71,6 +88,8 @@ impl<K: Eq + Hash, V, S: BuildHasher> AdditiveMap<K, V, S> {
         self.0.remove(key)
     }
 
+    /// Removes a key from the map, returning the stored key and value if the key was previously in
+    /// the map.
     pub fn remove_entry<Q>(&mut self, key: &Q) -> Option<(K, V)>
     where
         K: Borrow<Q>,

@@ -140,6 +140,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
         mint::ARG_AMOUNT => transfer_amount.value(),
         mint::ARG_ID => id,
     };
+
     let transfer_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -170,7 +171,12 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
         .expect("should have result")
         .get(0)
         .expect("should have first result");
-    assert_eq!(response.cost(), transfer_cost);
+    assert_eq!(
+        response.cost(),
+        transfer_cost,
+        "expected actual cost is {}",
+        transfer_cost
+    );
     assert_eq!(
         purse_balance_before - transfer_cost_motes.value() - transfer_amount.value(),
         purse_balance_after
