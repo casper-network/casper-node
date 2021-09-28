@@ -3,12 +3,11 @@ use std::{path::Path, sync::Arc};
 use datasize::DataSize;
 use serde::Deserialize;
 
-use casper_types::{ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
-    crypto::hash::Digest,
-    types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
+    types::Chainspec,
     utils::{External, LoadError, Loadable},
 };
 
@@ -77,52 +76,5 @@ impl ChainspecConsensusExt for Chainspec {
                 .saturating_sub(1)
                 .saturating_sub(self.core_config.auction_delay),
         )
-    }
-}
-
-/// Consensus protocol configuration.
-#[derive(DataSize, Debug)]
-pub(crate) struct ProtocolConfig {
-    pub(crate) highway_config: HighwayProtocolConfig,
-    pub(crate) era_duration: TimeDiff,
-    pub(crate) minimum_era_height: u64,
-    /// Number of eras before an auction actually defines the set of validators.
-    /// If you bond with a sufficient bid in era N, you will be a validator in era N +
-    /// auction_delay + 1
-    pub(crate) auction_delay: u64,
-    pub(crate) unbonding_delay: u64,
-    /// The network protocol version.
-    #[data_size(skip)]
-    pub(crate) protocol_version: ProtocolVersion,
-    /// The first era ID after the last upgrade
-    pub(crate) last_activation_point: EraId,
-    /// Name of the network.
-    pub(crate) name: String,
-    /// Genesis timestamp, if available.
-    pub(crate) genesis_timestamp: Option<Timestamp>,
-    /// The chainspec hash: All nodes in the network agree on it, and it's unique to this network.
-    pub(crate) chainspec_hash: Digest,
-    /// The last emergency restart [`EraId`] (if there was one)
-    pub(crate) last_emergency_restart: Option<EraId>,
-}
-
-impl From<&Chainspec> for ProtocolConfig {
-    fn from(chainspec: &Chainspec) -> Self {
-        ProtocolConfig {
-            highway_config: chainspec.highway_config,
-            era_duration: chainspec.core_config.era_duration,
-            minimum_era_height: chainspec.core_config.minimum_era_height,
-            auction_delay: chainspec.core_config.auction_delay,
-            unbonding_delay: chainspec.core_config.unbonding_delay,
-            protocol_version: chainspec.protocol_config.version,
-            last_activation_point: chainspec.protocol_config.activation_point.era_id(),
-            name: chainspec.network_config.name.clone(),
-            genesis_timestamp: chainspec
-                .protocol_config
-                .activation_point
-                .genesis_timestamp(),
-            chainspec_hash: chainspec.hash(),
-            last_emergency_restart: chainspec.protocol_config.last_emergency_restart,
-        }
     }
 }

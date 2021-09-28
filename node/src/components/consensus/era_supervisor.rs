@@ -35,7 +35,6 @@ use crate::{
     components::{
         consensus::{
             cl_context::{ClContext, Keypair},
-            config::ProtocolConfig,
             consensus_protocol::{
                 ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
                 ProtocolOutcome,
@@ -74,7 +73,7 @@ type ConsensusConstructor<I> = dyn Fn(
         &HashSet<PublicKey>,       /* faulty validators that are banned in
                                     * this era */
         &HashSet<PublicKey>, // inactive validators that can't be leaders
-        &ProtocolConfig,     // the network's chainspec
+        &Chainspec,          // the network's chainspec
         &Config,             // The consensus part of the node config.
         Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
         Timestamp,           // start time for this era
@@ -419,7 +418,7 @@ where
             validators.clone(),
             &faulty,
             &inactive,
-            &self.chainspec.as_ref().into(),
+            self.chainspec.as_ref(),
             &self.config,
             maybe_prev_era.map(|prev_era| &*prev_era.consensus),
             start_time,

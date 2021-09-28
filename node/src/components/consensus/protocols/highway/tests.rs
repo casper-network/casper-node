@@ -88,7 +88,7 @@ where
         weights.into_iter().collect(),
         &init_faulty.into_iter().collect(),
         &None.into_iter().collect(),
-        &(&chainspec).into(),
+        &chainspec,
         &config,
         None,
         start_timestamp,
