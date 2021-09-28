@@ -207,7 +207,7 @@ where
         for era_id in (earliest_era.value()..current_era.value()).map(EraId::from) {
             let switch_block = storage
                 .read_switch_block_header_by_era_id(era_id)?
-                .ok_or_else(|| anyhow::Error::msg("No such switch block"))?;
+                .ok_or_else(|| anyhow::Error::msg(format!("No such switch block in {}", era_id)))?;
             switch_blocks.push(switch_block);
         }
 
