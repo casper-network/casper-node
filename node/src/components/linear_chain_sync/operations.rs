@@ -11,7 +11,7 @@ use casper_types::{EraId, Key, PublicKey, U512};
 
 use crate::{
     components::{
-        consensus::check_sufficient_finality_signatures,
+        consensus::{check_sufficient_finality_signatures, ChainspecConsensusExt},
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
         linear_chain_sync::error::{LinearChainSyncError, SignatureValidationError},
@@ -523,13 +523,12 @@ async fn fast_sync_to_most_recent(
         }
     }
 
-    // The era supervisor requires at least auction_delay + 3 eras back to be stored in the
-    // database.
-    let historical_eras_needed = chainspec.core_config.auction_delay.saturating_add(3);
-    let earliest_era_needed_by_era_supervisor = most_recent_block_header
-        .era_id()
-        .saturating_sub(historical_eras_needed);
+    // The era supervisor requires enough switch blocks to be stored in the database to be able to
+    // initialize the most recent eras.
     {
+        let earliest_active_era = chainspec.earliest_active_era(most_recent_block_header.era_id());
+        let earliest_era_needed_by_era_supervisor =
+            chainspec.earliest_switch_block_needed(earliest_active_era);
         let mut current_walk_back_header = most_recent_block_header.clone();
         while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
             current_walk_back_header = *fetch_and_store_block_header(

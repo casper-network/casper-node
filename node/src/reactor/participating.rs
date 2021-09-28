@@ -719,7 +719,7 @@ impl reactor::Reactor for Reactor {
             latest_block_header.next_block_era_id(),
             WithDir::new(root, config.consensus),
             effect_builder,
-            chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.chainspec().clone(),
             &latest_block_header,
             maybe_next_activation_point,
             registry,

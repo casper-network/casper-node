@@ -45,6 +45,41 @@ impl Config {
     }
 }
 
+pub trait ChainspecConsensusExt {
+    /// Returns the ID of the last activation era, i.e. the era immediately after the most recent
+    /// upgrade or restart.
+    fn activation_era(&self) -> EraId;
+
+    /// Returns the earliest era that is kept in memory. If the current era is N, that is usually N
+    /// - 2, except that it's never at or before the most recent activation point.
+    fn earliest_active_era(&self, current_era: EraId) -> EraId;
+
+    /// Returns the earliest era whose switch block is needed to initialize the given era. For era
+    /// N that will usually be N - A - 1, where A is the auction delay, except that switch block
+    /// from before the most recent activation point are never used.
+    fn earliest_switch_block_needed(&self, era_id: EraId) -> EraId;
+}
+
+impl ChainspecConsensusExt for Chainspec {
+    fn activation_era(&self) -> EraId {
+        self.protocol_config.activation_point.era_id()
+    }
+
+    fn earliest_active_era(&self, current_era: EraId) -> EraId {
+        self.activation_era()
+            .successor()
+            .max(current_era.saturating_sub(2))
+    }
+
+    fn earliest_switch_block_needed(&self, era_id: EraId) -> EraId {
+        self.activation_era().max(
+            era_id
+                .saturating_sub(1)
+                .saturating_sub(self.core_config.auction_delay),
+        )
+    }
+}
+
 /// Consensus protocol configuration.
 #[derive(DataSize, Debug)]
 pub(crate) struct ProtocolConfig {

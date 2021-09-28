@@ -42,8 +42,8 @@ use crate::{
             },
             metrics::ConsensusMetrics,
             traits::NodeIdT,
-            ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT,
-            ResolveValidity, TimerId,
+            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
+            ReactorEventT, ResolveValidity, TimerId,
         },
         storage::Storage,
     },
@@ -55,8 +55,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash,
-        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
+        DeployOrTransferHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -92,9 +92,9 @@ pub struct EraSupervisor<I> {
     ///
     /// This map contains three consecutive entries, with the last one being the current era N. Era
     /// N - 1 is also kept in memory so that we would still detect any equivocations there and use
-    /// them in era N to get the equivocator banned. And era N - 2 one is in a frozen state: It
-    /// doesn't accept any new Highway units anymore, but we keep the instance in memory so we can
-    /// evaluate evidence that units in era N - 1 might cite.
+    /// them in era N to get the equivocator banned. And era N - 2 one is in an "evidence-only"
+    /// state: It doesn't accept any new Highway units anymore, but we keep the instance in memory
+    /// so we can evaluate evidence that units in era N - 1 might cite.
     ///
     /// Since eras at or before the most recent activation point are never instantiated, shortly
     /// after that there can temporarily be fewer than three entries in the map.
@@ -102,7 +102,7 @@ pub struct EraSupervisor<I> {
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
     current_era: EraId,
-    protocol_config: ProtocolConfig,
+    chainspec: Arc<Chainspec>,
     config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
@@ -146,7 +146,7 @@ where
         current_era: EraId,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
-        protocol_config: ProtocolConfig,
+        chainspec: Arc<Chainspec>,
         latest_block_header: &BlockHeader,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
@@ -154,11 +154,12 @@ where
         storage: &Storage,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
-        if current_era <= protocol_config.last_activation_point {
+        if current_era <= chainspec.activation_era() {
             panic!(
                 "Current era ({:?}) is before the last activation point ({:?}) - no eras would \
                 be instantiated!",
-                current_era, protocol_config.last_activation_point
+                current_era,
+                chainspec.activation_era()
             );
         }
         let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
@@ -175,7 +176,7 @@ where
             secret_signing_key,
             public_signing_key,
             current_era,
-            protocol_config,
+            chainspec,
             config,
             new_consensus,
             next_block_height: next_height,
@@ -187,13 +188,10 @@ where
             era_where_we_joined: current_era,
         };
 
-        // Collect the information needed to initialize all recent eras.
-        let auction_delay = era_supervisor.protocol_config.auction_delay;
-        let last_activation_point = era_supervisor.protocol_config.last_activation_point;
-        let mut switch_blocks = Vec::new();
-
-        // We need to initialize current_era, current_era - 1 and (frozen) current_era - 2. To
-        // initialize an era, all switch blocks between its booking block and its key block are
+        // Collect the information needed to initialize all active eras.
+        //
+        // We need to initialize current_era, current_era - 1 and (evidence-only) current_era - 2.
+        // To initialize an era, all switch blocks between its booking block and its key block are
         // required. The booking block for era N is in N - auction_delay - 1, and the key block in
         // N - 1. So we need all switch blocks between:
         // (including) current_era - 2 - auction_delay - 1 and (excluding) current_era.
@@ -202,8 +200,11 @@ where
         // Example: If auction_delay is 1, to initialize era N we need the switch blocks from era N
         // and N - 1. If current_era is 10, we will initialize eras 10, 9 and 8. So we need the
         // switch blocks from eras 9, 8, 7 and 6.
-        let earliest_era =
-            last_activation_point.max(current_era.saturating_sub(auction_delay).saturating_sub(3));
+        let earliest_active_era = era_supervisor.chainspec.earliest_active_era(current_era);
+        let earliest_era = era_supervisor
+            .chainspec
+            .earliest_switch_block_needed(earliest_active_era);
+        let mut switch_blocks = Vec::new();
         for era_id in (earliest_era.value()..current_era.value()).map(EraId::from) {
             let switch_block = storage
                 .read_switch_block_header_by_era_id(era_id)?
@@ -214,7 +215,7 @@ where
         // The create_new_era method initializes the era that the slice's last block is the key
         // block for. We want to initialize the three latest eras, so we have to pass in the whole
         // slice for the current era, and omit one or two elements for the other two. We never
-        // initialize the last_activation_point or an earlier era, however.
+        // initialize the activation era or an earlier era, however.
         //
         // In the example above, we would call create_new_era with the switch blocks from eras
         // 8 and 9 (to initialize 10) then 7 and 8 (for era 9), and finally 6 and 7 (for era 8).
@@ -247,8 +248,8 @@ where
     /// instance for it.
     pub(crate) fn iter_past(&self, era_id: EraId, num_eras: u64) -> impl Iterator<Item = EraId> {
         (self
-            .protocol_config
-            .last_activation_point
+            .chainspec
+            .activation_era()
             .successor()
             .max(era_id.saturating_sub(num_eras))
             .value()..=era_id.value())
@@ -266,8 +267,8 @@ where
         num_eras: u64,
     ) -> impl Iterator<Item = EraId> {
         (self
-            .protocol_config
-            .last_activation_point
+            .chainspec
+            .activation_era()
             .successor()
             .max(era_id.saturating_sub(num_eras))
             .value()..era_id.value())
@@ -359,7 +360,7 @@ where
         }
 
         // Compute the seed for the PRNG from the booking block hash and the accumulated seed.
-        let auction_delay = self.protocol_config.auction_delay as usize;
+        let auction_delay = self.chainspec.core_config.auction_delay as usize;
         let booking_block_hash =
             if let Some(booking_block) = switch_blocks.iter().rev().nth(auction_delay) {
                 booking_block.hash()
@@ -389,7 +390,7 @@ where
             .flat_map(|report| report.equivocators.clone())
             .collect();
 
-        let instance_id = instance_id(&self.protocol_config, era_id);
+        let instance_id = instance_id(self.chainspec.hash(), era_id);
         let now = Timestamp::now();
 
         info!(
@@ -418,7 +419,7 @@ where
             validators.clone(),
             &faulty,
             &inactive,
-            &self.protocol_config,
+            &self.chainspec.as_ref().into(),
             &self.config,
             maybe_prev_era.map(|prev_era| &*prev_era.consensus),
             start_time,
@@ -642,13 +643,8 @@ where
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
-            let effect = get_switch_blocks(
-                effect_builder,
-                new_era_id,
-                self.protocol_config.auction_delay,
-                self.protocol_config.last_activation_point,
-            )
-            .event(move |switch_blocks| Event::CreateNewEra { switch_blocks });
+            let effect = get_switch_blocks(self.chainspec.clone(), effect_builder, new_era_id)
+                .event(move |switch_blocks| Event::CreateNewEra { switch_blocks });
             effects.extend(effect);
         }
         effects
@@ -1051,16 +1047,15 @@ where
 /// Those are the booking block, i.e. the switch block in `era_id - auction_delay - 1`,
 /// the key block, i.e. the switch block in `era_id - 1`, and all switch blocks in between.
 async fn get_switch_blocks<REv>(
+    chainspec: Arc<Chainspec>,
     effect_builder: EffectBuilder<REv>,
     era_id: EraId,
-    auction_delay: u64,
-    last_activation_point: EraId,
 ) -> Vec<BlockHeader>
 where
     REv: From<StorageRequest>,
 {
     let mut switch_blocks = Vec::new();
-    let from = last_activation_point.max(era_id.saturating_sub(auction_delay).saturating_sub(1));
+    let from = chainspec.earliest_switch_block_needed(era_id);
     for switch_block_era_id in (from.value()..era_id.value()).map(EraId::from) {
         match effect_builder
             .get_switch_block_header_at_era_id_from_storage(switch_block_era_id)
@@ -1146,11 +1141,11 @@ async fn execute_finalized_block<REv>(
 }
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.
-fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
+fn instance_id(chainspec_hash: Digest, era_id: EraId) -> Digest {
     let mut result = [0; Digest::LENGTH];
     let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
 
-    hasher.update(protocol_config.chainspec_hash.as_ref());
+    hasher.update(chainspec_hash.as_ref());
     hasher.update(era_id.to_le_bytes());
 
     hasher.finalize_variable(|slice| {
