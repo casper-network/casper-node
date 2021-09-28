@@ -67,6 +67,9 @@ pub use self::era::Era;
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
+/// The number of active eras that are kept in memory in addition to the current one.
+const PAST_ACTIVE_ERAS: u64 = 2;
+
 type ConsensusConstructor<I> = dyn Fn(
         Digest,                    // the era's unique instance ID
         BTreeMap<PublicKey, U512>, // validator weights
@@ -220,7 +223,11 @@ where
         // 8 and 9 (to initialize 10) then 7 and 8 (for era 9), and finally 6 and 7 (for era 8).
         // (We don't truncate the slice at the start since unneeded blocks are ignored.)
         let mut effects = Effects::new();
-        for i in (switch_blocks.len().saturating_sub(2).max(1)..=switch_blocks.len()).rev() {
+        let from = switch_blocks
+            .len()
+            .saturating_sub(PAST_ACTIVE_ERAS as usize)
+            .max(1);
+        for i in (from..=switch_blocks.len()).rev() {
             effects.extend(era_supervisor.create_new_era(effect_builder, rng, &switch_blocks[..i]));
         }
         Ok((era_supervisor, effects))
@@ -474,7 +481,7 @@ where
         // Clear the obsolete data from the era before the previous one. We only retain the
         // information necessary to validate evidence that units in the two most recent eras may
         // refer to for cross-era fault tracking.
-        if let Some(evidence_only_era_id) = self.current_era.checked_sub(2) {
+        if let Some(evidence_only_era_id) = self.current_era.checked_sub(PAST_ACTIVE_ERAS) {
             if let Some(era) = self.active_eras.get_mut(&evidence_only_era_id) {
                 trace!(era = evidence_only_era_id.value(), "clearing unbonded era");
                 era.consensus.set_evidence_only();
