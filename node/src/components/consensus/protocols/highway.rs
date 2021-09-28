@@ -665,7 +665,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     Observation::Correct(hash) => (their_count..our_count)
                         .take(self.config.max_request_batch_size)
                         .filter_map(|seq_num| {
-                            let unit = state.find_ancestor_unit(hash, seq_num).unwrap();
+                            let unit = state.find_in_swimlane(hash, seq_num).unwrap();
                             state
                                 .wire_unit(unit, *self.highway.instance_id())
                                 .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
