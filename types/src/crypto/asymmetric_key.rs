@@ -98,12 +98,8 @@ where
                     ))
                 }
             }
-            ED25519_TAG => {
-                Self::ed25519_from_bytes(key_bytes)
-            }
-            SECP256K1_TAG => {
-                Self::secp256k1_from_bytes(key_bytes)
-            }
+            ED25519_TAG => Self::ed25519_from_bytes(key_bytes),
+            SECP256K1_TAG => Self::secp256k1_from_bytes(key_bytes),
             _ => Err(Error::AsymmetricKey(format!(
                 "failed to decode from hex: invalid tag.  Expected {}, {} or {}, got {}",
                 SYSTEM_TAG, ED25519_TAG, SECP256K1_TAG, tag[0]
