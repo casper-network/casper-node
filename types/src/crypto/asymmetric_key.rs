@@ -89,6 +89,15 @@ where
         hex::decode_to_slice(tag_bytes, tag.as_mut())?;
 
         match tag[0] {
+            SYSTEM_TAG => {
+                if key_bytes.is_empty() {
+                    Ok(Self::system())
+                } else {
+                    Err(Error::AsymmetricKey(
+                        "failed to decode from hex: invalid system variant".to_string(),
+                    ))
+                }
+            }
             ED25519_TAG => {
                 let bytes = hex::decode(key_bytes)?;
                 Self::ed25519_from_bytes(&bytes)
@@ -98,8 +107,8 @@ where
                 Self::secp256k1_from_bytes(&bytes)
             }
             _ => Err(Error::AsymmetricKey(format!(
-                "invalid tag.  Expected {} or {}, got {}",
-                ED25519_TAG, SECP256K1_TAG, tag[0]
+                "failed to decode from hex: invalid tag.  Expected {}, {} or {}, got {}",
+                SYSTEM_TAG, ED25519_TAG, SECP256K1_TAG, tag[0]
             ))),
         }
     }
