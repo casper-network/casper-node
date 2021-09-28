@@ -14,19 +14,20 @@ use crate::components::consensus::{
 pub(crate) type IndexPanorama = ValidatorMap<IndexObservation>;
 
 /// The observed behavior of a validator at some point in time.
-#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub(crate) enum IndexObservation {
-    None,
+    /// We have evidence that the validator is faulty.
     Faulty,
-    Correct(u64),
+    /// We have that number of units from the validator.
+    /// That is also the sequence number of the first unit we are still missing.
+    Count(u64),
 }
 
 impl Debug for IndexObservation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IndexObservation::None => write!(f, "N"),
             IndexObservation::Faulty => write!(f, "F"),
-            IndexObservation::Correct(seq_num) => write!(f, "{:?}", seq_num),
+            IndexObservation::Count(count) => write!(f, "{:?}", count),
         }
     }
 }
@@ -38,15 +39,15 @@ impl IndexPanorama {
         state: &'a State<C>,
     ) -> Self {
         let mut validator_map: ValidatorMap<IndexObservation> =
-            ValidatorMap::from(vec![IndexObservation::None; panorama.len()]);
+            ValidatorMap::from(vec![IndexObservation::Count(0); panorama.len()]);
         for (vid, obs) in panorama.enumerate() {
             let index_obs = match obs {
-                Observation::None => IndexObservation::None,
-                Observation::Correct(hash) => state
-                    .maybe_unit(hash)
-                    .map_or(IndexObservation::None, |unit| {
-                        IndexObservation::Correct(unit.seq_number)
-                    }),
+                Observation::None => IndexObservation::Count(0),
+                Observation::Correct(hash) => IndexObservation::Count(
+                    state
+                        .maybe_unit(hash)
+                        .map_or(0, |unit| unit.seq_number.saturating_add(1)),
+                ),
                 Observation::Faulty => IndexObservation::Faulty,
             };
             validator_map[vid] = index_obs;

@@ -619,18 +619,19 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)]
     }
 
-    /// Creates a batch of dependency requests.
+    /// Creates a batch of dependency requests if the peer has more units by the validator `vidx`
+    /// than we do; otherwise sends a batch of missing units to the peer.
     fn batch_request(
         &self,
         rng: &mut NodeRng,
         vid: ValidatorIndex,
-        our_seq: u64,
-        their_seq: u64,
+        our_count: u64,
+        their_count: u64,
     ) -> Vec<HighwayMessage<C>> {
         let state = self.highway.state();
-        if our_seq < their_seq {
+        if our_count < their_count {
             // We're behind. Request missing vertices.
-            (our_seq..=their_seq)
+            (our_count..their_count)
                 .take(self.config.max_request_batch_size)
                 .map(|unit_seq_number| {
                     let uuid = rng.next_u64();
@@ -652,7 +653,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 }
                 Some(latest_obs) => match latest_obs {
                     Observation::None | Observation::Faulty => {
-                        let index_panorama = format!("correct({:?})", our_seq);
+                        let index_panorama = format!("Count({:?})", our_count.saturating_sub(1));
                         error!(
                             ?vid,
                             ?index_panorama,
@@ -661,7 +662,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         );
                         vec![]
                     }
-                    Observation::Correct(hash) => (their_seq..=our_seq)
+                    Observation::Correct(hash) => (their_count..our_count)
                         .take(self.config.max_request_batch_size)
                         .filter_map(|seq_num| {
                             let unit = state.find_ancestor_unit(hash, seq_num).unwrap();
@@ -840,10 +841,8 @@ where
                     (ValidatorIndex, &IndexObservation),
                     &IndexObservation,
                 )| {
-                    match (our_obs, their_obs) {
+                    match (*our_obs, *their_obs) {
                         (our_obs, their_obs) if our_obs == their_obs => vec![],
-
-                        (IndexObservation::None, IndexObservation::None) => vec![],
 
                         (IndexObservation::Faulty, _) => state
                             .maybe_evidence(vid)
@@ -860,18 +859,10 @@ where
                             vec![HighwayMessage::RequestDependency(uuid, dependency)]
                         }
 
-                        (IndexObservation::None, IndexObservation::Correct(their_seq_number)) => {
-                            self.batch_request(rng, vid, 0, *their_seq_number)
-                        }
-
-                        (IndexObservation::Correct(our_seq_num), IndexObservation::None) => {
-                            self.batch_request(rng, vid, *our_seq_num, 0)
-                        }
-
                         (
-                            IndexObservation::Correct(our_seq),
-                            IndexObservation::Correct(their_seq),
-                        ) => self.batch_request(rng, vid, *our_seq, *their_seq),
+                            IndexObservation::Count(our_count),
+                            IndexObservation::Count(their_count),
+                        ) => self.batch_request(rng, vid, our_count, their_count),
                     }
                 };
 
