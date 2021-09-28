@@ -55,6 +55,7 @@ pub enum casper_error_t {
     CASPER_DEPLOY_SIZE_TOO_LARGE = -24,
     CASPER_FAILED_TO_CREATE_DICTIONARY_IDENTIFIER = -25,
     CASPER_FAILED_TO_PARSE_STATE_IDENTIFIER = -26,
+    CASPER_HASHING_ERROR = -27,
 }
 
 trait AsFFIError {
@@ -83,6 +84,7 @@ impl AsFFIError for Error {
             Error::IoError { .. } => casper_error_t::CASPER_IO_ERROR,
             Error::ToBytesError(_) => casper_error_t::CASPER_TO_BYTES_ERROR,
             Error::CryptoError { .. } => casper_error_t::CASPER_CRYPTO_ERROR,
+            Error::HashingError { .. } => casper_error_t::CASPER_HASHING_ERROR,
             Error::InvalidCLValue(_) => casper_error_t::CASPER_INVALID_CL_VALUE,
             Error::InvalidArgument { .. } => casper_error_t::CASPER_INVALID_ARGUMENT,
             Error::InvalidResponse(_) => casper_error_t::CASPER_INVALID_RESPONSE,

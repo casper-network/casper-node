@@ -8,7 +8,6 @@ mod era_summary;
 use std::{num::ParseIntError, str};
 
 use futures::{future::BoxFuture, FutureExt};
-use hex::FromHex;
 use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
@@ -87,7 +86,7 @@ impl str::FromStr for BlockIdentifier {
 
         if maybe_block_identifier.len() == (Digest::LENGTH * 2) {
             let hash = Digest::from_hex(maybe_block_identifier)
-                .map_err(ParseBlockIdentifierError::FromHexError)?;
+                .map_err(ParseBlockIdentifierError::HashingError)?;
             Ok(BlockIdentifier::Hash(BlockHash::new(hash)))
         } else {
             let height = maybe_block_identifier
@@ -107,9 +106,9 @@ pub enum ParseBlockIdentifierError {
     /// Couldn't parse a height value.
     #[error("Unable to parse height from string. {0}")]
     ParseIntError(ParseIntError),
-    /// Couldn't parse a blake2bhash.
+    /// Couldn't parse a digest from the given string.
     #[error("Unable to parse digest from string. {0}")]
-    FromHexError(hex::FromHexError),
+    HashingError(casper_hashing::Error),
 }
 
 /// Params for "chain_get_block" RPC request.

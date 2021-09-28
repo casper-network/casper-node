@@ -5,7 +5,7 @@ use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
 use casper_node::{
-    crypto, crypto::Error as CryptoError, rpcs::chain::ParseBlockIdentifierError,
+    crypto::Error as CryptoError, rpcs::chain::ParseBlockIdentifierError,
     types::ExcessiveSizeDeployError,
 };
 use casper_types::{
@@ -136,6 +136,16 @@ pub enum Error {
         error: CryptoError,
     },
 
+    /// Hashing error.
+    #[error("Hashing error: {context}: {error}")]
+    HashingError {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: &'static str,
+        /// Underlying hashing error.
+        error: casper_hashing::Error,
+    },
+
     /// Invalid `CLValue`.
     #[error("Invalid CLValue error: {0}")]
     InvalidCLValue(String),
@@ -209,9 +219,9 @@ impl From<ParseBlockIdentifierError> for Error {
                 context: "block_identifier",
                 error,
             },
-            ParseBlockIdentifierError::FromHexError(error) => Error::CryptoError {
+            ParseBlockIdentifierError::HashingError(error) => Error::HashingError {
                 context: "block_identifier",
-                error: crypto::Error::FromHex(error),
+                error,
             },
         }
     }
