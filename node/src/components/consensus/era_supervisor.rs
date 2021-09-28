@@ -360,7 +360,7 @@ where
             warn!(era = era_id.value(), "era already exists");
             return Effects::new();
         }
-        if self.current_era > era_id.saturating_add(2) {
+        if self.current_era > era_id.saturating_add(PAST_ACTIVE_ERAS) {
             warn!(era = era_id.value(), "trying to create obsolete era");
             return Effects::new();
         }
