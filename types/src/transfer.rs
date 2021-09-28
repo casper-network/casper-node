@@ -21,7 +21,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex, CLType, CLTyped, URef, U512,
+    checksummed_hex, CLType, CLTyped, ChecksummedHexEncode, URef, U512,
 };
 
 /// The length of a deploy hash.
@@ -87,7 +87,7 @@ impl FromBytes for DeployHash {
 impl Serialize for DeployHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            checksummed_hex::encode(&self.0).serialize(serializer)
+            self.0.checksummed_hex_encode().serialize(serializer)
         } else {
             self.0.serialize(serializer)
         }
@@ -277,7 +277,7 @@ impl TransferAddr {
         format!(
             "{}{}",
             TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            self.0.checksummed_hex_encode()
         )
     }
 
@@ -351,13 +351,13 @@ impl<'de> Deserialize<'de> for TransferAddr {
 
 impl Display for TransferAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", self.0.checksummed_hex_encode())
     }
 }
 
 impl Debug for TransferAddr {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "TransferAddr({})", checksummed_hex::encode(&self.0))
+        write!(f, "TransferAddr({})", self.0.checksummed_hex_encode())
     }
 }
 

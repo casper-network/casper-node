@@ -24,7 +24,7 @@ use crate::{
     account,
     account::TryFromSliceForAccountHashError,
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    checksummed_hex,
+    checksummed_hex::{self, ChecksummedHexEncode},
     contract_wasm::ContractWasmHash,
     uref,
     uref::URef,
@@ -343,7 +343,7 @@ impl ContractHash {
         format!(
             "{}{}",
             CONTRACT_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            self.0.checksummed_hex_encode(),
         )
     }
 
@@ -360,13 +360,13 @@ impl ContractHash {
 
 impl Display for ContractHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", self.0.checksummed_hex_encode())
     }
 }
 
 impl Debug for ContractHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractHash({})", checksummed_hex::encode(&self.0))
+        write!(f, "ContractHash({})", self.0.checksummed_hex_encode())
     }
 }
 
@@ -489,7 +489,7 @@ impl ContractPackageHash {
         format!(
             "{}{}",
             PACKAGE_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            self.0.checksummed_hex_encode()
         )
     }
 
@@ -506,7 +506,7 @@ impl ContractPackageHash {
 
 impl Display for ContractPackageHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", self.0.checksummed_hex_encode())
     }
 }
 
@@ -515,7 +515,7 @@ impl Debug for ContractPackageHash {
         write!(
             f,
             "ContractPackageHash({})",
-            checksummed_hex::encode(&self.0)
+            self.0.checksummed_hex_encode()
         )
     }
 }

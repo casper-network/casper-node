@@ -52,6 +52,7 @@ pub use access_rights::{AccessRights, ACCESS_RIGHTS_SERIALIZED_LENGTH};
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+pub use checksummed_hex::ChecksummedHexEncode;
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};

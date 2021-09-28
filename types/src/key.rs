@@ -31,8 +31,8 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, EraId, Tagged, TransferAddr, TransferFromStrError, DEPLOY_HASH_LENGTH,
-    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    ChecksummedHexEncode, DeployHash, EraId, Tagged, TransferAddr, TransferFromStrError,
+    DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -247,37 +247,41 @@ impl Key {
                 format!(
                     "{}{}",
                     DEPLOY_INFO_PREFIX,
-                    checksummed_hex::encode(addr.as_bytes())
+                    addr.value().checksummed_hex_encode()
                 )
             }
             Key::EraInfo(era_id) => {
                 format!("{}{}", ERA_INFO_PREFIX, era_id.value())
             }
             Key::Balance(uref_addr) => {
-                format!("{}{}", BALANCE_PREFIX, checksummed_hex::encode(&uref_addr))
+                format!("{}{}", BALANCE_PREFIX, uref_addr.checksummed_hex_encode())
             }
             Key::Bid(account_hash) => {
-                format!("{}{}", BID_PREFIX, checksummed_hex::encode(&account_hash))
+                format!(
+                    "{}{}",
+                    BID_PREFIX,
+                    account_hash.value().checksummed_hex_encode()
+                )
             }
             Key::Withdraw(account_hash) => {
                 format!(
                     "{}{}",
                     WITHDRAW_PREFIX,
-                    checksummed_hex::encode(&account_hash)
+                    account_hash.value().checksummed_hex_encode()
                 )
             }
             Key::Dictionary(dictionary_addr) => {
                 format!(
                     "{}{}",
                     DICTIONARY_PREFIX,
-                    checksummed_hex::encode(&dictionary_addr)
+                    dictionary_addr.checksummed_hex_encode()
                 )
             }
             Key::SystemContractRegistry => {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                    SYSTEM_CONTRACT_REGISTRY_KEY.checksummed_hex_encode()
                 )
             }
         }
@@ -440,27 +444,27 @@ impl Display for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
-            Key::Hash(addr) => write!(f, "Key::Hash({})", checksummed_hex::encode(&addr)),
+            Key::Hash(addr) => write!(f, "Key::Hash({})", addr.checksummed_hex_encode()),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
             Key::DeployInfo(addr) => write!(
                 f,
                 "Key::DeployInfo({})",
-                checksummed_hex::encode(addr.as_bytes())
+                addr.value().checksummed_hex_encode()
             ),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
             Key::Balance(uref_addr) => {
-                write!(f, "Key::Balance({})", checksummed_hex::encode(uref_addr))
+                write!(f, "Key::Balance({})", uref_addr.checksummed_hex_encode())
             }
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
             Key::Dictionary(addr) => {
-                write!(f, "Key::Dictionary({})", checksummed_hex::encode(addr))
+                write!(f, "Key::Dictionary({})", addr.checksummed_hex_encode())
             }
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                SYSTEM_CONTRACT_REGISTRY_KEY.checksummed_hex_encode()
             ),
         }
     }
@@ -947,7 +951,7 @@ mod tests {
             format!("{}", REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                SYSTEM_CONTRACT_REGISTRY_KEY.checksummed_hex_encode()
             )
         )
     }

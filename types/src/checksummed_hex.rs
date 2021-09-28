@@ -5,7 +5,6 @@
 //! [1]: https://eips.ethereum.org/EIPS/eip-55
 //! [2]: https://docs.rs/hex-buffer-serde/0.3.0/hex_buffer_serde/trait.Hex.html
 use alloc::{borrow::Cow, string::String, vec::Vec};
-use base16;
 use core::{convert::TryFrom, fmt, marker::PhantomData, ops::RangeInclusive};
 
 use blake2::{Blake2b, Digest};
@@ -60,7 +59,7 @@ fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
 ///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
 pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
-    encode_iter(input).collect()
+    encode_iter(&input).collect()
 }
 
 /// `encode` but it returns an iterator.
@@ -140,6 +139,18 @@ pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::De
     Ok(bytes)
 }
 
+/// Stuff
+pub trait ChecksummedHexEncode<const N: usize>: AsRef<[u8]> + AsMut<[u8]> {
+    /// More stuff
+    fn checksummed_hex_encode(&self) -> String {
+        encode_iter(self.as_ref()).collect()
+    }
+}
+
+impl ChecksummedHexEncode<8> for [u8; 8] {}
+impl ChecksummedHexEncode<16> for [u8; 16] {}
+impl ChecksummedHexEncode<32> for [u8; 32] {}
+impl ChecksummedHexEncode<64> for [u8; 64] {}
 /// Provides checksummed hex-encoded (de)serialization for `serde` when used with human-readable
 /// (de/en)coders, following an [EIP-55][1]-like scheme.  For non-human-readable (de/en)coders, the
 /// value is (de)serialized as a byte array.

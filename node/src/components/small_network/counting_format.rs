@@ -21,7 +21,7 @@ use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
 
-use casper_types::checksummed_hex;
+use casper_types::ChecksummedHexEncode;
 
 use casper_hashing::Digest;
 
@@ -38,7 +38,7 @@ struct TraceId([u8; 8]);
 
 impl Display for TraceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&checksummed_hex::encode(&self.0))
+        f.write_str(&self.0.checksummed_hex_encode())
     }
 }
 

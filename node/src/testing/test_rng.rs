@@ -10,7 +10,7 @@ use std::{
 use rand::{self, CryptoRng, Error, Rng, RngCore, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 
-use casper_types::checksummed_hex;
+use casper_types::ChecksummedHexEncode;
 
 thread_local! {
     static THIS_THREAD_HAS_RNG: RefCell<bool> = RefCell::new(false);
@@ -99,7 +99,7 @@ impl Display for TestRng {
         write!(
             formatter,
             "TestRng seed: {}",
-            checksummed_hex::encode(&self.seed)
+            self.seed.checksummed_hex_encode()
         )
     }
 }
@@ -115,7 +115,7 @@ impl Drop for TestRng {
         if thread::panicking() {
             let line_1 = format!("Thread: {}", thread::current().name().unwrap_or("unnamed"));
             let line_2 = "To reproduce failure, try running with env var:";
-            let line_3 = format!("{}={}", CL_TEST_SEED, checksummed_hex::encode(&self.seed));
+            let line_3 = format!("{}={}", CL_TEST_SEED, self.seed.checksummed_hex_encode());
             let max_length = cmp::max(line_1.len(), line_2.len());
             let border = "=".repeat(max_length);
             println!(

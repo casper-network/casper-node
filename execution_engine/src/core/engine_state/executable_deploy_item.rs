@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
+    checksummed_hex::{ChecksummedHex, ChecksummedHexEncode, ChecksummedHexForm},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -844,7 +844,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredContractByHash")
-                .field("hash", &checksummed_hex::encode(hash))
+                .field("hash", &hash.value().checksummed_hex_encode())
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
@@ -865,7 +865,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredVersionedContractByHash")
-                .field("hash", &checksummed_hex::encode(hash))
+                .field("hash", &hash.value().checksummed_hex_encode())
                 .field("version", version)
                 .field("entry_point", &entry_point)
                 .field("args", args)

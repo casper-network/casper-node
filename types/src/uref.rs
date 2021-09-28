@@ -22,7 +22,8 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     bytesrepr,
     bytesrepr::{Error, FromBytes},
-    checksummed_hex, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+    checksummed_hex, AccessRights, ApiError, ChecksummedHexEncode, Key,
+    ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
 
 /// The number of bytes in a [`URef`] address.
@@ -177,7 +178,7 @@ impl URef {
         format!(
             "{}{}-{:03o}",
             UREF_FORMATTED_STRING_PREFIX,
-            checksummed_hex::encode(&self.addr()),
+            self.addr().checksummed_hex_encode(),
             access_rights_bits
         )
     }
@@ -221,7 +222,7 @@ impl Display for URef {
         write!(
             f,
             "URef({}, {})",
-            checksummed_hex::encode(&addr),
+            addr.checksummed_hex_encode(),
             access_rights
         )
     }
