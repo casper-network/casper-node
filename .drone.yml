@@ -689,6 +689,11 @@ name: nightly-tests-cron
 steps:
 - name: nctl-nighly-script
   image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
   commands:
   - "python3 -m pip install supervisor toml"
   - "apt update && apt install lsof -y"
