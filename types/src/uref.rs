@@ -9,20 +9,20 @@ use core::{
     num::ParseIntError,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     bytesrepr,
     bytesrepr::{Error, FromBytes},
-    AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+    checksummed_hex, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
 
 /// The number of bytes in a [`URef`] address.
@@ -92,7 +92,8 @@ impl Display for FromStrError {
 /// the [`AccessRights`] of the reference.
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default, DataSize)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct URef(URefAddr, AccessRights);
 
 impl URef {
@@ -176,7 +177,7 @@ impl URef {
         format!(
             "{}{}-{:03o}",
             UREF_FORMATTED_STRING_PREFIX,
-            base16::encode_lower(&self.addr()),
+            checksummed_hex::encode(&self.addr()),
             access_rights_bits
         )
     }
@@ -190,7 +191,7 @@ impl URef {
         if parts.len() != 2 {
             return Err(FromStrError::MissingSuffix);
         }
-        let addr = URefAddr::try_from(base16::decode(parts[0])?.as_ref())?;
+        let addr = URefAddr::try_from(checksummed_hex::decode(parts[0])?.as_ref())?;
         let access_rights_value = u8::from_str_radix(parts[1], 8)?;
         let access_rights = AccessRights::from_bits(access_rights_value)
             .ok_or(FromStrError::InvalidAccessRights)?;
@@ -198,7 +199,7 @@ impl URef {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for URef {
     fn schema_name() -> String {
         String::from("URef")
@@ -207,7 +208,8 @@ impl JsonSchema for URef {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded, formatted URef.".to_string());
+        schema_object.metadata().description =
+            Some(String::from("Checksummed hex-encoded, formatted URef."));
         schema_object.into()
     }
 }
@@ -216,7 +218,12 @@ impl Display for URef {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let addr = self.addr();
         let access_rights = self.access_rights();
-        write!(f, "URef({}, {})", HexFmt(&addr), access_rights)
+        write!(
+            f,
+            "URef({}, {})",
+            checksummed_hex::encode(&addr),
+            access_rights
+        )
     }
 }
 

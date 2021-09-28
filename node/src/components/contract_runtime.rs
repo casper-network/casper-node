@@ -490,6 +490,7 @@ impl ContractRuntime {
         contract_runtime_config: &Config,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
+        max_associated_keys: u32,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -516,7 +517,7 @@ impl ContractRuntime {
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
-            contract_runtime_config.max_associated_keys(),
+            max_associated_keys,
             wasm_config,
             system_config,
         );

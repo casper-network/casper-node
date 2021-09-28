@@ -12,7 +12,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use serde::Serialize;
 use static_assertions::const_assert;
 
@@ -22,22 +21,23 @@ use casper_execution_engine::{
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
         genesis::GenesisSuccess,
-        query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
+        get_bids::{GetBidsRequest, GetBidsResult},
+        query::{QueryRequest, QueryResult},
         upgrade::{UpgradeConfig, UpgradeSuccess},
     },
     storage::trie::Trie,
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, URef,
+    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, StoredValue, Transfer, URef,
 };
 
 use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
@@ -453,11 +453,16 @@ impl Display for StateStoreRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StateStoreRequest::Save { key, data, .. } => {
-                write!(f, "save data under {} ({} bytes)", HexFmt(key), data.len())
+                write!(
+                    f,
+                    "save data under {} ({} bytes)",
+                    checksummed_hex::encode(key),
+                    data.len()
+                )
             }
             #[cfg(test)]
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", HexFmt(key))
+                write!(f, "load data from key {}", checksummed_hex::encode(key))
             }
         }
     }
@@ -920,6 +925,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
+    /// Request for a list of validator status changes, by public key.
+    ValidatorChanges(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
 }
 
 /// ChainspecLoader component requests.

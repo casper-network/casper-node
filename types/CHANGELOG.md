@@ -14,13 +14,17 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Add explicit `no-std` feature, enabled by default and which causes a compiler error if enabled along with `std`.
+* Add `json-schema` feature, disabled by default, to enable many types to be used to produce JSON-schema data.
+* Add implicit `datasize` feature, disabled by default, to enable many types to derive the `DataSize` trait.
 * Add `StoredValue` types to this crate.
 
 ### Changed
 * Support building and testing using stable Rust.
 * Allow longer hex string to be presented in `json` files. Current maximum is increased from 100 to 150 characters.
-* Improved documentation and `Debug` impls for `ApiError`.
+* Improve documentation and `Debug` impls for `ApiError`.
+
+### Deprecated
+* Feature `std` is deprecated as it is now a no-op, since there is no benefit to linking the std lib via this crate.
 
 
 

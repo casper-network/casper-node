@@ -39,8 +39,9 @@ use crate::{
         },
         metrics::ConsensusMetrics,
         traits::NodeIdT,
+        validator_change::ValidatorChanges,
         ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
-        TimerId,
+        TimerId, ValidatorChange,
     },
     effect::{
         announcements::ControlAnnouncement,
@@ -232,6 +233,19 @@ where
         }
     }
 
+    /// Returns a list of status changes of active validators.
+    pub(super) fn get_validator_changes(
+        &self,
+    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
+        let mut result: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> = BTreeMap::new();
+        for ((_, era0), (era_id, era1)) in self.active_eras.iter().tuple_windows() {
+            for (pub_key, change) in ValidatorChanges::new(era0, era1).0 {
+                result.entry(pub_key).or_default().push((*era_id, change));
+            }
+        }
+        result
+    }
+
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let result = Digest::hash_pair(booking_block_hash, key_block_seed).value();
         u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
@@ -350,6 +364,7 @@ where
             start_height,
             new_faulty,
             faulty,
+            inactive,
             validators,
         );
 

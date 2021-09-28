@@ -1,3 +1,5 @@
+//! Support for legacy `RunGenesisRequest`/`GenesisConfig` that is not used by the node's contract
+//! runtime component anymore.
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -5,22 +7,24 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_types::ProtocolVersion;
+use casper_types::{
+    checksummed_hex::{ChecksummedHex, ChecksummedHexForm},
+    ProtocolVersion,
+};
 
 use super::genesis::ExecConfig;
 
+/// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {
-    #[serde(
-        serialize_with = "hex::serialize",
-        deserialize_with = "hex::deserialize"
-    )]
+    #[serde(with = "ChecksummedHexForm::<Digest>")]
     genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,
 }
 
 impl RunGenesisRequest {
+    /// Creates new genesis request.
     pub fn new(
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
@@ -33,18 +37,22 @@ impl RunGenesisRequest {
         }
     }
 
+    /// Returns genesis config hash.
     pub fn genesis_config_hash(&self) -> Digest {
         self.genesis_config_hash
     }
 
+    /// Returns protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
+    /// Returns EE config.
     pub fn ee_config(&self) -> &ExecConfig {
         &self.ee_config
     }
 
+    /// Returns a EE config and consumes the object.
     pub fn take_ee_config(self) -> ExecConfig {
         self.ee_config
     }

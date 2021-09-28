@@ -168,7 +168,7 @@ impl Reactor {
                         ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
-                            responder: None,
+                            maybe_responder: None,
                         }),
                     )
                 }
@@ -288,7 +288,7 @@ async fn should_fetch_from_local() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_to_store_on = &node_ids[0];
@@ -333,7 +333,7 @@ async fn should_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_with_deploy = node_ids[0];
@@ -351,7 +351,14 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), node_with_deploy));
+    // The deploy, while being stored, gets validated and hence updates its internal state to
+    // reflect this.  We call `is_valid()` on the deploy here to mirror that.
+    let mut validated_deploy = deploy.clone();
+    let _ = validated_deploy.is_valid();
+    let expected_result = Some(FetchResult::FromPeer(
+        Box::new(validated_deploy),
+        node_with_deploy,
+    ));
     assert_settled(
         &node_without_deploy,
         deploy_hash,
@@ -379,7 +386,7 @@ async fn should_timeout_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
     let deploy_hash = *deploy.id();
 
     let holding_node = node_ids[0];

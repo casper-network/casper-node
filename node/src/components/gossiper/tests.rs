@@ -48,6 +48,8 @@ use crate::{
     NodeRng,
 };
 
+const MAX_ASSOCIATED_KEYS: u32 = 100;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -201,6 +203,7 @@ impl reactor::Reactor for Reactor {
             &contract_runtime_config,
             WasmConfig::default(),
             SystemConfig::default(),
+            MAX_ASSOCIATED_KEYS,
             registry,
         )
         .unwrap();
@@ -315,7 +318,7 @@ impl reactor::Reactor for Reactor {
                         Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
-                            responder: None,
+                            maybe_responder: None,
                         })
                     }
                     NodeMessage::DeployGossiper(message) => {
@@ -339,7 +342,7 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
-                    responder,
+                    maybe_responder: responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -409,7 +412,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Box::new(Deploy::random(rng));
+        let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
         (*deploy.id(), deploy)
     })
     .take(deploy_count)
@@ -466,7 +469,7 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
@@ -545,7 +548,7 @@ async fn should_timeout_gossip_response() {
         .await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to node 0 to be gossiped.

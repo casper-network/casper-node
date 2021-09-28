@@ -25,8 +25,10 @@ All notable changes to this project will be documented in this file.  The format
 * Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
 * Support building and testing using stable Rust.
 * Increase price of `create_purse` to 2.5CSPR.
+* Increase price of native transfer to 100 million motes (0.1 CSPR).
 * Improve doc comments to clarify behavior of the bidding functionality.
-* Changed parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
+* Document `core` and `shared` modules and their children.
+* Change parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
 
 ### Fixed
 * Fix a case where user could potentially supply a refund purse as a payment purse.

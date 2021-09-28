@@ -17,6 +17,7 @@ pub struct TerminalLogger {
 }
 
 impl TerminalLogger {
+    /// Creates new terminal logger instance.
     pub fn new(settings: &Settings) -> Self {
         TerminalLogger {
             max_level: settings.max_level(),
@@ -26,6 +27,7 @@ impl TerminalLogger {
         }
     }
 
+    /// Preapres new log line.
     pub fn prepare_log_line(&self, record: &Record) -> Option<String> {
         if !self.enabled(record.metadata()) {
             return None;

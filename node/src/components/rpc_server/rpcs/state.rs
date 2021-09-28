@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
+use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -214,7 +214,7 @@ impl RpcWithParamsExt for GetItem {
             let result = Self::ResponseResult {
                 api_version,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -329,7 +329,7 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
-            let merkle_proof = hex::encode(proof_bytes);
+            let merkle_proof = base16::encode_lower(&proof_bytes);
 
             // Return the result.
             let result = Self::ResponseResult {
@@ -437,11 +437,12 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let maybe_bids = if let Ok(GetBidsResult::Success { bids, .. }) = get_bids_result {
-                Some(bids)
+            let maybe_bids = if let Ok(get_bids_result) = get_bids_result {
+                get_bids_result.into_success()
             } else {
                 None
             };
+
             let era_validators_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::QueryEraValidators {
@@ -590,7 +591,7 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -841,7 +842,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 api_version,
                 dictionary_key: dictionary_query_key.to_formatted_string(),
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -979,7 +980,7 @@ impl RpcWithParamsExt for QueryGlobalState {
                 api_version,
                 block_header: maybe_block_header,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)

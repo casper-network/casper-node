@@ -337,8 +337,18 @@ mod tests {
 
     #[test]
     fn schema() {
-        // The expected schema depends on the hashing algorithm
-        // selected by the `casper-mainnet` feature.
+        // The expected schema depends on the hashing algorithm selected by the `casper-mainnet`
+        // feature.
+        //
+        // To generate the contents to replace the input JSON files, run the test with and without
+        // the feature enabled and print the `actual_schema_string` by uncommenting the `println!`
+        // towards the end of the test
+        // ```
+        // cargo t --features=casper-mainnet components::rpc_server::tests::schema -- --nocapture
+        // cargo t --no-default-features components::rpc_server::tests::schema -- --nocapture
+        // ```
+        //
+        // Note: Please review the diff of the input files to avoid any breaking changes.
 
         #[cfg(feature = "casper-mainnet")]
         let schema_path = format!(
@@ -356,8 +366,10 @@ mod tests {
         let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
 
         let actual_schema = schema_for_value!(OPEN_RPC_SCHEMA.clone());
-        let actual_schema = serde_json::to_string(&actual_schema).unwrap();
-        let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+        let actual_schema_string = serde_json::to_string_pretty(&actual_schema).unwrap();
+        let actual_schema: Value = serde_json::from_str(&actual_schema_string).unwrap();
+
+        // println!("{}", actual_schema_string);
 
         assert_json_eq!(actual_schema, expected_schema);
     }

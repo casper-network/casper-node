@@ -5,8 +5,9 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -14,7 +15,7 @@ use crate::{
     account,
     account::TryFromSliceForAccountHashError,
     bytesrepr::{Bytes, Error, FromBytes, ToBytes},
-    uref, CLType, CLTyped, HashAddr,
+    checksummed_hex, uref, CLType, CLTyped, HashAddr,
 };
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
@@ -82,7 +83,8 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
 /// the ContractWasmHash
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasmHash(HashAddr);
 
 impl ContractWasmHash {
@@ -103,7 +105,7 @@ impl ContractWasmHash {
 
     /// Formats the `ContractWasmHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", WASM_STRING_PREFIX, base16::encode_lower(&self.0),)
+        format!("{}{}", WASM_STRING_PREFIX, checksummed_hex::encode(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -112,20 +114,20 @@ impl ContractWasmHash {
         let remainder = input
             .strip_prefix(WASM_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = HashAddr::try_from(base16::decode(remainder)?.as_ref())?;
+        let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractWasmHash(bytes))
     }
 }
 
 impl Display for ContractWasmHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", base16::encode_lower(&self.0))
+        write!(f, "{}", checksummed_hex::encode(&self.0))
     }
 }
 
 impl Debug for ContractWasmHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractWasmHash({})", base16::encode_lower(&self.0))
+        write!(f, "ContractWasmHash({})", checksummed_hex::encode(&self.0))
     }
 }
 impl CLTyped for ContractWasmHash {
@@ -207,7 +209,7 @@ impl TryFrom<&Vec<u8>> for ContractWasmHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractWasmHash {
     fn schema_name() -> String {
         String::from("ContractWasmHash")

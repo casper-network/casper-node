@@ -1,3 +1,4 @@
+//! Support for storage costs.
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
@@ -7,8 +8,10 @@ use casper_types::{
     Gas, U512,
 };
 
+/// Default gas cost per byte stored.
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 
+/// Represents a cost table for storage costs.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StorageCosts {
     /// Gas charged per byte stored in the global state.
@@ -16,10 +19,12 @@ pub struct StorageCosts {
 }
 
 impl StorageCosts {
+    /// Creates new `StorageCosts`.
     pub const fn new(gas_per_byte: u32) -> Self {
         Self { gas_per_byte }
     }
 
+    /// Returns amount of gas per byte stored.
     pub fn gas_per_byte(&self) -> u32 {
         self.gas_per_byte
     }
@@ -99,6 +104,7 @@ pub mod tests {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{num, prop_compose};

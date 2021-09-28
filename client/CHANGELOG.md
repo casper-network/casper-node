@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * RPM package build and publish.
+* New client binary command `get-validator-changes` that returns status changes of active validators.
 
 ### Changed
 * Support building and testing using stable Rust.

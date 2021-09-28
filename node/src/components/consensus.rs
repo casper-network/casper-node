@@ -13,6 +13,7 @@ mod protocols;
 #[cfg(test)]
 mod tests;
 mod traits;
+mod validator_change;
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -54,6 +55,7 @@ pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+pub(crate) use validator_change::ValidatorChange;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) enum ConsensusMessage {
@@ -339,6 +341,10 @@ where
             }
             Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 handling_es.status(responder)
+            }
+            Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                let validator_changes = self.get_validator_changes();
+                responder.respond(validator_changes).ignore()
             }
         }
     }

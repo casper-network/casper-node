@@ -998,12 +998,18 @@
             "anyOf": [
               {
                 "additionalProperties": false,
+                "description": "Executable specified as raw bytes that represent WASM code and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "ModuleBytes": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "module_bytes": {
                         "description": "Hex-encoded raw Wasm bytes.",
@@ -1024,14 +1030,21 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredContractByHash": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Name of an entry point.",
                         "type": "string"
                       },
                       "hash": {
@@ -1054,17 +1067,25 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredContractByName": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Name of an entry point.",
                         "type": "string"
                       },
                       "name": {
+                        "description": "Named key.",
                         "type": "string"
                       }
                     },
@@ -1083,14 +1104,21 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredVersionedContractByHash": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Entry point name.",
                         "type": "string"
                       },
                       "hash": {
@@ -1098,6 +1126,7 @@
                         "type": "string"
                       },
                       "version": {
+                        "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                         "format": "uint32",
                         "minimum": 0.0,
                         "type": [
@@ -1121,20 +1150,29 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Stored versioned contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
                 "properties": {
                   "StoredVersionedContractByName": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       },
                       "entry_point": {
+                        "description": "Entry point name.",
                         "type": "string"
                       },
                       "name": {
+                        "description": "Named key.",
                         "type": "string"
                       },
                       "version": {
+                        "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                         "format": "uint32",
                         "minimum": 0.0,
                         "type": [
@@ -1158,12 +1196,18 @@
               },
               {
                 "additionalProperties": false,
+                "description": "A native transfer which does not contain or reference a WASM code.",
                 "properties": {
                   "Transfer": {
                     "additionalProperties": false,
                     "properties": {
                       "args": {
-                        "$ref": "#/components/schemas/RuntimeArgs"
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
                       }
                     },
                     "required": [
@@ -1177,7 +1221,8 @@
                 ],
                 "type": "object"
               }
-            ]
+            ],
+            "description": "Represents possible variants of an executable deploy."
           },
           "ExecutionEffect": {
             "additionalProperties": false,
@@ -1610,6 +1655,33 @@
             ],
             "type": "object"
           },
+          "JsonValidatorStatusChange": {
+            "additionalProperties": false,
+            "description": "A single change to a validator's status in the given era.",
+            "properties": {
+              "era_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The era in which the change occurred."
+              },
+              "validator_change": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidatorChange"
+                  }
+                ],
+                "description": "The change in validator status."
+              }
+            },
+            "required": [
+              "era_id",
+              "validator_change"
+            ],
+            "type": "object"
+          },
           "JsonEraEnd": {
             "additionalProperties": false,
             "properties": {
@@ -1720,6 +1792,32 @@
             "required": [
               "public_key",
               "signature"
+            ],
+            "type": "object"
+          },
+          "JsonValidatorChanges": {
+            "additionalProperties": false,
+            "description": "The changes in a validator's status.",
+            "properties": {
+              "public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "The public key of the validator."
+              },
+              "status_changes": {
+                "description": "The set of changes to the validator's status.",
+                "items": {
+                  "$ref": "#/components/schemas/JsonValidatorStatusChange"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "public_key",
+              "status_changes"
             ],
             "type": "object"
           },
@@ -2554,6 +2652,17 @@
             ],
             "type": "object"
           },
+          "ValidatorChange": {
+            "description": "A change to a validator's status between two eras.",
+            "enum": [
+              "Added",
+              "Removed",
+              "Banned",
+              "CannotPropose",
+              "SeenAsFaulty"
+            ],
+            "type": "string"
+          },
           "ValidatorWeight": {
             "additionalProperties": false,
             "properties": {
@@ -3376,6 +3485,59 @@
             }
           },
           "summary": "returns the current status of the node"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_validator_changes_example",
+              "params": [],
+              "result": {
+                "name": "info_get_validator_changes_example_result",
+                "value": {
+                  "api_version": "1.3.2",
+                  "changes": [
+                    {
+                      "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "status_changes": [
+                        {
+                          "era_id": 1,
+                          "validator_change": "Added"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "name": "info_get_validator_changes",
+          "params": [],
+          "result": {
+            "name": "info_get_validator_changes_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for the \"info_get_validator_changes\" RPC.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "changes": {
+                  "description": "The validators' status changes.",
+                  "items": {
+                    "$ref": "#/components/schemas/JsonValidatorChanges"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "api_version",
+                "changes"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns status changes of active validators"
         },
         {
           "examples": [

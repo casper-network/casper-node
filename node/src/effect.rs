@@ -88,21 +88,20 @@ use casper_execution_engine::{
         genesis::GenesisSuccess,
         upgrade::{UpgradeConfig, UpgradeSuccess},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
-        MAX_PAYMENT,
     },
     storage::trie::Trie,
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, U512,
+    account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
 };
 
 use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1467,29 +1466,75 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_verified_account(self, account_key: Key) -> Option<bool>
+    /// Retrieves an `Account` from global state if present.
+    pub(crate) async fn get_account_from_global_state(
+        self,
+        prestate_hash: Digest,
+        account_key: Key,
+    ) -> Option<Account>
     where
         REv: From<ContractRuntimeRequest>,
-        REv: From<StorageRequest>,
     {
-        if let Some(block) = self.get_highest_block_from_storage().await {
-            let state_hash = *block.state_root_hash();
-            let query_request = QueryRequest::new(state_hash, account_key, vec![]);
-            if let Ok(QueryResult::Success { value, .. }) =
-                self.query_global_state(query_request).await
-            {
-                if let StoredValue::Account(account) = *value {
-                    let purse_uref = account.main_purse();
-                    let balance_request = BalanceRequest::new(state_hash, purse_uref);
-                    if let Ok(balance_result) = self.get_balance(balance_request).await {
-                        if let Some(motes) = balance_result.motes() {
-                            return Some(motes >= &*MAX_PAYMENT);
-                        }
-                    }
-                }
-            }
+        let query_request = QueryRequest::new(prestate_hash, account_key, vec![]);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
+            Ok(_) | Err(_) => None,
         }
-        None
+    }
+
+    /// Retrieves the balance of a purse, returns `None` if no purse is present.
+    pub(crate) async fn check_purse_balance(
+        self,
+        prestate_hash: Digest,
+        main_purse: URef,
+    ) -> Option<U512>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let balance_request = BalanceRequest::new(prestate_hash, main_purse);
+        match self.get_balance(balance_request).await {
+            Ok(balance_result) => {
+                if let Some(motes) = balance_result.motes() {
+                    return Some(*motes);
+                }
+                None
+            }
+            Err(_) => None,
+        }
+    }
+
+    /// Retrieves an `Contract` from global state if present.
+    pub(crate) async fn get_contract_for_validation(
+        self,
+        prestate_hash: Digest,
+        query_key: Key,
+        path: Vec<String>,
+    ) -> Option<Contract>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => value.as_contract().cloned(),
+            Ok(_) | Err(_) => None,
+        }
+    }
+
+    /// Retrieves an `ContractPackage` from global state if present.
+    pub(crate) async fn get_contract_package_for_validation(
+        self,
+        prestate_hash: Digest,
+        query_key: Key,
+        path: Vec<String>,
+    ) -> Option<ContractPackage>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => value.as_contract_package().cloned(),
+            Ok(_) | Err(_) => None,
+        }
     }
 
     /// Requests a query be executed on the Contract Runtime component.
@@ -1675,6 +1720,17 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ConsensusRequest>,
     {
         self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+            .await
+    }
+
+    /// Returns a list of validator status changes, by public key.
+    pub(crate) async fn get_consensus_validator_changes(
+        self,
+    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
             .await
     }
 

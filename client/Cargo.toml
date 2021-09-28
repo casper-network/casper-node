@@ -26,9 +26,8 @@ base64 = "0.13.0"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node = { version = "1.0.0", path = "../node" }
 casper-hashing = { version = "1.0.0", path = "../hashing" }
-casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std"] }
+casper-types = { version = "1.0.0", path = "../types" }
 clap = "2"
-hex = { version = "0.4.2", features = ["serde"] }
 humantime = "2"
 jsonrpc-lite = "0.5.0"
 once_cell = "1"
@@ -45,6 +44,7 @@ cbindgen = { version = "0.18", optional = true }
 
 [dev-dependencies]
 anyhow = "1"
+base16 = "0.2.1"
 casper-node = { path = "../node" }
 futures = "0.3.13"
 hyper = "0.14.4"

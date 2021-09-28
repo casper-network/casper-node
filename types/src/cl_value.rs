@@ -2,19 +2,18 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use alloc::{string::String, vec::Vec};
-use core::fmt;
+use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    CLType, CLTyped,
+    checksummed_hex, CLType, CLTyped,
 };
 
 mod jsonrepr;
@@ -29,8 +28,8 @@ pub struct CLTypeMismatch {
     pub found: CLType,
 }
 
-impl fmt::Display for CLTypeMismatch {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+impl Display for CLTypeMismatch {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "Expected {:?} but found {:?}.",
@@ -41,13 +40,10 @@ impl fmt::Display for CLTypeMismatch {
 
 /// Error relating to [`CLValue`] operations.
 #[derive(PartialEq, Eq, Clone, Debug)]
-#[cfg_attr(feature = "std", derive(Error))]
 pub enum CLValueError {
     /// An error while serializing or deserializing the underlying data.
-    #[cfg_attr(feature = "std", error("CLValue error: {}", _0))]
     Serialization(bytesrepr::Error),
     /// A type mismatch while trying to convert a [`CLValue`] into a given type.
-    #[cfg_attr(feature = "std", error("Type mismatch: {}", _0))]
     Type(CLTypeMismatch),
 }
 
@@ -57,13 +53,22 @@ impl From<bytesrepr::Error> for CLValueError {
     }
 }
 
+impl Display for CLValueError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            CLValueError::Serialization(error) => write!(formatter, "CLValue error: {}", error),
+            CLValueError::Type(error) => write!(formatter, "Type mismatch: {}", error),
+        }
+    }
+}
+
 /// A Casper value, i.e. a value which can be stored and manipulated by smart contracts.
 ///
 /// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the
 /// [`CLType`] of the underlying data as a separate member.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug, DataSize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct CLValue {
-    #[data_size(skip)]
     cl_type: CLType,
     bytes: Bytes,
 }
@@ -159,7 +164,7 @@ impl FromBytes for CLValue {
 }
 
 /// We need to implement `JsonSchema` for `CLValue` as though it is a `CLValueJson`.
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for CLValue {
     fn schema_name() -> String {
         "CLValue".to_string()
@@ -179,8 +184,8 @@ impl JsonSchema for CLValue {
 /// CLValue is encoded to JSON, and can always be set to null if preferred.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-#[cfg_attr(feature = "std", schemars(rename = "CLValue"))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "CLValue"))]
 struct CLValueJson {
     cl_type: CLType,
     bytes: String,
@@ -192,7 +197,7 @@ impl Serialize for CLValue {
         if serializer.is_human_readable() {
             CLValueJson {
                 cl_type: self.cl_type.clone(),
-                bytes: base16::encode_lower(&self.bytes),
+                bytes: checksummed_hex::encode(&self.bytes),
                 parsed: jsonrepr::cl_value_to_json(self),
             }
             .serialize(serializer)
@@ -208,7 +213,7 @@ impl<'de> Deserialize<'de> for CLValue {
             let json = CLValueJson::deserialize(deserializer)?;
             (
                 json.cl_type.clone(),
-                base16::decode(&json.bytes).map_err(D::Error::custom)?,
+                checksummed_hex::decode(&json.bytes).map_err(D::Error::custom)?,
             )
         } else {
             <(CLType, Vec<u8>)>::deserialize(deserializer)?
@@ -224,7 +229,7 @@ impl<'de> Deserialize<'de> for CLValue {
 mod tests {
     use alloc::string::ToString;
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "json-schema")]
     use schemars::schema_for;
 
     use super::*;
@@ -235,7 +240,7 @@ mod tests {
         TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
     };
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "json-schema")]
     #[test]
     fn json_schema() {
         let json_clvalue_schema = schema_for!(CLValueJson);
@@ -422,13 +427,13 @@ mod tests {
                 PublicKey::from(
                     &SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap(),
                 ),
-                r#"{"cl_type":"PublicKey","parsed":"01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"}"#,
+                r#"{"cl_type":"PublicKey","parsed":"01ea4A6c63e29C520ABEf5507B132eC5F9954776aeBEBE7B92421EEA691446D22C"}"#,
             );
             check_to_json(
                 PublicKey::from(
                     &SecretKey::secp256k1_from_bytes([8; SecretKey::SECP256K1_LENGTH]).unwrap(),
                 ),
-                r#"{"cl_type":"PublicKey","parsed":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}"#,
+                r#"{"cl_type":"PublicKey","parsed":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}"#,
             );
         }
     }
@@ -653,13 +658,13 @@ mod tests {
                 Some(PublicKey::from(
                     &SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap(),
                 )),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"}"#,
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"01ea4A6c63e29C520ABEf5507B132eC5F9954776aeBEBE7B92421EEA691446D22C"}"#,
             );
             check_to_json(
                 Some(PublicKey::from(
                     &SecretKey::secp256k1_from_bytes([8; SecretKey::SECP256K1_LENGTH]).unwrap(),
                 )),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}"#,
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}"#,
             );
             check_to_json(
                 Option::<PublicKey>::None,
@@ -1149,19 +1154,19 @@ mod tests {
             let public_key = PublicKey::from(&secret_key);
             check_to_json(
                 Result::<PublicKey, i32>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, u32>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, ()>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, String>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed":{"Ok":"0203F991f944D1E1954a7Fc8b9BF62E0D78F015F4C07762d505e20e6c45260A3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, i32>::Err(-1),

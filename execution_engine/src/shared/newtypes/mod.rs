@@ -5,14 +5,18 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 use uuid::Uuid;
 
+/// A correlation id is a unique identifier which can be used to track the progress of a given
+/// execution engine operation.
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Serialize)]
 pub struct CorrelationId(Uuid);
 
 impl CorrelationId {
+    /// Creates new unique `CorrelationId`.
     pub fn new() -> CorrelationId {
         CorrelationId(Uuid::new_v4())
     }
 
+    /// Returns true if the given unique identifier is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_nil()
     }

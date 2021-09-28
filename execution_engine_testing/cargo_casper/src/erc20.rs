@@ -25,11 +25,11 @@ pub static CONTRACT_DEPENDENCIES: Lazy<String> = Lazy::new(|| {
 pub static TEST_DEPENDENCIES: Lazy<String> = Lazy::new(|| {
     format!(
         "{}{}{}{}{}{}",
-        Dependency::new("base64", "0.13.0").display_with_features(true, vec![]),
-        Dependency::new("blake2", "0.9.2").display_with_features(true, vec![]),
+        Dependency::new("base64", "0.13.0").display_with_features(false, vec!["alloc"]),
+        Dependency::new("blake2", "0.9.2").display_with_features(false, vec![]),
         CL_ENGINE_TEST_SUPPORT.display_with_features(true, vec!["test-support"]),
-        CL_ERC20.display_with_features(true, vec!["std"]),
-        CL_TYPES.display_with_features(true, vec!["std"]),
-        Dependency::new("hex", "0.4.3").display_with_features(true, vec![]),
+        CL_ERC20.display_with_features(false, vec![]),
+        CL_TYPES.display_with_features(true, vec![]),
+        Dependency::new("hex", "0.4.3").display_with_features(false, vec!["alloc"]),
     )
 });

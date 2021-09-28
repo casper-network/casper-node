@@ -121,7 +121,7 @@ impl Debug for Message {
             Message::GetRequest { tag, serialized_id } => f
                 .debug_struct("GetRequest")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_id))
+                .field("serialized_item", &base16::encode_lower(serialized_id))
                 .finish(),
             Message::GetResponse {
                 tag,
@@ -129,7 +129,7 @@ impl Debug for Message {
             } => f
                 .debug_struct("GetResponse")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_item))
+                .field("serialized_item", &base16::encode_lower(serialized_item))
                 .finish(),
             Message::FinalitySignature(fs) => {
                 f.debug_tuple("FinalitySignature").field(&fs).finish()

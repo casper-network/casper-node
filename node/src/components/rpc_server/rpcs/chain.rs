@@ -459,7 +459,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                     era_id,
                     stored_value,
                     state_root_hash,
-                    merkle_proof: hex::encode(proof_bytes),
+                    merkle_proof: base16::encode_lower(&proof_bytes),
                 }),
             };
 

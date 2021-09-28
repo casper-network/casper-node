@@ -18,8 +18,8 @@ pub static CONTRACT_DEPENDENCIES: Lazy<String> = Lazy::new(|| {
 pub static TEST_DEPENDENCIES: Lazy<String> = Lazy::new(|| {
     format!(
         "{}{}{}",
-        CL_CONTRACT.display_with_features(false, vec!["std", "test-support"]),
+        CL_CONTRACT.display_with_features(true, vec!["test-support"]),
         CL_ENGINE_TEST_SUPPORT.display_with_features(true, vec!["test-support"]),
-        CL_TYPES.display_with_features(false, vec!["std"]),
+        CL_TYPES.display_with_features(true, vec![]),
     )
 });
