@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
 set -e
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+LAUNCHER_DIR="$ROOT_DIR/../"
+pushd "$ROOT_DIR"
+source $(pwd)/utils/nctl/activate
+
 function main() {
     local TEST_ID=${1}
     local SKIP_SETUP=${2}
     if [ "$SKIP_SETUP" != "true" ]; then
-        ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
-        LAUNCHER_DIR="$ROOT_DIR/../"
-
         # NCTL compile requires casper-node-launcher
         if [ ! -d "$LAUNCHER_DIR/casper-node-launcher" ]; then
             pushd $LAUNCHER_DIR
             git clone https://github.com/CasperLabs/casper-node-launcher.git
         fi
 
-        # Activate Environment
-        pushd "$ROOT_DIR"
-        source $(pwd)/utils/nctl/activate
-
         # NCTL Build
+        pushd "$ROOT_DIR"
         nctl-compile
 
         # Stage
