@@ -15,7 +15,7 @@ pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
     fn get_caller(&self) -> AccountHash;
 
-    /// Checks if given account hash is an allowed caller.
+    /// Checks if account_hash matches the active session's account.
     fn is_allowed_session_caller(&self, account_hash: &AccountHash) -> bool;
 
     /// Gets named key under a `name`.

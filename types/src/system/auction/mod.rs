@@ -108,16 +108,16 @@ pub trait Auction:
     ) -> Result<U512, Error> {
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
-        if !self.is_allowed_session_caller(&provided_account_hash) {
-            return Err(Error::InvalidContext);
-        }
-
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
         }
 
         if delegation_rate > DELEGATION_RATE_DENOMINATOR {
             return Err(Error::DelegationRateTooLarge);
+        }
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
         }
 
         let source = self.get_main_purse()?;
@@ -241,12 +241,12 @@ pub trait Auction:
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
 
-        if !self.is_allowed_session_caller(&provided_account_hash) {
-            return Err(Error::InvalidContext);
-        }
-
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
+        }
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
         }
 
         let source = self.get_main_purse()?;

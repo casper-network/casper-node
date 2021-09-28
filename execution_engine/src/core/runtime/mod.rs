@@ -1222,9 +1222,7 @@ where
     /// hash.
     fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
         if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
-            if account_hash == provided_account_hash {
-                return true;
-            }
+            return account_hash == provided_account_hash;
         }
         false
     }
