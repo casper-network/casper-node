@@ -5,13 +5,15 @@ use casper_types::{
     allocate_buffer,
     bytesrepr::{FromBytes, ToBytes},
 };
-use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use itertools::Itertools;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct IndexedMerkleProofDeserializeValidator {
+struct IndexedMerkleProofDeserializeValidator {
     index: u64,
     count: u64,
     merkle_proof: Vec<Digest>,
@@ -80,6 +82,7 @@ impl FromBytes for IndexedMerkleProof {
 }
 
 impl IndexedMerkleProof {
+    #[cfg(test)]
     pub(crate) fn new<I>(
         leaves: I,
         index: u64,

@@ -510,15 +510,11 @@ mod test {
     #[test]
     fn picks_correct_hashing_method() {
         let data_smaller_than_chunk_size = vec![];
-        assert_eq!(
-            false,
-            Digest::should_hash_with_chunks(data_smaller_than_chunk_size)
-        );
+        assert!(!Digest::should_hash_with_chunks(
+            data_smaller_than_chunk_size
+        ));
 
         let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE * 2];
-        assert_eq!(
-            true,
-            Digest::should_hash_with_chunks(data_bigger_than_chunk_size)
-        );
+        assert!(Digest::should_hash_with_chunks(data_bigger_than_chunk_size));
     }
 }
