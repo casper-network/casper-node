@@ -66,11 +66,9 @@
 )]
 #![warn(missing_docs)]
 
-mod account;
 mod additive_map_diff;
 mod code;
 mod deploy_item_builder;
-mod error;
 mod execute_request_builder;
 mod session;
 mod step_request_builder;
@@ -80,15 +78,9 @@ pub mod utils;
 mod value;
 mod wasm_test_builder;
 
-/// TODO: doc comment.
-// pub use account::Account;
-/// TODO: doc comment.
-// pub use casper_types::account::AccountHash;
 use casper_types::account::{Account, AccountHash};
 /// TODO: doc comment.
 pub use code::Code;
-/// TODO: doc comment.
-pub use error::{Error, Result};
 /// TODO: doc comment.
 pub use session::{Session, SessionBuilder, SessionTransferInfo};
 /// TODO: doc comment.

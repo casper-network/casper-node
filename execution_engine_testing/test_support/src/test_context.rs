@@ -5,7 +5,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_types::{AccessRights, Key, Motes, PublicKey, StoredValue, URef, U512};
 
 use crate::{
-    Account, AccountHash, Error, InMemoryWasmTestContext, Result, Session, URefAddr, Value,
+    Account, AccountHash, InMemoryWasmTestContext, Session, URefAddr, Value,
     DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
 };
 
@@ -110,11 +110,10 @@ impl TestContext {
     /// Queries for a [`Value`] stored under the given `key` and `path`.
     ///
     /// Returns an [`Error`] if not found.
-    pub fn query(&self, key: AccountHash, path: &[String]) -> Result<Value> {
+    pub fn query(&self, key: AccountHash, path: &[String]) -> Result<Value, String> {
         self.inner
             .query(None, Key::Account(key), path)
             .map(Value::new)
-            .map_err(Error::from)
     }
 
     /// Queries for a [`Value`] stored in a dictionary under a given 'name'
@@ -125,51 +124,39 @@ impl TestContext {
         key: Key,
         dictionary_name: Option<String>,
         dictionary_item_key: String,
-    ) -> Result<Value> {
+    ) -> Result<Value, String> {
         let empty_path = vec![];
         let dictionary_key_bytes = dictionary_item_key.as_bytes();
         let address = match key {
             Key::Account(_) | Key::Hash(_) => {
                 if let Some(name) = dictionary_name {
-                    let stored_value = self.inner.query(None, key, &[]).map_err(Error::from)?;
+                    let stored_value = self.inner.query(None, key, &[])?;
 
                     let named_keys = match &stored_value {
                         StoredValue::Account(account) => account.named_keys(),
                         StoredValue::Contract(contract) => contract.named_keys(),
                         _ => {
-                            return Err(Error::from(
-                                "Provided base key is nether an account or a contract".to_string(),
-                            ))
+                            return Err(
+                                "Provided base key is nether an account or a contract".to_string()
+                            )
                         }
                     };
 
-                    let dictionary_uref =
-                        named_keys
-                            .get(&name)
-                            .and_then(Key::as_uref)
-                            .ok_or_else(|| {
-                                Error::from(
-                                    "No dictionary uref was found in named keys".to_string(),
-                                )
-                            })?;
+                    let dictionary_uref = named_keys
+                        .get(&name)
+                        .and_then(Key::as_uref)
+                        .ok_or_else(|| "No dictionary uref was found in named keys".to_string())?;
 
                     Key::dictionary(*dictionary_uref, dictionary_key_bytes)
                 } else {
-                    return Err(Error::from("No dictionary name was provided".to_string()));
+                    return Err("No dictionary name was provided".to_string());
                 }
             }
             Key::URef(uref) => Key::dictionary(uref, dictionary_key_bytes),
             Key::Dictionary(address) => Key::Dictionary(address),
-            _ => {
-                return Err(Error::from(
-                    "Unsupported key type for a query to a dictionary item".to_string(),
-                ))
-            }
+            _ => return Err("Unsupported key type for a query to a dictionary item".to_string()),
         };
-        self.inner
-            .query(None, address, &empty_path)
-            .map(Value::new)
-            .map_err(Error::from)
+        self.inner.query(None, address, &empty_path).map(Value::new)
     }
 
     /// Gets the balance of the purse under the given [`URefAddr`].
