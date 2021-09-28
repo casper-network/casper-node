@@ -87,10 +87,17 @@ type ConsensusConstructor<I> = dyn Fn(
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
-    /// A map of active consensus protocols.
-    /// A value is a trait so that we can run different consensus protocol instances per era.
+    /// A map of active consensus protocol instances.
+    /// A value is a trait so that we can run different consensus protocols per era.
     ///
-    /// This map always contains exactly three entries, with the last one being the current one.
+    /// This map contains three consecutive entries, with the last one being the current era N. Era
+    /// N - 1 is also kept in memory so that we would still detect any equivocations there and use
+    /// them in era N to get the equivocator banned. And era N - 2 one is in a frozen state: It
+    /// doesn't accept any new Highway units anymore, but we keep the instance in memory so we can
+    /// evaluate evidence that units in era N - 1 might cite.
+    ///
+    /// Since eras at or before the most recent activation point are never instantiated, shortly
+    /// after that there can temporarily be fewer than three entries in the map.
     active_eras: HashMap<EraId, Era<I>>,
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
@@ -184,12 +191,17 @@ where
         let auction_delay = era_supervisor.protocol_config.auction_delay;
         let last_activation_point = era_supervisor.protocol_config.last_activation_point;
         let mut switch_blocks = Vec::new();
-        // We need to initialize current_era, current_era - 1 and current_era - 2. To initialize an
-        // era, all switch blocks between its booking block and its key block are required. The
-        // booking block for era N is in N - auction_delay - 1, and the key block in N - 1.
-        // So we need all switch blocks between (including) current_era - 2 - auction_delay - 1
-        // and (excluding) current_era. However, we never use any block from before the last
-        // activation point.
+
+        // We need to initialize current_era, current_era - 1 and (frozen) current_era - 2. To
+        // initialize an era, all switch blocks between its booking block and its key block are
+        // required. The booking block for era N is in N - auction_delay - 1, and the key block in
+        // N - 1. So we need all switch blocks between:
+        // (including) current_era - 2 - auction_delay - 1 and (excluding) current_era.
+        // However, we never use any block from before the last activation point.
+        //
+        // Example: If auction_delay is 1, to initialize era N we need the switch blocks from era N
+        // and N - 1. If current_era is 10, we will initialize eras 10, 9 and 8. So we need the
+        // switch blocks from eras 9, 8, 7 and 6.
         let earliest_era =
             last_activation_point.max(current_era.saturating_sub(auction_delay).saturating_sub(3));
         for era_id in (earliest_era.value()..current_era.value()).map(EraId::from) {
@@ -198,10 +210,15 @@ where
                 .ok_or_else(|| anyhow::Error::msg("No such switch block"))?;
             switch_blocks.push(switch_block);
         }
+
         // The create_new_era method initializes the era that the slice's last block is the key
         // block for. We want to initialize the three latest eras, so we have to pass in the whole
         // slice for the current era, and omit one or two elements for the other two. We never
         // initialize the last_activation_point or an earlier era, however.
+        //
+        // In the example above, we would call create_new_era with the switch blocks from eras
+        // 8 and 9 (to initialize 10) then 7 and 8 (for era 9), and finally 6 and 7 (for era 8).
+        // (We don't truncate the slice at the start since unneeded blocks are ignored.)
         let mut effects = Effects::new();
         for i in (switch_blocks.len().saturating_sub(2).max(1)..=switch_blocks.len()).rev() {
             effects.extend(era_supervisor.create_new_era(effect_builder, rng, &switch_blocks[..i]));
