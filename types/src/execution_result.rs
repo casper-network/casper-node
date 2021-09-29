@@ -272,7 +272,6 @@ impl FromBytes for ExecutionResult {
 #[serde(deny_unknown_fields)]
 pub struct ExecutionEffect {
     /// The resulting operations.
-    #[deprecated(since = "1.4.0")]
     pub operations: Vec<Operation>,
     /// The journal of execution transforms.
     pub transforms: Vec<TransformEntry>,
