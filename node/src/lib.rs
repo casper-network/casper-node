@@ -37,7 +37,13 @@ pub(crate) mod utils;
 pub mod cli;
 pub mod crypto;
 pub mod types;
-pub use components::{contract_runtime, rpc_server::rpcs};
+
+pub use components::{
+    contract_runtime,
+    rpc_server::rpcs,
+    storage::{self, Config as StorageConfig},
+};
+pub use utils::WithDir;
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
@@ -60,8 +66,9 @@ pub(crate) use components::{
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig, linear_chain_sync::Config as LinearChainSyncConfig,
     rest_server::Config as RestServerConfig, rpc_server::Config as RpcServerConfig,
-    small_network::Config as SmallNetworkConfig, storage::Config as StorageConfig,
+    small_network::Config as SmallNetworkConfig,
 };
+
 pub(crate) use types::NodeRng;
 
 /// The maximum thread count which should be spawned by the tokio runtime.

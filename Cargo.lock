@@ -1539,11 +1539,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "casper-contract",
+ "casper-engine-test-support",
  "casper-execution-engine",
  "casper-hashing",
  "casper-node",
  "casper-types",
  "hex",
+ "histogram",
  "indicatif",
  "lmdb",
  "log",
@@ -2558,6 +2560,12 @@ name = "hex_fmt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b07f60793ff0a4d9cef0f18e63b5357e06209987153a64648c972c1e5aff336f"
+
+[[package]]
+name = "histogram"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12cb882ccb290b8646e554b157ab0b71e64e8d5bef775cd66b6531e52d302669"
 
 [[package]]
 name = "hmac"

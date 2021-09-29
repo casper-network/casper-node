@@ -15,14 +15,13 @@ use casper_node::{
         info::{GetDeployParams, GetDeployResult},
         state::{GetTrieParams, GetTrieResult},
     },
-    types::{BlockHash, Deploy, JsonBlock},
+    storage::Storage,
+    types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
 };
 use casper_types::{bytesrepr::FromBytes, Key, StoredValue};
 
 pub mod rpc;
 pub mod storage;
-
-use crate::storage::LocalStorage;
 
 pub const LMDB_PATH: &str = "lmdb-data";
 pub const CHAIN_DOWNLOAD_PATH: &str = "chain-download";
@@ -160,7 +159,7 @@ pub async fn download_block_with_deploys(
 /// Download block files from the highest (provided) block hash to genesis.
 pub async fn download_or_read_blocks(
     client: &mut Client,
-    local_storage: &LocalStorage,
+    storage: &mut Storage,
     url: &str,
     highest_block: Option<&BlockIdentifier>,
     progress_fn: impl Fn() + Send + Sync,
@@ -169,16 +168,11 @@ pub async fn download_or_read_blocks(
     let mut blocks_read_from_disk = 0;
     let mut maybe_next_block_hash_and_source = match highest_block.as_ref() {
         Some(block_identifier) => {
-            download_or_read_block_and_extract_parent_hash(
-                client,
-                local_storage,
-                url,
-                *block_identifier,
-            )
-            .await?
+            download_or_read_block_and_extract_parent_hash(client, storage, url, *block_identifier)
+                .await?
         }
         // Get the highest block.
-        None => get_block_and_download(client, local_storage, url, None)
+        None => get_block_and_download(client, storage, url, None)
             .await?
             .map(|block_hash| (block_hash, BlockSource::Http)),
     };
@@ -193,7 +187,7 @@ pub async fn download_or_read_blocks(
         }
         maybe_next_block_hash_and_source = download_or_read_block_and_extract_parent_hash(
             client,
-            local_storage,
+            storage,
             url,
             &BlockIdentifier::Hash(*next_block_hash),
         )
@@ -208,15 +202,26 @@ enum BlockSource {
     Storage,
 }
 
+/// Get a block by it's [`BlockIdentifier`].
+pub fn get_block_by_identifier(
+    storage: &Storage,
+    identifier: &BlockIdentifier,
+) -> Result<Option<Block>, anyhow::Error> {
+    match identifier {
+        BlockIdentifier::Hash(ref block_hash) => Ok(storage.read_block(block_hash)?),
+        BlockIdentifier::Height(ref height) => Ok(storage.read_block_by_height(*height)?),
+    }
+}
+
 async fn download_or_read_block_and_extract_parent_hash(
     client: &mut Client,
-    local_storage: &LocalStorage,
+    storage: &mut Storage,
     url: &str,
     block_identifier: &BlockIdentifier,
 ) -> Result<Option<(BlockHash, BlockSource)>, anyhow::Error> {
-    match local_storage.get_block_by_identifier(block_identifier)? {
+    match get_block_by_identifier(storage, block_identifier)? {
         None => Ok(
-            get_block_and_download(client, local_storage, url, Some(*block_identifier))
+            get_block_and_download(client, storage, url, Some(*block_identifier))
                 .await?
                 .map(|block| (block, BlockSource::Http)),
         ),
@@ -235,7 +240,7 @@ async fn download_or_read_block_and_extract_parent_hash(
 
 async fn get_block_and_download(
     client: &mut Client,
-    local_storage: &LocalStorage,
+    storage: &mut Storage,
     url: &str,
     block_identifier: Option<BlockIdentifier>,
 ) -> Result<Option<BlockHash>, anyhow::Error> {
@@ -249,7 +254,7 @@ async fn get_block_and_download(
     } = block
     {
         let block_with_deploys = download_block_with_deploys(client, url, json_block.hash).await?;
-        local_storage.put_block_with_deploys(&block_with_deploys)?;
+        put_block_with_deploys(storage, &block_with_deploys)?;
         if block_with_deploys.block.header.height != 0 {
             Ok(Some(block_with_deploys.block.header.parent_hash))
         } else {
@@ -258,6 +263,30 @@ async fn get_block_and_download(
     } else {
         Err(anyhow::anyhow!("unable to download highest block"))
     }
+}
+
+/// Store a single [`BlockWithDeploys`]'s [`Block`], `deploys` and `transfers`.
+pub fn put_block_with_deploys(
+    storage: &mut Storage,
+    block_with_deploys: &BlockWithDeploys,
+) -> Result<(), anyhow::Error> {
+    for deploy in block_with_deploys.deploys.iter() {
+        if let DeployOrTransferHash::Deploy(_hash) = deploy.deploy_or_transfer_hash() {
+            storage.put_deploy(deploy)?;
+        } else {
+            return Err(anyhow::anyhow!("transfer found in list of deploys"));
+        }
+    }
+    for transfer in block_with_deploys.transfers.iter() {
+        if let DeployOrTransferHash::Transfer(_hash) = transfer.deploy_or_transfer_hash() {
+            storage.put_deploy(transfer)?;
+        } else {
+            return Err(anyhow::anyhow!("deploy found in list of transfers"));
+        }
+    }
+    let block: Block = block_with_deploys.block.clone().into();
+    storage.write_block(&block)?;
+    Ok(())
 }
 
 /// Download the trie from a node to the provided lmdb path.

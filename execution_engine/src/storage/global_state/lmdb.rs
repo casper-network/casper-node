@@ -292,7 +292,6 @@ mod tests {
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
                 true,
-                2,
             )
             .unwrap(),
         );

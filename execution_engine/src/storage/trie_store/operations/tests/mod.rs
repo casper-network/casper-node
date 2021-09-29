@@ -584,7 +584,6 @@ impl LmdbTestContext {
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
             true,
-            2,
         )?;
         let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
         put_tries::<_, _, _, _, error::Error>(&environment, &store, tries)?;

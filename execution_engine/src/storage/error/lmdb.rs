@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
-use crate::storage::{error::in_memory, global_state::CommitError, MIN_DBS};
+use crate::storage::{error::in_memory, global_state::CommitError};
 
 /// Error enum representing possible error states in LMDB interactions.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
@@ -25,10 +25,6 @@ pub enum Error {
     /// Error committing to execution engine.
     #[error(transparent)]
     CommitError(#[from] CommitError),
-
-    /// Error when creating an LMDB environment with fewer than the minimum databases.
-    #[error("Not enough databases, need at least {}", MIN_DBS)]
-    NotEnoughDatabases,
 }
 
 impl wasmi::HostError for Error {}

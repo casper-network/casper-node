@@ -14,7 +14,8 @@ cd ../dry-run-deploys
 
 # The tries currently downloaded represent height 0, so execute blocks from height 
 # 1 to 10 (inclusive)
-cargo run -- --chain-download-path ../retrieve-state/chain-download \
+cargo run --release -- \
+  --chain-download-path ../retrieve-state/chain-download \
   --lmdb-path ../retrieve-state/lmdb-data \
   --starting-block-height 1 \
   --ending-block-height 10

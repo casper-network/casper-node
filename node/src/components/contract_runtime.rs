@@ -50,8 +50,6 @@ pub use operations::execute_finalized_block;
 pub use types::BlockAndExecutionEffects;
 pub(crate) use types::EraValidatorsRequest;
 
-const EE_DB_COUNT: u32 = 2;
-
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
@@ -510,7 +508,6 @@ impl ContractRuntime {
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
             contract_runtime_config.manual_sync_enabled(),
-            EE_DB_COUNT,
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(

@@ -8,10 +8,7 @@ use std::{
 
 use indicatif::ProgressBar;
 use reqwest::ClientBuilder;
-use retrieve_state::{
-    storage::{create_lmdb_environment, LocalStorage},
-    BlockWithDeploys,
-};
+use retrieve_state::{put_block_with_deploys, BlockWithDeploys};
 use structopt::StructOpt;
 use tokio::{fs::File, io::AsyncReadExt};
 use walkdir::DirEntry;
@@ -20,6 +17,8 @@ use casper_node::{
     rpcs::chain::{BlockIdentifier, GetBlockParams},
     types::JsonBlock,
 };
+
+use retrieve_state::storage::create_storage;
 
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";
@@ -85,6 +84,9 @@ struct Opts {
         about = "Specify the path to the folder to be used for loading block files to be converted."
     )]
     block_file_download_path: Option<PathBuf>,
+
+    #[structopt(short, long, about = "Enable manual syncing after each block to LMDB")]
+    manual_sync_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -156,9 +158,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
                 Some(path) => path
             };
-            let lmdb_environment =
-                create_lmdb_environment(&chain_download_path, retrieve_state::DEFAULT_MAX_DB_SIZE)?;
-            let local_storage = LocalStorage::create(lmdb_environment)?;
+            let mut storage = create_storage(&chain_download_path).expect("should create storage");
             let block_files = get_block_files(&block_file_download_path);
             println!(
                 "loading {} blocks from {} into db at {}",
@@ -171,10 +171,10 @@ async fn main() -> Result<(), anyhow::Error> {
             let mut blocks_already_present = 0;
             for block_file in block_files {
                 let block_with_deploys = read_block_file(&block_file).await?;
-                match local_storage.get_block_by_hash(&block_with_deploys.block.hash)? {
+                match storage.read_block(&block_with_deploys.block.hash)? {
                     Some(_found) => blocks_already_present += 1,
                     None => {
-                        local_storage.put_block_with_deploys(&block_with_deploys)?;
+                        put_block_with_deploys(&mut storage, &block_with_deploys)?;
                         blocks_converted += 1;
                     }
                 }
@@ -200,13 +200,12 @@ async fn main() -> Result<(), anyhow::Error> {
                     .block
                     .unwrap();
             let progress = ProgressBar::new(highest_block.header.height);
-            let lmdb_environment =
-                create_lmdb_environment(&chain_download_path, retrieve_state::DEFAULT_MAX_DB_SIZE)?;
-            let local_storage = LocalStorage::create(lmdb_environment)?;
+
+            let mut storage = create_storage(&chain_download_path).expect("should create storage");
             println!("Downloading all blocks to genesis...");
             let (downloaded, read_from_disk) = retrieve_state::download_or_read_blocks(
                 &mut client,
-                &local_storage,
+                &mut storage,
                 &url,
                 maybe_highest_block.as_ref(),
                 || progress.inc(1),
@@ -234,6 +233,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 lmdb_path,
                 opts.max_db_size
                     .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE),
+                opts.manual_sync_enabled,
             )?;
             retrieve_state::download_trie(
                 &mut client,
