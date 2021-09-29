@@ -15,9 +15,8 @@ const PACKAGE_NAME: &str = "tests";
 
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
-    use casper_engine_test_support::{
-        Code, Error, SessionBuilder, TestContextBuilder, Value,
-    };
+    use std::path::PathBuf;
+    use casper_engine_test_support::{SessionBuilder, TestContextBuilder, DeployItemBuilder};
     use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey, SecretKey};
 
     const MY_ACCOUNT: [u8; 32] = [7u8; 32];
@@ -40,10 +39,12 @@ mod tests {
         // relative to the current working dir (e.g. 'wasm/contract.wasm') can also be used, as can
         // absolute paths.
         let session_code = Code::from("contract.wasm");
+        let path = PathBuf::from("contract.wasm");
         let session_args = runtime_args! {
             ARG_MESSAGE => VALUE,
         };
-        let session = SessionBuilder::new(session_code, session_args)
+        let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
+        let session = SessionBuilder::new(di_builder)
             .with_address(account_addr)
             .with_authorization_keys(&[account_addr])
             .build();

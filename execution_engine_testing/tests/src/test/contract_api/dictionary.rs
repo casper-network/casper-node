@@ -1,13 +1,14 @@
 use casper_engine_test_support::{
-    Code, ExecuteRequestBuilder, InMemoryWasmTestContext, SessionBuilder, TestContextBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, SessionBuilder,
+    TestContextBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, ContractHash,
-    Key, RuntimeArgs, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
+    ContractHash, Key, RuntimeArgs, U512,
 };
+use std::{convert::TryFrom, path::PathBuf};
 
 use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
 
@@ -126,8 +127,8 @@ fn should_modify_with_owned_access_rights() {
         .cloned()
         .expect("should have cl value");
 
-    let s: String = dictionary_value.into_t().expect("should be a string");
-    assert_eq!(s, "Hello, world!");
+    let value: String = dictionary_value.into_t().expect("should be a string");
+    assert_eq!(value, "Hello, world!");
 
     builder
         .exec(modify_write_request_2)
@@ -142,8 +143,8 @@ fn should_modify_with_owned_access_rights() {
         .cloned()
         .expect("should have cl value");
 
-    let s: String = dictionary_value.into_t().expect("should be a string");
-    assert_eq!(s, "Hello, world! Hello, world!");
+    let value: String = dictionary_value.into_t().expect("should be a string");
+    assert_eq!(value, "Hello, world! Hello, world!");
 }
 
 #[ignore]
@@ -270,9 +271,9 @@ fn should_write_with_write_access_rights() {
     let result = builder
         .query(None, dictionary_key, &[])
         .expect("should query");
-    let cl_value = result.as_cl_value().cloned().expect("should have cl value");
-    let written_value: String = cl_value.into_t().expect("should get string");
-    assert_eq!(written_value, NEW_DICTIONARY_VALUE);
+    let value = result.as_cl_value().cloned().expect("should have cl value");
+    let value: String = value.into_t().expect("should get string");
+    assert_eq!(value, NEW_DICTIONARY_VALUE);
 }
 
 #[ignore]
@@ -500,8 +501,10 @@ fn should_query_dictionary_items_with_test_context() {
         )
         .build();
 
-    let dictionary_code = Code::from(DICTIONARY_WASM);
-    let install_session = SessionBuilder::new(dictionary_code, RuntimeArgs::new())
+    let dictionary_code = PathBuf::from(DICTIONARY_WASM);
+    let di_builder =
+        DeployItemBuilder::new().with_session_code(dictionary_code, RuntimeArgs::new());
+    let install_session = SessionBuilder::new(di_builder)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .build();
@@ -534,7 +537,8 @@ fn should_query_dictionary_items_with_test_context() {
                 dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
             )
             .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
@@ -547,7 +551,8 @@ fn should_query_dictionary_items_with_test_context() {
                 dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
             )
             .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
@@ -560,7 +565,8 @@ fn should_query_dictionary_items_with_test_context() {
                 dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
             )
             .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
@@ -573,7 +579,8 @@ fn should_query_dictionary_items_with_test_context() {
                 dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
             )
             .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
@@ -585,7 +592,8 @@ fn should_query_dictionary_items_with_test_context() {
         let queried_value = test_context
             .query_dictionary_item(dictionary_item_key, None, String::new())
             .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 }

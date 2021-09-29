@@ -1,9 +1,10 @@
 use casper_types::{runtime_args, RuntimeArgs, U512};
 use core::convert::TryFrom;
+use std::path::PathBuf;
 
 use casper_engine_test_support::{
-    Code, SessionBuilder, SessionTransferInfo, TestContextBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DeployItemBuilder, SessionBuilder, SessionTransferInfo, TestContextBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -21,6 +22,7 @@ const SECOND_TRANSFER_AMOUNT: u64 = 250;
 
 #[ignore]
 #[test]
+#[allow(deprecated)]
 fn test_check_transfer_success_with_source_only() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
@@ -40,12 +42,13 @@ fn test_check_transfer_success_with_source_only() {
         SessionTransferInfo::new(source_purse, maybe_target_purse, transfer_amount);
 
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
-    let session_code = Code::from(TRANSFER_WASM);
+    let path = PathBuf::from(TRANSFER_WASM);
     let session_args = runtime_args! {
         ARG_DESTINATION => NEW_PURSE_NAME,
         ARG_AMOUNT => transfer_amount
     };
-    let session = SessionBuilder::new(session_code, session_args)
+    let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
+    let session = SessionBuilder::new(di_builder)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_check_transfer_success(source_only_session_transfer_info)
@@ -56,6 +59,7 @@ fn test_check_transfer_success_with_source_only() {
 #[ignore]
 #[test]
 #[should_panic]
+#[allow(deprecated)]
 fn test_check_transfer_success_with_source_only_errors() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
@@ -76,13 +80,15 @@ fn test_check_transfer_success_with_source_only_errors() {
         SessionTransferInfo::new(source_purse, maybe_target_purse, transfer_amount);
 
     // Doing a transfer from main purse to create new purse and store Uref under NEW_PURSE_NAME.
-    let session_code = Code::from(TRANSFER_WASM);
+    let path = PathBuf::from(TRANSFER_WASM);
     let session_args = runtime_args! {
         ARG_DESTINATION => NEW_PURSE_NAME,
         ARG_AMOUNT => wrong_transfer_amount
     };
+
+    let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
     // Handle expected assertion fail.
-    let session = SessionBuilder::new(session_code, session_args)
+    let session = SessionBuilder::new(di_builder)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_check_transfer_success(source_only_session_transfer_info)
@@ -92,6 +98,7 @@ fn test_check_transfer_success_with_source_only_errors() {
 
 #[ignore]
 #[test]
+#[allow(deprecated)]
 fn test_check_transfer_success_with_source_and_target() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
@@ -111,12 +118,13 @@ fn test_check_transfer_success_with_source_and_target() {
         SessionTransferInfo::new(source_purse, maybe_target_purse, transfer_amount);
 
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
-    let session_code = Code::from(TRANSFER_WASM);
+    let path = PathBuf::from(TRANSFER_WASM);
     let session_args = runtime_args! {
         ARG_DESTINATION => NEW_PURSE_NAME,
         ARG_AMOUNT => transfer_amount
     };
-    let session = SessionBuilder::new(session_code, session_args)
+    let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
+    let session = SessionBuilder::new(di_builder)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_check_transfer_success(source_and_target_session_transfer_info)
@@ -132,6 +140,7 @@ fn test_check_transfer_success_with_source_and_target() {
 #[ignore]
 #[test]
 #[should_panic]
+#[allow(deprecated)]
 fn test_check_transfer_success_with_target_error() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
@@ -158,14 +167,15 @@ fn test_check_transfer_success_with_target_error() {
     );
 
     // Will create two purses NEW_PURSE_NAME and SECOND_PURSE_NAME
-    let session_code = Code::from(TRANSFER_TO_TWO_PURSES);
+    let path = PathBuf::from(TRANSFER_TO_TWO_PURSES);
     let session_args = runtime_args! {
         DESTINATION_PURSE_ONE => NEW_PURSE_NAME,
         TRANSFER_AMOUNT_ONE => transfer_one_amount,
         DESTINATION_PURSE_TWO => SECOND_PURSE_NAME,
         TRANSFER_AMOUNT_TWO => transfer_two_amount,
     };
-    let session = SessionBuilder::new(session_code, session_args)
+    let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
+    let session = SessionBuilder::new(di_builder)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_check_transfer_success(source_only_session_transfer_info)
@@ -194,14 +204,15 @@ fn test_check_transfer_success_with_target_error() {
     // Same transfer as before, but with maybe_target_purse active for validating amount into purse
     // The test for total pulled from main purse should not assert.
     // The test for total into NEW_PURSE_NAME is only part of transfer and should assert.
-    let session_code = Code::from(TRANSFER_TO_TWO_PURSES);
+    let path = PathBuf::from(TRANSFER_TO_TWO_PURSES);
     let session_args = runtime_args! {
         DESTINATION_PURSE_ONE => NEW_PURSE_NAME,
         TRANSFER_AMOUNT_ONE => transfer_one_amount,
         DESTINATION_PURSE_TWO => SECOND_PURSE_NAME,
         TRANSFER_AMOUNT_TWO => transfer_two_amount,
     };
-    let session = SessionBuilder::new(session_code, session_args)
+    let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
+    let session = SessionBuilder::new(di_builder)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_check_transfer_success(source_and_target_session_transfer_info)

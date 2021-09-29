@@ -4,7 +4,7 @@ use casper_execution_engine::core::engine_state::execute_request::ExecuteRequest
 use casper_types::{account::AccountHash, runtime_args, ProtocolVersion, RuntimeArgs, URef, U512};
 
 #[allow(deprecated)]
-use crate::{Code, DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT};
+use crate::{DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT};
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -64,18 +64,9 @@ impl SessionBuilder {
     /// session args, and with default values for the account address, payment code args, gas price,
     /// authorization keys and protocol version.
     #[allow(deprecated)]
-    pub fn new(session_code: Code, session_args: RuntimeArgs) -> Self {
-        let di_builder = DeployItemBuilder::new()
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT });
-        let di_builder = match session_code {
-            Code::Path(path) => di_builder.with_session_code(path, session_args),
-            Code::NamedKey(name, entry_point) => {
-                di_builder.with_stored_session_named_key(&name, &entry_point, session_args)
-            }
-            Code::Hash(hash, entry_point) => {
-                di_builder.with_stored_session_hash(hash.into(), &entry_point, session_args)
-            }
-        };
+    pub fn new(di_builder: DeployItemBuilder) -> Self {
+        let di_builder =
+            di_builder.with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT });
         let expect_failure = false;
         let check_transfer_success = None;
         let without_commit = false;
@@ -91,22 +82,6 @@ impl SessionBuilder {
     /// Returns `self` with the provided account address set.
     pub fn with_address(mut self, address: AccountHash) -> Self {
         self.di_builder = self.di_builder.with_address(address);
-        self
-    }
-
-    /// Returns `self` with the provided payment code and args set.
-    pub fn with_payment_code(mut self, code: Code, args: RuntimeArgs) -> Self {
-        self.di_builder = match code {
-            Code::Path(path) => self.di_builder.with_payment_code(path, args),
-            Code::NamedKey(name, entry_point) => {
-                self.di_builder
-                    .with_stored_payment_named_key(&name, &entry_point, args)
-            }
-            Code::Hash(hash, entry_point) => {
-                self.di_builder
-                    .with_stored_payment_hash(hash.into(), &entry_point, args)
-            }
-        };
         self
     }
 

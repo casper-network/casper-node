@@ -6,8 +6,8 @@ use casper_types::{AccessRights, Key, Motes, PublicKey, StoredValue, URef, U512}
 
 #[allow(deprecated)]
 use crate::{
-    Account, AccountHash, InMemoryWasmTestContext, Session, URefAddr, Value,
-    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
+    Account, AccountHash, InMemoryWasmTestContext, Session, URefAddr, DEFAULT_GENESIS_CONFIG,
+    DEFAULT_GENESIS_CONFIG_HASH,
 };
 
 /// Context in which to run a test of a Wasm smart contract.
@@ -109,24 +109,22 @@ impl TestContext {
         self
     }
 
-    /// Queries for a [`Value`] stored under the given `key` and `path`.
+    /// Queries for a [`StoredValue`] stored under the given `key` and `path`.
     ///
-    /// Returns an [`Error`] if not found.
-    pub fn query(&self, key: AccountHash, path: &[String]) -> Result<Value, String> {
-        self.inner
-            .query(None, Key::Account(key), path)
-            .map(Value::new)
+    /// Returns an error string if not found.
+    pub fn query(&self, key: AccountHash, path: &[String]) -> Result<StoredValue, String> {
+        self.inner.query(None, Key::Account(key), path)
     }
 
-    /// Queries for a [`Value`] stored in a dictionary under a given 'name'
+    /// Queries for a [`StoredValue`] stored in a dictionary under a given 'name'
     ///
-    /// Returns an [`Error`] if not found.
+    /// Returns a error string if not found.
     pub fn query_dictionary_item(
         &self,
         key: Key,
         dictionary_name: Option<String>,
         dictionary_item_key: String,
-    ) -> Result<Value, String> {
+    ) -> Result<StoredValue, String> {
         let empty_path = vec![];
         let dictionary_key_bytes = dictionary_item_key.as_bytes();
         let address = match key {
@@ -158,7 +156,7 @@ impl TestContext {
             Key::Dictionary(address) => Key::Dictionary(address),
             _ => return Err("Unsupported key type for a query to a dictionary item".to_string()),
         };
-        self.inner.query(None, address, &empty_path).map(Value::new)
+        self.inner.query(None, address, &empty_path)
     }
 
     /// Gets the balance of the purse under the given [`URefAddr`].

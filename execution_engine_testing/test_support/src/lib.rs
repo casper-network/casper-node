@@ -4,6 +4,7 @@
 //! Consider a contract held in "contract.wasm" which stores an arbitrary `String` under a `Key`
 //! named "special_value":
 //! ```no_run
+//! use std::path::PathBuf;
 //! use casper_contract::contract_api::{runtime, storage};
 //! use casper_types::Key;
 //! const KEY: &str = "special_value";
@@ -20,7 +21,7 @@
 //!
 //! The test could be written as follows:
 //! ```no_run
-//! use casper_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
+//! use casper_engine_test_support::{SessionBuilder, TestContextBuilder};
 //! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey};
 //!
 //!
@@ -41,16 +42,17 @@
 //! // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
 //! // relative to the current working dir (e.g. 'wasm/contract.wasm') can also be used, as can
 //! // absolute paths.
-//! let session_code = Code::from("contract.wasm");
+//! let path = PathBuf::from("contract.wasm");
 //! let session_args = runtime_args! {
 //!     ARG_MESSAGE => VALUE,
 //! };
-//! let session = SessionBuilder::new(session_code, session_args)
+//! let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
+//! let session = SessionBuilder::new(di_builder)
 //!     .with_address(account_addr)
 //!     .with_authorization_keys(&[account_addr])
 //!     .build();
 //!
-//! let result_of_query: Result<Value, Error> = context.run(session).query(account_addr, &[KEY.to_string()]);
+//! let result_of_query: Result<StoredValue, Error> = context.run(session).query(account_addr, &[KEY.to_string()]);
 //!
 //! let returned_value = result_of_query.expect("should be a value");
 //!
@@ -67,7 +69,6 @@
 #![warn(missing_docs)]
 
 mod additive_map_diff;
-mod code;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod session;
@@ -75,21 +76,14 @@ mod step_request_builder;
 mod test_context;
 mod upgrade_request_builder;
 pub mod utils;
-mod value;
 mod wasm_test_builder;
 
 use casper_types::account::{Account, AccountHash};
 /// TODO: doc comment.
 #[allow(deprecated)]
-pub use code::Code;
-/// TODO: doc comment.
-#[allow(deprecated)]
 pub use session::{Session, SessionBuilder, SessionTransferInfo};
 /// TODO: doc comment.
 pub use test_context::{TestContext, TestContextBuilder};
-/// TODO: doc comment.
-#[allow(deprecated)]
-pub use value::Value;
 
 /// The address of a [`URef`](casper_types::URef) (unforgeable reference) on the network.
 pub type URefAddr = [u8; 32];
