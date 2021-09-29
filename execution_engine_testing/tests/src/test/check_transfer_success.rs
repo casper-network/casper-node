@@ -2,6 +2,7 @@ use casper_types::{runtime_args, RuntimeArgs, U512};
 use core::convert::TryFrom;
 use std::path::PathBuf;
 
+#[allow(deprecated)]
 use casper_engine_test_support::{
     DeployItemBuilder, SessionBuilder, SessionTransferInfo, TestContextBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,

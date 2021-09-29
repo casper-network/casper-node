@@ -1,3 +1,4 @@
+#[allow(deprecated)]
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, SessionBuilder,
     TestContextBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
@@ -493,6 +494,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
 
 #[ignore]
 #[test]
+#[allow(deprecated)]
 fn should_query_dictionary_items_with_test_context() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(

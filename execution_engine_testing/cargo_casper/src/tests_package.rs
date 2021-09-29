@@ -15,9 +15,10 @@ const PACKAGE_NAME: &str = "tests";
 
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{convert::TryFrom, path::PathBuf};
+    #[allow(deprecated)]
     use casper_engine_test_support::{SessionBuilder, TestContextBuilder, DeployItemBuilder};
-    use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey, SecretKey};
+    use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey, SecretKey, CLValue, StoredValue};
 
     const MY_ACCOUNT: [u8; 32] = [7u8; 32];
     // define KEY constant to match that in the contract
@@ -26,6 +27,7 @@ mod tests {
     const ARG_MESSAGE: &str = "message";
 
     #[test]
+    #[allow(deprecated)]
     fn should_store_hello_world() {
         let secret_key = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap();
         let public_key = PublicKey::from(&secret_key);
@@ -38,7 +40,6 @@ mod tests {
         // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
         // relative to the current working dir (e.g. 'wasm/contract.wasm') can also be used, as can
         // absolute paths.
-        let session_code = Code::from("contract.wasm");
         let path = PathBuf::from("contract.wasm");
         let session_args = runtime_args! {
             ARG_MESSAGE => VALUE,
@@ -49,12 +50,12 @@ mod tests {
             .with_authorization_keys(&[account_addr])
             .build();
 
-        let result_of_query: Result<Value, Error> =
+        let result_of_query: Result<StoredValue, String> =
             context.run(session).query(account_addr, &[KEY.to_string()]);
 
         let returned_value = result_of_query.expect("should be a value");
-
-        let expected_value = Value::from_t(VALUE.to_string()).expect("should construct Value");
+        let returned_value = CLValue::try_from(returned_value).expect("should be a cl value");
+        let expected_value = CLValue::from_t(VALUE.to_string()).expect("should construct Value");
         assert_eq!(expected_value, returned_value);
     }
 }

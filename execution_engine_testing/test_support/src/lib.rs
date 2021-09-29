@@ -4,7 +4,6 @@
 //! Consider a contract held in "contract.wasm" which stores an arbitrary `String` under a `Key`
 //! named "special_value":
 //! ```no_run
-//! use std::path::PathBuf;
 //! use casper_contract::contract_api::{runtime, storage};
 //! use casper_types::Key;
 //! const KEY: &str = "special_value";
@@ -21,8 +20,10 @@
 //!
 //! The test could be written as follows:
 //! ```no_run
-//! use casper_engine_test_support::{SessionBuilder, TestContextBuilder};
-//! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey};
+//! use std::path::PathBuf;
+//! #[allow(deprecated)]
+//! use casper_engine_test_support::{SessionBuilder, TestContextBuilder, DeployItemBuilder};
+//! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey, StoredValue, CLValue};
 //!
 //!
 //! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
@@ -52,11 +53,11 @@
 //!     .with_authorization_keys(&[account_addr])
 //!     .build();
 //!
-//! let result_of_query: Result<StoredValue, Error> = context.run(session).query(account_addr, &[KEY.to_string()]);
+//! let result_of_query: Result<StoredValue, String> = context.run(session).query(account_addr, &[KEY.to_string()]);
 //!
 //! let returned_value = result_of_query.expect("should be a value");
-//!
-//! let expected_value = Value::from_t(VALUE.to_string()).expect("should construct Value");
+//! let returned_value = CLValue::from_t(returned_value).expect("should be cl value");
+//! let expected_value = CLValue::from_t(VALUE.to_string()).expect("should construct Value");
 //! assert_eq!(expected_value, returned_value);
 //! ```
 
