@@ -625,13 +625,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         &self,
         rng: &mut NodeRng,
         vid: ValidatorIndex,
-        our_count: u64,
-        their_count: u64,
+        our_next_seq: u64,
+        their_next_seq: u64,
     ) -> Vec<HighwayMessage<C>> {
         let state = self.highway.state();
-        if our_count < their_count {
+        if our_next_seq < their_next_seq {
             // We're behind. Request missing vertices.
-            (our_count..their_count)
+            (our_next_seq..their_next_seq)
                 .take(self.config.max_request_batch_size)
                 .map(|unit_seq_number| {
                     let uuid = rng.next_u64();
@@ -655,13 +655,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     Observation::None | Observation::Faulty => {
                         error!(
                             ?vid,
-                            our_count,
+                            our_next_seq,
                             ?observation,
                             "`IndexPanorama` doesn't match `state.panorama` for validator"
                         );
                         vec![]
                     }
-                    Observation::Correct(hash) => (their_count..our_count)
+                    Observation::Correct(hash) => (their_next_seq..our_next_seq)
                         .take(self.config.max_request_batch_size)
                         .filter_map(|seq_num| {
                             let unit = state.find_in_swimlane(hash, seq_num).unwrap();
@@ -859,9 +859,9 @@ where
                         }
 
                         (
-                            IndexObservation::Count(our_count),
-                            IndexObservation::Count(their_count),
-                        ) => self.batch_request(rng, vid, our_count, their_count),
+                            IndexObservation::NextSeq(our_next_seq),
+                            IndexObservation::NextSeq(their_next_seq),
+                        ) => self.batch_request(rng, vid, our_next_seq, their_next_seq),
                     }
                 };
 
