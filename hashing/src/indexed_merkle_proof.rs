@@ -89,34 +89,40 @@ impl IndexedMerkleProof {
     ) -> Result<IndexedMerkleProof, error::MerkleConstructionError>
     where
         I: IntoIterator<Item = Digest>,
+        I::IntoIter: ExactSizeIterator,
     {
         enum HashOrProof {
             Hash(Digest),
             Proof(Vec<Digest>),
         }
+        use std::convert::TryInto;
+
         use HashOrProof::{Hash, Proof};
 
-        let maybe_count_and_proof = leaves
-            .into_iter()
+        let leaves = leaves.into_iter();
+        let count: u64 = leaves
+            .len()
+            .try_into()
+            .expect("Unable to process more than u64::MAX leaves");
+
+        let maybe_proof = leaves
             .enumerate()
             .map(|(i, hash)| {
                 if i as u64 == index {
-                    (1u64, Proof(vec![hash]))
+                    Proof(vec![hash])
                 } else {
-                    (1u64, Hash(hash))
+                    Hash(hash)
                 }
             })
-            .tree_fold1(|(count_x, x), (count_y, y)| match (x, y) {
-                (Hash(hash_x), Hash(hash_y)) => {
-                    (count_x + count_y, Hash(Digest::hash_pair(&hash_x, &hash_y)))
-                }
+            .tree_fold1(|x, y| match (x, y) {
+                (Hash(hash_x), Hash(hash_y)) => Hash(Digest::hash_pair(&hash_x, &hash_y)),
                 (Hash(hash), Proof(mut proof)) | (Proof(mut proof), Hash(hash)) => {
                     proof.push(hash);
-                    (count_x + count_y, Proof(proof))
+                    Proof(proof)
                 }
                 (Proof(_), Proof(_)) => unreachable!(),
             });
-        match maybe_count_and_proof {
+        match maybe_proof {
             None => {
                 if index != 0 {
                     Err(error::MerkleConstructionError::EmptyProofMustHaveIndex { index })
@@ -128,10 +134,8 @@ impl IndexedMerkleProof {
                     })
                 }
             }
-            Some((count, Hash(_))) => {
-                Err(error::MerkleConstructionError::IndexOutOfBounds { count, index })
-            }
-            Some((count, Proof(merkle_proof))) => Ok(IndexedMerkleProof {
+            Some(Hash(_)) => Err(error::MerkleConstructionError::IndexOutOfBounds { count, index }),
+            Some(Proof(merkle_proof)) => Ok(IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,

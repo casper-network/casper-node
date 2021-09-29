@@ -144,21 +144,23 @@ impl Digest {
     pub fn hash_merkle_tree<I>(leaves: I) -> Digest
     where
         I: IntoIterator<Item = Digest>,
+        I::IntoIter: ExactSizeIterator,
     {
-        let (leaf_count, raw_root) = leaves
-            .into_iter()
-            .map(|x| (1u64, x))
-            .tree_fold1(|(count_x, mut hash_x), (count_y, hash_y)| {
+        let leaves = leaves.into_iter();
+        let leaf_count_bytes = leaves.len().to_le_bytes();
+
+        let raw_root = leaves
+            .tree_fold1(|mut hash_x, hash_y| {
                 let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
                 hasher.update(&hash_x);
                 hasher.update(&hash_y);
                 hasher.finalize_variable(|slice| {
                     hash_x.0.copy_from_slice(slice);
                 });
-                (count_x + count_y, hash_x)
+                hash_x
             })
-            .unwrap_or((0, Digest::SENTINEL_MERKLE_TREE));
-        let leaf_count_bytes = leaf_count.to_le_bytes();
+            .unwrap_or(Digest::SENTINEL_MERKLE_TREE);
+
         Digest::hash_pair(leaf_count_bytes, raw_root)
     }
 
