@@ -119,16 +119,47 @@ impl ChunkWithProof {
 mod test {
     use crate::{error, Digest};
     use casper_types::bytesrepr::{FromBytes, ToBytes};
-    use proptest::proptest;
+    use proptest::{
+        arbitrary::Arbitrary,
+        strategy::{BoxedStrategy, Strategy},
+    };
+    use proptest_attr_macro::proptest;
     use rand::Rng;
     use std::convert::TryInto;
 
     use crate::chunk_with_proof::ChunkWithProof;
 
-    proptest! {
-    #[test]
-    fn generates_valid_proof(chunk_count in 0usize..32usize) {
-        let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * chunk_count];
+    #[derive(Debug)]
+    pub struct TestDataSize(usize);
+    impl Arbitrary for TestDataSize {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            (0usize..32usize)
+                .prop_map(|chunk_count| TestDataSize(chunk_count * ChunkWithProof::CHUNK_SIZE))
+                .boxed()
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct TestDataSizeAtLeastTwoChunks(usize);
+    impl Arbitrary for TestDataSizeAtLeastTwoChunks {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            (2usize..32usize)
+                .prop_map(|chunk_count| {
+                    TestDataSizeAtLeastTwoChunks(chunk_count * ChunkWithProof::CHUNK_SIZE)
+                })
+                .boxed()
+        }
+    }
+
+    #[proptest]
+    fn generates_valid_proof(test_data: TestDataSize) {
+        let data = vec![0u8; test_data.0];
 
         let number_of_chunks: u64 = data
             .chunks(ChunkWithProof::CHUNK_SIZE)
@@ -138,21 +169,17 @@ mod test {
 
         assert!(!(0..number_of_chunks)
             .into_iter()
-            .map(|chunk_index| {
-                ChunkWithProof::new(data.as_slice(), chunk_index).unwrap()
-            })
+            .map(|chunk_index| { ChunkWithProof::new(data.as_slice(), chunk_index).unwrap() })
             .map(|chunk_with_proof| chunk_with_proof.is_valid())
             .any(|valid| !valid));
-        }
     }
 
-    proptest! {
-    #[test]
-    fn validate_chunks_against_hash_merkle_tree(chunk_count in 2usize..32usize) {
+    #[proptest]
+    fn validate_chunks_against_hash_merkle_tree(test_data: TestDataSizeAtLeastTwoChunks) {
         // This test requires at least two chunks
+        assert!(test_data.0 >= ChunkWithProof::CHUNK_SIZE * 2);
 
-        let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * chunk_count];
-        dbg!(data.len());
+        let data = vec![0u8; test_data.0];
         let expected_root =
             Digest::hash_merkle_tree(data.chunks(ChunkWithProof::CHUNK_SIZE).map(Digest::hash));
 
@@ -169,12 +196,10 @@ mod test {
         assert_eq!(proof_0.root_hash(), expected_root);
         assert_eq!(proof_1.root_hash(), expected_root);
     }
-    }
 
-    proptest! {
-    #[test]
-    fn validates_chunk_with_proofs(chunk_count in 0usize..32usize) {
-        let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * chunk_count];
+    #[proptest]
+    fn validates_chunk_with_proofs(test_data: TestDataSize) {
+        let data = vec![0u8; test_data.0];
 
         impl ChunkWithProof {
             fn replace_first_proof(self) -> Self {
@@ -197,49 +222,44 @@ mod test {
         let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
         assert!(!chunk_with_incorrect_proof.is_valid());
     }
+
+    #[proptest]
+    fn validates_chunk_with_proof_after_serde_deserialization(test_data: TestDataSize) {
+        let data = vec![0u8; test_data.0];
+        let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
+
+        let json = serde_json::to_string(&chunk_with_proof).unwrap();
+        assert_eq!(
+            chunk_with_proof,
+            serde_json::from_str::<ChunkWithProof>(&json).expect("should deserialize correctly")
+        );
+
+        let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
+        let json = serde_json::to_string(&chunk_with_incorrect_proof).unwrap();
+        serde_json::from_str::<ChunkWithProof>(&json)
+            .expect_err("should not deserialize correctly");
     }
 
-    proptest! {
-        #[test]
-        fn validates_chunk_with_proof_after_serde_deserialization(chunk_count in 0usize..32usize) {
-            let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * chunk_count];
-            let chunk_with_proof =
-                ChunkWithProof::new(data.as_slice(), 0).unwrap();
+    #[proptest]
+    fn validates_chunk_with_proof_after_bytesrepr_deserialization(test_data: TestDataSize) {
+        let data = vec![0u8; test_data.0];
+        let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
 
-            let json = serde_json::to_string(&chunk_with_proof).unwrap();
-            assert_eq!(
-                chunk_with_proof,
-                serde_json::from_str::<ChunkWithProof>(&json).expect("should deserialize correctly")
-            );
+        let bytes = chunk_with_proof
+            .to_bytes()
+            .expect("should serialize correctly");
 
-            let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
-            let json = serde_json::to_string(&chunk_with_incorrect_proof).unwrap();
-            serde_json::from_str::<ChunkWithProof>(&json).expect_err("should not deserialize correctly");
-        }
-    }
+        let (deserialized_chunk_with_proof, _) =
+            ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly");
 
-    proptest! {
-        #[test]
-        fn validates_chunk_with_proof_after_bytesrepr_deserialization(chunk_count in 0usize..32usize) {
-            let data = vec![0u8; ChunkWithProof::CHUNK_SIZE * chunk_count];
-            let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
+        assert_eq!(chunk_with_proof, deserialized_chunk_with_proof);
 
-            let bytes = chunk_with_proof
-                .to_bytes()
-                .expect("should serialize correctly");
+        let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
+        let bytes = chunk_with_incorrect_proof
+            .to_bytes()
+            .expect("should serialize correctly");
 
-            let (deserialized_chunk_with_proof, _) =
-                ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly");
-
-            assert_eq!(chunk_with_proof, deserialized_chunk_with_proof);
-
-            let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
-            let bytes = chunk_with_incorrect_proof
-                .to_bytes()
-                .expect("should serialize correctly");
-
-            ChunkWithProof::from_bytes(&bytes).expect_err("should not deserialize correctly");
-        }
+        ChunkWithProof::from_bytes(&bytes).expect_err("should not deserialize correctly");
     }
 
     #[test]
