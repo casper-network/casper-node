@@ -29,32 +29,21 @@ impl From<ExecutionJournal> for ExecutionEffect {
         let mut transforms = AdditiveMap::new();
         let journal: Vec<(Key, Transform)> = journal.into();
         for (key, transform) in journal.into_iter() {
-            if let Transform::Failure(_) = transform {
-                continue;
-            }
-            let op: Op = (&transform).into();
+            let op = match transform {
+                Transform::Failure(_) => continue,
+                Transform::Identity => Op::Read,
+                Transform::Write(_) => Op::Write,
+                Transform::AddInt32(_)
+                | Transform::AddUInt64(_)
+                | Transform::AddUInt128(_)
+                | Transform::AddUInt256(_)
+                | Transform::AddUInt512(_)
+                | Transform::AddKeys(_) => Op::Add,
+            };
             ops.insert_add(key, op);
             transforms.insert_add(key, transform);
         }
 
         Self { ops, transforms }
-    }
-}
-
-impl From<&Transform> for Op {
-    fn from(transform: &Transform) -> Self {
-        match transform {
-            Transform::Identity => Op::NoOp,
-            Transform::Write(_) => Op::Write,
-            Transform::AddInt32(_)
-            | Transform::AddUInt64(_)
-            | Transform::AddUInt128(_)
-            | Transform::AddUInt256(_)
-            | Transform::AddUInt512(_)
-            | Transform::AddKeys(_) => Op::Add,
-
-            // should be unreachable.
-            Transform::Failure(_) => Op::NoOp,
-        }
     }
 }
