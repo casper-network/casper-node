@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -124,8 +125,8 @@ pub enum ExecutableDeployItem {
     /// [`RuntimeArgs`].
     StoredContractByHash {
         /// Contract hash.
-        #[serde(with = "HexForm")]
-        #[schemars(with = "String", description = "Hex-encoded hash.")]
+        #[serde(with = "ChecksummedHexForm")]
+        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractHash,
         /// Name of an entry point.
         entry_point: String,
@@ -146,8 +147,8 @@ pub enum ExecutableDeployItem {
     /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
         /// Contract package hash
-        #[serde(with = "HexForm")]
-        #[schemars(with = "String", description = "Hex-encoded hash.")]
+        #[serde(with = "ChecksummedHexForm")]
+        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractPackageHash,
         /// An optional version of the contract to call. It will default to the highest enabled
         /// version if no value is specified.
@@ -843,7 +844,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredContractByHash")
-                .field("hash", &HexFmt(hash))
+                .field("hash", &checksummed_hex::encode(hash))
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
@@ -864,7 +865,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredVersionedContractByHash")
-                .field("hash", &HexFmt(hash))
+                .field("hash", &checksummed_hex::encode(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
                 .field("args", args)

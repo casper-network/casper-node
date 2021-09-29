@@ -14,7 +14,7 @@ mod indexed_merkle_proof;
 use std::{
     array::TryFromSliceError,
     collections::BTreeMap,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter, LowerHex, UpperHex},
 };
 
@@ -24,12 +24,25 @@ use blake2::{
 };
 use chunk_with_proof::ChunkWithProof;
 use datasize::DataSize;
-use hex_buffer_serde::{Hex, HexForm};
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
+};
+
+/// Possible hashing errors.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Incorrect digest length {0}.")]
+    /// The digest lenghth was an incorrect size.
+    IncorrectDigestLength(usize),
+    /// There was a decoding error.
+    #[error("Base16 decode error {0}.")]
+    Base16DecodeError(base16::DecodeError),
+}
 
 /// The output of the hash function.
 #[derive(
@@ -47,9 +60,9 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
     JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Hex-encoded hash digest.")]
+#[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
 pub struct Digest(
-    #[serde(with = "HexForm::<[u8; Digest::LENGTH]>")]
+    #[serde(with = "ChecksummedHexForm::<[u8; Digest::LENGTH]>")]
     #[schemars(skip, with = "String")]
     pub(crate) [u8; Digest::LENGTH],
 );
@@ -207,6 +220,15 @@ impl Digest {
             .iter()
             .rfold(proof, |prev, next| Digest::hash_pair(next, &prev))
     }
+
+    /// Returns a `Digest` parsed from a hex-encoded `Digest`.
+    pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self, Error> {
+        let bytes = checksummed_hex::decode(&hex_input).map_err(Error::Base16DecodeError)?;
+        let slice: [u8; Self::LENGTH] = bytes
+            .try_into()
+            .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
+        Ok(Digest(slice))
+    }
 }
 
 impl LowerHex for Digest {
@@ -233,13 +255,13 @@ impl UpperHex for Digest {
 
 impl Display for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:10}", base16::encode_lower(self))
+        write!(f, "{:10}", checksummed_hex::encode(&self.0))
     }
 }
 
 impl Debug for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{}", checksummed_hex::encode(&self.0))
     }
 }
 
@@ -288,19 +310,10 @@ impl FromBytes for Digest {
     }
 }
 
-impl hex::FromHex for Digest {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        Ok(Digest(hex::FromHex::from_hex(hex)?))
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::iter;
 
-    use hex::FromHex;
     use proptest_attr_macro::proptest;
 
     use super::*;
@@ -325,23 +338,23 @@ mod test {
         let inputs_and_digests = [
             (
                 "",
-                "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
+                "0E5751C026E543B2E8aB2eb06099dAA1d1e5dF47778F7787fAAB45Cdf12fE3A8",
             ),
             (
                 "abc",
-                "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319",
+                "BddD813c634239723171ef3feE98579b94964e3Bb1cB3E427262C8C068d52319",
             ),
             (
                 "0123456789",
-                "7b6cb8d374484e221785288b035dc53fc9ddf000607f473fc2a3258d89a70398",
+                "7b6CB8D374484e221785288b035Dc53fC9dDf000607F473fc2a3258D89A70398",
             ),
             (
                 "01234567890",
-                "fdd6751337c5578e994128ba9c29faa9bf924c4d8fbb59ae23a4205e37ac8509",
+                "FdD6751337c5578E994128ba9C29fAA9bf924C4D8Fbb59Ae23a4205E37ac8509",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "04b7444d65231e095ee47851398c6c3db6243fb1d06f99038ba9369a212cdd5f",
+                "04B7444d65231E095Ee47851398c6c3db6243fB1d06F99038ba9369a212CDD5f",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {
