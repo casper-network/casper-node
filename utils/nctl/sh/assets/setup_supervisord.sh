@@ -7,6 +7,7 @@
 #   NCTL_PROCESS_GROUP_2 - process 2 group identifier.
 #   NCTL_PROCESS_GROUP_3 - process 3 group identifier.
 #######################################
+#
 
 PATH_TO_NET=$(get_path_to_net)
 PATH_SUPERVISOR_CONFIG=$(get_path_net_supervisord_cfg)
@@ -41,13 +42,13 @@ do
     PATH_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
     PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
     PATH_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
-    
+
     cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 
 [program:casper-net-$NET_ID-node-$NODE_ID]
 autostart=false
 autorestart=false
-command=$PATH_NODE_BIN/casper-node-launcher 
+command=$PATH_NODE_BIN/casper-node-launcher
 environment=CASPER_BIN_DIR="$PATH_NODE_BIN",CASPER_CONFIG_DIR="$PATH_NODE_CONFIG"
 numprocs=1
 numprocs_start=0
