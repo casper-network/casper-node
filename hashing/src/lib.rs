@@ -72,7 +72,7 @@ impl Digest {
         if Self::should_hash_with_chunks(&data) {
             Self::hash_merkle_tree(
                 data.as_ref()
-                    .chunks(ChunkWithProof::CHUNK_SIZE)
+                    .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
                     .map(Self::blake2b_hash),
             )
         } else {
@@ -91,7 +91,7 @@ impl Digest {
     }
 
     fn should_hash_with_chunks<T: AsRef<[u8]>>(data: T) -> bool {
-        data.as_ref().len() > ChunkWithProof::CHUNK_SIZE
+        data.as_ref().len() > ChunkWithProof::CHUNK_SIZE_BYTES
     }
 
     /// Hashes a pair of byte slices.
@@ -313,11 +313,11 @@ mod test {
 
     #[test]
     fn hash_known() {
-        // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE]
+        // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE_BYTES]
         // are hashed using Blake2B algorithm.
         // Larger data are chunked and merkle tree hash is calculated.
         //
-        // Please note that [ChunkWithProof::CHUNK_SIZE] is `test` configuration
+        // Please note that [ChunkWithProof::CHUNK_SIZE_BYTES] is `test` configuration
         // is smaller than in production, to allow testing with more chunks
         // with still reasonable time and memory consumption.
         //
@@ -516,7 +516,7 @@ mod test {
             data_smaller_than_chunk_size
         ));
 
-        let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE * 2];
+        let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE_BYTES * 2];
         assert!(Digest::should_hash_with_chunks(data_bigger_than_chunk_size));
     }
 }

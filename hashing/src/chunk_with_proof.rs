@@ -73,16 +73,16 @@ impl FromBytes for ChunkWithProof {
 
 impl ChunkWithProof {
     #[cfg(test)]
-    pub const CHUNK_SIZE: usize = 10;
+    pub const CHUNK_SIZE_BYTES: usize = 10;
 
     #[cfg(not(test))]
-    pub const CHUNK_SIZE: usize = 1_048_576; // 2^20
+    pub const CHUNK_SIZE_BYTES: usize = 1_048_576; // 2^20
 
     #[cfg(test)]
     pub fn new(data: &[u8], index: u64) -> Result<Self, error::MerkleConstructionError> {
-        if data.len() < Self::CHUNK_SIZE * (index as usize) {
+        if data.len() < Self::CHUNK_SIZE_BYTES * (index as usize) {
             return Err(error::MerkleConstructionError::IndexOutOfBounds {
-                count: data.chunks(Self::CHUNK_SIZE).len() as u64,
+                count: data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64,
                 index,
             });
         }
@@ -91,9 +91,14 @@ impl ChunkWithProof {
             (IndexedMerkleProof::new([Digest::hash(&[])], index)?, vec![])
         } else {
             (
-                IndexedMerkleProof::new(data.chunks(Self::CHUNK_SIZE).map(Digest::hash), index)?,
-                data[Self::CHUNK_SIZE * (index as usize)
-                    ..data.len().min(Self::CHUNK_SIZE * ((index as usize) + 1))]
+                IndexedMerkleProof::new(
+                    data.chunks(Self::CHUNK_SIZE_BYTES).map(Digest::hash),
+                    index,
+                )?,
+                data[Self::CHUNK_SIZE_BYTES * (index as usize)
+                    ..data
+                        .len()
+                        .min(Self::CHUNK_SIZE_BYTES * ((index as usize) + 1))]
                     .to_vec(),
             )
         };
@@ -137,7 +142,9 @@ mod test {
 
         fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
             (0usize..32usize)
-                .prop_map(|chunk_count| TestDataSize(chunk_count * ChunkWithProof::CHUNK_SIZE))
+                .prop_map(|chunk_count| {
+                    TestDataSize(chunk_count * ChunkWithProof::CHUNK_SIZE_BYTES)
+                })
                 .boxed()
         }
     }
@@ -151,7 +158,7 @@ mod test {
         fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
             (2usize..32usize)
                 .prop_map(|chunk_count| {
-                    TestDataSizeAtLeastTwoChunks(chunk_count * ChunkWithProof::CHUNK_SIZE)
+                    TestDataSizeAtLeastTwoChunks(chunk_count * ChunkWithProof::CHUNK_SIZE_BYTES)
                 })
                 .boxed()
         }
@@ -162,7 +169,7 @@ mod test {
         let data = vec![0u8; test_data.0];
 
         let number_of_chunks: u64 = data
-            .chunks(ChunkWithProof::CHUNK_SIZE)
+            .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
             .len()
             .try_into()
             .unwrap();
@@ -177,11 +184,13 @@ mod test {
     #[proptest]
     fn validate_chunks_against_hash_merkle_tree(test_data: TestDataSizeAtLeastTwoChunks) {
         // This test requires at least two chunks
-        assert!(test_data.0 >= ChunkWithProof::CHUNK_SIZE * 2);
+        assert!(test_data.0 >= ChunkWithProof::CHUNK_SIZE_BYTES * 2);
 
         let data = vec![0u8; test_data.0];
-        let expected_root =
-            Digest::hash_merkle_tree(data.chunks(ChunkWithProof::CHUNK_SIZE).map(Digest::hash));
+        let expected_root = Digest::hash_merkle_tree(
+            data.chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+                .map(Digest::hash),
+        );
 
         // Calculate proof with `ChunkWithProof`
         let ChunkWithProof {
@@ -279,7 +288,7 @@ mod test {
             panic!("expected MerkleConstructionError::IndexOutOfBounds");
         }
 
-        let data_larger_than_single_chunk = vec![0u8; ChunkWithProof::CHUNK_SIZE * 10];
+        let data_larger_than_single_chunk = vec![0u8; ChunkWithProof::CHUNK_SIZE_BYTES * 10];
         ChunkWithProof::new(data_larger_than_single_chunk.as_slice(), 9).unwrap();
 
         let chunk_with_proof =
