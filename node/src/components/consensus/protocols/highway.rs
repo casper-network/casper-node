@@ -651,13 +651,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     error!(?vid, "received a request for non-existing validator");
                     vec![]
                 }
-                Some(latest_obs) => match latest_obs {
+                Some(observation) => match observation {
                     Observation::None | Observation::Faulty => {
-                        let index_panorama = format!("Count({:?})", our_count.saturating_sub(1));
                         error!(
                             ?vid,
-                            ?index_panorama,
-                            panorama=?latest_obs,
+                            our_count,
+                            ?observation,
                             "`IndexPanorama` doesn't match `state.panorama` for validator"
                         );
                         vec![]
