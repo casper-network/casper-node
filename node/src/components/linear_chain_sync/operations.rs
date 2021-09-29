@@ -526,9 +526,9 @@ async fn fast_sync_to_most_recent(
     // The era supervisor requires enough switch blocks to be stored in the database to be able to
     // initialize the most recent eras.
     {
-        let earliest_active_era = chainspec.earliest_active_era(most_recent_block_header.era_id());
+        let earliest_open_era = chainspec.earliest_open_era(most_recent_block_header.era_id());
         let earliest_era_needed_by_era_supervisor =
-            chainspec.earliest_switch_block_needed(earliest_active_era);
+            chainspec.earliest_switch_block_needed(earliest_open_era);
         let mut current_walk_back_header = most_recent_block_header.clone();
         while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
             current_walk_back_header = *fetch_and_store_block_header(

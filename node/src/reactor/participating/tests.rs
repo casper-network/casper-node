@@ -316,7 +316,7 @@ async fn run_equivocator_network() {
     // The first era should have been removed from memory.
     for runner in net.nodes().values() {
         let consensus = runner.reactor().inner().consensus();
-        assert!(consensus.active_era_ids().all(|era_id| era_id.value() != 1));
+        assert!(consensus.open_era_ids().all(|era_id| era_id.value() != 1));
     }
 
     // The auction delay is 1, so if Alice's equivocation was detected before the switch block in

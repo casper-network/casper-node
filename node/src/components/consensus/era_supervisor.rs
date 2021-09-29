@@ -69,10 +69,12 @@ const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
 /// The number of eras across which evidence can be cited.
 /// If this is 1, you can cite evidence from the previous era, but not the one before that.
-/// To be able to detect that evidence, we also keep that number of full past eras in memory.
+/// To be able to detect that evidence, we also keep that number of active past eras in memory.
 const PAST_EVIDENCE_ERAS: u64 = 1;
-/// The number of active eras that are kept in memory in addition to the current one.
-const PAST_ACTIVE_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
+/// The total number of past eras that are kept in memory in addition to the current one.
+/// The more recent half of these is active: it contains units and can still accept further units.
+/// The older half is in evidence-only state, and only used to validate cited evidence.
+const PAST_OPEN_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
 
 type ConsensusConstructor<I> = dyn Fn(
         Digest,                    // the era's unique instance ID
@@ -93,7 +95,7 @@ type ConsensusConstructor<I> = dyn Fn(
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
-    /// A map of active consensus protocol instances.
+    /// A map of consensus protocol instances.
     /// A value is a trait so that we can run different consensus protocols per era.
     ///
     /// This map contains three consecutive entries, with the last one being the current era N. Era
@@ -104,7 +106,7 @@ pub struct EraSupervisor<I> {
     ///
     /// Since eras at or before the most recent activation point are never instantiated, shortly
     /// after that there can temporarily be fewer than three entries in the map.
-    active_eras: HashMap<EraId, Era<I>>,
+    open_eras: HashMap<EraId, Era<I>>,
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
     current_era: EraId,
@@ -137,8 +139,8 @@ pub struct EraSupervisor<I> {
 
 impl<I> Debug for EraSupervisor<I> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        let ae: Vec<_> = self.active_eras.keys().collect();
-        write!(formatter, "EraSupervisor {{ active_eras: {:?}, .. }}", ae)
+        let ae: Vec<_> = self.open_eras.keys().collect();
+        write!(formatter, "EraSupervisor {{ open_eras: {:?}, .. }}", ae)
     }
 }
 
@@ -178,7 +180,7 @@ where
         let next_height = latest_block_header.height() + 1;
 
         let mut era_supervisor = Self {
-            active_eras: Default::default(),
+            open_eras: Default::default(),
             secret_signing_key,
             public_signing_key,
             current_era,
@@ -194,7 +196,7 @@ where
             era_where_we_joined: current_era,
         };
 
-        // Collect the information needed to initialize all active eras.
+        // Collect the information needed to initialize all open eras.
         //
         // We need to initialize current_era, current_era - 1 and (evidence-only) current_era - 2.
         // To initialize an era, all switch blocks between its booking block and its key block are
@@ -206,10 +208,10 @@ where
         // Example: If auction_delay is 1, to initialize era N we need the switch blocks from era N
         // and N - 1. If current_era is 10, we will initialize eras 10, 9 and 8. So we need the
         // switch blocks from eras 9, 8, 7 and 6.
-        let earliest_active_era = era_supervisor.chainspec.earliest_active_era(current_era);
+        let earliest_open_era = era_supervisor.chainspec.earliest_open_era(current_era);
         let earliest_era = era_supervisor
             .chainspec
-            .earliest_switch_block_needed(earliest_active_era);
+            .earliest_switch_block_needed(earliest_open_era);
         let mut switch_blocks = Vec::new();
         for era_id in (earliest_era.value()..current_era.value()).map(EraId::from) {
             let switch_block = storage
@@ -229,7 +231,7 @@ where
         let mut effects = Effects::new();
         let from = switch_blocks
             .len()
-            .saturating_sub(PAST_ACTIVE_ERAS as usize)
+            .saturating_sub(PAST_OPEN_ERAS as usize)
             .max(1);
         for i in (from..=switch_blocks.len()).rev() {
             effects.extend(era_supervisor.create_new_era(effect_builder, rng, &switch_blocks[..i]));
@@ -293,7 +295,7 @@ where
     /// Returns whether the validator with the given public key is bonded in that era.
     fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
         let has_validator = |era: &Era<I>| era.validators().contains_key(pub_key);
-        self.active_eras.get(&era_id).map_or(false, has_validator)
+        self.open_eras.get(&era_id).map_or(false, has_validator)
     }
 
     pub(crate) fn stop_for_upgrade(&self) -> bool {
@@ -315,7 +317,7 @@ where
             .next_block_height
             .saturating_sub(self.next_executed_height)
             > self.config.highway.max_execution_delay;
-        match self.active_eras.get_mut(&self.current_era) {
+        match self.open_eras.get_mut(&self.current_era) {
             Some(era) => era.set_paused(paused),
             None => error!(
                 era = self.current_era.value(),
@@ -360,11 +362,11 @@ where
             }
         };
 
-        if self.active_eras.contains_key(&era_id) {
+        if self.open_eras.contains_key(&era_id) {
             warn!(era = era_id.value(), "era already exists");
             return Effects::new();
         }
-        if self.current_era > era_id.saturating_add(PAST_ACTIVE_ERAS) {
+        if self.current_era > era_id.saturating_add(PAST_OPEN_ERAS) {
             warn!(era = era_id.value(), "trying to create obsolete era");
             return Effects::new();
         }
@@ -416,7 +418,7 @@ where
 
         let maybe_prev_era = era_id
             .checked_sub(1)
-            .and_then(|last_era_id| self.active_eras.get(&last_era_id));
+            .and_then(|last_era_id| self.open_eras.get(&last_era_id));
         let validators_with_evidence: Vec<PublicKey> = maybe_prev_era
             .into_iter()
             .flat_map(|prev_era| prev_era.consensus.validators_with_evidence())
@@ -437,7 +439,7 @@ where
             now,
         );
         let era = Era::new(consensus, start_time, start_height, faulty, validators);
-        let _ = self.active_eras.insert(era_id, era);
+        let _ = self.open_eras.insert(era_id, era);
 
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
@@ -485,15 +487,15 @@ where
         // Clear the obsolete data from the era before the previous one. We only retain the
         // information necessary to validate evidence that units in the two most recent eras may
         // refer to for cross-era fault tracking.
-        if let Some(evidence_only_era_id) = self.current_era.checked_sub(PAST_ACTIVE_ERAS) {
-            if let Some(era) = self.active_eras.get_mut(&evidence_only_era_id) {
+        if let Some(evidence_only_era_id) = self.current_era.checked_sub(PAST_OPEN_ERAS) {
+            if let Some(era) = self.open_eras.get_mut(&evidence_only_era_id) {
                 trace!(era = evidence_only_era_id.value(), "clearing unbonded era");
                 era.consensus.set_evidence_only();
             }
 
             // Remove the era that has become obsolete now: We keep only three in memory.
             if let Some(obsolete_era_id) = evidence_only_era_id.checked_sub(1) {
-                if let Some(era) = self.active_eras.remove(&obsolete_era_id) {
+                if let Some(era) = self.open_eras.remove(&obsolete_era_id) {
                     trace!(era = obsolete_era_id.value(), "removing obsolete era");
                     match fs::remove_file(self.unit_hash_file(era.consensus.instance_id())) {
                         Ok(_) => {}
@@ -529,7 +531,7 @@ where
     where
         F: FnOnce(&mut dyn ConsensusProtocol<I, ClContext>) -> Vec<ProtocolOutcome<I, ClContext>>,
     {
-        match self.active_eras.get_mut(&era_id) {
+        match self.open_eras.get_mut(&era_id) {
             None => {
                 if era_id > self.current_era {
                     info!(era = era_id.value(), "received message for future era");
@@ -588,7 +590,7 @@ where
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
                 if era_id.saturating_add(PAST_EVIDENCE_ERAS) < self.current_era
-                    || !self.active_eras.contains_key(&era_id)
+                    || !self.open_eras.contains_key(&era_id)
                 {
                     trace!(era = era_id.value(), "not handling message; era too old");
                     return Effects::new();
@@ -616,7 +618,7 @@ where
             block_context,
         } = new_block_payload;
         if era_id.saturating_add(PAST_EVIDENCE_ERAS) < self.current_era
-            || !self.active_eras.contains_key(&era_id)
+            || !self.open_eras.contains_key(&era_id)
         {
             warn!(era = era_id.value(), "new block payload in outdated era");
             return Effects::new();
@@ -670,7 +672,7 @@ where
         old_faulty_num: usize,
         delay: Duration,
     ) -> Effects<Event<I>> {
-        let era = if let Some(era) = self.active_eras.get_mut(&era_id) {
+        let era = if let Some(era) = self.open_eras.get_mut(&era_id) {
             era
         } else {
             warn!(era = era_id.value(), "trying to deactivate obsolete era");
@@ -719,7 +721,7 @@ where
             effects.extend(self.disconnect(effect_builder, sender));
         }
         if self
-            .active_eras
+            .open_eras
             .get_mut(&era_id)
             .map_or(false, |era| era.resolve_validity(&proposed_block, valid))
         {
@@ -757,12 +759,12 @@ where
 
     /// Returns the era with the specified ID. Panics if it does not exist.
     fn era(&self, era_id: EraId) -> &Era<I> {
-        &self.active_eras[&era_id]
+        &self.open_eras[&era_id]
     }
 
     /// Returns the era with the specified ID mutably. Panics if it does not exist.
     fn era_mut(&mut self, era_id: EraId) -> &mut Era<I> {
-        self.active_eras.get_mut(&era_id).unwrap()
+        self.open_eras.get_mut(&era_id).unwrap()
     }
 
     #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
@@ -846,7 +848,7 @@ where
                     debug!(era = era_id.value(), "finalized block in old era");
                     return Effects::new();
                 }
-                let era = self.active_eras.get_mut(&era_id).unwrap();
+                let era = self.open_eras.get_mut(&era_id).unwrap();
                 era.add_accusations(&equivocators);
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
@@ -892,7 +894,7 @@ where
                 proposed_block,
             } => {
                 if era_id.saturating_add(PAST_EVIDENCE_ERAS) < self.current_era
-                    || !self.active_eras.contains_key(&era_id)
+                    || !self.open_eras.contains_key(&era_id)
                 {
                     return Effects::new(); // Outdated era; we don't need the value anymore.
                 }
@@ -947,7 +949,7 @@ where
                     .announce_fault_event(era_id, pub_key.clone(), Timestamp::now())
                     .ignore();
                 for e_id in self.iter_future(era_id, PAST_EVIDENCE_ERAS) {
-                    let proposed_blocks = if let Some(era) = self.active_eras.get_mut(&e_id) {
+                    let proposed_blocks = if let Some(era) = self.open_eras.get_mut(&e_id) {
                         era.resolve_evidence_and_mark_faulty(&pub_key)
                     } else {
                         continue;
@@ -1009,7 +1011,7 @@ where
     ) -> Effects<Event<I>> {
         let public_key = self.public_signing_key.clone();
         let round_length = self
-            .active_eras
+            .open_eras
             .get(&self.current_era)
             .and_then(|era| era.consensus.next_round_length());
         responder.respond(Some((public_key, round_length))).ignore()
@@ -1038,21 +1040,19 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Returns the most recent active era.
+    /// Returns the most recent era.
     pub(crate) fn current_era(&self) -> EraId {
         self.current_era
     }
 
     /// Returns the list of validators who equivocated in this era.
     pub(crate) fn validators_with_evidence(&self, era_id: EraId) -> Vec<&PublicKey> {
-        self.active_eras[&era_id]
-            .consensus
-            .validators_with_evidence()
+        self.open_eras[&era_id].consensus.validators_with_evidence()
     }
 
     /// Returns an iterator over all eras that are currently instantiated.
-    pub(crate) fn active_era_ids(&self) -> impl Iterator<Item = &EraId> {
-        self.active_eras.keys()
+    pub(crate) fn open_era_ids(&self) -> impl Iterator<Item = &EraId> {
+        self.open_eras.keys()
     }
 }
 
