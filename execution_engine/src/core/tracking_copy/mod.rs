@@ -216,7 +216,7 @@ pub struct TrackingCopy<R> {
     cache: TrackingCopyCache<HeapSize>,
     ops: AdditiveMap<Key, Op>,
     fns: AdditiveMap<Key, Transform>,
-    journal: Vec<(Key, Transform)>,
+    journal: ExecutionJournal,
 }
 
 #[derive(Debug)]
@@ -250,7 +250,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
              * limit? */
             ops: AdditiveMap::new(),
             fns: AdditiveMap::new(),
-            journal: Vec::new(),
+            journal: Default::default(),
         }
     }
 
@@ -421,7 +421,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     pub fn execution_journal(&self) -> ExecutionJournal {
-        self.journal.clone().into()
+        self.journal.clone()
     }
 
     /// Calling `query()` avoids calling into `self.cache`, so this will not return any values
