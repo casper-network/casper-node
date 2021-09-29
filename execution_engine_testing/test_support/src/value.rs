@@ -5,7 +5,7 @@ use thiserror::Error;
 use casper_types::{
     account::Account,
     bytesrepr::{FromBytes, ToBytes},
-    CLTypeMismatch, CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch,
+    CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch,
 };
 
 #[derive(Error, Debug, PartialEq)]
@@ -30,7 +30,6 @@ impl From<CLValueError> for Error {
 
 /// A value stored under a given key on the network.
 #[derive(Eq, PartialEq, Clone, Debug)]
-#[deprecated]
 pub struct Value {
     inner: StoredValue,
 }

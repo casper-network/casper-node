@@ -160,10 +160,11 @@ impl<S> Clone for WasmTestContext<S> {
 }
 
 /// A wrapper type to disambiguate builder from an actual result
-#[deprecated]
 #[derive(Clone)]
+#[deprecated]
 pub struct WasmTestResult<S>(WasmTestContext<S>);
 
+#[allow(deprecated)]
 impl<S> WasmTestResult<S> {
     /// Access the builder
     pub fn builder(&self) -> &WasmTestContext<S> {
@@ -247,6 +248,7 @@ impl LmdbWasmTestContext {
     /// swapped with a new one, possibly after running genesis once and reusing existing database
     /// (i.e. LMDB).
     #[deprecated]
+    #[allow(deprecated)]
     pub fn new_with_config_and_result<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         engine_config: EngineConfig,
@@ -338,6 +340,7 @@ where
 {
     /// Carries on attributes from TestResult for further executions
     #[deprecated]
+    #[allow(deprecated)]
     pub fn from_result(result: WasmTestResult<S>) -> Self {
         WasmTestContext {
             engine_state: result.0.engine_state,
@@ -770,6 +773,7 @@ where
 
     /// TODO: doc comment.
     #[deprecated]
+    #[allow(deprecated)]
     pub fn finish(&self) -> WasmTestResult<S> {
         WasmTestResult(self.clone())
     }
@@ -931,6 +935,7 @@ where
     }
 
     /// TODO: doc comment.
+    #[allow(deprecated)]
     pub fn exec_commit_finish(&mut self, execute_request: ExecuteRequest) -> WasmTestResult<S> {
         self.exec(execute_request)
             .expect_success()

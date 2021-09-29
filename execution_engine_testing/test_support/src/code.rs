@@ -16,18 +16,21 @@ pub enum Code {
 // Note: can't just `impl<T: AsRef<Path>> From<T> for Code` because the compiler complains about
 // a conflicting implementation of `From<URef>` - as URef could be made `AsRef<Path>` in the future
 
+#[allow(deprecated)]
 impl<'a> From<&'a str> for Code {
     fn from(path: &'a str) -> Code {
         Code::Path(path.into())
     }
 }
 
+#[allow(deprecated)]
 impl<'a> From<&'a Path> for Code {
     fn from(path: &'a Path) -> Code {
         Code::Path(path.into())
     }
 }
 
+#[allow(deprecated)]
 impl From<PathBuf> for Code {
     fn from(path: PathBuf) -> Code {
         Code::Path(path)

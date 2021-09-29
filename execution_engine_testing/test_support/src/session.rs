@@ -1,11 +1,9 @@
 use rand::Rng;
 
 use casper_execution_engine::core::engine_state::execute_request::ExecuteRequest;
-use casper_types::{
-    account::{Account, AccountHash},
-    runtime_args, ProtocolVersion, RuntimeArgs, URef, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, ProtocolVersion, RuntimeArgs, URef, U512};
 
+#[allow(deprecated)]
 use crate::{Code, DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT};
 
 const ARG_AMOUNT: &str = "amount";
@@ -18,6 +16,7 @@ pub struct SessionTransferInfo {
     pub(crate) transfer_amount: U512,
 }
 
+#[allow(deprecated)]
 impl SessionTransferInfo {
     /// Constructs a new `SessionTransferInfo` containing information for validating a transfer
     /// when `test_context.run()` occurs.
@@ -43,6 +42,7 @@ impl SessionTransferInfo {
 pub struct Session {
     pub(crate) inner: ExecuteRequest,
     pub(crate) expect_success: bool,
+    #[allow(deprecated)]
     pub(crate) check_transfer_success: Option<SessionTransferInfo>,
     pub(crate) commit: bool,
 }
@@ -53,14 +53,17 @@ pub struct SessionBuilder {
     er_builder: ExecuteRequestBuilder,
     di_builder: DeployItemBuilder,
     expect_failure: bool,
+    #[allow(deprecated)]
     check_transfer_success: Option<SessionTransferInfo>,
     without_commit: bool,
 }
 
+#[allow(deprecated)]
 impl SessionBuilder {
     /// Constructs a new `SessionBuilder` containing a deploy with the provided session code and
     /// session args, and with default values for the account address, payment code args, gas price,
     /// authorization keys and protocol version.
+    #[allow(deprecated)]
     pub fn new(session_code: Code, session_args: RuntimeArgs) -> Self {
         let di_builder = DeployItemBuilder::new()
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT });

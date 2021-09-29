@@ -80,12 +80,15 @@ mod wasm_test_builder;
 
 use casper_types::account::{Account, AccountHash};
 /// TODO: doc comment.
+#[allow(deprecated)]
 pub use code::Code;
 /// TODO: doc comment.
+#[allow(deprecated)]
 pub use session::{Session, SessionBuilder, SessionTransferInfo};
 /// TODO: doc comment.
 pub use test_context::{TestContext, TestContextBuilder};
 /// TODO: doc comment.
+#[allow(deprecated)]
 pub use value::Value;
 
 /// The address of a [`URef`](casper_types::URef) (unforgeable reference) on the network.
@@ -117,6 +120,7 @@ pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
+#[allow(deprecated)]
 pub use wasm_test_builder::{
     InMemoryWasmTestContext, LmdbWasmTestContext, WasmTestContext, WasmTestResult,
 };

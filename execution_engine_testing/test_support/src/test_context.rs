@@ -4,6 +4,7 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_types::{AccessRights, Key, Motes, PublicKey, StoredValue, URef, U512};
 
+#[allow(deprecated)]
 use crate::{
     Account, AccountHash, InMemoryWasmTestContext, Session, URefAddr, Value,
     DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
@@ -39,6 +40,7 @@ impl TestContext {
     /// If `session` was built without
     /// [`without_commit()`](crate::SessionBuilder::without_commit) (the default), then `run()` will
     /// commit the resulting transforms.
+    #[allow(deprecated)]
     pub fn run(&mut self, session: Session) -> &mut Self {
         match session.check_transfer_success {
             Some(session_transfer_info) => {
@@ -177,9 +179,7 @@ impl TestContext {
     // TODO: Remove this once test can use query
     /// Gets an [`Account`] stored under a [`PublicKey`], or `None`.
     pub fn get_account(&self, account_key: AccountHash) -> Option<Account> {
-        self.inner
-            .get_account(account_key)
-            .map(|account| account.into())
+        self.inner.get_account(account_key)
     }
 }
 
