@@ -4,7 +4,8 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{core, core::ValidationError, shared::newtypes::Blake2bHash};
+use casper_execution_engine::{core, core::ValidationError};
+use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash, runtime_args, AccessRights, Key, PublicKey, RuntimeArgs, SecretKey, URef,
     U512,
@@ -84,7 +85,7 @@ fn get_balance_should_work() {
         Err(ValidationError::UnexpectedKey)
     );
 
-    let bogus_hash = Blake2bHash::new(&[5u8; 32]);
+    let bogus_hash = Digest::hash(&[5u8; 32]);
     assert_eq!(
         core::validate_balance_proof(
             &bogus_hash,
@@ -169,7 +170,7 @@ fn get_balance_using_public_key_should_work() {
         Err(ValidationError::UnexpectedKey)
     );
 
-    let bogus_hash = Blake2bHash::new(&[5u8; 32]);
+    let bogus_hash = Digest::hash(&[5u8; 32]);
     assert_eq!(
         core::validate_balance_proof(
             &bogus_hash,

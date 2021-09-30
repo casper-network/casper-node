@@ -1,3 +1,4 @@
+//! Support for transforms produced during execution.
 use std::{
     any,
     convert::TryFrom,
@@ -23,10 +24,18 @@ use casper_types::{
 /// cause an overflow).
 #[derive(PartialEq, Eq, Debug, Clone, thiserror::Error)]
 pub enum Error {
-    #[error(transparent)]
+    /// Error while (de)serializing data.
+    #[error("{0}")]
     Serialization(bytesrepr::Error),
-    #[error(transparent)]
-    TypeMismatch(#[from] StoredValueTypeMismatch),
+    /// Type mismatch error.
+    #[error("{0}")]
+    TypeMismatch(StoredValueTypeMismatch),
+}
+
+impl From<StoredValueTypeMismatch> for Error {
+    fn from(error: StoredValueTypeMismatch) -> Self {
+        Error::TypeMismatch(error)
+    }
 }
 
 impl From<CLValueError> for Error {
@@ -43,17 +52,39 @@ impl From<CLValueError> for Error {
     }
 }
 
+/// Representation of a single transformation ocurring during execution.
+///
+/// Note that all arithmetic variants of [`Transform`] are commutative which means that a given
+/// collection of them can be executed in any order to produce the same end result.
 #[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Transform {
+    /// An identity transformation that does not modify a value in the global state.
+    ///
+    /// Created as part of a read from the global state.
     Identity,
+    /// Writes a new value in the global state.
     Write(StoredValue),
+    /// A wrapping addition of an `i32` to an existing numeric value (not necessarily an `i32`) in
+    /// the global state.
     AddInt32(i32),
+    /// A wrapping addition of a `u64` to an existing numeric value (not necessarily an `u64`) in
+    /// the global state.
     AddUInt64(u64),
+    /// A wrapping addition of a `U128` to an existing numeric value (not necessarily an `U128`) in
+    /// the global state.
     AddUInt128(U128),
+    /// A wrapping addition of a `U256` to an existing numeric value (not necessarily an `U256`) in
+    /// the global state.
     AddUInt256(U256),
+    /// A wrapping addition of a `U512` to an existing numeric value (not necessarily an `U512`) in
+    /// the global state.
     AddUInt512(U512),
+    /// Adds new named keys to an existing entry in the global state.
+    ///
+    /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
+    /// Represents the case where applying a transform would cause an error.
     Failure(Error),
 }
 
@@ -131,6 +162,9 @@ where
 }
 
 impl Transform {
+    /// Applies the transformation on a specified stored value instance.
+    ///
+    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
     pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
         match self {
             Transform::Identity => Ok(stored_value),
@@ -348,6 +382,7 @@ impl From<&Transform> for casper_types::Transform {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{collection::vec, prelude::*};

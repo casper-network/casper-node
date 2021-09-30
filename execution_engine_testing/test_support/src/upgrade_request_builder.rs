@@ -2,13 +2,14 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use casper_execution_engine::{core::engine_state::UpgradeConfig, shared::newtypes::Blake2bHash};
+use casper_execution_engine::core::engine_state::UpgradeConfig;
+use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 /// TODO: doc comment.
 #[derive(Default)]
 pub struct UpgradeRequestBuilder {
-    pre_state_hash: Blake2bHash,
+    pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
@@ -27,7 +28,7 @@ impl UpgradeRequestBuilder {
     }
 
     /// TODO: doc comment.
-    pub fn with_pre_state_hash(mut self, pre_state_hash: Blake2bHash) -> Self {
+    pub fn with_pre_state_hash(mut self, pre_state_hash: Digest) -> Self {
         self.pre_state_hash = pre_state_hash;
         self
     }

@@ -1,3 +1,4 @@
+//! Units of execution.
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
@@ -46,50 +47,138 @@ const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
 const TRANSFER_TAG: u8 = 5;
 
+/// Possible ways to identify the `ExecutableDeployItem`.
+#[derive(
+    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub enum ExecutableDeployItemIdentifier {
+    /// The deploy item is of the type [`ExecutableDeployItem::ModuleBytes`]
+    Module,
+    /// The deploy item is a variation of a stored contract.
+    Contract(ContractIdentifier),
+    /// The deploy item is a variation of a stored contract package.
+    Package(ContractPackageIdentifier),
+    /// The deploy item is a native transfer.
+    Transfer,
+}
+
+/// Possible ways to identify the contract object within an `ExecutableDeployItem`.
+#[derive(
+    Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub enum ContractIdentifier {
+    /// The contract object within the deploy item is identified by name.
+    Name(String),
+    /// The contract object within the deploy item is identified by its hash.
+    Hash(ContractHash),
+}
+
+/// Possible ways to identify the contract package object within an `ExecutableDeployItem`.
+#[derive(
+    Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub enum ContractPackageIdentifier {
+    /// The stored contract package within the deploy item is identified by name.
+    Name {
+        /// Name of the contract package.
+        name: String,
+        /// The version specified in the deploy item.
+        version: Option<ContractVersion>,
+    },
+    /// The stored contract package within the deploy item is identified by hash.
+    Hash {
+        /// Hash of the contract package.
+        contract_package_hash: ContractPackageHash,
+        /// The version specified in the deploy item.
+        version: Option<ContractVersion>,
+    },
+}
+
+impl ContractPackageIdentifier {
+    /// Returns the version of the contract package specified in the deploy item.
+    pub fn version(&self) -> Option<ContractVersion> {
+        match self {
+            ContractPackageIdentifier::Name { version, .. } => *version,
+            ContractPackageIdentifier::Hash { version, .. } => *version,
+        }
+    }
+}
+
+/// Represents possible variants of an executable deploy.
 #[derive(
     Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
+    /// Executable specified as raw bytes that represent WASM code and an instance of
+    /// [`RuntimeArgs`].
     ModuleBytes {
+        /// Raw WASM module bytes with assumed "call" export as an entrypoint.
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")]
         module_bytes: Bytes,
-        // assumes implicit `call` noarg entrypoint
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored contract referenced by its [`ContractHash`], entry point and an instance of
+    /// [`RuntimeArgs`].
     StoredContractByHash {
+        /// Contract hash.
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractHash,
+        /// Name of an entry point.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored contract referenced by a named key existing in the signer's account context, entry
+    /// point and an instance of [`RuntimeArgs`].
     StoredContractByName {
+        /// Named key.
         name: String,
+        /// Name of an entry point.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an
+    /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
+        /// Contract package hash
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractPackageHash,
-        version: Option<ContractVersion>, // defaults to highest enabled version
+        /// An optional version of the contract to call. It will default to the highest enabled
+        /// version if no value is specified.
+        version: Option<ContractVersion>,
+        /// Entry point name.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// Stored versioned contract referenced by a named key existing in the signer's account
+    /// context, entry point and an instance of [`RuntimeArgs`].
     StoredVersionedContractByName {
+        /// Named key.
         name: String,
-        version: Option<ContractVersion>, // defaults to highest enabled version
+        /// An optional version of the contract to call. It will default to the highest enabled
+        /// version if no value is specified.
+        version: Option<ContractVersion>,
+        /// Entry point name.
         entry_point: String,
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
+    /// A native transfer which does not contain or reference a WASM code.
     Transfer {
+        /// Runtime arguments.
         args: RuntimeArgs,
     },
 }
 
 impl ExecutableDeployItem {
+    /// Returns the entry point name.
     pub fn entry_point_name(&self) -> &str {
         match self {
             ExecutableDeployItem::ModuleBytes { .. } | ExecutableDeployItem::Transfer { .. } => {
@@ -102,6 +191,73 @@ impl ExecutableDeployItem {
         }
     }
 
+    /// Returns the identifier of the ExecutableDeployItem.
+    pub fn identifier(&self) -> ExecutableDeployItemIdentifier {
+        match self {
+            ExecutableDeployItem::ModuleBytes { .. } => ExecutableDeployItemIdentifier::Module,
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
+                ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(*hash))
+            }
+            ExecutableDeployItem::StoredContractByName { name, .. } => {
+                ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(name.to_string()))
+            }
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
+                ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Hash {
+                    contract_package_hash: *hash,
+                    version: *version,
+                })
+            }
+            ExecutableDeployItem::StoredVersionedContractByName { name, version, .. } => {
+                ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name {
+                    name: name.to_string(),
+                    version: *version,
+                })
+            }
+            ExecutableDeployItem::Transfer { .. } => ExecutableDeployItemIdentifier::Transfer,
+        }
+    }
+
+    /// Returns the identifier of the contract present in the deploy item, if present.
+    pub fn contract_identifier(&self) -> Option<ContractIdentifier> {
+        match self {
+            ExecutableDeployItem::ModuleBytes { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { .. }
+            | ExecutableDeployItem::Transfer { .. } => None,
+
+            ExecutableDeployItem::StoredContractByName { name, .. } => {
+                Some(ContractIdentifier::Name(name.to_string()))
+            }
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
+                Some(ContractIdentifier::Hash(*hash))
+            }
+        }
+    }
+
+    /// Returns the identifier of the contract package present in the deploy item, if present.
+    pub fn contract_package_identifier(&self) -> Option<ContractPackageIdentifier> {
+        match self {
+            ExecutableDeployItem::ModuleBytes { .. }
+            | ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredContractByName { .. }
+            | ExecutableDeployItem::Transfer { .. } => None,
+
+            ExecutableDeployItem::StoredVersionedContractByName { name, version, .. } => {
+                Some(ContractPackageIdentifier::Name {
+                    name: name.clone(),
+                    version: *version,
+                })
+            }
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
+                Some(ContractPackageIdentifier::Hash {
+                    contract_package_hash: *hash,
+                    version: *version,
+                })
+            }
+        }
+    }
+
+    /// Returns the runtime arguments.
     pub fn args(&self) -> &RuntimeArgs {
         match self {
             ExecutableDeployItem::ModuleBytes { args, .. }
@@ -113,10 +269,54 @@ impl ExecutableDeployItem {
         }
     }
 
+    /// Checks if this deploy item is a native transfer.
     pub fn is_transfer(&self) -> bool {
         matches!(self, ExecutableDeployItem::Transfer { .. })
     }
 
+    /// Checks if the deploy item is a contract identified by its name.
+    pub fn is_by_name(&self) -> bool {
+        matches!(
+            self,
+            ExecutableDeployItem::StoredVersionedContractByName { .. }
+        ) || matches!(self, ExecutableDeployItem::StoredContractByName { .. })
+    }
+
+    /// Returns the name of the contract or contract package,
+    /// if the deploy item is identified by name.
+    pub fn by_name(&self) -> Option<String> {
+        match self {
+            ExecutableDeployItem::StoredContractByName { name, .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { name, .. } => {
+                Some(name.clone())
+            }
+            ExecutableDeployItem::ModuleBytes { .. }
+            | ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::Transfer { .. } => None,
+        }
+    }
+
+    /// Checks if the deploy item is a stored contract.
+    pub fn is_stored_contract(&self) -> bool {
+        matches!(self, ExecutableDeployItem::StoredContractByHash { .. })
+            || matches!(self, ExecutableDeployItem::StoredContractByName { .. })
+    }
+
+    /// Checks if the deploy item is a stored contract package.
+    pub fn is_stored_contract_package(&self) -> bool {
+        matches!(
+            self,
+            ExecutableDeployItem::StoredVersionedContractByHash { .. }
+        ) || matches!(
+            self,
+            ExecutableDeployItem::StoredVersionedContractByName { .. }
+        )
+    }
+
+    /// Returns all the details necessary for execution.
+    /// This object is generated based on information provided by
+    /// [`ExecutableDeployItem`].
     #[allow(clippy::too_many_arguments)]
     pub fn get_deploy_metadata<R>(
         &self,
@@ -749,31 +949,52 @@ impl Distribution<ExecutableDeployItem> for Standard {
     }
 }
 
+/// The metadata which results from resolving an instance of [`ExecutableDeployItem`] into values
+/// that will be later be used to create a [`crate::core::runtime::Runtime`] and
+/// [`crate::core::runtime_context::RuntimeContext`].
 #[derive(Clone, Debug)]
 pub struct DeployMetadata {
+    /// This will be a [`DeployKind::System`] if the resolved contract is a system one based on
+    /// it's [`ContractHash`] or a [`DeployKind::Session`] or [`DeployKind::Contract`]
+    /// depending on the [`EntryPointType`] of the contract referenced by [`ExecutableDeployItem`]
+    /// variants.
     pub kind: DeployKind,
+    /// Account hash of the account that initiates the deploy.
     pub account_hash: AccountHash,
+    /// Key pointing to the entity we will be running as.
     pub base_key: Key,
+    /// An instance of the WASM module.
     pub module: Module,
+    /// Contract hash of the running contract.
     pub contract_hash: ContractHash,
+    /// Contract instance.
     pub contract: Contract,
+    /// Contract package that contains a reference to `contract`.
     pub contract_package: ContractPackage,
+    /// Entry point that will be executed.
     pub entry_point: EntryPoint,
+    /// Indicates if the contract is stored in the global state.
     pub is_stored: bool,
 }
 
+/// Represents a kind of a deploy.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DeployKind {
+    /// Session code.
     Session,
+    /// Contract code.
     Contract,
+    /// System contract.
     System,
 }
 
 impl DeployMetadata {
+    /// Returns the module, consuming the object.
     pub fn take_module(self) -> Module {
         self.module
     }
 
+    /// Returns an initial call stack based on the metadata.
     pub fn initial_call_stack(&self) -> Result<Vec<CallStackElement>, Error> {
         match (
             self.kind,

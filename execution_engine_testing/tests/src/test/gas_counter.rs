@@ -11,27 +11,6 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::Error, shared::wasm_prep::PreprocessingError};
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
 
-/// Creates minimal session code that does nothing
-fn make_minimal_do_nothing() -> Vec<u8> {
-    let module = builder::module()
-        .function()
-        // A signature with 0 params and no return type
-        .signature()
-        .build()
-        .body()
-        .build()
-        .build()
-        // Export above function
-        .export()
-        .field(DEFAULT_ENTRY_POINT_NAME)
-        .build()
-        // Memory section is mandatory
-        .memory()
-        .build()
-        .build();
-    parity_wasm::serialize(module).expect("should serialize")
-}
-
 /// Prepare malicious payload with amount of opcodes that could potentially overflow injected gas
 /// counter.
 fn make_gas_counter_overflow() -> Vec<u8> {
@@ -201,34 +180,9 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     let session_bytes = make_session_code_with(instructions);
 
-    let exec_request = {
-        // NOTE: We use computed "do nothing" WASM module because it turns out "do_nothing" in
-        // AssemblyScript actually does "nop" which really "does something": (func (;10;)
-        // (type 4)   nop)
-
-        let do_nothing_bytes = make_minimal_do_nothing();
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(do_nothing_bytes, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([43; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
-
     let mut builder = InMemoryWasmTestContext::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
-    let payment_cost = {
-        let mut forked_builder = builder.clone();
-        forked_builder.exec(exec_request).commit().expect_success();
-        forked_builder.last_exec_gas_cost()
-    };
 
     let exec_request = {
         let deploy_item = DeployItemBuilder::new()
@@ -245,7 +199,7 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     builder.exec(exec_request).commit().expect_success();
 
-    let gas_cost = builder.last_exec_gas_cost() - payment_cost;
+    let gas_cost = builder.last_exec_gas_cost();
     let expected_cost = accounted_opcodes.clone().into_iter().map(Gas::from).sum();
     assert_eq!(
         gas_cost, expected_cost,

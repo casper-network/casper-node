@@ -1,6 +1,8 @@
+//! Definition of all the possible outcomes of the operation on an `EngineState` instance.
 use datasize::DataSize;
 use thiserror::Error;
 
+use casper_hashing::Digest;
 use casper_types::{bytesrepr, system::mint, ApiError, ProtocolVersion};
 
 use crate::{
@@ -8,57 +10,72 @@ use crate::{
         engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
         execution,
     },
-    shared::{newtypes::Blake2bHash, wasm_prep},
+    shared::wasm_prep,
     storage,
     storage::global_state::CommitError,
 };
 
+/// Engine state errors.
 #[derive(Clone, Error, Debug)]
 pub enum Error {
+    /// Specified state root hash is not found.
     #[error("Root not found: {0}")]
-    RootNotFound(Blake2bHash),
-    #[error("Invalid hash length: expected {expected}, actual {actual}")]
-    InvalidHashLength { expected: usize, actual: usize },
-    #[error("Invalid account hash length: expected {expected}, actual {actual}")]
-    InvalidAccountHashLength { expected: usize, actual: usize },
+    RootNotFound(Digest),
+    /// Protocol version used in the deploy is invalid.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
+    /// Genesis error.
     #[error("{0:?}")]
     Genesis(Box<GenesisError>),
+    /// WASM preprocessing error.
     #[error("Wasm preprocessing error: {0}")]
     WasmPreprocessing(#[from] wasm_prep::PreprocessingError),
+    /// WASM serialization error.
     #[error("Wasm serialization error: {0:?}")]
     WasmSerialization(#[from] parity_wasm::SerializationError),
+    /// Contract execution error.
     #[error(transparent)]
     Exec(execution::Error),
+    /// Storage error.
     #[error("Storage error: {0}")]
     Storage(#[from] storage::error::Error),
+    /// Authorization error.
     #[error("Authorization failure: not authorized.")]
     Authorization,
+    /// Payment code provided insufficient funds for execution.
     #[error("Insufficient payment")]
     InsufficientPayment,
+    /// Motes to gas conversion resulted in an overflow.
     #[error("Gas conversion overflow")]
     GasConversionOverflow,
+    /// General deploy error.
     #[error("Deploy error")]
     Deploy,
+    /// Executing a payment finalization code resulted in an error.
     #[error("Payment finalization error")]
     Finalization,
-    #[error("Missing system contract association: {0}")]
-    MissingSystemContract(String),
+    /// Serialization/deserialization error.
     #[error("Bytesrepr error: {0}")]
     Bytesrepr(String),
+    /// Mint error.
     #[error("Mint error: {0}")]
     Mint(String),
+    /// Invalid key variant.
     #[error("Unsupported key type")]
     InvalidKeyVariant,
+    /// Protocol upgrade error.
     #[error("Protocol upgrade error: {0}")]
     ProtocolUpgrade(ProtocolUpgradeError),
+    /// Invalid deploy item variant.
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
+    /// Commit error.
     #[error(transparent)]
     CommitError(#[from] CommitError),
+    /// Missing system contract registry.
     #[error("Missing SystemContractRegistry")]
     MissingSystemContractRegistry,
+    /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
 }

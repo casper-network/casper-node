@@ -14,7 +14,7 @@ use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
-use casper_types::bytesrepr::{FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Error wrapper for lower-level storage errors.
 ///
@@ -39,6 +39,10 @@ pub enum LmdbExtError {
     #[error("unknown LMDB or serialization error, likely from a bug: {0}")]
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
+
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct BytesreprError(pub bytesrepr::Error);
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a
 // blanked `From<>` implementation for error type conversion.
@@ -218,7 +222,7 @@ pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError
 pub(super) fn deserialize_bytesrepr<T: FromBytes>(raw: &[u8]) -> Result<T, LmdbExtError> {
     T::from_bytes(raw)
         .map(|val| val.0)
-        .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
+        .map_err(|err| LmdbExtError::DataCorrupted(Box::new(BytesreprError(err))))
 }
 
 /// Serializes into a buffer.
@@ -226,5 +230,5 @@ pub(super) fn deserialize_bytesrepr<T: FromBytes>(raw: &[u8]) -> Result<T, LmdbE
 pub(super) fn serialize_bytesrepr<T: ToBytes>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
     value
         .to_bytes()
-        .map_err(|err| LmdbExtError::Other(Box::new(err)))
+        .map_err(|err| LmdbExtError::Other(Box::new(BytesreprError(err))))
 }

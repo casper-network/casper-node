@@ -13,12 +13,16 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
-* Added new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
-* Added `contract_runtime_execute_block` histogram tracking execution time of a whole block.
-* Long running events now log their event type.
-* Individual weights for traffic throttling can now be set through the configuration value
-  `network.estimator_weights`.
+* Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+* Add `contract_runtime_execute_block` histogram tracking execution time of a whole block.
+* Long-running events now log their event type.
+* Individual weights for traffic throttling can now be set through the configuration value `network.estimator_weights`.
+* Add `consensus.highway.max_request_batch_size` configuration parameter. Defaults to 20.
+* New histogram metrics `deploy_acceptor_accepted_deploy` and `deploy_acceptor_rejected_deploy` that track how long the initial verification took.
+* Add gzip content negotiation (using accept-encoding header) to rpc endpoints.
+* Add `state_get_trie` JSON-RPC endpoint.
+* Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes` that return the status changes of active validators.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
@@ -47,7 +51,10 @@ All notable changes to this project will be documented in this file.  The format
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
 
 ### Fixed
-* Resolved an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
+* Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
+* Resolve issue of duplicated config option `max_associated_keys`.
+
+
 
 ## [1.3.2] - 2021-08-02
 
@@ -55,10 +62,14 @@ All notable changes to this project will be documented in this file.  The format
 * Resolve an issue in the `state_get_dictionary_item` JSON-RPC when a `ContractHash` is used.
 * Corrected network state engine to hold in blocked state for full 10 minutes when encountering out of order race condition.
 
+
+
 ## [1.3.1] - 2021-07-26
 
 ### Fixed
 * Parametrized sync_timeout and increased value to stop possible post upgrade restart loop.
+
+
 
 ## [1.3.0] - 2021-07-19
 

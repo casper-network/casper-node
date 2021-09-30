@@ -1,16 +1,19 @@
-use crate::shared::newtypes::{Blake2bHash, CorrelationId};
+use casper_hashing::Digest;
 
 use super::*;
-use crate::storage::{
-    error::{self, in_memory},
-    trie_store::operations::{scan, TrieScan},
+use crate::{
+    shared::newtypes::CorrelationId,
+    storage::{
+        error::{self, in_memory},
+        trie_store::operations::{scan, TrieScan},
+    },
 };
 
 fn check_scan<'a, R, S, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
-    root_hash: &Blake2bHash,
+    root_hash: &Digest,
     key: &[u8],
 ) -> Result<(), E>
 where
@@ -34,7 +37,7 @@ where
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {
             let tip_bytes = tip.to_bytes().unwrap();
-            Blake2bHash::new(&tip_bytes)
+            Digest::hash(&tip_bytes)
         };
         match parent {
             Trie::Leaf { .. } => panic!("parents should not contain any leaves"),
@@ -108,7 +111,7 @@ mod full_tries {
     fn lmdb_scans_from_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (state_index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();
@@ -135,7 +138,7 @@ mod full_tries {
     fn in_memory_scans_from_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Blake2bHash> = Vec::new();
+        let mut states: Vec<Digest> = Vec::new();
 
         for (state_index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let (root_hash, tries) = generator().unwrap();

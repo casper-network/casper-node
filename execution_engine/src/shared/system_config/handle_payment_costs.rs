@@ -1,19 +1,28 @@
+//! Costs of the `handle_payment` system contract.
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
+/// Default cost of the `get_payment_purse` `handle_payment` entry point.
 pub const DEFAULT_GET_PAYMENT_PURSE_COST: u32 = 10_000;
+/// Default cost of the `set_refund_purse` `handle_payment` entry point.
 pub const DEFAULT_SET_REFUND_PURSE_COST: u32 = 10_000;
+/// Default cost of the `get_refund_purse` `handle_payment` entry point.
 pub const DEFAULT_GET_REFUND_PURSE_COST: u32 = 10_000;
+/// Default cost of the `finalize_payment` `handle_payment` entry point.
 pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 10_000;
 
-/// Description of costs of calling handle payment entrypoints.
+/// Description of the costs of calling `handle_payment` entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HandlePaymentCosts {
+    /// Cost of calling the `get_payment_purse` entry point.
     pub get_payment_purse: u32,
+    /// Cost of calling the `set_refund_purse` entry point.
     pub set_refund_purse: u32,
+    /// Cost of calling the `get_refund_purse` entry point.
     pub get_refund_purse: u32,
+    /// Cost of calling the `finalize_payment` entry point.
     pub finalize_payment: u32,
 }
 
@@ -78,6 +87,7 @@ impl Distribution<HandlePaymentCosts> for Standard {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{num, prop_compose};

@@ -12,11 +12,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    api_error::{self},
-    bytesrepr::{self},
-    contracts::NamedKeys,
-    runtime_args, ApiError, CLType, CLValue, ContractPackageHash, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter, RuntimeArgs, URef,
+    api_error, bytesrepr, contracts::NamedKeys, runtime_args, ApiError, CLType, CLValue,
+    ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
+    RuntimeArgs, URef,
 };
 
 const HASH_KEY_NAME: &str = "counter_package_hash";

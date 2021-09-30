@@ -14,7 +14,8 @@ use clap::{crate_version, App, Arg};
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestContext, DEFAULT_PAYMENT,
 };
-use casper_execution_engine::{core::engine_state::EngineConfig, shared::newtypes::Blake2bHash};
+use casper_execution_engine::core::engine_state::EngineConfig;
+use casper_hashing::Digest;
 use casper_types::{runtime_args, RuntimeArgs, U512};
 
 use casper_engine_tests::profiling;
@@ -111,7 +112,7 @@ fn main() {
     let engine_config = EngineConfig::default();
 
     let mut test_builder =
-        LmdbWasmTestContext::open(&args.data_dir, engine_config, Blake2bHash::new(&root_hash));
+        LmdbWasmTestContext::open(&args.data_dir, engine_config, Digest::hash(&root_hash));
 
     test_builder.exec(exec_request).expect_success().commit();
 

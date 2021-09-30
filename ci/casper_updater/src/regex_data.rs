@@ -74,6 +74,48 @@ pub mod types {
     });
 }
 
+pub mod hashing {
+    use super::*;
+
+    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
+        vec![
+            DependentFile::new(
+                "client/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "execution_engine/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "execution_engine_testing/test_support/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "node/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "hashing/Cargo.toml",
+                MANIFEST_VERSION_REGEX.clone(),
+                replacement,
+            ),
+            DependentFile::new(
+                "hashing/src/lib.rs",
+                Regex::new(
+                    r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-hashing)/(?:[^"]+)"#,
+                )
+                .unwrap(),
+                replacement_with_slash,
+            ),
+        ]
+    });
+}
+
 pub mod execution_engine {
     use super::*;
 
@@ -234,7 +276,7 @@ pub mod execution_engine_testing_test_support {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
                 DependentFile::new(
-                    "execution_engine_testing/cargo_casper/src/tests_package.rs",
+                    "execution_engine_testing/cargo_casper/src/common.rs",
                     Regex::new(r#"(?m)("casper-engine-test-support",\s*)"(?:[^"]+)"#).unwrap(),
                     cargo_casper_src_test_package_rs_replacement,
                 ),

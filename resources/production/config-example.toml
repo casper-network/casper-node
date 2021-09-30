@@ -44,7 +44,7 @@ unit_hashes_folder = "/var/lib/casper/casper-node"
 pending_vertex_timeout = '30min'
 
 # If the current era's protocol state has not progressed for this long, shut down.
-# standstill_timeout = '30min'
+standstill_timeout = '30min'
 
 # Request the latest protocol state from a random peer periodically, with this interval.
 request_state_interval = '20sec'
@@ -64,6 +64,11 @@ max_execution_delay = 3
 
 # The maximum number of peers we request the same vertex from in parallel.
 max_requests_for_vertex = 5
+
+# The maximum number of dependencies we request per validator in a batch.
+# Limits requests per validator in panorama - in order to get a total number of
+# requests, multiply by # of validators.
+max_request_batch_size = 20
 
 [consensus.highway.round_success_meter]
 # The number of most recent rounds we will be keeping track of.
@@ -320,8 +325,8 @@ verify_accounts = true
 
 # Enable manual synchronizing to disk.
 #
-# If unset, defaults to true.
-#enable_manual_sync = true
+# If unset, defaults to false.
+#enable_manual_sync = false
 
 
 # ========================================================
@@ -341,4 +346,4 @@ sync_timeout = '1hr'
 # Deploys are only proposed in a new block if they have been received at least this long ago.
 # A longer delay makes it more likely that many proposed deploys are already known by the
 # other nodes, and don't have to be requested from the proposer afterwards.
-#deploy_delay = '1min'
+deploy_delay = '15sec'

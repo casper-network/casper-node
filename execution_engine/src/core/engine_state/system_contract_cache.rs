@@ -1,3 +1,4 @@
+//! Support for caching system contracts.
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},

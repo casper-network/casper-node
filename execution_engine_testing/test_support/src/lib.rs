@@ -68,7 +68,6 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
-
 mod additive_map_diff;
 mod deploy_item_builder;
 mod execute_request_builder;

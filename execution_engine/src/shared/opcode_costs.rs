@@ -1,3 +1,4 @@
+//! Support for Wasm opcode costs.
 use std::collections::BTreeMap;
 
 use datasize::DataSize;
@@ -7,28 +8,48 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
+/// Default cost of the `bit` Wasm opcode.
 pub const DEFAULT_BIT_COST: u32 = 300;
+/// Default cost of the `add` Wasm opcode.
 pub const DEFAULT_ADD_COST: u32 = 210;
+/// Default cost of the `mul` Wasm opcode.
 pub const DEFAULT_MUL_COST: u32 = 240;
+/// Default cost of the `div` Wasm opcode.
 pub const DEFAULT_DIV_COST: u32 = 320;
+/// Default cost of the `load` Wasm opcode.
 pub const DEFAULT_LOAD_COST: u32 = 2_500;
+/// Default cost of the `store` Wasm opcode.
 pub const DEFAULT_STORE_COST: u32 = 4_700;
+/// Default cost of the `const` Wasm opcode.
 pub const DEFAULT_CONST_COST: u32 = 110;
+/// Default cost of the `local` Wasm opcode.
 pub const DEFAULT_LOCAL_COST: u32 = 390;
+/// Default cost of the `global` Wasm opcode.
 pub const DEFAULT_GLOBAL_COST: u32 = 390;
+/// Default cost of the `control_flow` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_COST: u32 = 440;
+/// Default cost of the `integer_comparison` Wasm opcode.
 pub const DEFAULT_INTEGER_COMPARISON_COST: u32 = 250;
+/// Default cost of the `conversion` Wasm opcode.
 pub const DEFAULT_CONVERSION_COST: u32 = 420;
+/// Default cost of the `unreachable` Wasm opcode.
 pub const DEFAULT_UNREACHABLE_COST: u32 = 270;
-pub const DEFAULT_NOP_COST: u32 = 200; // TODO: This value is not researched
+/// Default cost of the `nop` Wasm opcode.
+// TODO: This value is not researched.
+pub const DEFAULT_NOP_COST: u32 = 200;
+/// Default cost of the `current_memory` Wasm opcode.
 pub const DEFAULT_CURRENT_MEMORY_COST: u32 = 290;
+/// Default cost of the `grow_memory` Wasm opcode.
 pub const DEFAULT_GROW_MEMORY_COST: u32 = 240_000;
+/// Default cost of the `regular` Wasm opcode.
 pub const DEFAULT_REGULAR_COST: u32 = 210;
 
 const NUM_FIELDS: usize = 17;
-pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
+const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
-// Taken (partially) from parity-ethereum
+/// Definition of a cost table for Wasm opcodes.
+///
+/// This is taken (partially) from parity-ethereum.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct OpcodeCosts {
     /// Bit operations multiplier.
@@ -69,6 +90,7 @@ pub struct OpcodeCosts {
 }
 
 impl OpcodeCosts {
+    /// Creates a set of charging rules for the Wasm executor.
     pub(crate) fn to_set(self) -> Set {
         let meterings = {
             let mut tmp = BTreeMap::new();
@@ -238,6 +260,7 @@ impl FromBytes for OpcodeCosts {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{num, prop_compose};

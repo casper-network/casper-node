@@ -5,13 +5,11 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{Error, SystemContractRegistry},
-        execution,
-    },
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::{
+    engine_state::{Error, SystemContractRegistry},
+    execution,
 };
+use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -56,7 +54,7 @@ fn setup() -> InMemoryWasmTestContext {
 
 fn apply_global_state_update(
     builder: &LmdbWasmTestContext,
-    post_state_hash: Blake2bHash,
+    post_state_hash: Digest,
 ) -> BTreeMap<Key, StoredValue> {
     let key = URef::new([0u8; 32], AccessRights::all()).into();
 
