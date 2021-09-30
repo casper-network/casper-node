@@ -921,6 +921,8 @@ impl reactor::Reactor for Reactor {
     fn maybe_exit(&self) -> Option<ReactorExit> {
         if self.linear_chain_sync.stopped_for_upgrade() {
             Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
+        } else if self.linear_chain_sync.stopped_for_downgrade() {
+            Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion))
         } else if self.linear_chain_sync.is_synced() {
             Some(ReactorExit::ProcessShouldContinue)
         } else {

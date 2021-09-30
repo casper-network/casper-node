@@ -210,9 +210,14 @@ impl TransferRuntimeArgsBuilder {
 
     /// Resolves a transfer target mode.
     ///
-    /// User has to specify a "target" argument which could be either an existing purse [`URef`] or
-    /// an account hash. If the "target" account hash is not existing, then a special variant is
-    /// returned that indicates that the system has to create new account first.
+    /// User has to specify a "target" argument which must be one of the following types:
+    ///   * an existing purse [`URef`]
+    ///   * a 32-byte array, interpreted as an account hash
+    ///   * a [`Key::Account`], from which the account hash is extracted
+    ///   * a [`PublicKey`], which is converted to an account hash
+    ///
+    /// If the "target" account hash is not existing, then a special variant is returned that
+    /// indicates that the system has to create new account first.
     ///
     /// Returns [`TransferTargetMode`] with a resolved variant.
     fn resolve_transfer_target_mode<R>(

@@ -24,6 +24,7 @@ const ARG_PURSE_NAME: &str = "purse_name";
 
 #[no_mangle]
 pub extern "C" fn delegate() {
+    let _named_keys = runtime::list_named_keys();
     runtime::put_key("called_do_nothing_ver_2", Key::Hash([1u8; 32]));
     create_purse_01::delegate()
 }
