@@ -4,7 +4,7 @@ use tokio::{
     sync::{broadcast, mpsc, oneshot},
     task,
 };
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 use wheelbuf::WheelBuf;
 
 use casper_types::ProtocolVersion;
@@ -115,6 +115,15 @@ pub(super) async fn run(
     // paired with `data_receiver` is dropped.  `server_joiner` will never return here.
     let _ = future::select(server_joiner, event_stream_fut.boxed()).await;
 
+    trace!("Right above shutdown");
+
+    let shutdown_event = ServerSentEvent {
+        id: None,
+        data: SseData::Shutdown,
+    };
+    let shutdown_message = BroadcastChannelMessage::ServerSentEvent(shutdown_event);
+    debug!("created the event");
+    let _ = broadcaster.send(shutdown_message).expect("did not send?");
     // Kill the event-stream handlers, and shut down the server.
     let _ = broadcaster.send(BroadcastChannelMessage::Shutdown);
     let _ = server_shutdown_sender.send(());

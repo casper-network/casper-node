@@ -103,7 +103,9 @@ pub enum SseData {
         execution_result: Box<ExecutionResult>,
     },
     /// The given deploy has expired.
-    DeployExpired { deploy_hash: DeployHash },
+    DeployExpired {
+        deploy_hash: DeployHash,
+    },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
@@ -117,12 +119,13 @@ pub enum SseData {
         #[data_size(skip)]
         execution_effect: ExecutionEffect,
     },
+    Shutdown,
 }
 
 impl SseData {
     pub(super) fn should_include(&self, filter: &[EventFilter]) -> bool {
         match self {
-            SseData::ApiVersion(_) => true,
+            SseData::ApiVersion(_) | SseData::Shutdown => true,
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
             SseData::DeployAccepted { .. } => filter.contains(&EventFilter::DeployAccepted),
             SseData::DeployProcessed { .. } => filter.contains(&EventFilter::DeployProcessed),
@@ -287,14 +290,20 @@ async fn filter_map_server_sent_event(
 
     let id = match event.id {
         Some(id) => {
-            if matches!(&event.data, &SseData::ApiVersion { .. }) {
+            if matches!(
+                &event.data,
+                &SseData::ApiVersion { .. } | &SseData::Shutdown
+            ) {
                 error!("ApiVersion should have no event ID");
                 return None;
             }
             id.to_string()
         }
         None => {
-            if !matches!(&event.data, &SseData::ApiVersion { .. }) {
+            if !matches!(
+                &event.data,
+                &SseData::ApiVersion { .. } | &SseData::Shutdown
+            ) {
                 error!("only ApiVersion may have no event ID");
                 return None;
             }
@@ -303,12 +312,14 @@ async fn filter_map_server_sent_event(
     };
 
     match &event.data {
-        &SseData::ApiVersion { .. } => Some(Ok(WarpServerSentEvent::default()
-            .json_data(&event.data)
-            .unwrap_or_else(|error| {
-                warn!(%error, ?event, "failed to jsonify sse event");
-                WarpServerSentEvent::default()
-            }))),
+        &SseData::ApiVersion { .. } | &SseData::Shutdown => {
+            Some(Ok(WarpServerSentEvent::default()
+                .json_data(&event.data)
+                .unwrap_or_else(|error| {
+                    warn!(%error, ?event, "failed to jsonify sse event");
+                    WarpServerSentEvent::default()
+                })))
+        }
 
         &SseData::BlockAdded { .. }
         | &SseData::DeployProcessed { .. }

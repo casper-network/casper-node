@@ -216,6 +216,7 @@ where
                 era_id,
                 execution_effect,
             }),
+            Event::Shutdown => self.broadcast(SseData::Shutdown),
         }
     }
 }
