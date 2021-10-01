@@ -8,6 +8,10 @@ use crate::shared::transform::Transform;
 pub struct ExecutionJournal(Vec<(Key, Transform)>);
 
 impl ExecutionJournal {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn push(&mut self, entry: (Key, Transform)) {
         self.0.push(entry)
     }

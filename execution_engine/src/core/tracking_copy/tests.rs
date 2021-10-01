@@ -127,6 +127,11 @@ fn tracking_copy_read() {
     // read does produce an op
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Read));
+    // Reading does produce an identity transform.
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal),
+        &[(k, Transform::Identity)]
+    );
 }
 
 #[test]
@@ -140,20 +145,29 @@ fn tracking_copy_write() {
     let two = StoredValue::CLValue(CLValue::from_t(2_i32).unwrap());
 
     // writing should work
-    tc.write(k, one);
+    tc.write(k, one.clone());
     // write does not need to query the DB
     let db_value = counter.get();
     assert_eq!(db_value, 0);
     // write creates an Op
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Write));
+    // Writing creates a write transform.
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal.clone()),
+        &[(k, Transform::Write(one.clone()))]
+    );
 
     // writing again should update the values
-    tc.write(k, two);
+    tc.write(k, two.clone());
     let db_value = counter.get();
     assert_eq!(db_value, 0);
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Write));
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal),
+        &[(k, Transform::Write(one)), (k, Transform::Write(two))]
+    );
 }
 
 #[test]
@@ -174,11 +188,21 @@ fn tracking_copy_add_i32() {
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Add));
 
+    // Adding creates an add transform.
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal.clone()),
+        &[(k, Transform::AddInt32(3))]
+    );
+
     // adding again should update the values
     let add = tc.add(correlation_id, k, three);
     assert_matches!(add, Ok(_));
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Add));
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal),
+        &[(k, Transform::AddInt32(3)), (k, Transform::AddInt32(3))]
+    );
 }
 
 #[test]
@@ -205,7 +229,7 @@ fn tracking_copy_add_named_key() {
     let name2 = "test2".to_string();
     let other_named_key = StoredValue::CLValue(CLValue::from_t((name2.clone(), u2)).unwrap());
     let mut map = NamedKeys::new();
-    map.insert(name1, u1);
+    map.insert(name1.clone(), u1);
 
     // adding the wrong type should fail
     let failed_add = tc.add(
@@ -215,6 +239,7 @@ fn tracking_copy_add_named_key() {
     );
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
     assert!(tc.ops.is_empty());
+    assert!(tc.journal.is_empty());
 
     // adding correct type works
     let add = tc.add(correlation_id, k, named_key);
@@ -222,13 +247,27 @@ fn tracking_copy_add_named_key() {
     // add creates an Op
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Add));
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal.clone()),
+        &[(
+            k,
+            Transform::AddKeys(iter::once((name1.clone(), u1)).collect())
+        )]
+    );
 
     // adding again updates the values
-    map.insert(name2, u2);
+    map.insert(name2.clone(), u2);
     let add = tc.add(correlation_id, k, other_named_key);
     assert_matches!(add, Ok(_));
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Add));
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal),
+        &[
+            (k, Transform::AddKeys(iter::once((name1, u1)).collect())),
+            (k, Transform::AddKeys(iter::once((name2, u2)).collect()))
+        ]
+    );
 }
 
 #[test]
@@ -242,9 +281,13 @@ fn tracking_copy_rw() {
     // reading then writing should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let _ = tc.read(correlation_id, &k);
-    tc.write(k, value);
+    tc.write(k, value.clone());
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Write));
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal),
+        &[(k, Transform::Identity), (k, Transform::Write(value))]
+    );
 }
 
 #[test]
@@ -262,6 +305,10 @@ fn tracking_copy_ra() {
     assert_eq!(tc.ops.len(), 1);
     // this Op is correct because Read+Add = Write
     assert_eq!(tc.ops.get(&k), Some(&Op::Write));
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal),
+        &[(k, Transform::Identity), (k, Transform::AddInt32(3))]
+    );
 }
 
 #[test]
@@ -276,9 +323,16 @@ fn tracking_copy_aw() {
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let write_value = StoredValue::CLValue(CLValue::from_t(7_i32).unwrap());
     let _ = tc.add(correlation_id, k, value);
-    tc.write(k, write_value);
+    tc.write(k, write_value.clone());
     assert_eq!(tc.ops.len(), 1);
     assert_eq!(tc.ops.get(&k), Some(&Op::Write));
+    assert_eq!(
+        Into::<Vec<_>>::into(tc.journal),
+        &[
+            (k, Transform::AddInt32(3)),
+            (k, Transform::Write(write_value))
+        ]
+    );
 }
 
 proptest! {
