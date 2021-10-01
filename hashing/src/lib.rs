@@ -32,7 +32,7 @@ use casper_types::{
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Incorrect digest length {0}.")]
+    #[error("Incorrect digest length {0}, expected length {}.", Digest::LENGTH)]
     /// The digest lenghth was an incorrect size.
     IncorrectDigestLength(usize),
     /// There was a decoding error.

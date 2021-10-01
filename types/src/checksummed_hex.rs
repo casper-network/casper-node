@@ -71,7 +71,10 @@ pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = 
         (input_bytes.len() <= SMALL_BYTES_COUNT).then(|| bytes_to_bits_cycle(blake2b_hash(input)));
     nibbles.map(move |mut nibble| {
         if let Some(hash_bits) = maybe_hash_bits.as_mut() {
+            // Base 16 numbers greater than 10 are represented by the ascii characters a through f.
             if nibble >= 10 && hash_bits.next().unwrap_or(true) {
+                // We are using nibble to index HEX_CHARS, so adding 6 to nibble gives us the index
+                // of the uppercase character. HEX_CHARS[10] == 'a', HEX_CHARS[16] == 'A'.
                 nibble += 6;
             }
         }

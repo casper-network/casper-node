@@ -8,7 +8,7 @@ fn encode_and_print_first_5(input: &[u8]) {
 
 fn encode_iter_and_print_first_5(input: &[u8]) {
     let encoded = encode_iter(input).take(5).collect::<String>();
-    format!("{:5}", encoded);
+    format!("{}", encoded);
 }
 
 fn encode_iter_collected(input: &[u8]) -> String {
@@ -40,7 +40,7 @@ fn encode_vs_encode_iter_first_5_chars(c: &mut Criterion) {
 
 fn encode_vs_base16_encode_lower_10kb(c: &mut Criterion) {
     let input: Vec<u8> = (0..10_000).map(|_| rand::random::<u8>()).collect();
-    let mut group = c.benchmark_group("encode_vs_encode_lower");
+    let mut group = c.benchmark_group("encode_vs_encode_lower_10kb");
     group.bench_function("encode", |b| b.iter(|| encode(black_box(&input))));
     group.bench_function("base16_encode_lower", |b| {
         b.iter(|| base16::encode_lower(black_box(&input)))
@@ -50,7 +50,7 @@ fn encode_vs_base16_encode_lower_10kb(c: &mut Criterion) {
 
 fn encode_vs_base16_encode_lower_100kb(c: &mut Criterion) {
     let input: Vec<u8> = (0..100_000).map(|_| rand::random::<u8>()).collect();
-    let mut group = c.benchmark_group("encode_vs_encode_lower");
+    let mut group = c.benchmark_group("encode_vs_encode_lower_100kb");
     group.bench_function("encode", |b| b.iter(|| encode(black_box(&input))));
     group.bench_function("base16_encode_lower", |b| {
         b.iter(|| base16::encode_lower(black_box(&input)))
@@ -60,7 +60,7 @@ fn encode_vs_base16_encode_lower_100kb(c: &mut Criterion) {
 
 fn encode_vs_base16_encode_lower_1mb(c: &mut Criterion) {
     let input: Vec<u8> = (0..1_000_000).map(|_| rand::random::<u8>()).collect();
-    let mut group = c.benchmark_group("encode_vs_encode_lower");
+    let mut group = c.benchmark_group("encode_vs_encode_lower_1mb");
     group.bench_function("encode", |b| b.iter(|| encode(black_box(&input))));
     group.bench_function("base16_encode_lower", |b| {
         b.iter(|| base16::encode_lower(black_box(&input)))
