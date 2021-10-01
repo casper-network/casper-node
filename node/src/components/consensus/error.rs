@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use num::rational::Ratio;
 use thiserror::Error;
 
-use crate::types::BlockSignatures;
-use casper_types::{PublicKey, U512};
+use casper_types::{EraId, PublicKey, U512};
+
+use crate::types::{BlockHeader, BlockSignatures};
 
 #[derive(Error, Debug)]
 pub enum FinalitySignatureError {
@@ -34,5 +35,16 @@ pub enum FinalitySignatureError {
         signature_weight: Box<U512>,
         total_validator_weight: Box<U512>,
         finality_threshold_fraction: Ratio<u64>,
+    },
+}
+
+#[derive(Error, Debug)]
+pub enum CreateNewEraError {
+    #[error("Attempted to create era with no switch blocks.")]
+    AttemptedToCreateEraWithNoSwitchBlocks,
+    #[error("Attempted to create {era_id} with non-switch block {last_block_header:?}.")]
+    LastBlockHeaderNotASwitchBlock {
+        era_id: EraId,
+        last_block_header: Box<BlockHeader>,
     },
 }

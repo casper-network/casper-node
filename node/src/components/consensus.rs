@@ -294,7 +294,7 @@ where
                 delay,
             } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
             Event::CreateNewEra { switch_blocks } => {
-                self.create_new_era(effect_builder, rng, &switch_blocks)
+                self.create_new_era_effects(effect_builder, rng, &switch_blocks)
             }
             Event::GotUpgradeActivationPoint(activation_point) => {
                 self.got_upgrade_activation_point(activation_point)

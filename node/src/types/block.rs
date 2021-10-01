@@ -588,9 +588,9 @@ impl FromBytes for BlockHash {
 /// A struct to contain information related to the end of an era and validator weights for the
 /// following era.
 pub struct EraEnd {
-    /// The era end information.
+    /// Equivocation and reward information to be included in the terminal finalized block.
     era_report: EraReport,
-    /// The validator weights for the next era.
+    /// The validators for the upcoming era and their respective weights.
     next_era_validator_weights: BTreeMap<PublicKey, U512>,
 }
 
@@ -602,8 +602,14 @@ impl EraEnd {
         }
     }
 
-    fn era_report(&self) -> &EraReport {
+    /// Equivocation and reward information to be included in the terminal finalized block.
+    pub fn era_report(&self) -> &EraReport {
         &self.era_report
+    }
+
+    /// The validators for the upcoming era and their respective weights.
+    pub fn next_era_validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.next_era_validator_weights
     }
 
     fn hash(&self) -> Digest {
@@ -716,12 +722,9 @@ impl BlockHeader {
         self.accumulated_seed
     }
 
-    /// Returns reward and slashing information if this is the era's last block.
-    pub fn era_report(&self) -> Option<&EraReport> {
-        match &self.era_end {
-            Some(data) => Some(data.era_report()),
-            None => None,
-        }
+    /// Returns the [`EraEnd`] of a block if it is a switch block.
+    pub fn era_end(&self) -> Option<&EraEnd> {
+        self.era_end.as_ref()
     }
 
     /// The timestamp from when the block was proposed.
@@ -764,7 +767,7 @@ impl BlockHeader {
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
         match &self.era_end {
             Some(era_end) => {
-                let validator_weights = &era_end.next_era_validator_weights;
+                let validator_weights = era_end.next_era_validator_weights();
                 Some(validator_weights)
             }
             None => None,

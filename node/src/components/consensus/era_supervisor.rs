@@ -62,6 +62,8 @@ use crate::{
 };
 
 pub use self::era::Era;
+use crate::components::consensus::error::CreateNewEraError;
+use std::alloc::Global;
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -234,7 +236,11 @@ where
             .saturating_sub(PAST_OPEN_ERAS as usize)
             .max(1);
         for i in (from..=switch_blocks.len()).rev() {
-            effects.extend(era_supervisor.create_new_era(effect_builder, rng, &switch_blocks[..i]));
+            effects.extend(era_supervisor.create_new_era_effects(
+                effect_builder,
+                rng,
+                &switch_blocks[..i],
+            ));
         }
         Ok((era_supervisor, effects))
     }
@@ -328,47 +334,70 @@ where
 
     /// Initializes a new era. The switch blocks must contain the most recent `auction_delay + 1`
     /// ones, in order, but at most as far back as to the last activation point.
-    pub(super) fn create_new_era<REv: ReactorEventT<I>>(
+    pub(super) fn create_new_era_effects<REv: ReactorEventT<I>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         switch_blocks: &[BlockHeader],
     ) -> Effects<Event<I>> {
-        let key_block = if let Some(key_block) = switch_blocks.last() {
-            key_block
-        } else {
-            return fatal!(
-                effect_builder,
-                "attempted to create era with no switch blocks; this is a bug",
-            )
-            .ignore();
-        };
-
-        let era_id = key_block.era_id().successor();
-
-        let (report, validators) = match (
-            key_block.era_report(),
-            key_block.next_era_validator_weights(),
-        ) {
-            (Some(report), Some(validators)) => (report, validators.clone()),
-            (_, _) => {
+        match self.create_new_era(switch_blocks) {
+            Ok((era_id, outcomes)) => {
+                self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
+            }
+            Err(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks) => {
+                return fatal!(
+                    effect_builder,
+                    "attempted to create era with no switch blocks; this is a bug",
+                )
+                .ignore();
+            }
+            Err(CreateNewEraError::LastBlockHeaderNotASwitchBlock {
+                era_id,
+                last_block_header,
+            }) => {
                 return fatal!(
                     effect_builder,
                     "attempted to create {} with non-switch block {}; this is a bug",
                     era_id,
-                    key_block,
+                    last_block_header,
                 )
                 .ignore();
             }
+        }
+    }
+
+    /// Initializes a new era. The switch blocks must contain the most recent `auction_delay + 1`
+    /// ones, in order, but at most as far back as to the last activation point.
+    fn create_new_era(
+        &mut self,
+        switch_blocks: &[BlockHeader],
+    ) -> Result<(EraId, Vec<ProtocolOutcome<I, ClContext>>), CreateNewEraError> {
+        let key_block = if let Some(key_block) = switch_blocks.last() {
+            key_block
+        } else {
+            return Err(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks);
         };
+
+        let era_id = key_block.era_id().successor();
+        let era_end = if let Some(era_end) = key_block.era_end() {
+            era_end
+        } else {
+            return Err(CreateNewEraError::LastBlockHeaderNotASwitchBlock {
+                era_id,
+                last_block_header: Box::new(key_block.clone()),
+            });
+        };
+
+        let report = era_end.era_report();
+        let validators = era_end.next_era_validator_weights();
 
         if self.open_eras.contains_key(&era_id) {
             warn!(era = era_id.value(), "era already exists");
-            return Effects::new();
+            return Ok((era_id, vec![]));
         }
         if self.current_era > era_id.saturating_add(PAST_OPEN_ERAS) {
             warn!(era = era_id.value(), "trying to create obsolete era");
-            return Effects::new();
+            return Ok((era_id, vec![]));
         }
 
         // Compute the seed for the PRNG from the booking block hash and the accumulated seed.
@@ -398,8 +427,8 @@ where
         // era's validator set but get banned.
         let blocks_after_booking_block = switch_blocks.iter().rev().take(auction_delay);
         let faulty = blocks_after_booking_block
-            .filter_map(|switch_block| switch_block.era_report())
-            .flat_map(|report| report.equivocators.clone())
+            .filter_map(|switch_block| switch_block.era_end())
+            .flat_map(|era_end| era_end.era_report().equivocators.clone())
             .collect();
 
         let instance_id = instance_id(self.chainspec.hash(), era_id);
@@ -438,7 +467,13 @@ where
             seed,
             now,
         );
-        let era = Era::new(consensus, start_time, start_height, faulty, validators);
+        let era = Era::new(
+            consensus,
+            start_time,
+            start_height,
+            faulty,
+            validators.clone(),
+        );
         let _ = self.open_eras.insert(era_id, era);
 
         // Activate the era if this node was already running when the era began, it is still
@@ -508,7 +543,7 @@ where
             }
         }
 
-        self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
+        Ok((era_id, outcomes))
     }
 
     /// Returns the path to the era's unit hash file.
