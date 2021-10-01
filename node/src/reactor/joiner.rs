@@ -486,7 +486,7 @@ impl reactor::Reactor for Reactor {
                             }) => {
                                 let future_version =
                                     block_header_with_future_version.protocol_version();
-                                info!(%current_version, %future_version, "Restarting for upgrade");
+                                info!(%current_version, %future_version, "restarting for upgrade");
                                 Some(JoinerEvent::Shutdown(ExitCode::Success))
                             }
                             Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
@@ -494,7 +494,7 @@ impl reactor::Reactor for Reactor {
                                 block_header_with_old_version,
                             }) => {
                                 let old_version = block_header_with_old_version.protocol_version();
-                                info!(%current_version, %old_version, "Restarting for downgrade");
+                                info!(%current_version, %old_version, "restarting for downgrade");
                                 Some(JoinerEvent::Shutdown(ExitCode::DowngradeVersion))
                             }
                             Err(error) => {
