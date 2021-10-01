@@ -35,8 +35,7 @@ function _main()
     local STAGE_ID=${1}
     local INITIAL_PROTOCOL_VERSION
     local ACTIVATION_POINT
-    local PRE_UPGRADE_HASH
-    local POST_UPGRADE_HASH
+    local UPGRADE_HASH
 
     if [ ! -d "$(get_path_to_stage "$STAGE_ID")" ]; then
         log "ERROR :: stage $STAGE_ID has not been built - cannot run scenario"
@@ -50,7 +49,6 @@ function _main()
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
     ACTIVATION_POINT="$(get_chain_era)"
-    PRE_UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
@@ -58,9 +56,17 @@ function _main()
     _step_06
     _step_07
     _step_08
-    _step_09 "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_HASH"
-#    POST_UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
-#    _step_09 "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_HASH"
+
+    # Workaround for https://github.com/casper-network/casper-node/pull/2101#issuecomment-923205726
+    if [ "$(echo $INITIAL_PROTOCOL_VERSION | tr -d '.')" -ge "140" ]; then
+        log "... using latest block hash (post version 1.4.0) [expected]"
+        UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+    else
+        log "... using block 1 hash (pre version 1.4.0) [expected]"
+        UPGRADE_HASH="$($(get_path_to_client) get-block -b 1 --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+    fi
+
+    _step_09 "$STAGE_ID" "$ACTIVATION_POINT" "$UPGRADE_HASH"
     _step_10
     _step_11
     _step_12
@@ -275,8 +281,9 @@ function _step_11()
     local NODES_IN_SYNC
     local LOOPS_ALLOWED
 
-    # Retry 5mins
-    LOOPS_ALLOWED=300
+    # Workaround for: https://app.zenhub.com/workspaces/engineering-60953fafb1945f0011a3592d/issues/casper-network/governance/69
+    # Retry 20mins
+    LOOPS_ALLOWED=1200
 
     log_step_upgrades 11 "Asserting all nodes are in sync..."
     
@@ -286,9 +293,10 @@ function _step_11()
             log "... all $NODES_IN_SYNC nodes are in sync"
             break
         else
-            LOOPS_ALLOWED=$(( LOOPS_ALLOWED - 1 ))
-            log "...retrying, sleep 1"
-            sleep 1
+            # Retry sync check for 20m in 10s intervals
+            LOOPS_ALLOWED=$(( LOOPS_ALLOWED - 10 ))
+            log "...retrying for another $((LOOPS_ALLOWED / 60)) mins, sleep 10"
+            sleep 10
         fi
     done
 
