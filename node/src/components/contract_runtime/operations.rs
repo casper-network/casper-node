@@ -174,20 +174,20 @@ fn commit_execution_effects(
         .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
     let json_execution_result = ExecutionResult::from(ee_execution_result.clone());
 
-    let execution_effect = match ee_execution_result {
+    let execution_effect: AdditiveMap<Key, Transform> = match ee_execution_result {
         EngineExecutionResult::Success {
-            execution_effect,
+            execution_journal,
             cost,
             ..
         } => {
             // We do want to see the deploy hash and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, %cost, "execution succeeded");
-            execution_effect
+            execution_journal
         }
         EngineExecutionResult::Failure {
             error,
-            execution_effect,
+            execution_journal,
             cost,
             ..
         } => {
@@ -195,15 +195,12 @@ fn commit_execution_effects(
             // We do want to see the deploy hash, error, and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, ?error, %cost, "execution failure");
-            execution_effect
+            execution_journal
         }
-    };
-    let new_state_root = commit_transforms(
-        engine_state,
-        metrics,
-        state_root_hash,
-        execution_effect.transforms,
-    )?;
+    }
+    .into();
+    let new_state_root =
+        commit_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
     Ok((new_state_root, json_execution_result))
 }
 

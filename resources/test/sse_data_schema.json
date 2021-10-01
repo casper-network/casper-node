@@ -1167,8 +1167,7 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/Operation"
-          },
-          "deprecated": true
+          }
         },
         "transforms": {
           "description": "The journal of execution transforms.",

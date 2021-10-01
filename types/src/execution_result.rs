@@ -67,6 +67,19 @@ const TRANSFORM_FAILURE_TAG: u8 = 17;
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
+    let operations = vec![
+        Operation {
+            key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
+                .to_string(),
+            kind: OpKind::Write,
+        },
+        Operation {
+            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
+                .to_string(),
+            kind: OpKind::Read,
+        },
+    ];
+
     let transforms = vec![
         TransformEntry {
             key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
@@ -80,13 +93,18 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
         },
     ];
 
+    let effect = ExecutionEffect {
+        operations,
+        transforms,
+    };
+
     let transfers = vec![
         TransferAddr::new([89; KEY_HASH_LENGTH]),
         TransferAddr::new([130; KEY_HASH_LENGTH]),
     ];
 
     ExecutionResult::Success {
-        effect: ExecutionEffect::new(transforms),
+        effect,
         transfers,
         cost: U512::from(123_456),
     }

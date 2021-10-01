@@ -496,7 +496,7 @@ where
         self.transforms.extend(
             execution_results
                 .iter()
-                .map(|res| res.effect().transforms.clone()),
+                .map(|res| res.execution_journal().clone().into()),
         );
         self.exec_results.push(
             maybe_exec_results

@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use casper_execution_engine::core::engine_state::{
-    execution_effect::ExecutionEffect, GetEraValidatorsRequest,
-};
+use casper_execution_engine::core::engine_state::GetEraValidatorsRequest;
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
@@ -99,6 +97,6 @@ pub struct BlockAndExecutionEffects {
     pub block: Block,
     /// The results from executing the deploys in the block.
     pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    /// The [`ExecutionEffect`] and the upcoming validator sets determined by the `step`
+    /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
     pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
 }

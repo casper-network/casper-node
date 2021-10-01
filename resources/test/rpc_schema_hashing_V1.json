@@ -1226,7 +1226,7 @@
           },
           "ExecutionEffect": {
             "additionalProperties": false,
-            "description": "The effect of executing a single deploy.",
+            "description": "The journal of execution transforms from a single deploy.",
             "properties": {
               "operations": {
                 "description": "The resulting operations.",
@@ -1236,7 +1236,7 @@
                 "type": "array"
               },
               "transforms": {
-                "description": "The resulting transformations.",
+                "description": "The journal of execution transforms.",
                 "items": {
                   "$ref": "#/components/schemas/TransformEntry"
                 },

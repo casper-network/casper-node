@@ -5,14 +5,10 @@ use casper_types::{
     bytesrepr::FromBytes, CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
-use super::{error, execution_effect::ExecutionEffect, op::Op};
+use super::error;
 use crate::{
     core::execution::Error as ExecError,
-    shared::{
-        additive_map::AdditiveMap, execution_journal::ExecutionJournal, newtypes::CorrelationId,
-        transform::Transform,
-    },
-    storage::global_state::StateReader,
+    shared::{execution_journal::ExecutionJournal, transform::Transform},
 };
 
 fn make_payment_error_effects(
@@ -48,8 +44,6 @@ pub enum ExecutionResult {
     Failure {
         /// Error causing this `Failure` variant.
         error: error::Error,
-        /// Contains all the effects that occurred during execution up to the point of the failure.
-        execution_effect: ExecutionEffect,
         /// List of transfers that happened during execution up to the point of the failure.
         transfers: Vec<TransferAddr>,
         /// Gas consumed up to the point of the failure.
@@ -59,12 +53,11 @@ pub enum ExecutionResult {
     },
     /// Execution was finished successfully
     Success {
-        /// Execution effect.
-        execution_effect: ExecutionEffect,
         /// List of transfers.
         transfers: Vec<TransferAddr>,
         /// Gas cost.
         cost: Gas,
+        /// Journal of execution.
         execution_journal: ExecutionJournal,
     },
 }
@@ -73,7 +66,6 @@ impl Default for ExecutionResult {
     fn default() -> Self {
         ExecutionResult::Success {
             execution_journal: Default::default(),
-            execution_effect: Default::default(),
             transfers: Default::default(),
             cost: Default::default(),
         }
@@ -100,7 +92,6 @@ impl ExecutionResult {
     pub fn precondition_failure(error: error::Error) -> ExecutionResult {
         ExecutionResult::Failure {
             error,
-            execution_effect: Default::default(),
             transfers: Vec::default(),
             cost: Gas::default(),
             execution_journal: Default::default(),
@@ -131,9 +122,9 @@ impl ExecutionResult {
         match self {
             ExecutionResult::Failure {
                 cost,
-                execution_effect,
+                execution_journal,
                 ..
-            } => cost.value() == 0.into() && *execution_effect == Default::default(),
+            } => cost.value() == 0.into() && execution_journal.is_empty(),
             ExecutionResult::Success { .. } => false,
         }
     }
@@ -146,18 +137,6 @@ impl ExecutionResult {
         }
     }
 
-    /// Returns execution effects regardless of variant.
-    pub fn effect(&self) -> &ExecutionEffect {
-        match self {
-            ExecutionResult::Failure {
-                execution_effect, ..
-            } => execution_effect,
-            ExecutionResult::Success {
-                execution_effect, ..
-            } => execution_effect,
-        }
-    }
-
     /// Returns list of transfers regardless of variant.
     pub fn transfers(&self) -> &Vec<TransferAddr> {
         match self {
@@ -166,65 +145,40 @@ impl ExecutionResult {
         }
     }
 
+    /// The journal of transforms regardless of variant.
+    pub fn execution_journal(&self) -> &ExecutionJournal {
+        match self {
+            ExecutionResult::Failure {
+                execution_journal, ..
+            } => execution_journal,
+            ExecutionResult::Success {
+                execution_journal, ..
+            } => execution_journal,
+        }
+    }
+
     /// Returns a new execution result with updated gas cost.
     ///
-    /// This method supports preserves the [`ExecutionResult`] variant and updates the cost field
+    /// This method preserves the [`ExecutionResult`] variant and updates the cost field
     /// only.
     pub fn with_cost(self, cost: Gas) -> Self {
         match self {
             ExecutionResult::Failure {
                 error,
-                execution_effect,
                 transfers,
                 execution_journal,
                 ..
             } => ExecutionResult::Failure {
                 error,
-                execution_effect,
                 transfers,
                 cost,
                 execution_journal,
             },
             ExecutionResult::Success {
-                execution_effect,
                 transfers,
                 execution_journal,
                 ..
             } => ExecutionResult::Success {
-                execution_effect,
-                transfers,
-                cost,
-                execution_journal,
-            },
-        }
-    }
-
-    /// Returns a new execution result with updated execution effects.
-    ///
-    /// This method preserves the [`ExecutionResult`] variant and updates the
-    /// `execution_effect` field only.
-    pub fn with_effect(self, execution_effect: ExecutionEffect) -> Self {
-        match self {
-            ExecutionResult::Failure {
-                error,
-                cost,
-                transfers,
-                execution_journal,
-                ..
-            } => ExecutionResult::Failure {
-                error,
-                execution_effect,
-                transfers,
-                cost,
-                execution_journal,
-            },
-            ExecutionResult::Success {
-                cost,
-                transfers,
-                execution_journal,
-                ..
-            } => ExecutionResult::Success {
-                execution_effect,
                 transfers,
                 cost,
                 execution_journal,
@@ -234,30 +188,55 @@ impl ExecutionResult {
 
     /// Returns a new execution result with updated transfers field.
     ///
-    /// This method supports preserves the [`ExecutionResult`] variant and updates the
+    /// This method preserves the [`ExecutionResult`] variant and updates the
     /// `transfers` field only.
     pub fn with_transfers(self, transfers: Vec<TransferAddr>) -> Self {
         match self {
             ExecutionResult::Failure {
                 error,
-                execution_effect,
                 cost,
                 execution_journal,
                 ..
             } => ExecutionResult::Failure {
                 error,
-                execution_effect,
                 transfers,
                 cost,
                 execution_journal,
             },
             ExecutionResult::Success {
                 cost,
-                execution_effect,
                 execution_journal,
                 ..
             } => ExecutionResult::Success {
-                execution_effect,
+                transfers,
+                cost,
+                execution_journal,
+            },
+        }
+    }
+
+    /// Returns a new execution result with an updated execution journal.
+    ///
+    /// This method preserves the [`ExecutionResult`] variant and updates the
+    /// `execution_journal` field only.
+    pub fn with_journal(self, execution_journal: ExecutionJournal) -> Self {
+        match self {
+            ExecutionResult::Failure {
+                error,
+                transfers,
+                cost,
+                execution_journal: _,
+            } => ExecutionResult::Failure {
+                error,
+                transfers,
+                cost,
+                execution_journal,
+            },
+            ExecutionResult::Success {
+                transfers,
+                cost,
+                execution_journal: _,
+            } => ExecutionResult::Success {
                 transfers,
                 cost,
                 execution_journal,
@@ -344,11 +323,9 @@ impl ExecutionResult {
             account_main_purse_balance_key,
             proposer_main_purse_balance_key,
         )?;
-        let execution_effect: ExecutionEffect = execution_journal.clone().into();
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
             error,
-            execution_effect,
             execution_journal,
             transfers,
             cost: gas_cost,
@@ -370,7 +347,6 @@ impl From<ExecutionResult> for casper_types::ExecutionResult {
     fn from(ee_execution_result: ExecutionResult) -> Self {
         match ee_execution_result {
             ExecutionResult::Success {
-                execution_effect: _,
                 transfers,
                 cost,
                 execution_journal,
@@ -381,7 +357,6 @@ impl From<ExecutionResult> for casper_types::ExecutionResult {
             },
             ExecutionResult::Failure {
                 error,
-                execution_effect: _,
                 transfers,
                 cost,
                 execution_journal,
@@ -489,111 +464,63 @@ impl ExecutionResultBuilder {
 
     /// Builds a final [`ExecutionResult`] based on session result, payment result and a
     /// finalization result.
-    pub fn build<R: StateReader<Key, StoredValue>>(
-        self,
-        reader: &R,
-        correlation_id: CorrelationId,
-    ) -> Result<ExecutionResult, ExecutionResultBuilderError> {
-        let transfers = self.transfers();
+    pub fn build(self) -> Result<ExecutionResult, ExecutionResultBuilderError> {
+        let mut error: Option<error::Error> = None;
+        let mut transfers = self.transfers();
         let cost = self.total_cost();
-        let mut ops = AdditiveMap::new();
-        let mut transforms = AdditiveMap::new();
-
-        let mut ret: ExecutionResult = ExecutionResult::Success {
-            execution_effect: Default::default(),
-            execution_journal: Default::default(),
-            transfers,
-            cost,
-        };
+        let mut journal = vec![];
 
         match self.payment_execution_result {
-            Some(result) => {
-                if result.is_failure() {
-                    return Ok(result);
-                } else {
-                    Self::add_effects(&mut ops, &mut transforms, result.effect());
-                }
-            }
+            Some(result @ ExecutionResult::Failure { .. }) => return Ok(result),
+            Some(ExecutionResult::Success {
+                execution_journal, ..
+            }) => journal.extend(Into::<Vec<_>>::into(execution_journal)),
             None => return Err(ExecutionResultBuilderError::MissingPaymentExecutionResult),
         };
 
         // session_code_spec_3: only include session exec effects if there is no session
         // exec error
         match self.session_execution_result {
-            Some(result) => {
-                if result.is_failure() {
-                    ret = result.with_cost(cost);
-                } else {
-                    Self::add_effects(&mut ops, &mut transforms, result.effect());
-                }
+            Some(ExecutionResult::Failure {
+                error: session_error,
+                transfers: session_transfers,
+                execution_journal: _,
+                cost: _,
+            }) => {
+                error = Some(session_error);
+                transfers = session_transfers;
             }
+            Some(ExecutionResult::Success {
+                execution_journal, ..
+            }) => journal.extend(Into::<Vec<_>>::into(execution_journal)),
             None => return Err(ExecutionResultBuilderError::MissingSessionExecutionResult),
         };
 
         match self.finalize_execution_result {
-            Some(result) => {
-                if result.is_failure() {
-                    // payment_code_spec_5_a: Finalization Error should only ever be raised here
-                    return Ok(ExecutionResult::precondition_failure(
-                        error::Error::Finalization,
-                    ));
-                } else {
-                    Self::add_effects(&mut ops, &mut transforms, result.effect());
-                }
+            Some(ExecutionResult::Failure { .. }) => {
+                // payment_code_spec_5_a: Finalization Error should only ever be raised here
+                return Ok(ExecutionResult::precondition_failure(
+                    error::Error::Finalization,
+                ));
             }
+            Some(ExecutionResult::Success {
+                execution_journal, ..
+            }) => journal.extend(Into::<Vec<_>>::into(execution_journal)),
             None => return Err(ExecutionResultBuilderError::MissingFinalizeExecutionResult),
         }
 
-        // Remove redundant writes to allow more opportunity to commute
-        let reduced_effect = Self::reduce_identity_writes(ops, transforms, reader, correlation_id);
-
-        Ok(ret.with_effect(reduced_effect))
-    }
-
-    fn add_effects(
-        ops: &mut AdditiveMap<Key, Op>,
-        transforms: &mut AdditiveMap<Key, Transform>,
-        effect: &ExecutionEffect,
-    ) {
-        for (k, op) in effect.ops.iter() {
-            ops.insert_add(*k, *op);
+        match error {
+            None => Ok(ExecutionResult::Success {
+                transfers,
+                cost,
+                execution_journal: journal.into(),
+            }),
+            Some(error) => Ok(ExecutionResult::Failure {
+                error,
+                transfers,
+                cost,
+                execution_journal: journal.into(),
+            }),
         }
-        for (k, t) in effect.transforms.iter() {
-            transforms.insert_add(*k, t.clone())
-        }
-    }
-
-    /// In the case we are writing the same value as was there originally,
-    /// it is equivalent to having a `Transform::Identity` and `Op::Read`.
-    /// This function makes that reduction before returning the `ExecutionEffect`.
-    fn reduce_identity_writes<R: StateReader<Key, StoredValue>>(
-        mut ops: AdditiveMap<Key, Op>,
-        mut transforms: AdditiveMap<Key, Transform>,
-        reader: &R,
-        correlation_id: CorrelationId,
-    ) -> ExecutionEffect {
-        let kvs: Vec<(Key, StoredValue)> = transforms
-            .keys()
-            .filter_map(|k| match transforms.get(k) {
-                Some(Transform::Write(_)) => reader
-                    .read(correlation_id, k)
-                    .ok()
-                    .and_then(|maybe_v| maybe_v.map(|v| (*k, v))),
-                _ => None,
-            })
-            .collect();
-
-        for (k, old_value) in kvs {
-            if let Some(Transform::Write(new_value)) = transforms.remove(&k) {
-                if new_value == old_value {
-                    transforms.insert(k, Transform::Identity);
-                    ops.insert(k, Op::Read);
-                } else {
-                    transforms.insert(k, Transform::Write(new_value));
-                }
-            }
-        }
-
-        ExecutionEffect::new(ops, transforms)
     }
 }

@@ -14,7 +14,10 @@ use casper_execution_engine::{
     },
     shared::transform::Transform,
 };
-use casper_types::{account::AccountHash, runtime_args, ApiError, Gas, Motes, RuntimeArgs, U512};
+use casper_types::{
+    account::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
+    RuntimeArgs, U512,
+};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
@@ -545,15 +548,25 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     let transforms_from_genesis = &transforms[1];
     let transforms_from_account_1 = &transforms[2];
 
-    // confirm the two deploys have no overlapping writes
+    // Retrieve the payment purse.
+    let payment_purse = builder
+        .get_handle_payment_contract()
+        .named_keys()
+        .get(handle_payment::PAYMENT_PURSE_KEY)
+        .unwrap()
+        .into_uref()
+        .unwrap();
+
+    // Confirm the two deploys have no overlapping writes except for the payment purse balance.
     let common_write_keys = transforms_from_genesis.keys().filter(|k| {
-        matches!(
-            (
-                transforms_from_genesis.get(k),
-                transforms_from_account_1.get(k),
-            ),
-            (Some(Transform::Write(_)), Some(Transform::Write(_)))
-        )
+        *k != &Key::Balance(payment_purse.addr())
+            && matches!(
+                (
+                    transforms_from_genesis.get(k),
+                    transforms_from_account_1.get(k),
+                ),
+                (Some(Transform::Write(_)), Some(Transform::Write(_)))
+            )
     });
 
     assert_eq!(common_write_keys.count(), 0);

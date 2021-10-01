@@ -47,3 +47,14 @@ impl From<ExecutionJournal> for ExecutionEffect {
         Self { ops, transforms }
     }
 }
+
+impl From<ExecutionJournal> for AdditiveMap<Key, Transform> {
+    fn from(journal: ExecutionJournal) -> Self {
+        let mut transforms = AdditiveMap::new();
+        let journal: Vec<(Key, Transform)> = journal.into();
+        for (key, transform) in journal.into_iter() {
+            transforms.insert_add(key, transform);
+        }
+        transforms
+    }
+}

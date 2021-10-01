@@ -4,7 +4,7 @@ use casper_types::{Gas, Key, U512};
 
 use super::Error;
 use crate::{
-    core::engine_state::{execution_effect::ExecutionEffect, execution_result::ExecutionResult},
+    core::engine_state::execution_result::ExecutionResult,
     shared::{execution_journal::ExecutionJournal, transform::Transform},
 };
 
@@ -17,7 +17,6 @@ fn on_fail_charge_test_helper<T>(
     let _result = on_fail_charge!(f(), error_cost, transfers);
     ExecutionResult::Success {
         execution_journal: Default::default(),
-        execution_effect: Default::default(),
         transfers,
         cost: success_cost,
     }
@@ -49,17 +48,9 @@ fn on_fail_charge_with_action() {
         let transfers = Vec::default();
         let journal: ExecutionJournal = vec![(Key::Hash([42u8; 32]), Transform::Identity)].into();
 
-        let execution_effect: ExecutionEffect = journal.clone().into();
-        on_fail_charge!(
-            input,
-            Gas::new(U512::from(456)),
-            execution_effect,
-            journal,
-            transfers
-        );
+        on_fail_charge!(input, Gas::new(U512::from(456)), journal, transfers);
         ExecutionResult::Success {
             execution_journal: Default::default(),
-            execution_effect: Default::default(),
             transfers: Vec::default(),
             cost: Gas::default(),
         }
@@ -68,13 +59,12 @@ fn on_fail_charge_with_action() {
         ExecutionResult::Success { .. } => panic!("Should fail"),
         ExecutionResult::Failure {
             cost,
-            execution_effect,
+            execution_journal,
             ..
         } => {
             assert_eq!(cost, Gas::new(U512::from(456)));
             // Check if the containers are non-empty
-            assert_eq!(execution_effect.ops.len(), 1);
-            assert_eq!(execution_effect.transforms.len(), 1);
+            assert_eq!(execution_journal.len(), 1);
         }
     }
 }
