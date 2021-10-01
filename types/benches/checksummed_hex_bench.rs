@@ -8,7 +8,9 @@ fn encode_and_print_first_5(input: &[u8]) {
 
 fn encode_iter_and_print_first_5(input: &[u8]) {
     let encoded = encode_iter(input).take(5).collect::<String>();
-    format!("{}", encoded);
+    // This format! is redundant but it's here to make this bench similar to
+    // encode_and_print_first_5.
+    format!("{:5}", encoded);
 }
 
 fn encode_iter_collected(input: &[u8]) -> String {
