@@ -55,3 +55,7 @@ std = []
 [[bench]]
 name = "bytesrepr_bench"
 harness = false
+
+[[bench]]
+name = "checksummed_hex_bench"
+harness = false
