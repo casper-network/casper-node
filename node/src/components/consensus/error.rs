@@ -47,4 +47,16 @@ pub enum CreateNewEraError {
         era_id: EraId,
         last_block_header: Box<BlockHeader>,
     },
+    #[error("Attempted to create {era_id} with too few switch blocks {switch_blocks:?}.")]
+    InsufficientSwitchBlocks {
+        era_id: EraId,
+        switch_blocks: Vec<BlockHeader>,
+    },
+    #[error(
+        "Attempted to create {era_id} with switch blocks from unexpected eras: {switch_blocks:?}."
+    )]
+    WrongSwitchBlockEra {
+        era_id: EraId,
+        switch_blocks: Vec<BlockHeader>,
+    },
 }

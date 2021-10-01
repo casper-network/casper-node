@@ -343,25 +343,12 @@ where
             Ok((era_id, outcomes)) => {
                 self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
             }
-            Err(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks) => {
-                return fatal!(
-                    effect_builder,
-                    "attempted to create era with no switch blocks; this is a bug",
-                )
-                .ignore();
-            }
-            Err(CreateNewEraError::LastBlockHeaderNotASwitchBlock {
-                era_id,
-                last_block_header,
-            }) => {
-                return fatal!(
-                    effect_builder,
-                    "attempted to create {} with non-switch block {}; this is a bug",
-                    era_id,
-                    last_block_header,
-                )
-                .ignore();
-            }
+            Err(err) => fatal!(
+                effect_builder,
+                "failed to create era; this is a bug: {:?}",
+                err,
+            )
+            .ignore(),
         }
     }
 
@@ -381,6 +368,24 @@ where
                 last_block_header: Box::new(key_block.clone()),
             }
         })?;
+
+        let earliest_era = self.chainspec.earliest_switch_block_needed(era_id);
+        let switch_blocks_needed = era_id.value().saturating_sub(earliest_era.value()) as usize;
+        let first_idx = switch_blocks
+            .len()
+            .checked_sub(switch_blocks_needed)
+            .ok_or_else(|| CreateNewEraError::InsufficientSwitchBlocks {
+                era_id,
+                switch_blocks: switch_blocks.to_vec(),
+            })?;
+        for (i, switch_block) in switch_blocks[first_idx..].iter().enumerate() {
+            if switch_block.era_id() != earliest_era.saturating_add(i as u64) {
+                return Err(CreateNewEraError::WrongSwitchBlockEra {
+                    era_id,
+                    switch_blocks: switch_blocks.to_vec(),
+                });
+            }
+        }
 
         let report = era_end.era_report();
         let validators = era_end.next_era_validator_weights();
