@@ -63,7 +63,6 @@ use crate::{
 
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
-use std::alloc::Global;
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -372,21 +371,16 @@ where
         &mut self,
         switch_blocks: &[BlockHeader],
     ) -> Result<(EraId, Vec<ProtocolOutcome<I, ClContext>>), CreateNewEraError> {
-        let key_block = if let Some(key_block) = switch_blocks.last() {
-            key_block
-        } else {
-            return Err(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks);
-        };
-
+        let key_block = switch_blocks
+            .last()
+            .ok_or(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks)?;
         let era_id = key_block.era_id().successor();
-        let era_end = if let Some(era_end) = key_block.era_end() {
-            era_end
-        } else {
-            return Err(CreateNewEraError::LastBlockHeaderNotASwitchBlock {
+        let era_end = key_block.era_end().ok_or_else(|| {
+            CreateNewEraError::LastBlockHeaderNotASwitchBlock {
                 era_id,
                 last_block_header: Box::new(key_block.clone()),
-            });
-        };
+            }
+        })?;
 
         let report = era_end.era_report();
         let validators = era_end.next_era_validator_weights();

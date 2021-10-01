@@ -273,7 +273,7 @@ async fn run_equivocator_network() {
         let expected = [alice_pk.clone()];
         // Returns true if Alice is listed as an equivocator in that block.
         let alice_is_equivocator = |header: &BlockHeader| {
-            let report = header.era_report().expect("missing era report");
+            let report = header.era_end().expect("missing era report").era_report();
             report.equivocators == expected
         };
 
@@ -334,7 +334,7 @@ async fn run_equivocator_network() {
         if validators.contains_key(&alice_pk) {
             // We've found era N: This is the last switch block that still lists Alice as a
             // validator.
-            let report = header.era_report().expect("missing era report");
+            let report = header.era_end().expect("missing era report").era_report();
             assert_eq!(*report.inactive_validators, []);
             assert_eq!(*report.equivocators, [alice_pk.clone()]);
             return;
