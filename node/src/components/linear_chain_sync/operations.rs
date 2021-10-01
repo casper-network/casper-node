@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
 
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
@@ -493,14 +493,34 @@ async fn fast_sync_to_most_recent(
             // If we could not fetch, we can stop when the most recent header:
             // 1. has our protocol version
             // 2. is in the current era
-            None if most_recent_block_header.protocol_version() == current_version
-                && is_current_era(
-                    &most_recent_block_header,
-                    &trusted_key_block_info,
-                    chainspec,
-                ) =>
+            None if is_current_era(
+                &most_recent_block_header,
+                &trusted_key_block_info,
+                chainspec,
+            ) =>
             {
-                break
+                match most_recent_block_header
+                    .protocol_version()
+                    .cmp(&current_version)
+                {
+                    Ordering::Greater => {
+                        return Err(
+                            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                                current_version,
+                                block_header_with_future_version: Box::new(
+                                    most_recent_block_header,
+                                ),
+                            },
+                        );
+                    }
+                    Ordering::Less => {
+                        return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+                            current_version,
+                            block_header_with_old_version: Box::new(most_recent_block_header),
+                        });
+                    }
+                    Ordering::Equal => break,
+                }
             }
             // Otherwise keep trying to fetch until we get a block with our version
             None => tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await,
@@ -641,6 +661,15 @@ pub(crate) async fn run_fast_sync_task(
 ) -> Result<BlockHeader, LinearChainSyncError> {
     // Fetch the trusted header
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
+
+    if trusted_block_header.protocol_version() > chainspec.protocol_config.version {
+        return Err(
+            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version: chainspec.protocol_config.version,
+                block_header_with_future_version: trusted_block_header,
+            },
+        );
+    }
 
     let era_duration: TimeDiff = std::cmp::max(
         chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
