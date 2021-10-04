@@ -24,4 +24,4 @@ thiserror = "1.0.29"
 walkdir = "2"
 
 [dev-dependencies]
-testdir = "0.4.0"
+tempfile = "3.2.0"

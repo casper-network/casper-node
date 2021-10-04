@@ -148,11 +148,10 @@ mod tests {
         docs::DocExample,
         info::GetDeployResult,
     };
-    use testdir::testdir;
 
     #[test]
     fn block_with_deploys_round_trip_lmdb() {
-        let dir = testdir!();
+        let dir = tempfile::tempdir().unwrap().into_path();
         let mut storage = create_storage(dir).expect("should create storage");
 
         let example_deploy = GetDeployResult::doc_example().deploy.clone();
