@@ -15,6 +15,7 @@ use casper_types::bytesrepr::ToBytes;
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
     types::{TimeDiff, Timestamp},
+    NodeRng,
 };
 
 /// Information about the context in which a new block is created.
@@ -241,8 +242,13 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn as_any(&self) -> &dyn Any;
 
     /// Handles an incoming message (like NewUnit, RequestDependency).
-    fn handle_message(&mut self, sender: I, msg: Vec<u8>, now: Timestamp)
-        -> ProtocolOutcomes<I, C>;
+    fn handle_message(
+        &mut self,
+        rng: &mut NodeRng,
+        sender: I,
+        msg: Vec<u8>,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<I, C>;
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<I, C>;
