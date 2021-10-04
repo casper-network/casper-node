@@ -21,9 +21,6 @@ use num_integer::Integer;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "std")]
-use thiserror::Error;
-
 pub use bytes::Bytes;
 
 /// The number of bytes in a serialized `()`.
