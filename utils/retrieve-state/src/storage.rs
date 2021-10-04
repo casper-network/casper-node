@@ -132,7 +132,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
     Ok(Storage::new(
         &WithDir::new(chain_download_path, storage_config),
         None,
-        ProtocolVersion::from_parts(1, 0, 0),
+        ProtocolVersion::from_parts(0, 0, 0),
         false,
         "test",
     )?)
