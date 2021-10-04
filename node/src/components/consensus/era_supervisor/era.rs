@@ -55,11 +55,7 @@ pub struct Era<I> {
     pub(crate) start_height: u64,
     /// Pending blocks, waiting for validation and dependencies.
     validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
-    /// Validators banned in this and the next BONDED_ERAS eras, because they were faulty in the
-    /// previous switch block.
-    pub(crate) new_faulty: Vec<PublicKey>,
-    /// Validators that have been faulty in any of the recent BONDED_ERAS switch blocks. This
-    /// includes `new_faulty`.
+    /// Validators that have been faulty in any of the switch blocks after the booking block.
     pub(crate) faulty: HashSet<PublicKey>,
     /// Accusations collected in this era so far.
     accusations: HashSet<PublicKey>,
@@ -72,7 +68,6 @@ impl<I> Era<I> {
         consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
         start_time: Timestamp,
         start_height: u64,
-        new_faulty: Vec<PublicKey>,
         faulty: HashSet<PublicKey>,
         validators: BTreeMap<PublicKey, U512>,
     ) -> Self {
@@ -81,7 +76,6 @@ impl<I> Era<I> {
             start_time,
             start_height,
             validation_states: HashMap::new(),
-            new_faulty,
             faulty,
             accusations: HashSet::new(),
             validators,
@@ -179,7 +173,6 @@ where
             start_time,
             start_height,
             validation_states,
-            new_faulty,
             faulty,
             accusations,
             validators,
@@ -215,7 +208,6 @@ where
             .saturating_add(start_time.estimate_heap_size())
             .saturating_add(start_height.estimate_heap_size())
             .saturating_add(validation_states.estimate_heap_size())
-            .saturating_add(new_faulty.estimate_heap_size())
             .saturating_add(faulty.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())
             .saturating_add(validators.estimate_heap_size())

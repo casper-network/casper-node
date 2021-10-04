@@ -11,8 +11,7 @@ use casper_types::{EraId, Key, PublicKey, U512};
 
 use crate::{
     components::{
-        consensus,
-        consensus::check_sufficient_finality_signatures,
+        consensus::{check_sufficient_finality_signatures, ChainspecConsensusExt},
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
         linear_chain_sync::error::{LinearChainSyncError, SignatureValidationError},
@@ -524,16 +523,12 @@ async fn fast_sync_to_most_recent(
         }
     }
 
-    // The era supervisor needs validator information from previous eras.
-    // The number of previous eras is determined by a *delay* in which consensus participants become
-    // bonded validators or unbond.
-    let delay = consensus::bonded_eras(&chainspec.into());
-    // The era supervisor requires at least to 3*delay + 1 eras back to be stored in the database.
-    let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
-    let earliest_era_needed_by_era_supervisor = most_recent_block_header
-        .era_id()
-        .saturating_sub(historical_eras_needed);
+    // The era supervisor requires enough switch blocks to be stored in the database to be able to
+    // initialize the most recent eras.
     {
+        let earliest_open_era = chainspec.earliest_open_era(most_recent_block_header.era_id());
+        let earliest_era_needed_by_era_supervisor =
+            chainspec.earliest_switch_block_needed(earliest_open_era);
         let mut current_walk_back_header = most_recent_block_header.clone();
         while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
             current_walk_back_header = *fetch_and_store_block_header(

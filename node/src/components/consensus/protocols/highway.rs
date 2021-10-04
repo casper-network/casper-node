@@ -22,7 +22,7 @@ use casper_types::{system::auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::consensus::{
-        config::{Config, ProtocolConfig},
+        config::Config,
         consensus_protocol::{
             BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
         },
@@ -41,7 +41,7 @@ use crate::{
         traits::{ConsensusValueT, Context, NodeIdT},
         ActionId, TimerId,
     },
-    types::{TimeDiff, Timestamp},
+    types::{Chainspec, TimeDiff, Timestamp},
 };
 
 pub use self::config::Config as HighwayConfig;
@@ -107,7 +107,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         faulty: &HashSet<C::ValidatorId>,
         inactive: &HashSet<C::ValidatorId>,
-        protocol_config: &ProtocolConfig,
+        chainspec: &Chainspec,
         config: &Config,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
         era_start_time: Timestamp,
@@ -141,7 +141,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             "cannot start era with total weight 0"
         );
 
-        let highway_config = &protocol_config.highway_config;
+        let highway_config = &chainspec.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
         let ftt_fraction = highway_config.finality_threshold_fraction;
@@ -178,9 +178,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting faulty.
         let min_round_len = state::round_len(highway_config.minimum_round_exponent);
-        let min_rounds_per_era = protocol_config
+        let min_rounds_per_era = chainspec
+            .core_config
             .minimum_era_height
-            .max((TimeDiff::from(1) + protocol_config.era_duration) / min_round_len);
+            .max((TimeDiff::from(1) + chainspec.core_config.era_duration) / min_round_len);
         let endorsement_evidence_limit = min_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
@@ -192,9 +193,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,
-            protocol_config.minimum_era_height,
+            chainspec.core_config.minimum_era_height,
             era_start_time,
-            era_start_time + protocol_config.era_duration,
+            era_start_time + chainspec.core_config.era_duration,
             endorsement_evidence_limit,
         );
 
