@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use thiserror::Error;
+use tokio::task::JoinError;
 
 use casper_execution_engine::{
     core::{engine_state, engine_state::GetEraValidatorsError},
@@ -152,4 +153,8 @@ pub(crate) enum LinearChainSyncError {
 
     #[error("Parent block has a height of u64::MAX.")]
     HeightOverflow { parent: Box<BlockHeader> },
+
+    /// Error joining tokio task.
+    #[error(transparent)]
+    Join(#[from] JoinError),
 }

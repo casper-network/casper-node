@@ -26,6 +26,9 @@ use crate::{
 
 const SLEEP_DURATION_SO_WE_DONT_SPAM: Duration = Duration::from_millis(100);
 
+/// The maximum number of in-flight requests we make in parallel.
+const MAX_PARALLEL_FETCHES: usize = 20;
+
 /// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
 /// necessary for the item. Not suited to fetching a block header or block by height, which require
 /// verification with finality signatures.
@@ -442,7 +445,7 @@ fn check_block_version(
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
 /// returns any outstanding descendant tries.
-async fn fetch_trie_and_insert_into_trie_store(
+async fn fetch_and_store_trie(
     effect_builder: EffectBuilder<JoinerEvent>,
     trie_key: Digest,
 ) -> Result<Vec<Digest>, LinearChainSyncError> {
@@ -473,17 +476,25 @@ async fn fetch_and_store_block_by_hash(
     }
 }
 
-/// Synchronize the trie store under a given state root hash.
+/// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
     state_root_hash: Digest,
 ) -> Result<(), LinearChainSyncError> {
     info!(?state_root_hash, "syncing trie store",);
+    // TODO: This implementation works like a stream with ordered buffering. Use an actual stream
+    //       with unordered buffering instead.
     let mut outstanding_trie_keys = vec![state_root_hash];
-    while let Some(trie_key) = outstanding_trie_keys.pop() {
-        let missing_descendant_trie_keys =
-            fetch_trie_and_insert_into_trie_store(effect_builder, trie_key).await?;
-        outstanding_trie_keys.extend(missing_descendant_trie_keys);
+    let mut fetches_in_progress = Vec::with_capacity(MAX_PARALLEL_FETCHES);
+    while !fetches_in_progress.is_empty() || !outstanding_trie_keys.is_empty() {
+        let fetches_to_start = MAX_PARALLEL_FETCHES.saturating_sub(fetches_in_progress.len());
+        let new_fetches = outstanding_trie_keys
+            .drain(outstanding_trie_keys.len().saturating_sub(fetches_to_start)..)
+            .map(|trie_key| tokio::spawn(fetch_and_store_trie(effect_builder, trie_key)));
+        fetches_in_progress.extend(new_fetches);
+        if let Some(join_handle) = fetches_in_progress.pop() {
+            outstanding_trie_keys.extend(join_handle.await??);
+        }
     }
     Ok(())
 }
