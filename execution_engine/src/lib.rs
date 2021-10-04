@@ -15,7 +15,6 @@
 
 pub mod config;
 pub mod core;
-#[allow(missing_docs)]
 pub mod shared;
 /// Storage for the execution engine.
 pub mod storage;

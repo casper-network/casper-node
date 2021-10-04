@@ -9,7 +9,7 @@ use casper_types::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
             StorageProvider, UnbondingPurse,
         },
-        mint, CallStackElement,
+        mint,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
@@ -117,8 +117,8 @@ where
         self.context.get_caller()
     }
 
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        Runtime::<'a, R>::get_immediate_caller(self)
+    fn is_allowed_session_caller(&self, account_hash: &AccountHash) -> bool {
+        self.is_allowed_session_caller(account_hash)
     }
 
     fn named_keys_get(&self, name: &str) -> Option<Key> {
