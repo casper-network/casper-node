@@ -75,7 +75,7 @@ impl FromBytes for IndexedMerkleProof {
                 count,
                 merkle_proof,
             })
-            .map_err(|_| casper_types::bytesrepr::Error::Validation)?,
+            .map_err(|_| casper_types::bytesrepr::Error::Formatting)?,
             remainder,
         ))
     }

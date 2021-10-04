@@ -65,7 +65,7 @@ impl FromBytes for ChunkWithProof {
                 proof,
                 chunk: chunk.into(),
             })
-            .map_err(|_| casper_types::bytesrepr::Error::Validation)?,
+            .map_err(|_| casper_types::bytesrepr::Error::Formatting)?,
             remainder,
         ))
     }

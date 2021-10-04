@@ -108,8 +108,6 @@ pub enum Error {
     Formatting,
     /// Not all input bytes were consumed in [`deserialize`].
     LeftOverBytes,
-    /// The deserialized object did not pass validation.
-    Validation,
     /// Out of memory error.
     OutOfMemory,
 }
@@ -123,8 +121,6 @@ impl Display for Error {
             Error::Formatting => formatter.write_str("Deserialization error: formatting"),
             Error::LeftOverBytes => formatter.write_str("Deserialization error: left-over bytes"),
             Error::OutOfMemory => formatter.write_str("Serialization error: out of memory"),
-            Error::Validation => formatter
-                .write_str("Deserialization error: deserialized object didn't pass validation"),
         }
     }
 }

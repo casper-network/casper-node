@@ -398,7 +398,6 @@ impl From<bytesrepr::Error> for ApiError {
             bytesrepr::Error::Formatting => ApiError::Formatting,
             bytesrepr::Error::LeftOverBytes => ApiError::LeftOverBytes,
             bytesrepr::Error::OutOfMemory => ApiError::OutOfMemory,
-            bytesrepr::Error::Validation => ApiError::Validation,
         }
     }
 }
