@@ -116,7 +116,7 @@ audit-rs:
 	$(CARGO) audit
 
 .PHONY: audit-as
-audit-as:
+audit-as: setup-as
 	cd smart_contracts/contract_as && $(NPM) audit
 
 .PHONY: audit
