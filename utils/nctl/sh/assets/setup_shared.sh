@@ -445,7 +445,6 @@ function setup_asset_global_state_toml() {
         if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "140" ]; then
             # Check new data.lmdb path under ..storage/<chain_name>/
             if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)/data.lmdb" ]; then
-                echo "GLOBAL_STATE_OUTPUT=$NCTL_CASPER_HOME/target/$NCTL_COMPILE_TARGET/global-state-update-gen system-contract-registry -d $PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)"
                 GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                         system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)")
             else
