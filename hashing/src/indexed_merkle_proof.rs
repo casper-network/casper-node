@@ -202,6 +202,7 @@ impl IndexedMerkleProof {
         Digest::hash_pair(count.to_le_bytes(), raw_root)
     }
 
+    #[cfg(test)]
     pub(crate) fn merkle_proof(&self) -> &[Digest] {
         &self.merkle_proof
     }

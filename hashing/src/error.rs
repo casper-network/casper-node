@@ -27,8 +27,6 @@ pub enum MerkleConstructionError {
     )]
     #[cfg(test)]
     IndexOutOfBounds { count: u64, index: u64 },
-    #[error("The chunk has incorrect proof")]
-    IncorrectChunkProof,
     #[error("The idexed merkle proof is incorrect")]
     IncorrectIndexedMerkleProof,
 }

@@ -1,43 +1,16 @@
-use std::convert::TryFrom;
-
-use crate::{
-    error::{self},
-    indexed_merkle_proof::IndexedMerkleProof,
-    Digest,
-};
-
-use serde::Deserialize;
+use crate::indexed_merkle_proof::IndexedMerkleProof;
 
 use casper_types::{
     allocate_buffer,
     bytesrepr::{Bytes, FromBytes, ToBytes},
 };
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ChunkWithProofDeserializeValidator {
-    proof: IndexedMerkleProof,
-    chunk: Vec<u8>,
-}
-
-impl TryFrom<ChunkWithProofDeserializeValidator> for ChunkWithProof {
-    type Error = error::MerkleConstructionError;
-    fn try_from(value: ChunkWithProofDeserializeValidator) -> Result<Self, Self::Error> {
-        let candidate = Self {
-            proof: value.proof,
-            chunk: value.chunk,
-        };
-        if candidate.is_valid() {
-            Ok(candidate)
-        } else {
-            Err(error::MerkleConstructionError::IncorrectChunkProof)
-        }
-    }
-}
+#[cfg(test)]
+use crate::{error, Digest};
 
 #[derive(PartialEq, Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
-#[serde(deny_unknown_fields, try_from = "ChunkWithProofDeserializeValidator")]
+#[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
     chunk: Vec<u8>,
@@ -59,13 +32,11 @@ impl ToBytes for ChunkWithProof {
 impl FromBytes for ChunkWithProof {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
         let ((proof, chunk), remainder) = <(IndexedMerkleProof, Bytes)>::from_bytes(bytes)?;
-
         Ok((
-            ChunkWithProof::try_from(ChunkWithProofDeserializeValidator {
+            ChunkWithProof {
                 proof,
                 chunk: chunk.into(),
-            })
-            .map_err(|_| casper_types::bytesrepr::Error::Formatting)?,
+            },
             remainder,
         ))
     }
@@ -106,17 +77,13 @@ impl ChunkWithProof {
         Ok(ChunkWithProof { proof, chunk })
     }
 
-    fn is_valid(&self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn is_valid(&self) -> bool {
         let chunk_hash = Digest::hash(self.chunk());
         self.proof
             .merkle_proof()
             .first()
             .map_or(false, |first_hash| chunk_hash == *first_hash)
-    }
-
-    /// Get a reference to the chunk with proof's chunk.
-    pub fn chunk(&self) -> &[u8] {
-        self.chunk.as_slice()
     }
 }
 
@@ -133,6 +100,13 @@ mod test {
     use std::convert::TryInto;
 
     use crate::chunk_with_proof::ChunkWithProof;
+
+    impl ChunkWithProof {
+        /// Get a reference to the chunk with proof's chunk.
+        pub fn chunk(&self) -> &[u8] {
+            self.chunk.as_slice()
+        }
+    }
 
     #[derive(Debug)]
     pub struct TestDataSize(usize);
@@ -233,7 +207,7 @@ mod test {
     }
 
     #[proptest]
-    fn validates_chunk_with_proof_after_serde_deserialization(test_data: TestDataSize) {
+    fn serde_deserialization_of_malformed_chunk_should_work(test_data: TestDataSize) {
         let data = vec![0u8; test_data.0];
         let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
 
@@ -245,12 +219,11 @@ mod test {
 
         let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
         let json = serde_json::to_string(&chunk_with_incorrect_proof).unwrap();
-        serde_json::from_str::<ChunkWithProof>(&json)
-            .expect_err("should not deserialize correctly");
+        serde_json::from_str::<ChunkWithProof>(&json).expect("should deserialize correctly")
     }
 
     #[proptest]
-    fn validates_chunk_with_proof_after_bytesrepr_deserialization(test_data: TestDataSize) {
+    fn bytesrepr_deserialization_of_malformed_chunk_should_work(test_data: TestDataSize) {
         let data = vec![0u8; test_data.0];
         let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
 
@@ -268,7 +241,7 @@ mod test {
             .to_bytes()
             .expect("should serialize correctly");
 
-        ChunkWithProof::from_bytes(&bytes).expect_err("should not deserialize correctly");
+        ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly")
     }
 
     #[test]
