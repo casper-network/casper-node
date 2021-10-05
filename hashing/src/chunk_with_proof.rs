@@ -78,7 +78,7 @@ impl ChunkWithProof {
     }
 
     #[cfg(test)]
-    pub(crate) fn is_valid(&self) -> bool {
+    pub(crate) fn verify(&self) -> bool {
         let chunk_hash = Digest::hash(self.chunk());
         self.proof
             .merkle_proof()
@@ -151,7 +151,7 @@ mod test {
         assert!(!(0..number_of_chunks)
             .into_iter()
             .map(|chunk_index| { ChunkWithProof::new(data.as_slice(), chunk_index).unwrap() })
-            .map(|chunk_with_proof| chunk_with_proof.is_valid())
+            .map(|chunk_with_proof| chunk_with_proof.verify())
             .any(|valid| !valid));
     }
 
@@ -200,10 +200,10 @@ mod test {
         }
 
         let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
-        assert!(chunk_with_proof.is_valid());
+        assert!(chunk_with_proof.verify());
 
         let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
-        assert!(!chunk_with_incorrect_proof.is_valid());
+        assert!(!chunk_with_incorrect_proof.verify());
     }
 
     #[proptest]
@@ -249,7 +249,7 @@ mod test {
         // This test needs specific data sizes, hence it doesn't use the proptest
 
         let chunk_with_proof = ChunkWithProof::new(&[], 0).expect("should create with empty data");
-        assert!(chunk_with_proof.is_valid());
+        assert!(chunk_with_proof.verify());
 
         let chunk_with_proof =
             ChunkWithProof::new(&[], 1).expect_err("should error with empty data and index > 0");
