@@ -1,6 +1,4 @@
-use std::convert::TryFrom;
-
-use crate::{error, Digest};
+use crate::Digest;
 use casper_types::{
     allocate_buffer,
     bytesrepr::{FromBytes, ToBytes},
@@ -11,37 +9,11 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use itertools::Itertools;
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct IndexedMerkleProofDeserializeValidator {
-    index: u64,
-    count: u64,
-    merkle_proof: Vec<Digest>,
-}
-
-impl TryFrom<IndexedMerkleProofDeserializeValidator> for IndexedMerkleProof {
-    type Error = error::MerkleConstructionError;
-    fn try_from(value: IndexedMerkleProofDeserializeValidator) -> Result<Self, Self::Error> {
-        let candidate = Self {
-            index: value.index,
-            count: value.count,
-            merkle_proof: value.merkle_proof,
-        };
-
-        if candidate.index > candidate.count
-            || candidate.merkle_proof.len() as u64 != candidate.compute_expected_proof_length()
-        {
-            return Err(error::MerkleConstructionError::IncorrectIndexedMerkleProof);
-        }
-        Ok(candidate)
-    }
-}
+#[cfg(test)]
+use crate::error;
 
 #[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
-#[serde(
-    deny_unknown_fields,
-    try_from = "IndexedMerkleProofDeserializeValidator"
-)]
+#[serde(deny_unknown_fields)]
 pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
@@ -70,12 +42,11 @@ impl FromBytes for IndexedMerkleProof {
             <(u64, u64, Vec<Digest>)>::from_bytes(bytes)?;
 
         Ok((
-            IndexedMerkleProof::try_from(IndexedMerkleProofDeserializeValidator {
+            IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
-            })
-            .map_err(|_| casper_types::bytesrepr::Error::Formatting)?,
+            },
             remainder,
         ))
     }
@@ -212,28 +183,6 @@ impl IndexedMerkleProof {
         self.merkle_proof = merkle_proof;
     }
 
-    // Proof lengths are never bigger than 65, so we can use a u8 here
-    // The reason they are never bigger than 65 is because we are using 64 bit counts
-    fn compute_expected_proof_length(&self) -> u64 {
-        if self.count == 0 {
-            return 0;
-        }
-        let mut l = 1;
-        let mut n = self.count;
-        let mut i = self.index;
-        while n > 1 {
-            let pivot = 1u64 << (63 - (n - 1).leading_zeros());
-            if i < pivot {
-                n = pivot;
-            } else {
-                n -= pivot;
-                i -= pivot;
-            }
-            l += 1;
-        }
-        l
-    }
-
     #[cfg(test)]
     fn verify(&self) -> Result<(), error::MerkleVerificationError> {
         if !((self.count == 0 && self.index == 0) || self.index < self.count) {
@@ -263,6 +212,30 @@ mod test {
     use rand::Rng;
 
     use crate::{error, indexed_merkle_proof::IndexedMerkleProof, Digest};
+
+    impl IndexedMerkleProof {
+        // Proof lengths are never bigger than 65, so we can use a u8 here
+        // The reason they are never bigger than 65 is because we are using 64 bit counts
+        pub(crate) fn compute_expected_proof_length(&self) -> u64 {
+            if self.count == 0 {
+                return 0;
+            }
+            let mut l = 1;
+            let mut n = self.count;
+            let mut i = self.index;
+            while n > 1 {
+                let pivot = 1u64 << (63 - (n - 1).leading_zeros());
+                if i < pivot {
+                    n = pivot;
+                } else {
+                    n -= pivot;
+                    i -= pivot;
+                }
+                l += 1;
+            }
+            l
+        }
+    }
 
     fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
         let mut rng = rand::thread_rng();
@@ -469,7 +442,7 @@ mod test {
     }
 
     #[test]
-    fn validates_indexed_merkle_proof_after_serde_deserialization() {
+    fn serde_deserialization_of_malformed_proof_should_work() {
         let indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
 
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
@@ -483,19 +456,17 @@ mod test {
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.index += 1;
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
-        serde_json::from_str::<IndexedMerkleProof>(&json)
-            .expect_err("should not deserialize correctly due to wrong index");
+        serde_json::from_str::<IndexedMerkleProof>(&json).expect("should deserialize correctly");
 
         // Check that proof with incorrect length fails to deserialize
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.merkle_proof.push(Digest::hash("XXX"));
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
-        serde_json::from_str::<IndexedMerkleProof>(&json)
-            .expect_err("should not deserialize correctly due to wrong merkle proof");
+        serde_json::from_str::<IndexedMerkleProof>(&json).expect("should deserialize correctly");
     }
 
     #[test]
-    fn validates_indexed_merkle_proof_after_bytesrepr_deserialization() {
+    fn bytesrepr_deserialization_of_malformed_proof_should_work() {
         let indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
 
         let bytes = indexed_merkle_proof
@@ -509,8 +480,7 @@ mod test {
         let bytes = indexed_merkle_proof
             .to_bytes()
             .expect("should serialize correctly");
-        IndexedMerkleProof::from_bytes(&bytes)
-            .expect_err("should not deserialize correctly due to wrong index");
+        IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
 
         // Check that proof with incorrect length fails to deserialize
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
@@ -518,8 +488,7 @@ mod test {
         let bytes = indexed_merkle_proof
             .to_bytes()
             .expect("should serialize correctly");
-        IndexedMerkleProof::from_bytes(&bytes)
-            .expect_err("should not deserialize correctly due to wrong merkle proof");
+        IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
     }
 
     #[test]

@@ -181,7 +181,7 @@ mod test {
     }
 
     #[proptest]
-    fn validates_chunk_with_proofs(test_data: TestDataSize) {
+    fn verifies_chunk_with_proofs(test_data: TestDataSize) {
         let data = vec![0u8; test_data.0];
 
         impl ChunkWithProof {
