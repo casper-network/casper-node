@@ -254,7 +254,7 @@ pub fn reinvest_delegator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
-    rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
+    rewards: impl Iterator<Item = Result<(PublicKey, Ratio<U512>), Error>>,
 ) -> Result<Vec<(AccountHash, U512, URef)>, Error>
 where
     P: StorageProvider,
@@ -270,7 +270,9 @@ where
 
     let delegators = bid.delegators_mut();
 
-    for (delegator_key, delegator_reward) in rewards {
+    for result in rewards {
+        let (delegator_key, delegator_reward) = result?;
+
         let delegator = match delegators.get_mut(&delegator_key) {
             Some(delegator) => delegator,
             None => continue,

@@ -13,7 +13,7 @@ mod unbonding_purse;
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use num_rational::Ratio;
-use num_traits::{CheckedMul, CheckedSub};
+use num_traits::CheckedMul;
 
 use crate::{account::AccountHash, EraId, PublicKey, U512};
 
@@ -548,35 +548,24 @@ pub trait Auction:
                     .ok_or(Error::ArithmeticOverflow)?
             };
 
-            let delegator_total_stake: U512 = recipient
-                .delegator_total_stake()
-                .ok_or(Error::ArithmeticOverflow)?;
-
-            let delegators_part: Ratio<U512> = {
-                let commission_rate = Ratio::new(
-                    U512::from(*recipient.delegation_rate()),
-                    U512::from(DELEGATION_RATE_DENOMINATOR),
-                );
-                let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
-                let delegator_reward: Ratio<U512> = total_reward
-                    .checked_mul(&reward_multiplier)
-                    .ok_or(Error::ArithmeticOverflow)?;
-                let commission: Ratio<U512> = delegator_reward
-                    .checked_mul(&commission_rate)
-                    .ok_or(Error::ArithmeticOverflow)?;
-                delegator_reward
-                    .checked_sub(&commission)
-                    .ok_or(Error::ArithmeticOverflow)?
-            };
+            let reward_per_stake: Ratio<U512> = Ratio::<U512>::new(
+                (DELEGATION_RATE_DENOMINATOR - recipient.delegation_rate()).into(),
+                U512::from(DELEGATION_RATE_DENOMINATOR)
+                    .checked_mul(total_stake)
+                    .ok_or(Error::ArithmeticOverflow)?,
+            )
+            .checked_mul(&total_reward)
+            .ok_or(Error::ArithmeticOverflow)?;
 
             let delegator_rewards =
                 recipient
                     .delegator_stake()
                     .iter()
                     .map(|(delegator_key, delegator_stake)| {
-                        let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
-                        let reward = delegators_part * reward_multiplier;
-                        (delegator_key.clone(), reward)
+                        let reward = reward_per_stake
+                            .checked_mul(&Ratio::from(*delegator_stake))
+                            .ok_or(Error::ArithmeticOverflow)?;
+                        Ok((delegator_key.clone(), reward))
                     });
             let delegator_payouts = detail::reinvest_delegator_rewards(
                 self,
