@@ -446,10 +446,10 @@ function setup_asset_global_state_toml() {
             # Check new data.lmdb path under ..storage/<chain_name>/
             if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)/data.lmdb" ]; then
                 GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)")
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }')")
             else
                 GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)")
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }')")
             fi
         else
 
