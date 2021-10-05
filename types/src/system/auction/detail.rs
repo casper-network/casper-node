@@ -143,7 +143,16 @@ pub fn get_seigniorage_recipients_snapshot<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
+    let snapshot: SeigniorageRecipientsSnapshot =
+        read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)?;
+    for recipients in snapshot.values() {
+        for recipient in recipients.values() {
+            if *recipient.delegation_rate() > DELEGATION_RATE_DENOMINATOR {
+                return Err(Error::DelegationRateTooLarge);
+            }
+        }
+    }
+    Ok(snapshot)
 }
 
 pub fn set_seigniorage_recipients_snapshot<P>(
