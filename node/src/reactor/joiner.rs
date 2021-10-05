@@ -3,7 +3,6 @@
 mod memory_metrics;
 
 use std::{
-    env,
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
@@ -32,7 +31,6 @@ use crate::{
         linear_chain,
         linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
@@ -72,10 +70,6 @@ use crate::{
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub enum Event {
-    /// Network event.
-    #[from]
-    Network(network::Event<Message>),
-
     /// Small Network event.
     #[from]
     SmallNetwork(small_network::Event<Message>),
@@ -227,11 +221,7 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-            Event::Network(network::Event::from(request))
-        } else {
-            Event::SmallNetwork(small_network::Event::from(request))
-        }
+        Event::SmallNetwork(small_network::Event::from(request))
     }
 }
 
@@ -258,7 +248,6 @@ impl From<RestRequest<NodeId>> for Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Network(event) => write!(f, "network: {}", event),
             Event::SmallNetwork(event) => write!(f, "small network: {}", event),
             Event::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             Event::Storage(request) => write!(f, "storage: {}", request),
@@ -315,7 +304,6 @@ impl Display for Event {
 pub struct Reactor {
     root: PathBuf,
     metrics: Metrics,
-    network: Network<Event, Message>,
     small_network: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
     config: participating::Config,
@@ -366,7 +354,6 @@ impl reactor::Reactor for Reactor {
             storage,
             mut contract_runtime,
             small_network_identity,
-            network_identity,
         } = initializer;
 
         // TODO: Remove wrapper around Reactor::Config instead.
@@ -378,14 +365,6 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
-        let network_config = network::Config::from(&config.network);
-        let (network, network_effects) = Network::new(
-            event_queue,
-            network_config,
-            registry,
-            network_identity,
-            chainspec_loader.chainspec(),
-        )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
@@ -398,11 +377,7 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
-        let mut effects = reactor::wrap_effects(Event::Network, network_effects);
-        effects.extend(reactor::wrap_effects(
-            Event::SmallNetwork,
-            small_network_effects,
-        ));
+        let mut effects = reactor::wrap_effects(Event::SmallNetwork, small_network_effects);
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -510,7 +485,6 @@ impl reactor::Reactor for Reactor {
             Self {
                 root,
                 metrics,
-                network,
                 small_network,
                 address_gossiper,
                 config,
@@ -543,10 +517,6 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Network(event) => reactor::wrap_effects(
-                Event::Network,
-                self.network.handle_event(effect_builder, rng, event),
-            ),
             Event::SmallNetwork(event) => reactor::wrap_effects(
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -859,11 +829,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
             }
             Event::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-                    Event::Network(network::Event::from(req))
-                } else {
-                    Event::SmallNetwork(small_network::Event::from(req))
-                };
+                let event = Event::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             Event::ChainspecLoaderAnnouncement(
@@ -927,9 +893,7 @@ impl Reactor {
             maybe_latest_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
-            network_identity: NetworkIdentity::from(&self.network),
         };
-        self.network.finalize().await;
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
         Ok(config)
@@ -940,11 +904,7 @@ impl Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
-            self.small_network.node_id()
-        } else {
-            self.network.node_id()
-        }
+        self.small_network.node_id()
     }
 }
 

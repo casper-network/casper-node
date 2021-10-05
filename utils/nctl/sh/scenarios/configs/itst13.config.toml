@@ -110,10 +110,6 @@ known_addresses = ['127.0.0.1:34553']
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 30000
 
-# Minimum amount of time that has to pass before attempting to reconnect after losing all
-# connections to established nodes.
-isolation_reconnect_delay = '2s'
-
 # Initial delay for starting address gossipping after the network starts. This should be slightly
 # more than the expected time required for initial connections to complete.
 initial_gossip_delay = '5s'
