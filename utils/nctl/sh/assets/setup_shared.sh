@@ -438,6 +438,7 @@ function setup_asset_global_state_toml() {
     local PATH_TO_NET
 
     PATH_TO_NET="$(get_path_to_net)"
+
     for IDX in $(seq 1 "$COUNT_NODES")
     do
         # if the combined integers from the PROTOCOL_VERISON >= 140 ( 1_4_0 )
