@@ -4,10 +4,8 @@ use casper_types::{Gas, Key, U512};
 
 use super::Error;
 use crate::{
-    core::engine_state::{
-        execution_effect::ExecutionEffect, execution_result::ExecutionResult, op::Op,
-    },
-    shared::transform::Transform,
+    core::engine_state::{execution_effect::ExecutionEffect, execution_result::ExecutionResult},
+    shared::{execution_journal::ExecutionJournal, transform::Transform},
 };
 
 fn on_fail_charge_test_helper<T>(
@@ -18,6 +16,7 @@ fn on_fail_charge_test_helper<T>(
     let transfers = Vec::default();
     let _result = on_fail_charge!(f(), error_cost, transfers);
     ExecutionResult::Success {
+        execution_journal: Default::default(),
         execution_effect: Default::default(),
         transfers,
         cost: success_cost,
@@ -48,22 +47,18 @@ fn on_fail_charge_with_action() {
     let f = || {
         let input: Result<(), Error> = Err(Error::GasLimit);
         let transfers = Vec::default();
+        let journal: ExecutionJournal = vec![(Key::Hash([42u8; 32]), Transform::Identity)].into();
+
+        let execution_effect: ExecutionEffect = journal.clone().into();
         on_fail_charge!(
             input,
             Gas::new(U512::from(456)),
-            {
-                let mut effect = ExecutionEffect::default();
-
-                effect.ops.insert(Key::Hash([42u8; 32]), Op::Read);
-                effect
-                    .transforms
-                    .insert(Key::Hash([42u8; 32]), Transform::Identity);
-
-                effect
-            },
+            execution_effect,
+            journal,
             transfers
         );
         ExecutionResult::Success {
+            execution_journal: Default::default(),
             execution_effect: Default::default(),
             transfers: Vec::default(),
             cost: Gas::default(),

@@ -8,7 +8,10 @@ use casper_types::{
 use super::{error, execution_effect::ExecutionEffect, op::Op};
 use crate::{
     core::execution::Error as ExecError,
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    shared::{
+        additive_map::AdditiveMap, execution_journal::ExecutionJournal, newtypes::CorrelationId,
+        transform::Transform,
+    },
     storage::global_state::StateReader,
 };
 
@@ -17,33 +20,24 @@ fn make_payment_error_effects(
     account_main_purse_balance: Motes,
     account_main_purse_balance_key: Key,
     proposer_main_purse_balance_key: Key,
-) -> Result<ExecutionEffect, error::Error> {
-    let mut ops = AdditiveMap::new();
-    let mut transforms = AdditiveMap::new();
-
+) -> Result<ExecutionJournal, error::Error> {
     let new_balance = account_main_purse_balance
         .checked_sub(max_payment_cost)
         .ok_or(error::Error::InsufficientPayment)?;
     // from_t for U512 is assumed to never panic
-    let new_balance_clvalue = CLValue::from_t(new_balance.value()).map_err(ExecError::from)?;
-    let new_balance_value = StoredValue::CLValue(new_balance_clvalue);
-
-    let account_main_purse_balance_normalize = account_main_purse_balance_key.normalize();
-    let proposer_main_purse_balance_normalize = proposer_main_purse_balance_key.normalize();
-
-    ops.insert(account_main_purse_balance_normalize, Op::Write);
-    transforms.insert(
-        account_main_purse_balance_normalize,
-        Transform::Write(new_balance_value),
-    );
-
-    ops.insert(proposer_main_purse_balance_normalize, Op::Add);
-    transforms.insert(
-        proposer_main_purse_balance_normalize,
-        Transform::AddUInt512(max_payment_cost.value()),
-    );
-
-    Ok(ExecutionEffect::new(ops, transforms))
+    let new_balance_value =
+        StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
+    Ok(vec![
+        (
+            account_main_purse_balance_key.normalize(),
+            Transform::Write(new_balance_value),
+        ),
+        (
+            proposer_main_purse_balance_key.normalize(),
+            Transform::AddUInt512(max_payment_cost.value()),
+        ),
+    ]
+    .into())
 }
 
 /// Represents the result of an execution specified by
@@ -60,6 +54,8 @@ pub enum ExecutionResult {
         transfers: Vec<TransferAddr>,
         /// Gas consumed up to the point of the failure.
         cost: Gas,
+        /// Journal of execution.
+        execution_journal: ExecutionJournal,
     },
     /// Execution was finished successfully
     Success {
@@ -69,15 +65,17 @@ pub enum ExecutionResult {
         transfers: Vec<TransferAddr>,
         /// Gas cost.
         cost: Gas,
+        execution_journal: ExecutionJournal,
     },
 }
 
 impl Default for ExecutionResult {
     fn default() -> Self {
         ExecutionResult::Success {
-            execution_effect: ExecutionEffect::default(),
-            transfers: Vec::default(),
-            cost: Gas::default(),
+            execution_journal: Default::default(),
+            execution_effect: Default::default(),
+            transfers: Default::default(),
+            cost: Default::default(),
         }
     }
 }
@@ -105,6 +103,7 @@ impl ExecutionResult {
             execution_effect: Default::default(),
             transfers: Vec::default(),
             cost: Gas::default(),
+            execution_journal: Default::default(),
         }
     }
 
@@ -177,21 +176,25 @@ impl ExecutionResult {
                 error,
                 execution_effect,
                 transfers,
+                execution_journal,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 execution_effect,
                 transfers,
                 cost,
+                execution_journal,
             },
             ExecutionResult::Success {
                 execution_effect,
                 transfers,
+                execution_journal,
                 ..
             } => ExecutionResult::Success {
                 execution_effect,
                 transfers,
                 cost,
+                execution_journal,
             },
         }
     }
@@ -206,19 +209,25 @@ impl ExecutionResult {
                 error,
                 cost,
                 transfers,
+                execution_journal,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 execution_effect,
                 transfers,
                 cost,
+                execution_journal,
             },
             ExecutionResult::Success {
-                cost, transfers, ..
+                cost,
+                transfers,
+                execution_journal,
+                ..
             } => ExecutionResult::Success {
                 execution_effect,
                 transfers,
                 cost,
+                execution_journal,
             },
         }
     }
@@ -233,21 +242,25 @@ impl ExecutionResult {
                 error,
                 execution_effect,
                 cost,
+                execution_journal,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 execution_effect,
                 transfers,
                 cost,
+                execution_journal,
             },
             ExecutionResult::Success {
                 cost,
                 execution_effect,
+                execution_journal,
                 ..
             } => ExecutionResult::Success {
                 execution_effect,
                 transfers,
                 cost,
+                execution_journal,
             },
         }
     }
@@ -325,16 +338,18 @@ impl ExecutionResult {
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
     ) -> Result<ExecutionResult, error::Error> {
-        let execution_effect = make_payment_error_effects(
+        let execution_journal = make_payment_error_effects(
             max_payment_cost,
             account_main_purse_balance,
             account_main_purse_balance_key,
             proposer_main_purse_balance_key,
         )?;
+        let execution_effect: ExecutionEffect = execution_journal.clone().into();
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
             error,
             execution_effect,
+            execution_journal,
             transfers,
             cost: gas_cost,
         })
@@ -351,26 +366,28 @@ impl ExecutionResult {
     }
 }
 
-impl From<&ExecutionResult> for casper_types::ExecutionResult {
-    fn from(ee_execution_result: &ExecutionResult) -> Self {
+impl From<ExecutionResult> for casper_types::ExecutionResult {
+    fn from(ee_execution_result: ExecutionResult) -> Self {
         match ee_execution_result {
             ExecutionResult::Success {
-                execution_effect,
+                execution_effect: _,
                 transfers,
                 cost,
+                execution_journal,
             } => casper_types::ExecutionResult::Success {
-                effect: execution_effect.into(),
-                transfers: transfers.clone(),
+                effect: execution_journal.into(),
+                transfers,
                 cost: cost.value(),
             },
             ExecutionResult::Failure {
                 error,
-                execution_effect,
+                execution_effect: _,
                 transfers,
                 cost,
+                execution_journal,
             } => casper_types::ExecutionResult::Failure {
-                effect: execution_effect.into(),
-                transfers: transfers.clone(),
+                effect: execution_journal.into(),
+                transfers,
                 cost: cost.value(),
                 error_message: error.to_string(),
             },
@@ -484,6 +501,7 @@ impl ExecutionResultBuilder {
 
         let mut ret: ExecutionResult = ExecutionResult::Success {
             execution_effect: Default::default(),
+            execution_journal: Default::default(),
             transfers,
             cost,
         };

@@ -42,7 +42,8 @@ All notable changes to this project will be documented in this file.  The format
   * `[gossip][gossip_request_timeout]`
   * `[gossip][get_remainder_timeout]`
   * `[fetcher][get_from_peer_timeout]`
-  
+  * Execution transforms are ordered by insertion order.
+
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.

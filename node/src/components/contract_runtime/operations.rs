@@ -102,7 +102,7 @@ pub fn execute_finalized_block(
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {
                 post_state_hash,
-                execution_effect,
+                execution_journal: step_execution_journal,
             } = commit_step(
                 engine_state,
                 metrics.clone(),
@@ -118,7 +118,7 @@ pub fn execute_finalized_block(
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
             Some(StepEffectAndUpcomingEraValidators {
-                step_execution_effect: execution_effect,
+                step_execution_journal,
                 upcoming_era_validators,
             })
         } else {
@@ -172,7 +172,7 @@ fn commit_execution_effects(
         .into_iter()
         .exactly_one()
         .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-    let execution_result = ExecutionResult::from(&ee_execution_result);
+    let json_execution_result = ExecutionResult::from(ee_execution_result.clone());
 
     let execution_effect = match ee_execution_result {
         EngineExecutionResult::Success {
@@ -204,7 +204,7 @@ fn commit_execution_effects(
         state_root_hash,
         execution_effect.transforms,
     )?;
-    Ok((new_state_root, execution_result))
+    Ok((new_state_root, json_execution_result))
 }
 
 fn commit_transforms(

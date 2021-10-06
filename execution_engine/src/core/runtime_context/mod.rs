@@ -31,7 +31,7 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
         Address,
     },
-    shared::newtypes::CorrelationId,
+    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
 };
 
@@ -577,6 +577,11 @@ where
     /// Returns current effects of a tracking copy.
     pub fn effect(&self) -> ExecutionEffect {
         self.tracking_copy.borrow_mut().effect()
+    }
+
+    /// Returns an `ExecutionJournal`.
+    pub fn execution_journal(&self) -> ExecutionJournal {
+        self.tracking_copy.borrow_mut().execution_journal()
     }
 
     /// Returns list of transfers.

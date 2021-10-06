@@ -67,19 +67,6 @@ const TRANSFORM_FAILURE_TAG: u8 = 17;
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
-    let operations = vec![
-        Operation {
-            key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
-                .to_string(),
-            kind: OpKind::Write,
-        },
-        Operation {
-            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
-                .to_string(),
-            kind: OpKind::Read,
-        },
-    ];
-
     let transforms = vec![
         TransformEntry {
             key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
@@ -93,18 +80,13 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
         },
     ];
 
-    let effect = ExecutionEffect {
-        operations,
-        transforms,
-    };
-
     let transfers = vec![
         TransferAddr::new([89; KEY_HASH_LENGTH]),
         TransferAddr::new([130; KEY_HASH_LENGTH]),
     ];
 
     ExecutionResult::Success {
-        effect,
+        effect: ExecutionEffect::new(transforms),
         transfers,
         cost: U512::from(123_456),
     }
@@ -169,10 +151,7 @@ impl Distribution<ExecutionResult> for Standard {
             });
         }
 
-        let execution_effect = ExecutionEffect {
-            operations,
-            transforms,
-        };
+        let execution_effect = ExecutionEffect::new(transforms);
 
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
@@ -287,18 +266,31 @@ impl FromBytes for ExecutionResult {
     }
 }
 
-/// The effect of executing a single deploy.
+/// The journal of execution transforms from a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionEffect {
     /// The resulting operations.
+    #[deprecated(since = "1.4.0")]
     pub operations: Vec<Operation>,
-    /// The resulting transformations.
+    /// The journal of execution transforms.
     pub transforms: Vec<TransformEntry>,
 }
 
+impl ExecutionEffect {
+    /// Constructor for [`ExecutionEffect`].
+    #[allow(deprecated)]
+    pub fn new(transforms: Vec<TransformEntry>) -> Self {
+        Self {
+            transforms,
+            operations: Default::default(),
+        }
+    }
+}
+
 impl ToBytes for ExecutionEffect {
+    #[allow(deprecated)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.operations.to_bytes()?);
@@ -306,20 +298,22 @@ impl ToBytes for ExecutionEffect {
         Ok(buffer)
     }
 
+    #[allow(deprecated)]
     fn serialized_length(&self) -> usize {
         self.operations.serialized_length() + self.transforms.serialized_length()
     }
 }
 
 impl FromBytes for ExecutionEffect {
+    #[allow(deprecated)]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (operations, remainder) = Vec::<Operation>::from_bytes(bytes)?;
         let (transforms, remainder) = Vec::<TransformEntry>::from_bytes(remainder)?;
-        let execution_effect = ExecutionEffect {
+        let json_execution_journal = ExecutionEffect {
             operations,
             transforms,
         };
-        Ok((execution_effect, remainder))
+        Ok((json_execution_journal, remainder))
     }
 }
 

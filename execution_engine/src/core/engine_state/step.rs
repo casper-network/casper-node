@@ -9,9 +9,9 @@ use casper_types::{
     bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, ProtocolVersion, PublicKey,
 };
 
-use crate::core::{
-    engine_state::{execution_effect::ExecutionEffect, Error},
-    execution,
+use crate::{
+    core::{engine_state::Error, execution},
+    shared::execution_journal::ExecutionJournal,
 };
 
 /// The definition of a slash item.
@@ -195,5 +195,5 @@ pub struct StepSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Digest,
     /// Effects of executing a step request.
-    pub execution_effect: ExecutionEffect,
+    pub execution_journal: ExecutionJournal,
 }

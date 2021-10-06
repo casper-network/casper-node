@@ -7,6 +7,7 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::types::{Block, DeployHash, DeployHeader};
+use casper_execution_engine::shared::execution_journal::ExecutionJournal;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,10 +85,10 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 /// Effects from running step and the next era validators that are gathered when an era ends.
 #[derive(Debug)]
 pub struct StepEffectAndUpcomingEraValidators {
-    /// An [`ExecutionEffect`] created by an era ending.
-    pub step_execution_effect: ExecutionEffect,
     /// Validator sets for all upcoming eras that have already been determined.
     pub upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    /// An [`ExecutionJournal`] created by an era ending.
+    pub step_execution_journal: ExecutionJournal,
 }
 
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution

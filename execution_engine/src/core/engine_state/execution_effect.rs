@@ -2,7 +2,9 @@
 use casper_types::Key;
 
 use super::op::Op;
-use crate::shared::{additive_map::AdditiveMap, transform::Transform};
+use crate::shared::{
+    additive_map::AdditiveMap, execution_journal::ExecutionJournal, transform::Transform,
+};
 
 /// Represents the effects of executing a single [`crate::core::engine_state::DeployItem`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -21,25 +23,38 @@ impl ExecutionEffect {
     }
 }
 
-impl From<&ExecutionEffect> for casper_types::ExecutionEffect {
-    fn from(effect: &ExecutionEffect) -> Self {
-        casper_types::ExecutionEffect {
-            operations: effect
-                .ops
-                .iter()
-                .map(|(key, op)| casper_types::Operation {
-                    key: key.to_formatted_string(),
-                    kind: op.into(),
-                })
-                .collect(),
-            transforms: effect
-                .transforms
-                .iter()
-                .map(|(key, transform)| casper_types::TransformEntry {
-                    key: key.to_formatted_string(),
-                    transform: transform.into(),
-                })
-                .collect(),
+impl From<ExecutionJournal> for ExecutionEffect {
+    fn from(journal: ExecutionJournal) -> Self {
+        let mut ops = AdditiveMap::new();
+        let mut transforms = AdditiveMap::new();
+        let journal: Vec<(Key, Transform)> = journal.into();
+        for (key, transform) in journal.into_iter() {
+            if let Transform::Failure(_) = transform {
+                continue;
+            }
+            let op: Op = (&transform).into();
+            ops.insert_add(key, op);
+            transforms.insert_add(key, transform);
+        }
+
+        Self { ops, transforms }
+    }
+}
+
+impl From<&Transform> for Op {
+    fn from(transform: &Transform) -> Self {
+        match transform {
+            Transform::Identity => Op::NoOp,
+            Transform::Write(_) => Op::Write,
+            Transform::AddInt32(_)
+            | Transform::AddUInt64(_)
+            | Transform::AddUInt128(_)
+            | Transform::AddUInt256(_)
+            | Transform::AddUInt512(_)
+            | Transform::AddKeys(_) => Op::Add,
+
+            // should be unreachable.
+            Transform::Failure(_) => Op::NoOp,
         }
     }
 }
