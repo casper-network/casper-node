@@ -6,10 +6,8 @@ use casper_types::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
 use itertools::Itertools;
 
-#[cfg(test)]
 use crate::error;
 
 #[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
@@ -53,7 +51,6 @@ impl FromBytes for IndexedMerkleProof {
 }
 
 impl IndexedMerkleProof {
-    #[cfg(test)]
     pub(crate) fn new<I>(
         leaves: I,
         index: u64,
@@ -114,7 +111,7 @@ impl IndexedMerkleProof {
         }
     }
 
-    #[cfg(test)]
+    #[allow(unused)]
     pub(crate) fn root_hash(&self) -> Digest {
         use blake2::{
             digest::{Update, VariableOutput},
@@ -173,17 +170,33 @@ impl IndexedMerkleProof {
         Digest::hash_pair(count.to_le_bytes(), raw_root)
     }
 
-    #[cfg(test)]
     pub(crate) fn merkle_proof(&self) -> &[Digest] {
         &self.merkle_proof
     }
 
-    #[cfg(test)]
-    pub(crate) fn inject_merkle_proof(&mut self, merkle_proof: Vec<Digest>) {
-        self.merkle_proof = merkle_proof;
+    // Proof lengths are never bigger than 65, so we can use a u8 here
+    // The reason they are never bigger than 65 is because we are using 64 bit counts
+    pub(crate) fn compute_expected_proof_length(&self) -> u64 {
+        if self.count == 0 {
+            return 0;
+        }
+        let mut l = 1;
+        let mut n = self.count;
+        let mut i = self.index;
+        while n > 1 {
+            let pivot = 1u64 << (63 - (n - 1).leading_zeros());
+            if i < pivot {
+                n = pivot;
+            } else {
+                n -= pivot;
+                i -= pivot;
+            }
+            l += 1;
+        }
+        l
     }
 
-    #[cfg(test)]
+    #[allow(unused)]
     fn verify(&self) -> Result<(), error::MerkleVerificationError> {
         if !((self.count == 0 && self.index == 0) || self.index < self.count) {
             return Err(error::MerkleVerificationError::IndexOutOfBounds {
@@ -202,6 +215,11 @@ impl IndexedMerkleProof {
         }
         Ok(())
     }
+
+    #[cfg(test)]
+    pub(crate) fn inject_merkle_proof(&mut self, merkle_proof: Vec<Digest>) {
+        self.merkle_proof = merkle_proof;
+    }
 }
 
 #[cfg(test)]
@@ -212,30 +230,6 @@ mod test {
     use rand::Rng;
 
     use crate::{error, indexed_merkle_proof::IndexedMerkleProof, Digest};
-
-    impl IndexedMerkleProof {
-        // Proof lengths are never bigger than 65, so we can use a u8 here
-        // The reason they are never bigger than 65 is because we are using 64 bit counts
-        pub(crate) fn compute_expected_proof_length(&self) -> u64 {
-            if self.count == 0 {
-                return 0;
-            }
-            let mut l = 1;
-            let mut n = self.count;
-            let mut i = self.index;
-            while n > 1 {
-                let pivot = 1u64 << (63 - (n - 1).leading_zeros());
-                if i < pivot {
-                    n = pivot;
-                } else {
-                    n -= pivot;
-                    i -= pivot;
-                }
-                l += 1;
-            }
-            l
-        }
-    }
 
     fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
         let mut rng = rand::thread_rng();

@@ -5,7 +5,6 @@ use casper_types::{
     bytesrepr::{Bytes, FromBytes, ToBytes},
 };
 
-#[cfg(test)]
 use crate::{error, Digest};
 
 #[derive(PartialEq, Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
@@ -49,8 +48,8 @@ impl ChunkWithProof {
     #[cfg(not(test))]
     pub const CHUNK_SIZE_BYTES: usize = 1_048_576; // 2^20
 
-    #[cfg(test)]
-    pub fn new(data: &[u8], index: u64) -> Result<Self, error::MerkleConstructionError> {
+    #[allow(unused)]
+    fn new(data: &[u8], index: u64) -> Result<Self, error::MerkleConstructionError> {
         if data.len() < Self::CHUNK_SIZE_BYTES * (index as usize) {
             return Err(error::MerkleConstructionError::IndexOutOfBounds {
                 count: data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64,
@@ -77,7 +76,13 @@ impl ChunkWithProof {
         Ok(ChunkWithProof { proof, chunk })
     }
 
-    #[cfg(test)]
+    /// Get a reference to the chunk with proof's chunk.
+    #[allow(unused)]
+    fn chunk(&self) -> &[u8] {
+        self.chunk.as_slice()
+    }
+
+    #[allow(unused)]
     pub(crate) fn verify(&self) -> bool {
         let chunk_hash = Digest::hash(self.chunk());
         self.proof
@@ -100,13 +105,6 @@ mod test {
     use std::convert::TryInto;
 
     use crate::chunk_with_proof::ChunkWithProof;
-
-    impl ChunkWithProof {
-        /// Get a reference to the chunk with proof's chunk.
-        pub fn chunk(&self) -> &[u8] {
-            self.chunk.as_slice()
-        }
-    }
 
     #[derive(Debug)]
     pub struct TestDataSize(usize);
