@@ -1,5 +1,6 @@
 use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
 
@@ -164,78 +165,6 @@ fn validate_finality_signatures(
     .map_err(Into::into)
 }
 
-/// Fetches a block header from the network by height.
-async fn fetch_and_store_block_header_by_height(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    height: u64,
-    trusted_key_block_info: &KeyBlockInfo,
-    finality_threshold_fraction: Ratio<u64>,
-) -> Result<Option<Box<BlockHeaderWithMetadata>>, FetcherError<BlockHeaderWithMetadata, NodeId>> {
-    for peer in effect_builder.get_peers_in_random_order().await {
-        match effect_builder
-            .fetch::<BlockHeaderWithMetadata, NodeId>(height, peer)
-            .await
-        {
-            Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
-            Ok(FetchedData::FromPeer { item, .. }) => {
-                let BlockHeaderWithMetadata {
-                    block_header,
-                    block_signatures,
-                } = *item.clone();
-
-                if let Err(error) = validate_finality_signatures(
-                    &block_header,
-                    trusted_key_block_info,
-                    finality_threshold_fraction,
-                    &block_signatures,
-                ) {
-                    warn!(
-                        ?error,
-                        ?peer,
-                        "Error validating finality signatures from peer.",
-                    );
-                    effect_builder.announce_disconnect_from_peer(peer).await;
-                    continue;
-                }
-
-                // Store the block header
-                effect_builder
-                    .put_block_header_to_storage(Box::new(block_header.clone()))
-                    .await;
-
-                // Store the finality signatures
-                effect_builder
-                    .put_signatures_to_storage(block_signatures.clone())
-                    .await;
-
-                return Ok(Some(item));
-            }
-            Err(FetcherError::Absent { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockHeaderWithMetadata::TAG,
-                    ?peer,
-                    "Fast sync could not fetch",
-                );
-                // If the peer we requested doesn't have the item, continue with the next peer
-                continue;
-            }
-            Err(FetcherError::TimedOut { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockHeaderWithMetadata::TAG,
-                    ?peer,
-                    "Peer timed out",
-                );
-                // Peer timed out fetching the item, continue with the next peer
-                continue;
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(None)
-}
-
 /// Key block info used for verifying finality signatures.
 ///
 /// Can come from either:
@@ -319,73 +248,96 @@ async fn get_trusted_key_block_info(
     }
 }
 
-/// Fetches a block from the network by height.
-async fn fetch_and_store_block_by_height(
+#[async_trait]
+trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
+    fn header(&self) -> &BlockHeader;
+
+    fn finality_signatures(&self) -> &BlockSignatures;
+
+    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>);
+}
+
+#[async_trait]
+impl BlockOrHeaderWithMetadata for BlockWithMetadata {
+    fn header(&self) -> &BlockHeader {
+        self.block.header()
+    }
+
+    fn finality_signatures(&self) -> &BlockSignatures {
+        &self.finality_signatures
+    }
+
+    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
+        let block = Box::new(self.block.clone());
+        effect_builder.put_block_to_storage(block).await;
+    }
+}
+
+#[async_trait]
+impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
+    fn header(&self) -> &BlockHeader {
+        &self.block_header
+    }
+
+    fn finality_signatures(&self) -> &BlockSignatures {
+        &self.block_signatures
+    }
+
+    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
+        let header = Box::new(self.block_header.clone());
+        effect_builder.put_block_header_to_storage(header).await;
+    }
+}
+
+/// Fetches a block or block header from the network by height.
+async fn fetch_and_store_by_block_height<I>(
     effect_builder: EffectBuilder<JoinerEvent>,
     height: u64,
     trusted_key_block_info: &KeyBlockInfo,
-    finality_threshold_fraction: Ratio<u64>,
-) -> Result<Option<Box<BlockWithMetadata>>, FetcherError<BlockWithMetadata, NodeId>> {
+    chainspec: &Chainspec,
+) -> Result<Option<Box<I>>, LinearChainSyncError>
+where
+    I: BlockOrHeaderWithMetadata,
+    JoinerEvent: From<FetcherRequest<NodeId, I>>,
+    LinearChainSyncError: From<FetcherError<I, NodeId>>,
+{
     for peer in effect_builder.get_peers_in_random_order().await {
-        match effect_builder
-            .fetch::<BlockWithMetadata, NodeId>(height, peer)
-            .await
-        {
+        match effect_builder.fetch::<I, NodeId>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
             Ok(FetchedData::FromPeer { item, .. }) => {
-                let BlockWithMetadata {
-                    block,
-                    finality_signatures,
-                } = &*item;
-
                 if let Err(error) = validate_finality_signatures(
-                    block.header(),
+                    item.header(),
                     trusted_key_block_info,
-                    finality_threshold_fraction,
-                    finality_signatures,
+                    chainspec.highway_config.finality_threshold_fraction,
+                    item.finality_signatures(),
                 ) {
                     warn!(
                         ?error,
                         ?peer,
-                        "Error validating finality signatures from peer.",
+                        "error validating finality signatures from peer",
                     );
                     effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
-                // Store the block
-                effect_builder
-                    .put_block_to_storage(Box::new(block.clone()))
-                    .await;
-
-                // Store the finality signatures
-                effect_builder
-                    .put_signatures_to_storage(finality_signatures.clone())
-                    .await;
+                // Store the block or header itself, and the finality signatures.
+                item.store_block_or_header(effect_builder).await;
+                let sigs = item.finality_signatures().clone();
+                effect_builder.put_signatures_to_storage(sigs).await;
 
                 return Ok(Some(item));
             }
             Err(FetcherError::Absent { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockWithMetadata::TAG,
-                    ?peer,
-                    "Block by height absent from peer",
-                );
+                warn!(height, tag = ?I::TAG, ?peer, "Block by height absent from peer");
                 // If the peer we requested doesn't have the item, continue with the next peer
                 continue;
             }
             Err(FetcherError::TimedOut { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockWithMetadata::TAG,
-                    ?peer,
-                    "Peer timed out",
-                );
+                warn!(height, tag = ?I::TAG, ?peer, "Peer timed out");
                 // Peer timed out fetching the item, continue with the next peer
                 continue;
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         }
     }
     Ok(None)
@@ -473,11 +425,11 @@ async fn fast_sync_to_most_recent(
                 },
             );
         }
-        let maybe_fetched_block = fetch_and_store_block_header_by_height(
+        let maybe_fetched_block = fetch_and_store_by_block_height::<BlockHeaderWithMetadata>(
             effect_builder,
             most_recent_block_header.height() + 1,
             &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec,
         )
         .await?;
         match maybe_fetched_block {
@@ -627,13 +579,14 @@ async fn archival_sync(
     // Sync forward until we are at the current version.
     let mut most_recent_block = trusted_block;
     while most_recent_block.header().protocol_version() < chainspec.protocol_config.version {
-        let maybe_fetched_block_with_metadata = fetch_and_store_block_by_height(
-            effect_builder,
-            most_recent_block.header().height() + 1,
-            &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
-        )
-        .await?;
+        let maybe_fetched_block_with_metadata =
+            fetch_and_store_by_block_height::<BlockWithMetadata>(
+                effect_builder,
+                most_recent_block.header().height() + 1,
+                &trusted_key_block_info,
+                chainspec,
+            )
+            .await?;
         most_recent_block = match maybe_fetched_block_with_metadata {
             Some(block_with_metadata) => block_with_metadata.block,
             None => {
@@ -719,11 +672,11 @@ pub(crate) async fn run_fast_sync_task(
         // TODO: handle emergency updates
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
-        if fetch_and_store_block_by_height(
+        if fetch_and_store_by_block_height::<BlockHeaderWithMetadata>(
             effect_builder,
             trusted_block_header.height() + 1,
             &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
+            &*chainspec,
         )
         .await?
         .is_none()
@@ -749,11 +702,11 @@ pub(crate) async fn run_fast_sync_task(
         "Fetching and executing blocks to synchronize to current",
     );
     loop {
-        let block = match fetch_and_store_block_by_height(
+        let block = match fetch_and_store_by_block_height::<BlockWithMetadata>(
             effect_builder,
             most_recent_block_header.height() + 1,
             &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
+            &*chainspec,
         )
         .await?
         {
