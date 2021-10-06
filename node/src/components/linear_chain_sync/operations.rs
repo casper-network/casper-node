@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use num::rational::Ratio;
@@ -226,6 +226,16 @@ async fn get_trusted_key_block_info(
             _ => {}
         }
 
+        // If the trusted block's version is newer than ours we return an error
+        if current_header_to_walk_back_from.protocol_version() > chainspec.protocol_config.version {
+            return Err(
+                LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                    current_version: chainspec.protocol_config.version,
+                    block_header_with_future_version: Box::new(current_header_to_walk_back_from),
+                },
+            );
+        }
+
         if let Some(key_block_info) =
             KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
         {
@@ -301,9 +311,14 @@ where
     JoinerEvent: From<FetcherRequest<NodeId, I>>,
     LinearChainSyncError: From<FetcherError<I, NodeId>>,
 {
-    for peer in effect_builder.get_peers_in_random_order().await {
+    let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
+    let item = loop {
+        let peer = match peers.next() {
+            Some(peer) => peer,
+            None => return Ok(None),
+        };
         match effect_builder.fetch::<I, NodeId>(height, peer).await {
-            Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
+            Ok(FetchedData::FromStorage { item }) => break item,
             Ok(FetchedData::FromPeer { item, .. }) => {
                 if let Err(error) = validate_finality_signatures(
                     item.header(),
@@ -325,7 +340,7 @@ where
                 let sigs = item.finality_signatures().clone();
                 effect_builder.put_signatures_to_storage(sigs).await;
 
-                return Ok(Some(item));
+                break item;
             }
             Err(FetcherError::Absent { .. }) => {
                 warn!(height, tag = ?I::TAG, ?peer, "Block by height absent from peer");
@@ -339,8 +354,29 @@ where
             }
             Err(error) => return Err(error.into()),
         }
+    };
+
+    let current_version = chainspec.protocol_config.version;
+
+    if item.header().protocol_version() > current_version {
+        return Err(
+            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version,
+                block_header_with_future_version: Box::new(item.header().clone()),
+            },
+        );
     }
-    Ok(None)
+
+    if is_current_era(item.header(), trusted_key_block_info, chainspec)
+        && item.header().protocol_version() < current_version
+    {
+        return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+            current_version,
+            block_header_with_old_version: Box::new(item.header().clone()),
+        });
+    }
+
+    Ok(Some(item))
 }
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
@@ -413,18 +449,8 @@ async fn fast_sync_to_most_recent(
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height and we are in
     // the current era.
-    let current_version = chainspec.protocol_config.version;
     let mut most_recent_block_header = trusted_block_header;
     loop {
-        // If we encounter a block header of a version which is newer than ours we return an error
-        if most_recent_block_header.protocol_version() > current_version {
-            return Err(
-                LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                    current_version,
-                    block_header_with_future_version: Box::new(most_recent_block_header),
-                },
-            );
-        }
         let maybe_fetched_block = fetch_and_store_by_block_height::<BlockHeaderWithMetadata>(
             effect_builder,
             most_recent_block_header.height() + 1,
@@ -451,28 +477,7 @@ async fn fast_sync_to_most_recent(
                 chainspec,
             ) =>
             {
-                match most_recent_block_header
-                    .protocol_version()
-                    .cmp(&current_version)
-                {
-                    Ordering::Greater => {
-                        return Err(
-                            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                                current_version,
-                                block_header_with_future_version: Box::new(
-                                    most_recent_block_header,
-                                ),
-                            },
-                        );
-                    }
-                    Ordering::Less => {
-                        return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
-                            current_version,
-                            block_header_with_old_version: Box::new(most_recent_block_header),
-                        });
-                    }
-                    Ordering::Equal => break,
-                }
+                break
             }
             // Otherwise keep trying to fetch until we get a block with our version
             None => tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await,
@@ -645,10 +650,8 @@ pub(crate) async fn run_fast_sync_task(
     }
 
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
-    match maybe_last_emergency_restart_era_id {
-        Some(last_emergency_restart_era)
-            if last_emergency_restart_era > trusted_block_header.era_id() =>
-        {
+    if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
+        if last_emergency_restart_era > trusted_block_header.era_id() {
             return Err(
                 LinearChainSyncError::TryingToJoinBeforeLastEmergencyRestartEra {
                     last_emergency_restart_era,
@@ -657,7 +660,6 @@ pub(crate) async fn run_fast_sync_task(
                 },
             );
         }
-        _ => {}
     }
 
     // If we are at an upgrade:
@@ -730,14 +732,6 @@ pub(crate) async fn run_fast_sync_task(
             }
             Some(block_with_metadata) => block_with_metadata.block,
         };
-        if block.protocol_version() > chainspec.protocol_config.version {
-            return Err(
-                LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                    current_version: chainspec.protocol_config.version,
-                    block_header_with_future_version: Box::new(block.take_header()),
-                },
-            );
-        }
 
         let mut deploys: Vec<Deploy> = Vec::with_capacity(block.deploy_hashes().len());
         for deploy_hash in block.deploy_hashes() {
