@@ -207,6 +207,16 @@ async fn get_trusted_key_block_info(
     chainspec: &Chainspec,
     trusted_header: &BlockHeader,
 ) -> Result<KeyBlockInfo, LinearChainSyncError> {
+    // If the trusted block's version is newer than ours we return an error
+    if trusted_header.protocol_version() > chainspec.protocol_config.version {
+        return Err(
+            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version: chainspec.protocol_config.version,
+                block_header_with_future_version: Box::new(trusted_header.clone()),
+            },
+        );
+    }
+
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
     let mut current_header_to_walk_back_from = trusted_header.clone();
@@ -224,16 +234,6 @@ async fn get_trusted_key_block_info(
                 })
             }
             _ => {}
-        }
-
-        // If the trusted block's version is newer than ours we return an error
-        if current_header_to_walk_back_from.protocol_version() > chainspec.protocol_config.version {
-            return Err(
-                LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                    current_version: chainspec.protocol_config.version,
-                    block_header_with_future_version: Box::new(current_header_to_walk_back_from),
-                },
-            );
         }
 
         if let Some(key_block_info) =
@@ -299,10 +299,10 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
     }
 }
 
-/// Fetches a block or block header from the network by height.
-async fn fetch_and_store_by_block_height<I>(
+/// Fetches the next block or block header from the network by height.
+async fn fetch_and_store_next<I>(
     effect_builder: EffectBuilder<JoinerEvent>,
-    height: u64,
+    prev_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
     chainspec: &Chainspec,
 ) -> Result<Option<Box<I>>, LinearChainSyncError>
@@ -311,6 +311,7 @@ where
     JoinerEvent: From<FetcherRequest<NodeId, I>>,
     LinearChainSyncError: From<FetcherError<I, NodeId>>,
 {
+    let height = prev_header.height() + 1;
     let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
     let item = loop {
         let peer = match peers.next() {
@@ -318,8 +319,26 @@ where
             None => return Ok(None),
         };
         match effect_builder.fetch::<I, NodeId>(height, peer).await {
-            Ok(FetchedData::FromStorage { item }) => break item,
+            Ok(FetchedData::FromStorage { item }) => {
+                if *item.header().parent_hash() != prev_header.hash() {
+                    return Err(LinearChainSyncError::UnexpectedParentHash {
+                        parent: Box::new(prev_header.clone()),
+                        child: Box::new(item.header().clone()),
+                    });
+                }
+                break item;
+            }
             Ok(FetchedData::FromPeer { item, .. }) => {
+                if *item.header().parent_hash() != prev_header.hash() {
+                    warn!(
+                        ?peer,
+                        fetched_header = ?item.header(),
+                        ?prev_header,
+                        "received block with wrong parent from peer",
+                    );
+                    continue;
+                }
+
                 if let Err(error) = validate_finality_signatures(
                     item.header(),
                     trusted_key_block_info,
@@ -355,6 +374,13 @@ where
             Err(error) => return Err(error.into()),
         }
     };
+
+    if item.header().protocol_version() < prev_header.protocol_version() {
+        return Err(LinearChainSyncError::LowerVersionThanParent {
+            parent: Box::new(prev_header.clone()),
+            child: Box::new(item.header().clone()),
+        });
+    }
 
     let current_version = chainspec.protocol_config.version;
 
@@ -451,9 +477,9 @@ async fn fast_sync_to_most_recent(
     // the current era.
     let mut most_recent_block_header = trusted_block_header;
     loop {
-        let maybe_fetched_block = fetch_and_store_by_block_height::<BlockHeaderWithMetadata>(
+        let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
-            most_recent_block_header.height() + 1,
+            &most_recent_block_header,
             &trusted_key_block_info,
             chainspec,
         )
@@ -584,14 +610,13 @@ async fn archival_sync(
     // Sync forward until we are at the current version.
     let mut most_recent_block = trusted_block;
     while most_recent_block.header().protocol_version() < chainspec.protocol_config.version {
-        let maybe_fetched_block_with_metadata =
-            fetch_and_store_by_block_height::<BlockWithMetadata>(
-                effect_builder,
-                most_recent_block.header().height() + 1,
-                &trusted_key_block_info,
-                chainspec,
-            )
-            .await?;
+        let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
+            effect_builder,
+            most_recent_block.header(),
+            &trusted_key_block_info,
+            chainspec,
+        )
+        .await?;
         most_recent_block = match maybe_fetched_block_with_metadata {
             Some(block_with_metadata) => block_with_metadata.block,
             None => {
@@ -674,9 +699,9 @@ pub(crate) async fn run_fast_sync_task(
         // TODO: handle emergency updates
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
-        if fetch_and_store_by_block_height::<BlockHeaderWithMetadata>(
+        if fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
-            trusted_block_header.height() + 1,
+            &trusted_block_header,
             &trusted_key_block_info,
             &*chainspec,
         )
@@ -704,9 +729,9 @@ pub(crate) async fn run_fast_sync_task(
         "Fetching and executing blocks to synchronize to current",
     );
     loop {
-        let block = match fetch_and_store_by_block_height::<BlockWithMetadata>(
+        let block = match fetch_and_store_next::<BlockWithMetadata>(
             effect_builder,
-            most_recent_block_header.height() + 1,
+            &most_recent_block_header,
             &trusted_key_block_info,
             &*chainspec,
         )

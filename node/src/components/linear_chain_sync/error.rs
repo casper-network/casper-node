@@ -138,4 +138,16 @@ pub(crate) enum LinearChainSyncError {
     /// Error getting era validators from the execution engine.
     #[error(transparent)]
     GetEraValidatorsError(#[from] GetEraValidatorsError),
+
+    #[error("Stored block has unexpected parent hash. parent: {parent:?}, child: {child:?}")]
+    UnexpectedParentHash {
+        parent: Box<BlockHeader>,
+        child: Box<BlockHeader>,
+    },
+
+    #[error("Block has a lower version than its parent.")]
+    LowerVersionThanParent {
+        parent: Box<BlockHeader>,
+        child: Box<BlockHeader>,
+    },
 }
