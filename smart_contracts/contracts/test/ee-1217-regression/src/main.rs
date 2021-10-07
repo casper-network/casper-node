@@ -23,9 +23,10 @@ const METHOD_DELEGATE_CONTRACT_NAME: &str = "delegate_contract";
 const METHOD_DELEGATE_SESSION_NAME: &str = "delegate_session";
 const METHOD_UNDELEGATE_CONTRACT_NAME: &str = "undelegate_contract";
 const METHOD_UNDELEGATE_SESSION_NAME: &str = "undelegate_session";
+const METHOD_ACTIVATE_BID_CONTRACT_NAME: &str = "activate_bid_contract";
+const METHOD_ACTIVATE_BID_SESSION_NAME: &str = "activate_bid_session";
 
-#[no_mangle]
-pub extern "C" fn add_bid() {
+fn add_bid() {
     let public_key: PublicKey = runtime::get_named_arg(auction::ARG_PUBLIC_KEY);
     let auction = system::get_auction();
     let args = runtime_args! {
@@ -46,8 +47,7 @@ pub extern "C" fn add_bid_session() {
     add_bid()
 }
 
-#[no_mangle]
-pub extern "C" fn withdraw_bid() {
+pub fn withdraw_bid() {
     let public_key: PublicKey = runtime::get_named_arg(auction::ARG_PUBLIC_KEY);
     let auction = system::get_auction();
     let args = runtime_args! {
@@ -65,6 +65,25 @@ pub extern "C" fn withdraw_bid_contract() {
 #[no_mangle]
 pub extern "C" fn withdraw_bid_session() {
     withdraw_bid()
+}
+
+fn activate_bid() {
+    let public_key: PublicKey = runtime::get_named_arg(auction::ARG_VALIDATOR_PUBLIC_KEY);
+    let auction = system::get_auction();
+    let args = runtime_args! {
+        auction::ARG_VALIDATOR_PUBLIC_KEY => public_key,
+    };
+    runtime::call_contract::<()>(auction, auction::METHOD_ACTIVATE_BID, args);
+}
+
+#[no_mangle]
+pub extern "C" fn activate_bid_contract() {
+    activate_bid()
+}
+
+#[no_mangle]
+pub extern "C" fn activate_bid_session() {
+    activate_bid()
 }
 
 #[no_mangle]
@@ -173,6 +192,20 @@ pub extern "C" fn call() {
             EntryPointAccess::Public,
             EntryPointType::Contract,
         );
+        let activate_bid_session_entry_point = EntryPoint::new(
+            METHOD_ACTIVATE_BID_SESSION_NAME.to_string(),
+            vec![],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Session,
+        );
+        let activate_bid_contract_entry_point = EntryPoint::new(
+            METHOD_ACTIVATE_BID_CONTRACT_NAME.to_string(),
+            vec![],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
         entry_points.add_entry_point(add_bid_session_entry_point);
         entry_points.add_entry_point(add_bid_contract_entry_point);
         entry_points.add_entry_point(withdraw_bid_session_entry_point);
@@ -181,6 +214,8 @@ pub extern "C" fn call() {
         entry_points.add_entry_point(delegate_contract_entry_point);
         entry_points.add_entry_point(undelegate_session_entry_point);
         entry_points.add_entry_point(undelegate_contract_entry_point);
+        entry_points.add_entry_point(activate_bid_session_entry_point);
+        entry_points.add_entry_point(activate_bid_contract_entry_point);
         entry_points
     };
 
