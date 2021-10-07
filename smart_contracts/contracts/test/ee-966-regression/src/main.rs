@@ -2,6 +2,9 @@
 #![no_main]
 #![feature(lang_items)]
 
+extern crate core;
+
+#[cfg(target_arch = "wasm32")]
 use core::arch::wasm32;
 
 const MAX_MEMORY_PAGES: usize = 64;
@@ -25,18 +28,31 @@ fn revert(value: ApiError) -> ! {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 const DEFAULT_MEMORY_INDEX: u32 = 0; // currently wasm spec supports only single memory
 
+#[cfg(target_arch = "wasm32")]
 pub fn memory_size() -> usize {
     wasm32::memory_size(DEFAULT_MEMORY_INDEX)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn memory_size() -> usize {
+    revert(ApiError::Unhandled)
+}
+
+#[cfg(target_arch = "wasm32")]
 pub fn memory_grow(new_pages: usize) {
     let ptr = wasm32::memory_grow(DEFAULT_MEMORY_INDEX, new_pages);
 
     if ptr == usize::max_value() {
         revert(ApiError::OutOfMemory);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn memory_grow(_: usize) {
+    revert(ApiError::Unhandled)
 }
 
 #[panic_handler]

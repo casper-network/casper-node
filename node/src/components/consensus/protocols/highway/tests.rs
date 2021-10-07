@@ -25,6 +25,7 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
+    testing::TestRng,
     types::{BlockPayload, TimeDiff, Timestamp},
 };
 
@@ -111,11 +112,12 @@ fn test_highway_protocol_handle_message_parse_error() {
     let mut highway_protocol: Box<dyn ConsensusProtocol<NodeId, ClContext>> =
         new_test_highway_protocol(vec![(ALICE_PUBLIC_KEY.clone(), 100)], vec![]);
 
+    let mut rng = TestRng::new();
     let now = Timestamp::zero();
     let sender = NodeId(123);
     let msg = vec![];
     let mut effects: Vec<ProtocolOutcome<NodeId, ClContext>> =
-        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), now);
+        highway_protocol.handle_message(&mut rng, sender.to_owned(), msg.to_owned(), now);
 
     assert_eq!(effects.len(), 1);
 
@@ -138,6 +140,7 @@ pub(crate) const N: Observation<ClContext> = Observation::None;
 
 #[test]
 fn send_a_wire_unit_with_too_small_a_round_exp() {
+    let mut rng = TestRng::new();
     let creator: ValidatorIndex = ValidatorIndex(0);
     let validators = vec![(ALICE_PUBLIC_KEY.clone(), 100)];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
@@ -161,7 +164,8 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
-    let mut outcomes = highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), now);
+    let mut outcomes =
+        highway_protocol.handle_message(&mut rng, sender.to_owned(), msg.to_owned(), now);
     assert_eq!(outcomes.len(), 1);
 
     let maybe_protocol_outcome = outcomes.pop();
@@ -189,6 +193,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
 
 #[test]
 fn send_a_valid_wire_unit() {
+    let mut rng = TestRng::new();
     let standstill_timeout: TimeDiff = STANDSTILL_TIMEOUT.parse().unwrap();
     let creator: ValidatorIndex = ValidatorIndex(0);
     let validators = vec![(ALICE_PUBLIC_KEY.clone(), 100)];
@@ -215,7 +220,7 @@ fn send_a_valid_wire_unit() {
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
 
-    let mut outcomes = highway_protocol.handle_message(sender, msg, now);
+    let mut outcomes = highway_protocol.handle_message(&mut rng, sender, msg, now);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
@@ -249,6 +254,7 @@ fn send_a_valid_wire_unit() {
 
 #[test]
 fn detect_doppelganger() {
+    let mut rng = TestRng::new();
     let creator: ValidatorIndex = ALICE;
     let validators = vec![
         (ALICE_PUBLIC_KEY.clone(), 100),
@@ -284,7 +290,7 @@ fn detect_doppelganger() {
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
-    let mut outcomes = highway_protocol.handle_message(sender, msg, now);
+    let mut outcomes = highway_protocol.handle_message(&mut rng, sender, msg, now);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::DoppelgangerDetected => return,

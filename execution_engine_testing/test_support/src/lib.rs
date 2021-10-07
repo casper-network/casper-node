@@ -20,8 +20,7 @@
 //!
 //! The test could be written as follows:
 //! ```no_run
-//! use std::path::PathBuf;
-//! #[allow(deprecated)]
+//! use std::{convert::TryFrom, path::PathBuf};
 //! use casper_engine_test_support::{SessionBuilder, TestContextBuilder, DeployItemBuilder};
 //! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey, StoredValue, CLValue};
 //!
@@ -56,7 +55,7 @@
 //! let result_of_query: Result<StoredValue, String> = context.run(session).query(account_addr, &[KEY.to_string()]);
 //!
 //! let returned_value = result_of_query.expect("should be a value");
-//! let returned_value = CLValue::from_t(returned_value).expect("should be cl value");
+//! let returned_value = CLValue::try_from(returned_value).expect("should be cl value");
 //! let expected_value = CLValue::from_t(VALUE.to_string()).expect("should construct Value");
 //! assert_eq!(expected_value, returned_value);
 //! ```
@@ -105,8 +104,9 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
+use casper_hashing::Digest;
 use casper_types::{Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 pub use additive_map_diff::AdditiveMapDiff;
@@ -157,7 +157,7 @@ pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30000; // 30 seconds
 // NOTE: Those values could be constants but are kept as once_cell::sync::Lazy to avoid changes of
 // `*FOO` into `FOO` back and forth.
 /// TODO: doc comment.
-pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Blake2bHash> = Lazy::new(|| [42; 32].into());
+pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
 /// TODO: doc comment.
 pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap();

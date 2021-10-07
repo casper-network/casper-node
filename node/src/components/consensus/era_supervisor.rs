@@ -700,7 +700,10 @@ where
     /// Applies `f` to the consensus protocol of the specified era.
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
-        F: FnOnce(&mut dyn ConsensusProtocol<I, ClContext>) -> Vec<ProtocolOutcome<I, ClContext>>,
+        F: FnOnce(
+            &mut dyn ConsensusProtocol<I, ClContext>,
+            &mut NodeRng,
+        ) -> Vec<ProtocolOutcome<I, ClContext>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -712,7 +715,7 @@ where
                 Effects::new()
             }
             Some(era) => {
-                let outcomes = f(&mut *era.consensus);
+                let outcomes = f(&mut *era.consensus, self.rng);
                 self.handle_consensus_outcomes(era_id, outcomes)
             }
         }
@@ -724,7 +727,7 @@ where
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, move |consensus| {
+        self.delegate_to_era(era_id, move |consensus, _| {
             consensus.handle_timer(timestamp, timer_id)
         })
     }
@@ -734,7 +737,7 @@ where
         era_id: EraId,
         action_id: ActionId,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, move |consensus| {
+        self.delegate_to_era(era_id, move |consensus, _| {
             consensus.handle_action(action_id, Timestamp::now())
         })
     }
@@ -745,8 +748,8 @@ where
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
                 trace!(era = era_id.value(), "received a consensus message");
-                self.delegate_to_era(era_id, move |consensus| {
-                    consensus.handle_message(sender, payload, Timestamp::now())
+                self.delegate_to_era(era_id, move |consensus, rng| {
+                    consensus.handle_message(rng, sender, payload, Timestamp::now())
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
@@ -757,7 +760,7 @@ where
                 self.era_supervisor
                     .iter_past(era_id, self.era_supervisor.bonded_eras())
                     .flat_map(|e_id| {
-                        self.delegate_to_era(e_id, |consensus| {
+                        self.delegate_to_era(e_id, |consensus, _| {
                             consensus.request_evidence(sender.clone(), &pub_key)
                         })
                     })
@@ -780,7 +783,7 @@ where
             return Effects::new();
         }
         let proposed_block = ProposedBlock::new(block_payload, block_context);
-        self.delegate_to_era(era_id, move |consensus| {
+        self.delegate_to_era(era_id, move |consensus, _| {
             consensus.propose(proposed_block, Timestamp::now())
         })
     }
@@ -962,7 +965,7 @@ where
             .get_mut(&era_id)
             .map_or(false, |era| era.resolve_validity(&proposed_block, valid))
         {
-            effects.extend(self.delegate_to_era(era_id, |consensus| {
+            effects.extend(self.delegate_to_era(era_id, |consensus, _| {
                 consensus.resolve_validity(proposed_block, valid, Timestamp::now())
             }));
         }
@@ -1209,7 +1212,7 @@ where
                             continue;
                         };
                     for proposed_block in proposed_blocks {
-                        effects.extend(self.delegate_to_era(e_id, |consensus| {
+                        effects.extend(self.delegate_to_era(e_id, |consensus, _| {
                             consensus.resolve_validity(proposed_block, true, Timestamp::now())
                         }));
                     }
@@ -1220,7 +1223,7 @@ where
                 .era_supervisor
                 .iter_past_other(era_id, self.era_supervisor.bonded_eras())
                 .flat_map(|e_id| {
-                    self.delegate_to_era(e_id, |consensus| {
+                    self.delegate_to_era(e_id, |consensus, _| {
                         consensus.request_evidence(sender.clone(), &pub_key)
                     })
                 })
