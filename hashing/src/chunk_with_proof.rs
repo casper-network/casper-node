@@ -105,6 +105,14 @@ mod test {
 
     use crate::chunk_with_proof::ChunkWithProof;
 
+    fn prepare_bytes(length: usize) -> Vec<u8> {
+        let mut rng = rand::thread_rng();
+
+        let mut v = Vec::with_capacity(length);
+        (0..length).into_iter().for_each(|_| v.push(rng.gen()));
+        v
+    }
+
     #[derive(Debug)]
     pub struct TestDataSize(usize);
     impl Arbitrary for TestDataSize {
@@ -137,7 +145,7 @@ mod test {
 
     #[proptest]
     fn generates_valid_proof(test_data: TestDataSize) {
-        let data = vec![0u8; test_data.0];
+        let data = prepare_bytes(test_data.0);
 
         let number_of_chunks: u64 = data
             .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
@@ -145,11 +153,10 @@ mod test {
             .try_into()
             .unwrap();
 
-        assert!(!(0..number_of_chunks)
+        assert!((0..number_of_chunks)
             .into_iter()
             .map(|chunk_index| { ChunkWithProof::new(data.as_slice(), chunk_index).unwrap() })
-            .map(|chunk_with_proof| chunk_with_proof.verify())
-            .any(|valid| !valid));
+            .all(|chunk_with_proof| chunk_with_proof.verify()));
     }
 
     #[proptest]
@@ -157,7 +164,7 @@ mod test {
         // This test requires at least two chunks
         assert!(test_data.0 >= ChunkWithProof::CHUNK_SIZE_BYTES * 2);
 
-        let data = vec![0u8; test_data.0];
+        let data = prepare_bytes(test_data.0);
         let expected_root = Digest::hash_merkle_tree(
             data.chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
                 .map(Digest::hash),
@@ -179,7 +186,7 @@ mod test {
 
     #[proptest]
     fn verifies_chunk_with_proofs(test_data: TestDataSize) {
-        let data = vec![0u8; test_data.0];
+        let data = prepare_bytes(test_data.0);
 
         impl ChunkWithProof {
             fn replace_first_proof(self) -> Self {
@@ -205,7 +212,7 @@ mod test {
 
     #[proptest]
     fn serde_deserialization_of_malformed_chunk_should_work(test_data: TestDataSize) {
-        let data = vec![0u8; test_data.0];
+        let data = prepare_bytes(test_data.0);
         let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
 
         let json = serde_json::to_string(&chunk_with_proof).unwrap();
@@ -221,7 +228,7 @@ mod test {
 
     #[proptest]
     fn bytesrepr_deserialization_of_malformed_chunk_should_work(test_data: TestDataSize) {
-        let data = vec![0u8; test_data.0];
+        let data = prepare_bytes(test_data.0);
         let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
 
         let bytes = chunk_with_proof
