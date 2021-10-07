@@ -239,7 +239,7 @@ mod test {
             .map(|i| Digest::hash(i.to_le_bytes()))
             .collect();
         IndexedMerkleProof::new(leaves.iter().cloned(), index)
-            .expect("should create indexed merkle proof")
+            .expect("should create indexed Merkle proof")
     }
 
     #[test]
@@ -446,13 +446,13 @@ mod test {
                 .expect("should deserialize correctly")
         );
 
-        // Check that proof with index greater than count fails to deserialize
+        // Check that proof with index greater than count deserializes correctly
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.index += 1;
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
         serde_json::from_str::<IndexedMerkleProof>(&json).expect("should deserialize correctly");
 
-        // Check that proof with incorrect length fails to deserialize
+        // Check that proof with incorrect length deserializes correctly
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.merkle_proof.push(Digest::hash("XXX"));
         let json = serde_json::to_string(&indexed_merkle_proof).unwrap();
@@ -468,7 +468,7 @@ mod test {
             .expect("should serialize correctly");
         IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
 
-        // Check that proof with index greater than count fails to deserialize
+        // Check that proof with index greater than count deserializes correctly
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.index += 1;
         let bytes = indexed_merkle_proof
@@ -476,7 +476,7 @@ mod test {
             .expect("should serialize correctly");
         IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
 
-        // Check that proof with incorrect length fails to deserialize
+        // Check that proof with incorrect length deserializes correctly
         let mut indexed_merkle_proof = test_indexed_merkle_proof(10, 10);
         indexed_merkle_proof.merkle_proof.push(Digest::hash("XXX"));
         let bytes = indexed_merkle_proof

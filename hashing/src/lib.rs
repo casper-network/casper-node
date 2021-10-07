@@ -80,7 +80,7 @@ impl Digest {
 
     /// Depending on the size of the data it either:
     /// 1. Creates a 32-byte BLAKE2b hash digest from a given a piece of data, or
-    /// 2. Splits the data into chunks and creates hash digest of the merkle tree
+    /// 2. Splits the data into chunks and creates hash digest of the Merkle tree
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
         if Self::should_hash_with_chunks(&data) {
             Self::hash_merkle_tree(

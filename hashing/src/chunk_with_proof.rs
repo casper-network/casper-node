@@ -77,7 +77,6 @@ impl ChunkWithProof {
     }
 
     /// Get a reference to the chunk with proof's chunk.
-    #[allow(unused)]
     fn chunk(&self) -> &[u8] {
         self.chunk.as_slice()
     }
