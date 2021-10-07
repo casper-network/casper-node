@@ -113,6 +113,21 @@ mod test {
         v
     }
 
+    impl ChunkWithProof {
+        fn replace_first_proof(self) -> Self {
+            let mut rng = rand::thread_rng();
+            let ChunkWithProof { mut proof, chunk } = self;
+
+            // Keep the same number of proofs, but replace the first one with some random hash
+            let mut merkle_proof: Vec<_> = proof.merkle_proof().to_vec();
+            merkle_proof.pop();
+            merkle_proof.insert(0, Digest::hash(rng.gen::<usize>().to_string()));
+            proof.inject_merkle_proof(merkle_proof);
+
+            ChunkWithProof { proof, chunk }
+        }
+    }
+
     #[derive(Debug)]
     pub struct TestDataSize(usize);
     impl Arbitrary for TestDataSize {
@@ -188,21 +203,6 @@ mod test {
     #[proptest]
     fn verifies_chunk_with_proofs(test_data: TestDataSize) {
         for data in [prepare_bytes(test_data.0), vec![0u8; test_data.0]] {
-            impl ChunkWithProof {
-                fn replace_first_proof(self) -> Self {
-                    let mut rng = rand::thread_rng();
-                    let ChunkWithProof { mut proof, chunk } = self;
-
-                    // Keep the same number of proofs, but replace the first one with some random hash
-                    let mut merkle_proof: Vec<_> = proof.merkle_proof().to_vec();
-                    merkle_proof.pop();
-                    merkle_proof.insert(0, Digest::hash(rng.gen::<usize>().to_string()));
-                    proof.inject_merkle_proof(merkle_proof);
-
-                    ChunkWithProof { proof, chunk }
-                }
-            }
-
             let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
             assert!(chunk_with_proof.verify());
 
