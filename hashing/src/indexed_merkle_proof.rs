@@ -68,10 +68,14 @@ impl IndexedMerkleProof {
         use HashOrProof::{Hash, Proof};
 
         let leaves = leaves.into_iter();
-        let count: u64 = leaves
-            .len()
-            .try_into()
-            .expect("Unable to process more than u64::MAX leaves");
+
+        let count: u64 =
+            leaves
+                .len()
+                .try_into()
+                .map_err(|_| error::MerkleConstructionError::TooManyLeaves {
+                    count: leaves.len().to_string(),
+                })?;
 
         let maybe_proof = leaves
             .enumerate()

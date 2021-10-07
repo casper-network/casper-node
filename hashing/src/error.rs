@@ -21,7 +21,12 @@ pub enum MerkleConstructionError {
     #[error("Could not construct Merkle proof. Empty proof must have index 0. Index: {index}")]
     EmptyProofMustHaveIndex { index: u64 },
     #[error(
-        "Could not construct Merkle proof. Index out of bounds.  Count: {count}, index: {index}"
+        "Could not construct Merkle proof. Index out of bounds. Count: {count}, index: {index}"
     )]
     IndexOutOfBounds { count: u64, index: u64 },
+    #[error(
+        "Could not construct Merkle proof. Too many leaves. Count: {count}, max: {} (u64::MAX)",
+        u64::MAX
+    )]
+    TooManyLeaves { count: String },
 }
