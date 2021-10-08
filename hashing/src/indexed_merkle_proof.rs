@@ -106,7 +106,11 @@ impl IndexedMerkleProof {
                     })
                 }
             }
-            Some(Hash(_)) => Err(error::MerkleConstructionError::IndexOutOfBounds { count, index }),
+            Some(Hash(_)) => {
+                // TODO[RC]: What error is it, actually? This is not covered by unit tests - fix
+                // that.
+                unreachable!()
+            }
             Some(Proof(merkle_proof)) => Ok(IndexedMerkleProof {
                 index,
                 count,
