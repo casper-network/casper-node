@@ -97,7 +97,7 @@ impl IndexedMerkleProof {
         match maybe_proof {
             None => {
                 if index != 0 {
-                    Err(error::MerkleConstructionError::EmptyProofMustHaveIndex { index })
+                    Err(error::MerkleConstructionError::EmptyProofMustHaveIndexZero { index })
                 } else {
                     Ok(IndexedMerkleProof {
                         index: 0,
