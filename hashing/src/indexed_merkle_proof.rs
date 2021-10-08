@@ -152,17 +152,12 @@ impl IndexedMerkleProof {
             let mut acc = leaf_hash;
 
             for hash in hashes {
-                let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
-                if (path & 1) == 1 {
-                    hasher.update(hash);
-                    hasher.update(&acc);
+                let digest = if (path & 1) == 1 {
+                    Digest::hash_pair(hash, &acc)
                 } else {
-                    hasher.update(&acc);
-                    hasher.update(hash);
-                }
-                hasher.finalize_variable(|slice| {
-                    acc.0.copy_from_slice(slice);
-                });
+                    Digest::hash_pair(&acc, hash)
+                };
+                acc.0.copy_from_slice(digest.as_ref());
                 path >>= 1;
             }
             acc
