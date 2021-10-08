@@ -7,6 +7,8 @@ use casper_types::{
 
 use crate::{error, Digest};
 
+/// Represents the chunk of data with attached [IndexedMerkleProof].
+/// Empty data is always represented as single, empty chunk and not as zero chunks.
 #[derive(PartialEq, Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 #[serde(deny_unknown_fields)]
