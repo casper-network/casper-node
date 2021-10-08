@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [1.3.4]
+## [1.3.4] - 2021-09-23
 
 ### Added
 * Add `json-schema` feature, disabled by default, to enable many types to be used to produce JSON-schema data.

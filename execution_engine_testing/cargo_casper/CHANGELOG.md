@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [1.3.4]
+## [1.3.4] - 2021-09-23
 
 ### Changed
 * Support building and testing using stable Rust.
