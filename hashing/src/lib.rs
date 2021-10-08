@@ -163,15 +163,7 @@ impl Digest {
         let leaf_count_bytes = leaves.len().to_le_bytes();
 
         let raw_root = leaves
-            .tree_fold1(|mut hash_x, hash_y| {
-                let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
-                hasher.update(&hash_x);
-                hasher.update(&hash_y);
-                hasher.finalize_variable(|slice| {
-                    hash_x.0.copy_from_slice(slice);
-                });
-                hash_x
-            })
+            .tree_fold1(Digest::hash_pair)
             .unwrap_or(Digest::SENTINEL_MERKLE_TREE);
 
         Digest::hash_pair(leaf_count_bytes, raw_root)
