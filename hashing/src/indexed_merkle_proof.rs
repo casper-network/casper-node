@@ -173,9 +173,8 @@ impl IndexedMerkleProof {
         &self.merkle_proof
     }
 
-    // Proof lengths are never bigger than 65, so we can use a u8 here
-    // The reason they are never bigger than 65 is because we are using 64 bit counts
-    pub(crate) fn compute_expected_proof_length(&self) -> u64 {
+    // Proof lengths are never bigger than 65 is because we are using 64 bit counts
+    pub(crate) fn compute_expected_proof_length(&self) -> u8 {
         if self.count == 0 {
             return 0;
         }
@@ -257,7 +256,7 @@ mod test {
             let indexed_merkle_proof = IndexedMerkleProof::new(leaves.clone(), index).unwrap();
             assert_eq!(
                 indexed_merkle_proof.compute_expected_proof_length(),
-                indexed_merkle_proof.merkle_proof().len() as u64
+                indexed_merkle_proof.merkle_proof().len() as u8
             );
             assert_eq!(indexed_merkle_proof.verify(), Ok(()));
             assert_eq!(leaf_count, indexed_merkle_proof.count);

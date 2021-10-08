@@ -11,7 +11,7 @@ pub enum MerkleVerificationError {
     UnexpectedProofLength {
         count: u64,
         index: u64,
-        expected_proof_length: u64,
+        expected_proof_length: u8,
         actual_proof_length: usize,
     },
 }
