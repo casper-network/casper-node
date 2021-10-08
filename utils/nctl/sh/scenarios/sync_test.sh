@@ -42,8 +42,14 @@ function main() {
     # 10. Verify that its last finalized block matches other nodes'.
     # nctl-view-chain-root-hash
     do_await_full_synchronization "$NEW_NODE_ID"
-    # 11. Check for equivocators
-    assert_no_equivocators_logs
+    # 11. Run Closing Health Checks
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors=0 \
+            equivocators=0 \
+            doppels=0 \
+            crashes=0 \
+            restarts=0 \
+            ejections=0
 
     log "------------------------------------------------------------"
     log "Syncing node complete"

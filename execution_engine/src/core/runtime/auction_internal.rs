@@ -118,7 +118,7 @@ where
     }
 
     fn is_allowed_session_caller(&self, account_hash: &AccountHash) -> bool {
-        self.is_allowed_session_caller(account_hash)
+        Runtime::is_allowed_session_caller(self, account_hash)
     }
 
     fn named_keys_get(&self, name: &str) -> Option<Key> {
