@@ -987,6 +987,17 @@ where
         context: RuntimeContext<'a, R>,
         call_stack: Vec<CallStackElement>,
     ) -> Self {
+        // Preconditions that would render the system inconsistent if violated. Those are strictly
+        // programming errors.
+        debug_assert!(
+            !call_stack.is_empty(),
+            "Call stack should not be empty while creating a new Runtime instance"
+        );
+        debug_assert!(
+            call_stack.first().unwrap().contract_hash().is_none(),
+            "First element should always represent a Session call"
+        );
+
         Runtime {
             config,
             system_contract_cache,
@@ -1032,6 +1043,9 @@ where
     where
         T: Into<Gas>,
     {
+        if self.is_system_immediate_caller()? {
+            return Ok(());
+        }
         self.context.charge_system_contract_call(amount)
     }
 
@@ -1212,10 +1226,7 @@ where
 
     /// Gets the immediate caller of the current execution
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        let call_stack = self.call_stack();
-        let mut call_stack_iter = call_stack.iter().rev();
-        call_stack_iter.next()?;
-        call_stack_iter.next()
+        self.call_stack().iter().rev().nth(1)
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account
@@ -2893,6 +2904,22 @@ where
         self.context.get_system_contract(MINT)
     }
 
+    fn get_system_contract_stack_frame(&mut self, name: &str) -> Result<CallStackElement, Error> {
+        let contract_hash = self.context.get_system_contract(name)?;
+        let key = Key::from(contract_hash);
+        let contract = match self.context.read_gs(&key)? {
+            Some(StoredValue::Contract(contract)) => contract,
+            Some(_) => {
+                return Err(Error::InvalidContract(contract_hash));
+            }
+            None => return Err(Error::KeyNotFound(key)),
+        };
+        Ok(CallStackElement::StoredContract {
+            contract_package_hash: contract.contract_package_hash(),
+            contract_hash,
+        })
+    }
+
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
@@ -3638,6 +3665,50 @@ where
             return Err(Trap::from(e));
         }
         Ok(Ok(()))
+    }
+
+    /// Checks if immediate caller is a system contract or account.
+    ///
+    /// For cases where call stack is only the session code, then this method returns `true` if the
+    /// caller is system, or `false` otherwise.
+    fn is_system_immediate_caller(&self) -> Result<bool, Error> {
+        let immediate_caller = match self.get_immediate_caller() {
+            Some(call_stack_element) => call_stack_element,
+            None => {
+                // Empty call stack is strictly a programming error.
+                // A Runtime can't be created with empty call stack or with a stored variant as
+                // first as the constructor is guarded with debug assertions.
+                match self.call_stack().first() {
+                    Some(CallStackElement::Session { account_hash }) => {
+                        // For example the genesis process originates with a session code started by
+                        // a system account.
+                        return Ok(account_hash == &PublicKey::System.to_account_hash());
+                    }
+                    Some(
+                        CallStackElement::StoredContract { .. }
+                        | CallStackElement::StoredSession { .. },
+                    )
+                    | None => {
+                        debug_assert!(
+                            false,
+                            "First element of the stack should be present and not a stored variant."
+                        );
+                        return Ok(false);
+                    }
+                }
+            }
+        };
+
+        match immediate_caller {
+            CallStackElement::Session { account_hash } => {
+                // This case can happen during genesis where we're setting up purses for accounts.
+                Ok(account_hash == &PublicKey::System.to_account_hash())
+            }
+            CallStackElement::StoredSession { contract_hash, .. }
+            | CallStackElement::StoredContract { contract_hash, .. } => {
+                Ok(self.context.is_system_contract(contract_hash)?)
+            }
+        }
     }
 }
 
