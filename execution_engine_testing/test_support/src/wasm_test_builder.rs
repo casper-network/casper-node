@@ -75,9 +75,9 @@ const DEFAULT_MAX_READERS: u32 = 512;
 /// This is appended to the data dir path provided to the `LmdbWasmTestContext`".
 const GLOBAL_STATE_DIR: &str = "global_state";
 
-/// TODO: doc comment.
+/// Wasm test context where state is held entirely in memory.
 pub type InMemoryWasmTestContext = WasmTestContext<InMemoryGlobalState>;
-/// TODO: doc comment.
+/// Wasm test context where state is held in LMDB.
 pub type LmdbWasmTestContext = WasmTestContext<LmdbGlobalState>;
 
 /// Builder for simple WASM test
@@ -173,7 +173,7 @@ impl<S> WasmTestResult<S> {
 }
 
 impl InMemoryWasmTestContext {
-    /// TODO: doc comment.
+    /// Returns an [`InMemoryWasmTestContext`].
     pub fn new(
         global_state: InMemoryGlobalState,
         engine_config: EngineConfig,
@@ -191,7 +191,7 @@ impl InMemoryWasmTestContext {
 }
 
 impl LmdbWasmTestContext {
-    /// TODO: doc comment.
+    /// Returns an [`LmdbWasmTestContext`] with configuration.
     pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         engine_config: EngineConfig,
@@ -239,7 +239,7 @@ impl LmdbWasmTestContext {
         engine_state.flush_environment().unwrap();
     }
 
-    /// TODO: doc comment.
+    /// Returns a new [`LmdbWasmTestContext`].
     pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
         Self::new_with_config(data_dir, Default::default())
     }
@@ -358,7 +358,7 @@ where
         }
     }
 
-    /// TODO: doc comment.
+    /// Takes a `&RunGenesisRequest`, executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
 
@@ -413,7 +413,7 @@ where
         self
     }
 
-    /// TODO: doc comment.
+    /// Queries state for a `StoredValue`.
     pub fn query(
         &self,
         maybe_post_state: Option<Digest>,
@@ -438,7 +438,7 @@ where
         Err(format!("{:?}", query_result))
     }
 
-    /// TODO: doc comment.
+    /// Queries state for a dictionary item.
     pub fn query_dictionary_item(
         &self,
         maybe_post_state: Option<Digest>,
@@ -451,7 +451,7 @@ where
         self.query(maybe_post_state, dictionary_address, &empty_path)
     }
 
-    /// TODO: doc comment.
+    /// Queries for a `StoredValue` and returns the `StoredValue` and a Merkle proof.
     pub fn query_with_proof(
         &self,
         maybe_post_state: Option<Digest>,
@@ -478,7 +478,9 @@ where
         panic! {"{:?}", query_result};
     }
 
-    /// TODO: doc comment.
+    /// Queries for the total supply of token.
+    /// # Panics
+    /// Panics if the total supply can't be found.
     pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
         let mint_key: Key = self
             .mint_contract_hash
@@ -496,7 +498,7 @@ where
         total_supply
     }
 
-    /// TODO: doc comment.
+    /// Runs an `ExecuteRequest`.
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let exec_request = {
             let hash = self.post_state_hash.expect("expected post_state_hash");
@@ -650,7 +652,7 @@ where
         self
     }
 
-    /// TODO: doc comment.
+    /// Returns `true` if the las exec had an error, otherwise returns false.
     pub fn is_error(&self) -> bool {
         let exec_results = self
             .exec_results
@@ -662,7 +664,7 @@ where
         exec_result.is_failure()
     }
 
-    /// TODO: doc comment.
+    /// Returns an `Option<engine_state::Error>` if the last exec had an error.
     pub fn get_error(&self) -> Option<engine_state::Error> {
         let exec_results = &self.get_exec_results();
 
@@ -687,69 +689,69 @@ where
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
 
-    /// TODO: doc comment.
+    /// Returns the `ContractHash` of the mint, panics if it can't be found.
     pub fn get_mint_contract_hash(&self) -> ContractHash {
         self.mint_contract_hash
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    /// TODO: doc comment.
+    /// Returns the `ContractHash` of the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
         self.handle_payment_contract_hash
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
-    /// TODO: doc comment.
+    /// Returns the `ContractHash` of the "standard payment" contract, panics if it can't be found.
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
         self.standard_payment_hash
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
     }
 
-    /// TODO: doc comment.
+    /// Returns the `ContractHash` of the "auction" contract, panics if it can't be found.
     pub fn get_auction_contract_hash(&self) -> ContractHash {
         self.auction_contract_hash
             .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
-    /// TODO: doc comment.
+    /// Returns genesis transforms, panics if there aren't any.
     pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, Transform> {
         self.genesis_transforms
             .as_ref()
             .expect("should have genesis transforms")
     }
 
-    /// TODO: doc comment.
+    /// Returns the genesis hash, panics if it can't be found.
     pub fn get_genesis_hash(&self) -> Digest {
         self.genesis_hash
             .expect("Genesis hash should be present. Should be called after run_genesis.")
     }
 
-    /// TODO: doc comment.
+    /// Returns the post state hash, panics if it can't be found.
     pub fn get_post_state_hash(&self) -> Digest {
         self.post_state_hash.expect("Should have post-state hash.")
     }
 
-    /// TODO: doc comment.
+    /// Returns the engine state.
     pub fn get_engine_state(&self) -> &EngineState<S> {
         &self.engine_state
     }
 
-    /// TODO: doc comment.
+    /// Returns the results of all execs.
     pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
         &self.exec_results
     }
 
-    /// TODO: doc comment.
+    /// Returns the results of a specific exec.
     pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
         self.exec_results.get(index)
     }
 
-    /// TODO: doc comment.
+    /// Returns a count of exec results.
     pub fn get_exec_results_count(&self) -> usize {
         self.exec_results.len()
     }
 
-    /// TODO: doc comment.
+    /// Returns a `Result` containing an `UpgradeSuccess`.
     pub fn get_upgrade_result(
         &self,
         index: usize,
@@ -757,7 +759,7 @@ where
         self.upgrade_results.get(index)
     }
 
-    /// TODO: doc comment.
+    /// Expects upgrade success.
     pub fn expect_upgrade_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let result = self
@@ -771,14 +773,14 @@ where
         self
     }
 
-    /// TODO: doc comment.
+    /// Returns self, wrapped in a `WasmTestResult`.
     #[deprecated]
     #[allow(deprecated)]
     pub fn finish(&self) -> WasmTestResult<S> {
         WasmTestResult(self.clone())
     }
 
-    /// TODO: doc comment.
+    /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> Contract {
         let handle_payment_contract: Key = self
             .handle_payment_contract_hash
@@ -789,7 +791,7 @@ where
             .expect("should find handle payment URef")
     }
 
-    /// TODO: doc comment.
+    /// Returns the balance of a purse, panics if the balance can't be parsed into a `U512`.
     pub fn get_purse_balance(&self, purse: URef) -> U512 {
         let base_key = Key::Balance(purse.addr());
         self.query(None, base_key, &[])
@@ -798,7 +800,7 @@ where
             .expect("should parse balance into a U512")
     }
 
-    /// TODO: doc comment.
+    /// Returns a `BalanceResult` for a purse, panics if the balance can't be found.
     pub fn get_purse_balance_result(&self, purse: URef) -> BalanceResult {
         let correlation_id = CorrelationId::new();
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
@@ -807,7 +809,7 @@ where
             .expect("should get purse balance")
     }
 
-    /// TODO: doc comment.
+    /// Returns a `BalanceResult` for a purse using a `PublicKey`.
     pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
         let correlation_id = CorrelationId::new();
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
@@ -816,7 +818,7 @@ where
             .expect("should get purse balance using public key")
     }
 
-    /// TODO: doc comment.
+    /// Gets the purse balance of a proposer.
     pub fn get_proposer_purse_balance(&self) -> U512 {
         let proposer_account = self
             .get_account(*DEFAULT_PROPOSER_ADDR)
@@ -824,7 +826,7 @@ where
         self.get_purse_balance(proposer_account.main_purse())
     }
 
-    /// TODO: doc comment.
+    /// Queries for an `Account`.
     pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
         match self.query(None, Key::Account(account_hash), &[]) {
             Ok(account_value) => match account_value {
@@ -835,12 +837,12 @@ where
         }
     }
 
-    /// TODO: doc comment.
+    /// Queries for an `Account` and panics if it can't be found.
     pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
         self.get_account(account_hash).expect("account to exist")
     }
 
-    /// TODO: doc comment.
+    /// Queries for a contract by `ContractHash`.
     pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
@@ -853,7 +855,7 @@ where
         }
     }
 
-    /// TODO: doc comment.
+    /// Queries for a contract by `ContractHash` and returns an `Option<ContractWasm>`.
     pub fn get_contract_wasm(&self, contract_hash: ContractHash) -> Option<ContractWasm> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
@@ -866,7 +868,7 @@ where
         }
     }
 
-    /// TODO: doc comment.
+    /// Queries for a contract package by `ContractPackageHash`.
     pub fn get_contract_package(
         &self,
         contract_package_hash: ContractPackageHash,
@@ -882,7 +884,7 @@ where
         }
     }
 
-    /// TODO: doc comment.
+    /// Queries for a transfer by `TransferAddr`.
     pub fn get_transfer(&self, transfer: TransferAddr) -> Option<Transfer> {
         let transfer_value: StoredValue = self
             .query(None, Key::Transfer(transfer), &[])
@@ -895,7 +897,7 @@ where
         }
     }
 
-    /// TODO: doc comment.
+    /// Queries for deploy info by `DeployHash`.
     pub fn get_deploy_info(&self, deploy_hash: DeployHash) -> Option<DeployInfo> {
         let deploy_info_value: StoredValue = self
             .query(None, Key::DeployInfo(deploy_hash), &[])
