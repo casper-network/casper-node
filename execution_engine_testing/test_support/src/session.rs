@@ -1,3 +1,4 @@
+//! Types used for working with session code in wasm contract tests.
 use rand::Rng;
 
 use casper_execution_engine::core::engine_state::execute_request::ExecuteRequest;

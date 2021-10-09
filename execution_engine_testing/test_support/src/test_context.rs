@@ -1,3 +1,4 @@
+//! Types used for creating execution contexts for wasm contract tests.
 use casper_execution_engine::core::engine_state::{
     genesis::{GenesisAccount, GenesisConfig},
     run_genesis_request::RunGenesisRequest,

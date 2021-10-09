@@ -78,10 +78,8 @@ pub mod utils;
 mod wasm_test_builder;
 
 use casper_types::account::{Account, AccountHash};
-/// TODO: doc comment.
 #[allow(deprecated)]
 pub use session::{Session, SessionBuilder, SessionTransferInfo};
-/// TODO: doc comment.
 pub use test_context::{TestContext, TestContextBuilder};
 
 /// The address of a [`URef`](casper_types::URef) (unforgeable reference) on the network.
@@ -119,9 +117,9 @@ pub use wasm_test_builder::{
     InMemoryWasmTestContext, LmdbWasmTestContext, WasmTestContext, WasmTestResult,
 };
 
-/// TODO: doc comment.
+/// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
-/// TODO: doc comment.
+/// Default auction delay.
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
 /// Default lock-in period of 90 days
 pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
@@ -137,28 +135,28 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
 pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
 
-/// TODO: doc comment.
-pub const DEFAULT_CHAIN_NAME: &str = "gerald";
-/// TODO: doc comment.
+/// Default chain name.
+pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
+/// Default gensis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
-/// TODO: doc comment.
+/// Default maximum number of associated keys.
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
-/// TODO: doc comment.
+/// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
-/// TODO: doc comment.
+/// Default gas price.
 pub const DEFAULT_GAS_PRICE: u64 = 1;
-/// TODO: doc comment.
+/// Address of a mocked account.
 pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
-/// TODO: doc comment.
+/// Amount named argument.
 pub const ARG_AMOUNT: &str = "amount";
-/// TODO: doc comment.
+/// TImestamp increment in milliseconds.
 pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30000; // 30 seconds
 
 // NOTE: Those values could be constants but are kept as once_cell::sync::Lazy to avoid changes of
 // `*FOO` into `FOO` back and forth.
-/// TODO: doc comment.
+/// Default genesis config hash.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
-/// TODO: doc comment.
+/// Default account public key.
 pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
@@ -166,19 +164,19 @@ pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
 /// Default test account address.
 pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
-// Declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
-/// TODO: doc comment.
+// NOTE: declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
+/// Default account key.
 pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
-/// TODO: doc comment.
+/// Default proposer public key.
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
-/// TODO: doc comment.
+/// Default proposer address.
 pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
-/// TODO: doc comment.
+/// Default accounts.
 pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
     let genesis_account = GenesisAccount::account(
@@ -195,15 +193,15 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     ret.push(proposer_account);
     ret
 });
-/// TODO: doc comment.
+/// Default [`ProtocolVersion`].
 pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
-/// TODO: doc comment.
+/// Default payment.
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
-/// TODO: doc comment.
+/// Default [`WasmConfig`].
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
-/// TODO: doc comment.
+/// Default [`SystemConfig`].
 pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
-/// TODO: doc comment.
+/// Default [`ExecConfig`].
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     ExecConfig::new(
         DEFAULT_ACCOUNTS.clone(),
@@ -217,7 +215,7 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     )
 });
-/// TODO: doc comment.
+/// Default [`GenesisConfig`].
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
     GenesisConfig::new(
         DEFAULT_CHAIN_NAME.to_string(),
@@ -226,7 +224,7 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         DEFAULT_EXEC_CONFIG.clone(),
     )
 });
-/// TODO: doc comment.
+/// Default [`RunGenesisRequest`].
 pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
@@ -234,5 +232,5 @@ pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
         DEFAULT_EXEC_CONFIG.clone(),
     )
 });
-/// TODO: doc comment.
+/// System address.
 pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());

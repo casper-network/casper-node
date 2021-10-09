@@ -1,4 +1,4 @@
-//! TODO: doc comment.
+//! Utility types and funcitons for working with execution engine tests.
 
 use std::{
     env, fs,
@@ -131,7 +131,7 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
     panic!("{}\n", error_msg);
 }
 
-/// TODO: doc comment.
+/// Returns an [`ExecConfig`].
 pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let system_config = *DEFAULT_SYSTEM_CONFIG;
@@ -154,7 +154,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     )
 }
 
-/// TODO: doc comment.
+/// Returns a [`GenesisConfig`].
 pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let name = DEFAULT_CHAIN_NAME.to_string();
     let timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
@@ -164,7 +164,7 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     GenesisConfig::new(name, timestamp, protocol_version, exec_config)
 }
 
-/// TODO: doc comment.
+/// Returns a [`RunGenesisRequest`].
 pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> RunGenesisRequest {
     let exec_config = create_exec_config(accounts);
     RunGenesisRequest::new(
@@ -174,7 +174,7 @@ pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> RunGenesisRe
     )
 }
 
-/// TODO: doc comment.
+/// Returns a `Vec<Gas>` representing gas consts for an [`ExecutionResult`].
 pub fn get_exec_costs<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
     exec_response: I,
 ) -> Vec<Gas> {
@@ -184,12 +184,18 @@ pub fn get_exec_costs<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
         .collect()
 }
 
-/// TODO: doc comment.
+/// Returns the success result of the `ExecutionResult`.
+/// # Panics
+/// Panics if `response` is `None`.
 pub fn get_success_result(response: &[Rc<ExecutionResult>]) -> &ExecutionResult {
     &*response.get(0).expect("should have a result")
 }
 
-/// TODO: doc comment.
+/// Returns an error if the `ExecutionResult` has an error.
+/// # Panics
+/// Panics if the result is `None`.
+/// Panics if the result does not have a precondition failure.
+/// Panics if result.as_error() is `None`.
 pub fn get_precondition_failure(response: &[Rc<ExecutionResult>]) -> &Error {
     let result = response.get(0).expect("should have a result");
     assert!(
@@ -199,7 +205,7 @@ pub fn get_precondition_failure(response: &[Rc<ExecutionResult>]) -> &Error {
     result.as_error().expect("should have an error")
 }
 
-/// TODO: doc comment.
+/// Returns a `String` concatenated from all of the error messages from the `ExecutionResult`.
 pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
     execution_result: I,
 ) -> String {
@@ -217,7 +223,7 @@ pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
     errors.join("\n")
 }
 
-/// TODO: doc comment.
+/// Returns `Option<Account>`.
 #[allow(clippy::implicit_hasher)]
 pub fn get_account(transforms: &AdditiveMap<Key, Transform>, account: &Key) -> Option<Account> {
     transforms.get(account).and_then(|transform| {
