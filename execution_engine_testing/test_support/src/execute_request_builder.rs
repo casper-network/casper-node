@@ -14,59 +14,59 @@ use crate::{DeployItemBuilder, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT, DEFAULT_PROP
 
 const ARG_AMOUNT: &str = "amount";
 
-/// TODO: doc comment.
+/// Builds an [`ExecuteRequest`].
 #[derive(Debug)]
 pub struct ExecuteRequestBuilder {
     execute_request: ExecuteRequest,
 }
 
 impl ExecuteRequestBuilder {
-    /// TODO: doc comment.
+    /// Returns an [`ExecuteRequestBuilder`].
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// TODO: doc comment.
+    /// Takes a [`DeployItem`] and returns an [`ExecuteRequestBuilder`].
     pub fn from_deploy_item(deploy_item: DeployItem) -> Self {
         ExecuteRequestBuilder::new().push_deploy(deploy_item)
     }
 
-    /// TODO: doc comment.
+    /// Adds a [`DeployItem`] to the [`ExecuteRequest`].
     pub fn push_deploy(mut self, deploy: DeployItem) -> Self {
         self.execute_request.deploys.push(deploy);
         self
     }
 
-    /// TODO: doc comment.
+    /// Sets the parent state hash of the [`ExecuteRequest`].
     pub fn with_pre_state_hash(mut self, pre_state_hash: &[u8]) -> Self {
         self.execute_request.parent_state_hash = pre_state_hash.try_into().unwrap();
         self
     }
 
-    /// TODO: doc comment.
+    /// Sets the block time of the [`ExecuteRequest`].
     pub fn with_block_time(mut self, block_time: u64) -> Self {
         self.execute_request.block_time = block_time;
         self
     }
 
-    /// TODO: doc comment.
+    /// Sets the protocol version of the [`ExecuteRequest`].
     pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.execute_request.protocol_version = protocol_version;
         self
     }
 
-    /// TODO: doc comment.
+    /// Sets the proposer used by the [`ExecuteRequest`].
     pub fn with_proposer(mut self, proposer: casper_types::PublicKey) -> Self {
         self.execute_request.proposer = proposer;
         self
     }
 
-    /// TODO: doc comment.
+    /// Consumes self and returns an [`ExecuteRequest`].
     pub fn build(self) -> ExecuteRequest {
         self.execute_request
     }
 
-    /// TODO: doc comment.
+    /// Returns an [`ExecuteRequest`] with standard dependencies.
     pub fn standard(
         account_hash: AccountHash,
         session_file: &str,
@@ -88,7 +88,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
-    /// TODO: doc comment.
+    /// Returns an [`ExecuteRequest`] that will call a stored contract by hash.
     pub fn contract_call_by_hash(
         sender: AccountHash,
         contract_hash: ContractHash,
@@ -109,7 +109,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
-    /// TODO: doc comment.
+    /// Returns an [`ExecuteRequest`] that will call a stored contract by named key.
     pub fn contract_call_by_name(
         sender: AccountHash,
         contract_name: &str,
@@ -130,7 +130,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
-    /// TODO: doc comment.
+    /// Returns an [`ExecuteRequest`] that will call a versioned stored contract by hash.
     pub fn versioned_contract_call_by_hash(
         sender: AccountHash,
         contract_package_hash: ContractPackageHash,
@@ -179,7 +179,7 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
-    /// TODO: doc comment.
+    /// Returns an [`ExecuteRequest`] for a native transfer.
     pub fn transfer(sender: AccountHash, transfer_args: RuntimeArgs) -> Self {
         let mut rng = rand::thread_rng();
         let deploy_hash = rng.gen();
