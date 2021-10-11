@@ -239,6 +239,7 @@ async fn get_trusted_key_block_info(
         if let Some(key_block_info) =
             KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
         {
+            check_block_version(trusted_header, &key_block_info, chainspec)?;
             break Ok(key_block_info);
         }
 
@@ -506,9 +507,8 @@ async fn fast_sync_to_most_recent(
                     trusted_key_block_info = key_block_info;
                 }
             }
-            // If we could not fetch, we can stop when the most recent header:
-            // 1. has our protocol version
-            // 2. is in the current era
+            // If we could not fetch, we can stop when the most recent header is in the current
+            // era.
             None if is_current_era(
                 &most_recent_block_header,
                 &trusted_key_block_info,
