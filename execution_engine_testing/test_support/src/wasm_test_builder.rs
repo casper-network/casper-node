@@ -358,7 +358,7 @@ where
         }
     }
 
-    /// Takes a `&RunGenesisRequest`, executes the request and returns Self.
+    /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
 
@@ -413,7 +413,7 @@ where
         self
     }
 
-    /// Queries state for a `StoredValue`.
+    /// Queries state for a [`StoredValue`].
     pub fn query(
         &self,
         maybe_post_state: Option<Digest>,
@@ -451,7 +451,7 @@ where
         self.query(maybe_post_state, dictionary_address, &empty_path)
     }
 
-    /// Queries for a `StoredValue` and returns the `StoredValue` and a Merkle proof.
+    /// Queries for a [`StoredValue`] and returns the [`StoredValue`] and a Merkle proof.
     pub fn query_with_proof(
         &self,
         maybe_post_state: Option<Digest>,
@@ -498,7 +498,7 @@ where
         total_supply
     }
 
-    /// Runs an `ExecuteRequest`.
+    /// Runs an [`ExecuteRequest`].
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let exec_request = {
             let hash = self.post_state_hash.expect("expected post_state_hash");
@@ -551,7 +551,7 @@ where
         self
     }
 
-    /// TODO: doc comment.
+    /// Upgrades the execution engine.
     pub fn upgrade_with_upgrade_request(
         &mut self,
         engine_config: EngineConfig,
@@ -579,7 +579,7 @@ where
         self
     }
 
-    /// TODO: doc comment.
+    /// Executes a request to call the system auction contract.
     pub fn run_auction(
         &mut self,
         era_end_timestamp_millis: u64,
@@ -599,7 +599,7 @@ where
         self.exec(run_request).commit().expect_success()
     }
 
-    /// TODO: doc comment.
+    /// Increments engine state.
     pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
         let StepSuccess {
             post_state_hash, ..
@@ -689,25 +689,25 @@ where
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
 
-    /// Returns the `ContractHash` of the mint, panics if it can't be found.
+    /// Returns the [`ContractHash`] of the mint, panics if it can't be found.
     pub fn get_mint_contract_hash(&self) -> ContractHash {
         self.mint_contract_hash
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    /// Returns the `ContractHash` of the "handle payment" contract, panics if it can't be found.
+    /// Returns the [`ContractHash`] of the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
         self.handle_payment_contract_hash
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
-    /// Returns the `ContractHash` of the "standard payment" contract, panics if it can't be found.
+    /// Returns the [`ContractHash`] of the "standard payment" contract, panics if it can't be found.
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
         self.standard_payment_hash
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
     }
 
-    /// Returns the `ContractHash` of the "auction" contract, panics if it can't be found.
+    /// Returns the [`ContractHash`] of the "auction" contract, panics if it can't be found.
     pub fn get_auction_contract_hash(&self) -> ContractHash {
         self.auction_contract_hash
             .expect("Unable to obtain auction contract. Please run genesis first.")
@@ -751,7 +751,7 @@ where
         self.exec_results.len()
     }
 
-    /// Returns a `Result` containing an `UpgradeSuccess`.
+    /// Returns a `Result` containing an [`UpgradeSuccess`].
     pub fn get_upgrade_result(
         &self,
         index: usize,
@@ -773,6 +773,7 @@ where
         self
     }
 
+    /// Deprecated.
     /// Returns self, wrapped in a `WasmTestResult`.
     #[deprecated]
     #[allow(deprecated)]
@@ -910,7 +911,7 @@ where
         }
     }
 
-    /// TODO: doc comment.
+    /// Returns a `Vec<Gas>` representing execution consts.
     pub fn exec_costs(&self, index: usize) -> Vec<Gas> {
         let exec_results = self
             .get_exec_result(index)
@@ -918,7 +919,7 @@ where
         utils::get_exec_costs(exec_results)
     }
 
-    /// TODO: doc comment.
+    /// Returns the `Gas` const of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
         let exec_results = self
             .exec_results
@@ -928,13 +929,14 @@ where
         exec_result.cost()
     }
 
-    /// TODO: doc comment.
+    /// Returns the error message of the last exec.
     pub fn exec_error_message(&self, index: usize) -> Option<String> {
         let response = self.get_exec_result(index)?;
         Some(utils::get_error_message(response))
     }
 
-    /// TODO: doc comment.
+    /// Deprecated. This is a convenience method that will expect success, commit the
+    /// `ExecuteRequest` and return a `WasmTestResult`.
     #[allow(deprecated)]
     pub fn exec_commit_finish(&mut self, execute_request: ExecuteRequest) -> WasmTestResult<S> {
         self.exec(execute_request)
@@ -943,7 +945,7 @@ where
             .finish()
     }
 
-    /// TODO: doc comment.
+    /// Gets [`EraValidators`].
     pub fn get_era_validators(&mut self) -> EraValidators {
         let correlation_id = CorrelationId::new();
         let state_hash = self.get_post_state_hash();
@@ -953,13 +955,13 @@ where
             .expect("get era validators should not error")
     }
 
-    /// TODO: doc comment.
+    /// Gets [`ValidatorWeights`] for a given [`EraId`].
     pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let mut result = self.get_era_validators();
         result.remove(&era_id)
     }
 
-    /// TODO: doc comment.
+    /// Gets [`Bids`].
     pub fn get_bids(&mut self) -> Bids {
         let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
@@ -971,7 +973,7 @@ where
         get_bids_result.into_success().unwrap()
     }
 
-    /// TODO: doc comment.
+    /// Gets [`UnbondingPurses`].
     pub fn get_withdraws(&mut self) -> UnbondingPurses {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
@@ -1004,7 +1006,7 @@ where
         ret
     }
 
-    /// TODO: doc comment.
+    /// Gets a stored value from a contract's named keys.
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
     where
         T: FromBytes + CLTyped,
@@ -1025,19 +1027,19 @@ where
         result
     }
 
-    /// TODO: doc comment.
+    /// Gets an [`EraId`].
     pub fn get_era(&mut self) -> EraId {
         let auction_contract = self.get_auction_contract_hash();
         self.get_value(auction_contract, ERA_ID_KEY)
     }
 
-    /// TODO: doc comment.
+    /// Gets the auction delay.
     pub fn get_auction_delay(&mut self) -> u64 {
         let auction_contract = self.get_auction_contract_hash();
         self.get_value(auction_contract, AUCTION_DELAY_KEY)
     }
 
-    /// TODO: doc comment.
+    /// Gets the [`ContractHash`] of the system auction contract, panics if it can't be found.
     pub fn get_system_auction_hash(&self) -> ContractHash {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
@@ -1046,7 +1048,7 @@ where
             .expect("should have auction hash")
     }
 
-    /// TODO: doc comment.
+    /// Gets the [`ContractHash`] of the system mint contract, panics if it can't be found.
     pub fn get_system_mint_hash(&self) -> ContractHash {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
@@ -1055,7 +1057,8 @@ where
             .expect("should have auction hash")
     }
 
-    /// TODO: doc comment.
+    /// Gets the [`ContractHash`] of the system handle payment contract, panics if it can't be
+    /// found.
     pub fn get_system_handle_payment_hash(&self) -> ContractHash {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
@@ -1064,7 +1067,8 @@ where
             .expect("should have handle payment hash")
     }
 
-    /// TODO: doc comment.
+    /// Returns the [`ContractHash`] of the system standard payment contract, panics if it can't be
+    /// found.
     pub fn get_system_standard_payment_hash(&self) -> ContractHash {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
