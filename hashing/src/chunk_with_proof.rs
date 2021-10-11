@@ -106,7 +106,9 @@ impl ChunkWithProof {
 
     #[allow(unused)]
     pub(crate) fn verify(&self) -> bool {
-        if !self.proof.verify() { return false }
+        if self.proof.verify().is_err() {
+            return false;
+        }
         let chunk_hash = Digest::hash(self.chunk());
         self.proof
             .merkle_proof()

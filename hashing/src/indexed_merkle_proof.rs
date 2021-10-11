@@ -199,7 +199,7 @@ impl IndexedMerkleProof {
     }
 
     #[allow(unused)]
-    fn verify(&self) -> Result<(), error::MerkleVerificationError> {
+    pub(crate) fn verify(&self) -> Result<(), error::MerkleVerificationError> {
         if !((self.count == 0 && self.index == 0) || self.index < self.count) {
             return Err(error::MerkleVerificationError::IndexOutOfBounds {
                 count: self.count,
