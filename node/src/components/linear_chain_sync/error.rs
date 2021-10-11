@@ -150,4 +150,7 @@ pub(crate) enum LinearChainSyncError {
         parent: Box<BlockHeader>,
         child: Box<BlockHeader>,
     },
+
+    #[error("Parent block has a height of u64::MAX.")]
+    HeightOverflow { parent: Box<BlockHeader> },
 }

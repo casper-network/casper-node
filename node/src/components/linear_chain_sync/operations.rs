@@ -312,7 +312,11 @@ where
     JoinerEvent: From<FetcherRequest<NodeId, I>>,
     LinearChainSyncError: From<FetcherError<I, NodeId>>,
 {
-    let height = parent_header.height() + 1;
+    let height = parent_header.height().checked_add(1).ok_or_else(|| {
+        LinearChainSyncError::HeightOverflow {
+            parent: Box::new(parent_header.clone()),
+        }
+    })?;
     let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
     let item = loop {
         let peer = match peers.next() {
