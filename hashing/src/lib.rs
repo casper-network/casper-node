@@ -28,6 +28,9 @@ use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use rand::{distributions::Standard, prelude::Distribution, Rng};
+
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
@@ -220,6 +223,13 @@ impl Digest {
             .try_into()
             .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
         Ok(Digest(slice))
+    }
+}
+
+#[cfg(test)]
+impl Distribution<Digest> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Digest {
+        Digest(rng.gen::<[u8; Digest::LENGTH]>())
     }
 }
 

@@ -211,13 +211,10 @@ impl IndexedMerkleProof {
 
 #[cfg(test)]
 mod test {
-    use std::iter;
-
     use casper_types::bytesrepr::{FromBytes, ToBytes};
-    use itertools::Itertools;
     use proptest::prelude::{prop_assert, prop_assert_eq};
     use proptest_attr_macro::proptest;
-    use rand::Rng;
+    use rand::{distributions::Standard, Rng};
 
     use crate::{error, indexed_merkle_proof::IndexedMerkleProof, Digest};
 
@@ -383,17 +380,6 @@ mod test {
         Digest::hash_pair(count.to_le_bytes(), raw_root)
     }
 
-    // Returns random digest
-    fn random_digest() -> Digest {
-        let mut rng = rand::thread_rng();
-        let total_bytes = rng.gen::<u8>() as usize;
-        Digest::hash(
-            iter::repeat_with(|| rng.gen::<u8>())
-                .take(total_bytes)
-                .collect_vec(),
-        )
-    }
-
     /// Construct an `IndexedMerkleProof` with a proof of zero digests.
     fn test_indexed_merkle_proof(index: u64, count: u64) -> IndexedMerkleProof {
         let mut indexed_merkle_proof = IndexedMerkleProof {
@@ -402,7 +388,8 @@ mod test {
             merkle_proof: vec![],
         };
         let expected_proof_length = indexed_merkle_proof.compute_expected_proof_length();
-        indexed_merkle_proof.merkle_proof = std::iter::repeat_with(random_digest)
+        indexed_merkle_proof.merkle_proof = rand::thread_rng()
+            .sample_iter(Standard)
             .take(expected_proof_length as usize)
             .collect();
         indexed_merkle_proof
