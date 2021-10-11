@@ -341,6 +341,7 @@ where
                         ?parent_header,
                         "received block with wrong parent from peer",
                     );
+                    effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
@@ -367,12 +368,12 @@ where
                 break item;
             }
             Err(FetcherError::Absent { .. }) => {
-                warn!(height, tag = ?I::TAG, ?peer, "Block by height absent from peer");
+                warn!(height, tag = ?I::TAG, ?peer, "block by height absent from peer");
                 // If the peer we requested doesn't have the item, continue with the next peer
                 continue;
             }
             Err(FetcherError::TimedOut { .. }) => {
-                warn!(height, tag = ?I::TAG, ?peer, "Peer timed out");
+                warn!(height, tag = ?I::TAG, ?peer, "peer timed out");
                 // Peer timed out fetching the item, continue with the next peer
                 continue;
             }
