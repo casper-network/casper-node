@@ -96,10 +96,9 @@ impl IndexedMerkleProof {
             });
 
         match maybe_proof {
-            None => {
-                Err(error::MerkleConstructionError::EmptyProofMustHaveAtLeastOneEntry { index })
+            None | Some(Hash(_)) => {
+                Err(error::MerkleConstructionError::IndexOutOfBounds { count, index })
             }
-            Some(Hash(_)) => Err(error::MerkleConstructionError::IndexOutOfBounds { count, index }),
             Some(Proof(merkle_proof)) => Ok(IndexedMerkleProof {
                 index,
                 count,
