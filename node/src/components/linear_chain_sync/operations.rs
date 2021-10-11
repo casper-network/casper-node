@@ -302,7 +302,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 /// Fetches the next block or block header from the network by height.
 async fn fetch_and_store_next<I>(
     effect_builder: EffectBuilder<JoinerEvent>,
-    prev_header: &BlockHeader,
+    parent_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
     chainspec: &Chainspec,
 ) -> Result<Option<Box<I>>, LinearChainSyncError>
@@ -311,7 +311,7 @@ where
     JoinerEvent: From<FetcherRequest<NodeId, I>>,
     LinearChainSyncError: From<FetcherError<I, NodeId>>,
 {
-    let height = prev_header.height() + 1;
+    let height = parent_header.height() + 1;
     let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
     let item = loop {
         let peer = match peers.next() {
@@ -320,20 +320,20 @@ where
         };
         match effect_builder.fetch::<I, NodeId>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
-                if *item.header().parent_hash() != prev_header.hash() {
+                if *item.header().parent_hash() != parent_header.hash() {
                     return Err(LinearChainSyncError::UnexpectedParentHash {
-                        parent: Box::new(prev_header.clone()),
+                        parent: Box::new(parent_header.clone()),
                         child: Box::new(item.header().clone()),
                     });
                 }
                 break item;
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
-                if *item.header().parent_hash() != prev_header.hash() {
+                if *item.header().parent_hash() != parent_header.hash() {
                     warn!(
                         ?peer,
                         fetched_header = ?item.header(),
-                        ?prev_header,
+                        ?parent_header,
                         "received block with wrong parent from peer",
                     );
                     continue;
@@ -375,34 +375,46 @@ where
         }
     };
 
-    if item.header().protocol_version() < prev_header.protocol_version() {
+    if item.header().protocol_version() < parent_header.protocol_version() {
         return Err(LinearChainSyncError::LowerVersionThanParent {
-            parent: Box::new(prev_header.clone()),
+            parent: Box::new(parent_header.clone()),
             child: Box::new(item.header().clone()),
         });
     }
 
+    check_block_version(item.header(), trusted_key_block_info, chainspec)?;
+
+    Ok(Some(item))
+}
+
+/// Compares the block's version with the current and parent version and returns an error if it is
+/// too new or old.
+fn check_block_version(
+    header: &BlockHeader,
+    trusted_key_block_info: &KeyBlockInfo,
+    chainspec: &Chainspec,
+) -> Result<(), LinearChainSyncError> {
     let current_version = chainspec.protocol_config.version;
 
-    if item.header().protocol_version() > current_version {
+    if header.protocol_version() > current_version {
         return Err(
             LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
                 current_version,
-                block_header_with_future_version: Box::new(item.header().clone()),
+                block_header_with_future_version: Box::new(header.clone()),
             },
         );
     }
 
-    if is_current_era(item.header(), trusted_key_block_info, chainspec)
-        && item.header().protocol_version() < current_version
+    if is_current_era(header, trusted_key_block_info, chainspec)
+        && header.protocol_version() < current_version
     {
         return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
             current_version,
-            block_header_with_old_version: Box::new(item.header().clone()),
+            block_header_with_old_version: Box::new(header.clone()),
         });
     }
 
-    Ok(Some(item))
+    Ok(())
 }
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
@@ -860,11 +872,12 @@ mod tests {
 
     use super::*;
 
-    use casper_types::{EraId, PublicKey, SecretKey};
+    use casper_types::{EraId, ProtocolVersion, PublicKey, SecretKey};
 
     use crate::{
         components::consensus::EraReport,
         crypto::AsymmetricKeyExt,
+        testing::TestRng,
         types::{Block, BlockPayload, FinalizedBlock},
         utils::Loadable,
     };
@@ -974,5 +987,63 @@ mod tests {
             &chainspec,
             now
         ));
+    }
+
+    #[test]
+    fn test_check_block_version() {
+        let mut rng = TestRng::new();
+        let mut chainspec = Chainspec::from_resources("local");
+        let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
+        let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
+        let v1_4_0 = ProtocolVersion::from_parts(1, 4, 0);
+
+        let key_block =
+            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
+        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
+        let header = Block::random_with_specifics(&mut rng, EraId::from(6), 101, v1_3_0, false)
+            .take_header();
+
+        // The new block's protocol version is the current one, 1.3.0.
+        chainspec.protocol_config.version = v1_3_0;
+        check_block_version(&header, &key_block_info, &chainspec).expect("versions are valid");
+
+        // If the current version is only 1.2.0 but the block's is 1.3.0, we have to upgrade.
+        chainspec.protocol_config.version = v1_2_0;
+        match check_block_version(&header, &key_block_info, &chainspec) {
+            Err(LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version,
+                block_header_with_future_version,
+            }) => {
+                assert_eq!(v1_2_0, current_version);
+                assert_eq!(header, *block_header_with_future_version);
+            }
+            result => panic!("expected future block version error, got {:?}", result),
+        }
+
+        // If the current version is 1.4.0 but the current block's is 1.3.0, we have to downgrade.
+        chainspec.protocol_config.version = v1_4_0;
+        match check_block_version(&header, &key_block_info, &chainspec) {
+            Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+                current_version,
+                block_header_with_old_version,
+            }) => {
+                assert_eq!(v1_4_0, current_version);
+                assert_eq!(header, *block_header_with_old_version);
+            }
+            result => panic!("expected old block version error, got {:?}", result),
+        }
+
+        // If the block is the last one of its era, we don't know whether it's the current block,
+        // so we don't necessarily need to downgrade.
+        let key_block =
+            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
+        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
+        let last_block_height = key_block.height() + chainspec.core_config.minimum_era_height;
+        let header =
+            Block::random_with_specifics(&mut rng, EraId::from(6), last_block_height, v1_3_0, true)
+                .take_header();
+        chainspec.core_config.era_duration = 0.into();
+        chainspec.protocol_config.version = v1_4_0;
+        check_block_version(&header, &key_block_info, &chainspec).expect("versions are valid");
     }
 }
