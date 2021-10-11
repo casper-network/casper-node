@@ -7,7 +7,7 @@ use casper_types::{
 
 use crate::{error, Digest};
 
-/// Represents a chunk of data with attached [IndexedMerkleProof].
+/// Represents a chunk of data with attached proof.
 #[derive(PartialEq, Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 #[serde(deny_unknown_fields)]
