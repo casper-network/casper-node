@@ -22,7 +22,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-use chunk_with_proof::ChunkWithProof;
+pub use chunk_with_proof::ChunkWithProof;
 use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;

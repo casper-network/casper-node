@@ -8,7 +8,6 @@ use casper_types::{
 use crate::{error, Digest};
 
 /// Represents a chunk of data with attached [IndexedMerkleProof].
-/// Empty data is always represented as single, empty chunk and not as zero chunks.
 #[derive(PartialEq, Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 #[serde(deny_unknown_fields)]
@@ -45,13 +44,17 @@ impl FromBytes for ChunkWithProof {
 
 impl ChunkWithProof {
     #[cfg(test)]
+    /// 10 bytes for testing purposes.
     pub const CHUNK_SIZE_BYTES: usize = 10;
 
     #[cfg(not(test))]
-    pub const CHUNK_SIZE_BYTES: usize = 1_048_576; // 2^20
+    /// 1 MiB
+    pub const CHUNK_SIZE_BYTES: usize = 1 << 20;
 
-    #[allow(unused)]
-    fn new(data: &[u8], index: u64) -> Result<Self, error::MerkleConstructionError> {
+    /// Constructs the [ChunkWithProof] that contains the chunk of data with the appropriate index
+    /// and the cryptographic proof.
+    /// Empty data is always represented as single, empty chunk and not as zero chunks.
+    pub fn new(data: &[u8], index: u64) -> Result<Self, error::MerkleConstructionError> {
         let (proof, chunk) = if data.is_empty() {
             (IndexedMerkleProof::new([Digest::hash(&[])], index)?, vec![])
         } else {
