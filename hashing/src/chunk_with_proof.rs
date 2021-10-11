@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use crate::indexed_merkle_proof::IndexedMerkleProof;
 
 use casper_types::{
@@ -52,34 +50,8 @@ impl ChunkWithProof {
     #[cfg(not(test))]
     pub const CHUNK_SIZE_BYTES: usize = 1_048_576; // 2^20
 
-    fn validate_index(data: &[u8], index: u64) -> Result<(), error::MerkleConstructionError> {
-        // Empty data is represented by a single, empty chunk
-        // so we allow index to be 0
-        if data.is_empty() && index == 0 {
-            return Ok(());
-        }
-        let chunk_count: u64 = data
-            .chunks(Self::CHUNK_SIZE_BYTES)
-            .len()
-            .try_into()
-            .map_err(|_| error::MerkleConstructionError::TooManyLeaves {
-                count: data.len().to_string(),
-            })?;
-
-        if index >= chunk_count {
-            return Err(error::MerkleConstructionError::IndexOutOfBounds {
-                count: data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64,
-                index,
-            });
-        }
-
-        Ok(())
-    }
-
     #[allow(unused)]
     fn new(data: &[u8], index: u64) -> Result<Self, error::MerkleConstructionError> {
-        Self::validate_index(data, index)?;
-
         let (proof, chunk) = if data.is_empty() {
             (IndexedMerkleProof::new([Digest::hash(&[])], index)?, vec![])
         } else {
@@ -289,7 +261,7 @@ mod test {
             ChunkWithProof::new(&[], 1).expect_err("should error with empty data and index > 0");
         if let error::MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof
         {
-            assert_eq!(count, 0);
+            assert_eq!(count, 1);
             assert_eq!(index, 1);
         } else {
             panic!("expected MerkleConstructionError::IndexOutOfBounds");
@@ -339,27 +311,5 @@ mod test {
         assert_eq!(original_chunk_with_proof, deserialized_chunk_with_proof);
         assert_eq!(remainder.first().unwrap(), &0xFF);
         assert_eq!(remainder.len(), 1);
-    }
-
-    #[test]
-    fn validates_index() {
-        // Test against empty data
-        assert!(ChunkWithProof::validate_index(&[], 0).is_ok(),);
-        assert_eq!(
-            ChunkWithProof::validate_index(&[], 1).unwrap_err(),
-            error::MerkleConstructionError::IndexOutOfBounds { count: 0, index: 1 }
-        );
-        assert_eq!(
-            ChunkWithProof::validate_index(&[], 2).unwrap_err(),
-            error::MerkleConstructionError::IndexOutOfBounds { count: 0, index: 2 }
-        );
-
-        // Test against non-empty data
-        assert!(ChunkWithProof::validate_index(&[0u8; 20], 0).is_ok());
-        assert!(ChunkWithProof::validate_index(&[0u8; 20], 1).is_ok());
-        assert_eq!(
-            ChunkWithProof::validate_index(&[0u8; 20], 2).unwrap_err(),
-            error::MerkleConstructionError::IndexOutOfBounds { count: 2, index: 2 }
-        );
     }
 }

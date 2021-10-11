@@ -94,23 +94,12 @@ impl IndexedMerkleProof {
                 }
                 (Proof(_), Proof(_)) => unreachable!(),
             });
+
         match maybe_proof {
             None => {
-                if index != 0 {
-                    Err(error::MerkleConstructionError::EmptyProofMustHaveIndexZero { index })
-                } else {
-                    Ok(IndexedMerkleProof {
-                        index: 0,
-                        count: 0,
-                        merkle_proof: Vec::new(),
-                    })
-                }
+                Err(error::MerkleConstructionError::EmptyProofMustHaveAtLeastOneEntry { index })
             }
-            Some(Hash(_)) => {
-                // TODO[RC]: What error is it, actually? This is not covered by unit tests - fix
-                // that.
-                unreachable!()
-            }
+            Some(Hash(_)) => Err(error::MerkleConstructionError::IndexOutOfBounds { count, index }),
             Some(Proof(merkle_proof)) => Ok(IndexedMerkleProof {
                 index,
                 count,

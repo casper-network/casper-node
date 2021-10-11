@@ -19,7 +19,7 @@ pub enum MerkleVerificationError {
 #[derive(thiserror::Error, Debug, Eq, PartialEq)]
 pub enum MerkleConstructionError {
     #[error("Could not construct Merkle proof. Empty proof must have index 0. Index: {index}")]
-    EmptyProofMustHaveIndexZero { index: u64 },
+    EmptyProofMustHaveAtLeastOneEntry { index: u64 },
     #[error(
         "Could not construct Merkle proof. Index out of bounds. Count: {count}, index: {index}"
     )]
