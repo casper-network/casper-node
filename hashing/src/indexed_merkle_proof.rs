@@ -142,18 +142,15 @@ impl IndexedMerkleProof {
             }
 
             // Compute the raw Merkle root by hashing the proof from leaf hash up.
-            let mut acc = leaf_hash;
-
-            for hash in hashes {
+            hashes.fold(leaf_hash, |acc, hash| {
                 let digest = if (path & 1) == 1 {
                     Digest::hash_pair(hash, &acc)
                 } else {
                     Digest::hash_pair(&acc, hash)
                 };
-                acc.0.copy_from_slice(digest.as_ref());
                 path >>= 1;
-            }
-            acc
+                digest
+            })
         } else {
             Digest::SENTINEL_MERKLE_TREE
         };
