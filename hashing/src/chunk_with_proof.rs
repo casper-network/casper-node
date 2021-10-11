@@ -106,9 +106,7 @@ mod test {
     fn prepare_bytes(length: usize) -> Vec<u8> {
         let mut rng = rand::thread_rng();
 
-        let mut v = Vec::with_capacity(length);
-        (0..length).into_iter().for_each(|_| v.push(rng.gen()));
-        v
+        (0..length).into_iter().map(|_| rng.gen()).collect()
     }
 
     impl ChunkWithProof {
