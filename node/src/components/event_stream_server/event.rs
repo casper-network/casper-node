@@ -26,7 +26,6 @@ pub enum Event {
         era_id: EraId,
         execution_effect: ExecutionEffect,
     },
-    Shutdown,
 }
 
 impl Display for Event {
@@ -57,7 +56,6 @@ impl Display for Event {
             ),
             Event::FinalitySignature(fs) => write!(formatter, "finality signature {}", fs),
             Event::Step { era_id, .. } => write!(formatter, "step committed for {}", era_id),
-            Event::Shutdown => write!(formatter, "the node is shutting down"),
         }
     }
 }
