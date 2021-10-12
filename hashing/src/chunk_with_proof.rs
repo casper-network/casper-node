@@ -313,4 +313,10 @@ mod test {
         assert_eq!(remainder.first().unwrap(), &0xFF);
         assert_eq!(remainder.len(), 1);
     }
+
+    #[test]
+    fn chunk_with_empty_data_contains_a_single_proof() {
+        let chunk_with_proof = ChunkWithProof::new(&[], 0).unwrap();
+        assert_eq!(chunk_with_proof.proof.merkle_proof().len(), 1)
+    }
 }
