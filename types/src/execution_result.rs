@@ -297,7 +297,6 @@ pub struct ExecutionEffect {
 
 impl ExecutionEffect {
     /// Constructor for [`ExecutionEffect`].
-    #[allow(deprecated)]
     pub fn new(transforms: Vec<TransformEntry>) -> Self {
         Self {
             transforms,
@@ -307,7 +306,6 @@ impl ExecutionEffect {
 }
 
 impl ToBytes for ExecutionEffect {
-    #[allow(deprecated)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.operations.to_bytes()?);
@@ -315,14 +313,12 @@ impl ToBytes for ExecutionEffect {
         Ok(buffer)
     }
 
-    #[allow(deprecated)]
     fn serialized_length(&self) -> usize {
         self.operations.serialized_length() + self.transforms.serialized_length()
     }
 }
 
 impl FromBytes for ExecutionEffect {
-    #[allow(deprecated)]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (operations, remainder) = Vec::<Operation>::from_bytes(bytes)?;
         let (transforms, remainder) = Vec::<TransformEntry>::from_bytes(remainder)?;
