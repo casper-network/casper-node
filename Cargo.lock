@@ -437,7 +437,6 @@ dependencies = [
  "num-traits",
  "once_cell",
  "rand 0.8.4",
- "thiserror",
  "version-sync",
 ]
 
