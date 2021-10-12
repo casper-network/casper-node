@@ -21,13 +21,13 @@ struct DeployItemData {
     pub deploy_hash: DeployHash,
 }
 
-/// Builds a [`DeployItemData`].
+/// Builds a [`DeployItem`].
 pub struct DeployItemBuilder {
     deploy_item: DeployItemData,
 }
 
 impl DeployItemBuilder {
-    /// Returns a new [`DeployItemBuilder`] struct that will build a [`DeployItemData`].
+    /// Returns a new [`DeployItemBuilder`] struct.
     pub fn new() -> Self {
         Default::default()
     }

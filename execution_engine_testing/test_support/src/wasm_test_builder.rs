@@ -649,7 +649,8 @@ where
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
-    /// Returns the [`ContractHash`] of the "standard payment" contract, panics if it can't be found.
+    /// Returns the [`ContractHash`] of the "standard payment" contract, panics if it can't be
+    /// found.
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
         self.standard_payment_hash
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
