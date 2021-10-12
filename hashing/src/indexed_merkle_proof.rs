@@ -59,23 +59,19 @@ impl IndexedMerkleProof {
         I: IntoIterator<Item = Digest>,
         I::IntoIter: ExactSizeIterator,
     {
+        use HashOrProof::{Hash, Proof};
+
         enum HashOrProof {
             Hash(Digest),
             Proof(Vec<Digest>),
         }
-        use std::convert::TryInto;
-
-        use HashOrProof::{Hash, Proof};
 
         let leaves = leaves.into_iter();
-
-        let count: u64 =
-            leaves
-                .len()
-                .try_into()
-                .map_err(|_| error::MerkleConstructionError::TooManyLeaves {
-                    count: leaves.len().to_string(),
-                })?;
+        let count: u64 = std::convert::TryInto::try_into(leaves.len()).map_err(|_| {
+            error::MerkleConstructionError::TooManyLeaves {
+                count: leaves.len().to_string(),
+            }
+        })?;
 
         let maybe_proof = leaves
             .enumerate()
