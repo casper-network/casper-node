@@ -1,13 +1,16 @@
-#[allow(deprecated)]
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, SessionBuilder,
-    TestContextBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, ARG_AMOUNT,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::core::{
+    engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError, GenesisAccount},
+    execution::Error,
+};
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
-    ContractHash, Key, RuntimeArgs, U512,
+    ContractHash, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 
@@ -67,6 +70,46 @@ fn setup() -> (InMemoryWasmTestContext, ContractHash) {
         .expect("should have hash");
 
     (builder, contract_hash)
+}
+
+fn query_dictionary_item(
+    context: &InMemoryWasmTestContext,
+    key: Key,
+    dictionary_name: Option<String>,
+    dictionary_item_key: String,
+) -> Result<StoredValue, String> {
+    let empty_path = vec![];
+    let dictionary_key_bytes = dictionary_item_key.as_bytes();
+    let address = match key {
+        Key::Account(_) | Key::Hash(_) => {
+            if let Some(name) = dictionary_name {
+                let stored_value = context.query(None, key, &[])?;
+
+                let named_keys = match &stored_value {
+                    StoredValue::Account(account) => account.named_keys(),
+                    StoredValue::Contract(contract) => contract.named_keys(),
+                    _ => {
+                        return Err(
+                            "Provided base key is nether an account or a contract".to_string()
+                        )
+                    }
+                };
+
+                let dictionary_uref = named_keys
+                    .get(&name)
+                    .and_then(Key::as_uref)
+                    .ok_or_else(|| "No dictionary uref was found in named keys".to_string())?;
+
+                Key::dictionary(*dictionary_uref, dictionary_key_bytes)
+            } else {
+                return Err("No dictionary name was provided".to_string());
+            }
+        }
+        Key::URef(uref) => Key::dictionary(uref, dictionary_key_bytes),
+        Key::Dictionary(address) => Key::Dictionary(address),
+        _ => return Err("Unsupported key type for a query to a dictionary item".to_string()),
+    };
+    context.query(None, address, &empty_path)
 }
 
 #[ignore]
@@ -494,26 +537,43 @@ fn dictionary_get_should_fail_with_large_item_key() {
 
 #[ignore]
 #[test]
-#[allow(deprecated)]
 fn should_query_dictionary_items_with_test_context() {
-    let mut test_context = TestContextBuilder::new()
-        .with_public_key(
-            DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
-        )
-        .build();
+    let genesis_account = GenesisAccount::account(
+        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        None,
+    );
+
+    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
+    genesis_config.ee_config_mut().push_account(genesis_account);
+    let run_genesis_request = RunGenesisRequest::new(
+        *DEFAULT_GENESIS_CONFIG_HASH,
+        genesis_config.protocol_version(),
+        genesis_config.take_ee_config(),
+    );
+    // let mut test_context = TestContextBuilder::new()
+    //     .with_public_key(
+    //         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+    //         U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+    //     )
+    //     .build();
 
     let dictionary_code = PathBuf::from(DICTIONARY_WASM);
-    let di_builder =
-        DeployItemBuilder::new().with_session_code(dictionary_code, RuntimeArgs::new());
-    let install_session = SessionBuilder::new(di_builder)
+    let deploy_item = DeployItemBuilder::new()
+        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_session_code(dictionary_code, RuntimeArgs::new())
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .build();
 
-    test_context.run(install_session);
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let default_account = test_context
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&run_genesis_request).commit();
+
+    context.exec(exec_request).commit().expect_success();
+
+    let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let contract_hash = default_account
@@ -532,13 +592,13 @@ fn should_query_dictionary_items_with_test_context() {
 
     {
         // Query through account's named keys
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(*DEFAULT_ACCOUNT_ADDR),
-                Some(dictionary::DICTIONARY_REF.to_string()),
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
+        let queried_value = query_dictionary_item(
+            &context,
+            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            Some(dictionary::DICTIONARY_REF.to_string()),
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
         let value = CLValue::try_from(queried_value).expect("should have cl value");
         let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
@@ -546,13 +606,13 @@ fn should_query_dictionary_items_with_test_context() {
 
     {
         // Query through account's named keys
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(*DEFAULT_ACCOUNT_ADDR),
-                Some(dictionary::DICTIONARY_REF.to_string()),
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
+        let queried_value = query_dictionary_item(
+            &context,
+            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            Some(dictionary::DICTIONARY_REF.to_string()),
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
         let value = CLValue::try_from(queried_value).expect("should have cl value");
         let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
@@ -560,13 +620,13 @@ fn should_query_dictionary_items_with_test_context() {
 
     {
         // Query through contract's named keys
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(contract_hash),
-                Some(dictionary::DICTIONARY_NAME.to_string()),
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
+        let queried_value = query_dictionary_item(
+            &context,
+            Key::from(contract_hash),
+            Some(dictionary::DICTIONARY_NAME.to_string()),
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
         let value = CLValue::try_from(queried_value).expect("should have cl value");
         let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
@@ -574,13 +634,13 @@ fn should_query_dictionary_items_with_test_context() {
 
     {
         // Query through dictionary URef itself
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(dictionary_uref),
-                None,
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
+        let queried_value = query_dictionary_item(
+            &context,
+            Key::from(dictionary_uref),
+            None,
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
         let value = CLValue::try_from(queried_value).expect("should have cl value");
         let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
@@ -591,9 +651,9 @@ fn should_query_dictionary_items_with_test_context() {
         let dictionary_item_name = dictionary::DEFAULT_DICTIONARY_NAME.as_bytes();
         let dictionary_item_key = Key::dictionary(dictionary_uref, dictionary_item_name);
 
-        let queried_value = test_context
-            .query_dictionary_item(dictionary_item_key, None, String::new())
-            .expect("should query");
+        let queried_value =
+            query_dictionary_item(&context, dictionary_item_key, None, String::new())
+                .expect("should query");
         let value = CLValue::try_from(queried_value).expect("should have cl value");
         let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);

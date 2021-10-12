@@ -1,64 +1,4 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
-//!
-//! # Example
-//! Consider a contract held in "contract.wasm" which stores an arbitrary `String` under a `Key`
-//! named "special_value":
-//! ```no_run
-//! use casper_contract::contract_api::{runtime, storage};
-//! use casper_types::Key;
-//! const KEY: &str = "special_value";
-//! const ARG_VALUE: &str = "value";
-//!
-//! #[no_mangle]
-//! pub extern "C" fn call() {
-//!     let value: String = runtime::get_named_arg(ARG_VALUE);
-//!     let value_ref = storage::new_uref(value);
-//!     let value_key: Key = value_ref.into();
-//!     runtime::put_key(KEY, value_key);
-//! }
-//! ```
-//!
-//! The test could be written as follows:
-//! ```no_run
-//! use std::{convert::TryFrom, path::PathBuf};
-//! use casper_engine_test_support::{SessionBuilder, TestContextBuilder, DeployItemBuilder};
-//! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey, StoredValue, CLValue};
-//!
-//!
-//! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
-//! const MY_ADDR: [u8; 32] = [8u8; 32];
-//! const KEY: &str = "special_value";
-//! const VALUE: &str = "hello world";
-//! const ARG_MESSAGE: &str = "message";
-//!
-//! let secret_key = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap();
-//! let public_key = PublicKey::from(&secret_key);
-//! let account_addr = AccountHash::new(MY_ADDR);
-//!
-//! let mut context = TestContextBuilder::new()
-//!     .with_public_key(public_key, U512::from(128_000_000_000_000u64))
-//!     .build();
-//!
-//! // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
-//! // relative to the current working dir (e.g. 'wasm/contract.wasm') can also be used, as can
-//! // absolute paths.
-//! let path = PathBuf::from("contract.wasm");
-//! let session_args = runtime_args! {
-//!     ARG_MESSAGE => VALUE,
-//! };
-//! let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
-//! let session = SessionBuilder::new(di_builder)
-//!     .with_address(account_addr)
-//!     .with_authorization_keys(&[account_addr])
-//!     .build();
-//!
-//! let result_of_query: Result<StoredValue, String> = context.run(session).query(account_addr, &[KEY.to_string()]);
-//!
-//! let returned_value = result_of_query.expect("should be a value");
-//! let returned_value = CLValue::try_from(returned_value).expect("should be cl value");
-//! let expected_value = CLValue::from_t(VALUE.to_string()).expect("should construct Value");
-//! assert_eq!(expected_value, returned_value);
-//! ```
 
 #![doc(html_root_url = "https://docs.rs/casper-engine-test-support/1.0.0")]
 #![doc(
@@ -70,17 +10,12 @@
 mod additive_map_diff;
 mod deploy_item_builder;
 mod execute_request_builder;
-mod session;
 mod step_request_builder;
-mod test_context;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
 
-use casper_types::account::{Account, AccountHash};
-#[allow(deprecated)]
-pub use session::{Session, SessionBuilder, SessionTransferInfo};
-pub use test_context::{TestContext, TestContextBuilder};
+use casper_types::account::AccountHash;
 
 /// The address of a [`URef`](casper_types::URef) (unforgeable reference) on the network.
 pub type URefAddr = [u8; 32];
@@ -112,10 +47,7 @@ pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
-#[allow(deprecated)]
-pub use wasm_test_builder::{
-    InMemoryWasmTestContext, LmdbWasmTestContext, WasmTestContext, WasmTestResult,
-};
+pub use wasm_test_builder::{InMemoryWasmTestContext, LmdbWasmTestContext, WasmTestContext};
 
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;

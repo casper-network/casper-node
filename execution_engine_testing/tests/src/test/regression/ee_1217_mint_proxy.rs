@@ -43,7 +43,7 @@ fn get_builder() -> InMemoryWasmTestContext {
         .build();
 
         builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
-        builder.exec_commit_finish(store_request);
+        builder.exec(store_request).commit();
     }
     builder
 }

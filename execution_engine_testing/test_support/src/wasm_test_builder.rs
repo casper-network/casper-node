@@ -159,19 +159,6 @@ impl<S> Clone for WasmTestContext<S> {
     }
 }
 
-/// A wrapper type to disambiguate builder from an actual result
-#[derive(Clone)]
-#[deprecated]
-pub struct WasmTestResult<S>(WasmTestContext<S>);
-
-#[allow(deprecated)]
-impl<S> WasmTestResult<S> {
-    /// Access the builder
-    pub fn builder(&self) -> &WasmTestContext<S> {
-        &self.0
-    }
-}
-
 impl InMemoryWasmTestContext {
     /// Returns an [`InMemoryWasmTestContext`].
     pub fn new(
@@ -242,25 +229,6 @@ impl LmdbWasmTestContext {
     /// Returns a new [`LmdbWasmTestContext`].
     pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
         Self::new_with_config(data_dir, Default::default())
-    }
-
-    /// Creates new instance of builder and applies values only which allows the engine state to be
-    /// swapped with a new one, possibly after running genesis once and reusing existing database
-    /// (i.e. LMDB).
-    #[deprecated]
-    #[allow(deprecated)]
-    pub fn new_with_config_and_result<T: AsRef<OsStr> + ?Sized>(
-        data_dir: &T,
-        engine_config: EngineConfig,
-        result: &WasmTestResult<LmdbGlobalState>,
-    ) -> Self {
-        let mut builder = Self::new_with_config(data_dir, engine_config);
-        // Applies existing properties from gi
-        builder.genesis_hash = result.0.genesis_hash;
-        builder.post_state_hash = result.0.post_state_hash;
-        builder.mint_contract_hash = result.0.mint_contract_hash;
-        builder.handle_payment_contract_hash = result.0.handle_payment_contract_hash;
-        builder
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -338,26 +306,6 @@ where
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error>,
 {
-    /// Carries on attributes from TestResult for further executions
-    #[deprecated]
-    #[allow(deprecated)]
-    pub fn from_result(result: WasmTestResult<S>) -> Self {
-        WasmTestContext {
-            engine_state: result.0.engine_state,
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: result.0.genesis_hash,
-            post_state_hash: result.0.post_state_hash,
-            transforms: Vec::new(),
-            genesis_account: result.0.genesis_account,
-            mint_contract_hash: result.0.mint_contract_hash,
-            handle_payment_contract_hash: result.0.handle_payment_contract_hash,
-            standard_payment_hash: result.0.standard_payment_hash,
-            auction_contract_hash: result.0.auction_contract_hash,
-            genesis_transforms: result.0.genesis_transforms,
-        }
-    }
-
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
@@ -773,14 +721,6 @@ where
         self
     }
 
-    /// Deprecated.
-    /// Returns self, wrapped in a `WasmTestResult`.
-    #[deprecated]
-    #[allow(deprecated)]
-    pub fn finish(&self) -> WasmTestResult<S> {
-        WasmTestResult(self.clone())
-    }
-
     /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> Contract {
         let handle_payment_contract: Key = self
@@ -933,16 +873,6 @@ where
     pub fn exec_error_message(&self, index: usize) -> Option<String> {
         let response = self.get_exec_result(index)?;
         Some(utils::get_error_message(response))
-    }
-
-    /// Deprecated. This is a convenience method that will expect success, commit the
-    /// `ExecuteRequest` and return a `WasmTestResult`.
-    #[allow(deprecated)]
-    pub fn exec_commit_finish(&mut self, execute_request: ExecuteRequest) -> WasmTestResult<S> {
-        self.exec(execute_request)
-            .expect_success()
-            .commit()
-            .finish()
     }
 
     /// Gets [`EraValidators`].

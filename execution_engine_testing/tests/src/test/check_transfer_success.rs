@@ -20,7 +20,6 @@ const SECOND_TRANSFER_AMOUNT: u64 = 250;
 
 #[ignore]
 #[test]
-#[allow(deprecated)]
 fn test_check_transfer_success_with_source_only() {
     // create a genesis account.
     let account = GenesisAccount::account(
@@ -66,7 +65,7 @@ fn test_check_transfer_success_with_source_only() {
 
     // Getting main purse URef to verify transfer
     let source_purse = context
-        .get_expected_account(DEFAULT_ACCOUNT_ADDR.clone())
+        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
     context.exec(exec_request).commit().expect_success();
@@ -82,7 +81,6 @@ fn test_check_transfer_success_with_source_only() {
 
 #[ignore]
 #[test]
-#[allow(deprecated)]
 fn test_check_transfer_success_with_source_only_errors() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
@@ -126,7 +124,7 @@ fn test_check_transfer_success_with_source_only_errors() {
     // compare proposer balance before and after the transaction to get the tx fee.
     let proposer_starting_balance = context.get_proposer_purse_balance();
     let source_purse = context
-        .get_expected_account(DEFAULT_ACCOUNT_ADDR.clone())
+        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
     context.exec(exec_request).commit().expect_success();
@@ -142,7 +140,6 @@ fn test_check_transfer_success_with_source_only_errors() {
 
 #[ignore]
 #[test]
-#[allow(deprecated)]
 fn test_check_transfer_success_with_source_and_target() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
@@ -183,7 +180,7 @@ fn test_check_transfer_success_with_source_and_target() {
 
     // Getting main purse URef to verify transfer
     let source_purse = context
-        .get_expected_account(DEFAULT_ACCOUNT_ADDR.clone())
+        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
     context.exec(exec_request).commit().expect_success();
@@ -206,7 +203,7 @@ fn test_check_transfer_success_with_source_and_target() {
         .expect("new purse should exist");
 
     // let target_purse = context
-    let default_account = context.get_expected_account(DEFAULT_ACCOUNT_ADDR.clone());
+    let default_account = context.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
     let target_purse = default_account
         .named_keys()
         .get(NEW_PURSE_NAME)

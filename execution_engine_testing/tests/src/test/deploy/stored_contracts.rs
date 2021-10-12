@@ -50,7 +50,7 @@ fn store_payment_to_account_context(
     )
     .build();
 
-    context.exec_commit_finish(exec_request);
+    context.exec(exec_request).commit();
 
     let default_account = context
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -182,7 +182,7 @@ fn should_exec_stored_code_by_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        context.exec_commit_finish(exec_request_stored_payment);
+        context.exec(exec_request_stored_payment).commit();
     }
 
     let (motes_bravo, modified_balance_bravo) = {
@@ -270,7 +270,7 @@ fn should_exec_stored_code_by_named_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        context.exec_commit_finish(exec_request_stored_payment);
+        context.exec(exec_request_stored_payment).commit();
     }
 
     let (motes_bravo, modified_balance_bravo) = {
@@ -318,7 +318,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let mut context = InMemoryWasmTestContext::default();
     context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context.exec_commit_finish(exec_request);
+    context.exec(exec_request).commit();
 
     let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -402,7 +402,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let mut context = InMemoryWasmTestContext::default();
     context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context.exec_commit_finish(exec_request);
+    context.exec(exec_request).commit();
 
     let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -479,7 +479,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let mut context = InMemoryWasmTestContext::default();
     context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context.exec_commit_finish(exec_request_1);
+    context.exec(exec_request_1).commit();
 
     let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -565,7 +565,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let mut context = InMemoryWasmTestContext::default();
     context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context.exec_commit_finish(exec_request_1);
+    context.exec(exec_request_1).commit();
 
     let query_result = context
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -652,7 +652,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let mut context = InMemoryWasmTestContext::default();
     context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context.exec_commit_finish(exec_request_1);
+    context.exec(exec_request_1).commit();
 
     //
     // upgrade with new wasm costs with modified mint for given version
