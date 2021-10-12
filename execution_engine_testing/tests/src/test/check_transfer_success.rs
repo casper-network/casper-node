@@ -1,4 +1,11 @@
-use casper_types::{runtime_args, RuntimeArgs, U512};
+use casper_engine_test_support::{
+    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_GENESIS_CONFIG,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
+};
+use casper_execution_engine::core::engine_state::{
+    run_genesis_request::RunGenesisRequest, GenesisAccount,
+};
+use casper_types::{runtime_args, Motes, RuntimeArgs, U512};
 use core::convert::TryFrom;
 use std::path::PathBuf;
 
@@ -25,36 +32,62 @@ const SECOND_TRANSFER_AMOUNT: u64 = 250;
 #[test]
 #[allow(deprecated)]
 fn test_check_transfer_success_with_source_only() {
-    let mut test_context = TestContextBuilder::new()
-        .with_public_key(
-            DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
-        )
-        .build();
+    // create a genesis account.
+    let account = GenesisAccount::account(
+        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        None,
+    );
 
-    // Getting main purse URef to verify transfer
-    let source_purse = test_context
-        .main_purse_address(*DEFAULT_ACCOUNT_ADDR)
-        .expect("main purse address");
-    // Target purse doesn't exist yet, so only verifying removal from source
-    let maybe_target_purse = None;
-    let transfer_amount = U512::try_from(FIRST_TRANSFER_AMOUNT).expect("U512 from u64");
-    let source_only_session_transfer_info =
-        SessionTransferInfo::new(source_purse, maybe_target_purse, transfer_amount);
+    // add the account to the genesis config.
+    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
+    genesis_config.ee_config_mut().push_account(account);
+
+    let run_genesis_request = RunGenesisRequest::new(
+        *DEFAULT_GENESIS_CONFIG_HASH,
+        genesis_config.protocol_version(),
+        genesis_config.take_ee_config(),
+    );
 
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
+    let transfer_amount = U512::try_from(FIRST_TRANSFER_AMOUNT).expect("U512 from u64");
     let path = PathBuf::from(TRANSFER_WASM);
     let session_args = runtime_args! {
         ARG_DESTINATION => NEW_PURSE_NAME,
         ARG_AMOUNT => transfer_amount
     };
-    let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
-    let session = SessionBuilder::new(di_builder)
+
+    // build the deploy.
+    let deploy_item = DeployItemBuilder::new()
+        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_session_code(path, session_args)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-        .with_check_transfer_success(source_only_session_transfer_info)
         .build();
-    test_context.run(session);
+
+    // build a request to execute the deploy.
+    let execute_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+
+    let mut context = InMemoryWasmTestContext::default();
+    context.run_genesis(&run_genesis_request);
+
+    // we need this to figure out what the transfer fee is.
+    let proposer_starting_balance = context.get_proposer_purse_balance();
+
+    // Getting main purse URef to verify transfer
+    let source_purse = context
+        .get_expected_account(DEFAULT_ACCOUNT_ADDR.clone())
+        .main_purse();
+
+    context.exec(execute_request).commit().expect_success();
+
+    let transaction_fee = context.get_proposer_purse_balance() - proposer_starting_balance;
+    let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
+        - Motes::new(transfer_amount)
+        - Motes::new(transaction_fee);
+    let actual_source_ending_balance = Motes::new(context.get_purse_balance(source_purse));
+
+    assert_eq!(expected_source_ending_balance, actual_source_ending_balance);
 }
 
 #[ignore]
@@ -87,11 +120,13 @@ fn test_check_transfer_success_with_source_only_errors() {
         ARG_AMOUNT => wrong_transfer_amount
     };
 
-    let di_builder = DeployItemBuilder::new().with_session_code(path, session_args);
+    let di_builder = DeployItemBuilder::new()
+        .with_session_code(path, session_args)
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR]);
+
     // Handle expected assertion fail.
     let session = SessionBuilder::new(di_builder)
-        .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_check_transfer_success(source_only_session_transfer_info)
         .build();
     test_context.run(session); // will panic if transfer does not work
