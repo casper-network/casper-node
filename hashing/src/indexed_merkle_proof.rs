@@ -12,7 +12,7 @@ use crate::error;
 
 #[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct IndexedMerkleProof {
+pub(crate) struct IndexedMerkleProof {
     index: u64,
     count: u64,
     merkle_proof: Vec<Digest>,
@@ -159,7 +159,7 @@ impl IndexedMerkleProof {
     }
 
     // Proof lengths are never bigger than 65 is because we are using 64 bit counts
-    pub(crate) fn compute_expected_proof_length(&self) -> u8 {
+    fn compute_expected_proof_length(&self) -> u8 {
         if self.count == 0 {
             return 0;
         }
