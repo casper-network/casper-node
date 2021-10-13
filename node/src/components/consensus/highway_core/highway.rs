@@ -398,7 +398,7 @@ impl<C: Context> Highway<C> {
             },
             Observation::Correct(last_seen) => self
                 .state
-                .find_ancestor_unit(last_seen, unit_seq)
+                .find_in_swimlane(last_seen, unit_seq)
                 .and_then(|req_hash| self.state.wire_unit(req_hash, self.instance_id))
                 .map(|swunit| GetDepOutcome::Vertex(ValidVertex(Vertex::Unit(swunit))))
                 .unwrap_or_else(|| GetDepOutcome::None),

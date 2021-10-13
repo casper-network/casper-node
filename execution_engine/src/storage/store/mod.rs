@@ -7,7 +7,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 pub use self::store_ext::StoreExt;
 use crate::storage::transaction_source::{Readable, Writable};
 
-/// Store is reponsible for abstracting `get` and `put` operations over the underlying store
+/// Store is responsible for abstracting `get` and `put` operations over the underlying store
 /// specified by its associated `Handle` type.
 pub trait Store<K, V> {
     /// Errors possible from this store.

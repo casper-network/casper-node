@@ -100,6 +100,7 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 
 /// Serialization and deserialization errors.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[repr(u8)]
 pub enum Error {
     /// Early end of stream while deserializing.

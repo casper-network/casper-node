@@ -15,7 +15,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
-use rand::{thread_rng, RngCore};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -42,6 +42,7 @@ use crate::{
         ActionId, TimerId,
     },
     types::{TimeDiff, Timestamp},
+    NodeRng,
 };
 
 use self::round_success_meter::RoundSuccessMeter;
@@ -618,20 +619,22 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)]
     }
 
-    /// Creates a batch of dependency requests.
+    /// Creates a batch of dependency requests if the peer has more units by the validator `vidx`
+    /// than we do; otherwise sends a batch of missing units to the peer.
     fn batch_request(
         &self,
+        rng: &mut NodeRng,
         vid: ValidatorIndex,
-        our_seq: u64,
-        their_seq: u64,
+        our_next_seq: u64,
+        their_next_seq: u64,
     ) -> Vec<HighwayMessage<C>> {
         let state = self.highway.state();
-        if our_seq < their_seq {
+        if our_next_seq < their_next_seq {
             // We're behind. Request missing vertices.
-            (our_seq..=their_seq)
+            (our_next_seq..their_next_seq)
                 .take(self.config.max_request_batch_size)
                 .map(|unit_seq_number| {
-                    let uuid = thread_rng().next_u64();
+                    let uuid = rng.next_u64();
                     debug!(?uuid, ?vid, ?unit_seq_number, "requesting dependency");
                     HighwayMessage::RequestDependencyByHeight {
                         uuid,
@@ -648,21 +651,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     error!(?vid, "received a request for non-existing validator");
                     vec![]
                 }
-                Some(latest_obs) => match latest_obs {
+                Some(observation) => match observation {
                     Observation::None | Observation::Faulty => {
-                        let index_panorama = format!("correct({:?})", our_seq);
                         error!(
                             ?vid,
-                            ?index_panorama,
-                            panorama=?latest_obs,
+                            our_next_seq,
+                            ?observation,
                             "`IndexPanorama` doesn't match `state.panorama` for validator"
                         );
                         vec![]
                     }
-                    Observation::Correct(hash) => (their_seq..=our_seq)
+                    Observation::Correct(hash) => (their_next_seq..our_next_seq)
                         .take(self.config.max_request_batch_size)
                         .filter_map(|seq_num| {
-                            let unit = state.find_ancestor_unit(hash, seq_num).unwrap();
+                            let unit = state.find_in_swimlane(hash, seq_num).unwrap();
                             state
                                 .wire_unit(unit, *self.highway.instance_id())
                                 .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
@@ -705,6 +707,7 @@ where
 {
     fn handle_message(
         &mut self,
+        rng: &mut NodeRng,
         sender: I,
         msg: Vec<u8>,
         now: Timestamp,
@@ -837,10 +840,8 @@ where
                     (ValidatorIndex, &IndexObservation),
                     &IndexObservation,
                 )| {
-                    match (our_obs, their_obs) {
+                    match (*our_obs, *their_obs) {
                         (our_obs, their_obs) if our_obs == their_obs => vec![],
-
-                        (IndexObservation::None, IndexObservation::None) => vec![],
 
                         (IndexObservation::Faulty, _) => state
                             .maybe_evidence(vid)
@@ -852,23 +853,15 @@ where
 
                         (_, IndexObservation::Faulty) => {
                             let dependency = Dependency::Evidence(vid);
-                            let uuid = thread_rng().next_u64();
+                            let uuid = rng.next_u64();
                             debug!(?uuid, "requesting evidence");
                             vec![HighwayMessage::RequestDependency(uuid, dependency)]
                         }
 
-                        (IndexObservation::None, IndexObservation::Correct(their_seq_number)) => {
-                            self.batch_request(vid, 0, *their_seq_number)
-                        }
-
-                        (IndexObservation::Correct(our_seq_num), IndexObservation::None) => {
-                            self.batch_request(vid, *our_seq_num, 0)
-                        }
-
                         (
-                            IndexObservation::Correct(our_seq),
-                            IndexObservation::Correct(their_seq),
-                        ) => self.batch_request(vid, *our_seq, *their_seq),
+                            IndexObservation::NextSeq(our_next_seq),
+                            IndexObservation::NextSeq(their_next_seq),
+                        ) => self.batch_request(rng, vid, our_next_seq, their_next_seq),
                     }
                 };
 
