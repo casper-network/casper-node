@@ -12,10 +12,8 @@ use casper_node::{
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr,
-    checksummed_hex::{ChecksummedHex, ChecksummedHexForm},
-    AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs, SecretKey,
-    UIntParseError, U512,
+    bytesrepr, AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs,
+    SecretKey, UIntParseError, U512,
 };
 
 use crate::{
@@ -147,7 +145,6 @@ mod args_complex {
     #[serde(rename_all = "snake_case")]
     enum DeployArgValue {
         /// Contains `CLValue` serialized into bytes in base16 form.
-        #[serde(with = "ChecksummedHexForm")]
         RawBytes(Vec<u8>),
     }
 

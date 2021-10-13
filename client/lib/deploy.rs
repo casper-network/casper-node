@@ -422,8 +422,7 @@ mod tests {
         }
       ]
     }"#;
-    // This intentionally has awkward indentation. It was formatted with serde::to_string_pretty.
-    // It is used in serialization tests.
+
     const CHECKSUMMED_SAMPLE_DEPLOY: &str = r#"{
   "hash": "4858bBD79Ab7B825244c4e6959Cbcd588A05608168eF36518BC6590937191d55",
   "header": {
