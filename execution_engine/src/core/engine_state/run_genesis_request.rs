@@ -7,17 +7,13 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_types::{
-    checksummed_hex::{ChecksummedHex, ChecksummedHexForm},
-    ProtocolVersion,
-};
+use casper_types::ProtocolVersion;
 
 use super::genesis::ExecConfig;
 
 /// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {
-    #[serde(with = "ChecksummedHexForm::<Digest>")]
     genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,

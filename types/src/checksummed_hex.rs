@@ -1,21 +1,14 @@
 //! Checksummed hex encoding following an [EIP-55][1]-like scheme.
 //!
-//! Contains a [serde] helper trait [ChecksummedHex] which is based on [`hex_buffer_serde::Hex`][2].
-//!
 //! [1]: https://eips.ethereum.org/EIPS/eip-55
-//! [2]: https://docs.rs/hex-buffer-serde/0.3.0/hex_buffer_serde/trait.Hex.html
-use alloc::{borrow::Cow, string::String, vec::Vec};
+
+use alloc::{string::String, vec::Vec};
+use core::ops::RangeInclusive;
+
 use base16;
-use core::{convert::TryFrom, fmt, marker::PhantomData, ops::RangeInclusive};
-
 use blake2::{Blake2b, Digest};
-use serde::{
-    de::{Error as DeError, Unexpected, Visitor},
-    Deserializer, Serializer,
-};
 
-/// The number of input bytes, at or below which [`encode`] and [`encode_iter`] will checksum-encode
-/// the output.
+/// The number of input bytes, at or below which [`encode`] will checksum-encode the output.
 pub const SMALL_BYTES_COUNT: usize = 75;
 
 const HEX_CHARS: [char; 22] = [
@@ -47,36 +40,35 @@ fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Encodes bytes as hexadecimal with mixed-case based checksums following a scheme similar to
-/// [EIP-55][1].
+/// If `input` is not greater than [`SMALL_BYTES_COUNT`], returns the bytes encoded as hexadecimal
+/// with mixed-case based checksums following a scheme similar to [EIP-55][1].  If `input` is
+/// greater than `SMALL_BYTES_COUNT`, no mixed-case checksumming is applied, and lowercase hex is
+/// returned.
 ///
 /// Key differences:
-///   - Works on any length of data, not just 20-byte addresses
+///   - Works on any length of data up to `SMALL_BYTES_COUNT`, not just 20-byte addresses
 ///   - Uses Blake2b hashes rather than Keccak
 ///   - Uses hash bits rather than nibbles
 ///
-/// **Note:** mixed-case checksummed hex will be output only if the length is <=
-/// [`SMALL_BYTES_COUNT`], otherwise, the output hex will be lowercase.
-///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
 pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
+    if input.as_ref().len() > SMALL_BYTES_COUNT {
+        return base16::encode_lower(input);
+    }
     encode_iter(input).collect()
 }
 
 /// `encode` but it returns an iterator.
-pub fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = char> + '_ {
+fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = char> + '_ {
     let input_bytes = input.as_ref();
     let nibbles = bytes_to_nibbles(input_bytes);
-    let mut maybe_hash_bits =
-        (input_bytes.len() <= SMALL_BYTES_COUNT).then(|| bytes_to_bits_cycle(blake2b_hash(input)));
+    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
     nibbles.map(move |mut nibble| {
-        if let Some(hash_bits) = maybe_hash_bits.as_mut() {
-            // Base 16 numbers greater than 10 are represented by the ascii characters a through f.
-            if nibble >= 10 && hash_bits.next().unwrap_or(true) {
-                // We are using nibble to index HEX_CHARS, so adding 6 to nibble gives us the index
-                // of the uppercase character. HEX_CHARS[10] == 'a', HEX_CHARS[16] == 'A'.
-                nibble += 6;
-            }
+        // Base 16 numbers greater than 10 are represented by the ascii characters a through f.
+        if nibble >= 10 && hash_bits.next().unwrap_or(true) {
+            // We are using nibble to index HEX_CHARS, so adding 6 to nibble gives us the index
+            // of the uppercase character. HEX_CHARS[10] == 'a', HEX_CHARS[16] == 'A'.
+            nibble += 6;
         }
         HEX_CHARS[nibble as usize]
     })
@@ -109,10 +101,9 @@ fn string_is_same_case<T: AsRef<[u8]> + ?Sized>(s: &T) -> bool {
 /// similar to scheme in [EIP-55][1].
 ///
 /// Key differences:
-///   - Works on any length of data, not just 20-byte addresses
+///   - Works on any length of (decoded) data up to `SMALL_BYTES_COUNT`, not just 20-byte addresses
 ///   - Uses Blake2b hashes rather than Keccak
-///   - Hash nibbles based on input rather than hex encoding of input
-///   - Hash nibbles are XORed with input nibbles
+///   - Uses hash bits rather than nibbles
 ///
 /// For backward compatibility: if the hex string is all uppercase or all lowercase, the check is
 /// skipped.
@@ -120,373 +111,45 @@ fn string_is_same_case<T: AsRef<[u8]> + ?Sized>(s: &T) -> bool {
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
 pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::DecodeError> {
     let bytes = base16::decode(input)?;
-    // If the string was all uppercase or all lower case, don't verify the checksum.
-    // This is to support legacy clients.
-    // Otherwise perform the check as below.
-    if !string_is_same_case(input.as_ref()) {
-        let input_string_bytes = input.as_ref();
 
-        encode_iter(&bytes)
-            .zip(input_string_bytes.iter())
-            .enumerate()
-            .try_for_each(|(index, (expected_case_hex_char, &input_hex_char))| {
-                if expected_case_hex_char as u8 == input_hex_char {
-                    Ok(())
-                } else {
-                    Err(base16::DecodeError::InvalidByte {
-                        index,
-                        byte: expected_case_hex_char as u8,
-                    })
-                }
-            })?;
+    // If the string was not small or not mixed case, don't verify the checksum.
+    if bytes.len() > SMALL_BYTES_COUNT || string_is_same_case(input.as_ref()) {
+        return Ok(bytes);
     }
+
+    encode_iter(&bytes)
+        .zip(input.as_ref().iter())
+        .enumerate()
+        .try_for_each(|(index, (expected_case_hex_char, &input_hex_char))| {
+            if expected_case_hex_char as u8 == input_hex_char {
+                Ok(())
+            } else {
+                Err(base16::DecodeError::InvalidByte {
+                    index,
+                    byte: expected_case_hex_char as u8,
+                })
+            }
+        })?;
     Ok(bytes)
 }
 
-/// Provides checksummed hex-encoded (de)serialization for `serde` when used with human-readable
-/// (de/en)coders, following an [EIP-55][1]-like scheme.  For non-human-readable (de/en)coders, the
-/// value is (de)serialized as a byte array.
-///
-/// Note that the trait is automatically implemented for types that implement [`AsRef`]`<[u8]>` and
-/// [`TryFrom`]`<&[u8]>`.
-///
-/// [1]: https://eips.ethereum.org/EIPS/eip-55
-pub trait ChecksummedHex<T> {
-    /// Error returned on unsuccessful deserialization.
-    type Error: fmt::Display;
-
-    /// Converts the value into bytes. This is used for serialization.
-    ///
-    /// The returned buffer can be either borrowed from the type, or created by the method.
-    fn create_bytes(value: &T) -> Cow<'_, [u8]>;
-
-    /// Creates a value from the byte slice.
-    fn from_bytes(bytes: &[u8]) -> Result<T, Self::Error>;
-
-    /// Serializes the value for `serde`. This method is not meant to be overridden.
-    fn serialize<S: Serializer>(value: &T, serializer: S) -> Result<S::Ok, S::Error> {
-        let value = Self::create_bytes(value);
-        if serializer.is_human_readable() {
-            serializer.serialize_str(&encode(&value))
-        } else {
-            serializer.serialize_bytes(value.as_ref())
-        }
-    }
-
-    /// Deserializes a value using `serde`. This method is not meant to be overridden.
-    ///
-    /// If the deserializer is [human-readable][hr] (e.g., JSON or TOML), this method
-    /// expects a hex-encoded string. Otherwise, the method expects a byte array.
-    ///
-    /// [hr]: serde::Serializer::is_human_readable()
-    fn deserialize<'de, D>(deserializer: D) -> Result<T, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct ChecksummedHexVisitor;
-
-        impl<'de> Visitor<'de> for ChecksummedHexVisitor {
-            type Value = Vec<u8>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("checksummed hex-encoded byte array")
-            }
-
-            fn visit_str<E: DeError>(self, value: &str) -> Result<Self::Value, E> {
-                decode(value).map_err(|_| E::invalid_type(Unexpected::Str(value), &self))
-            }
-
-            // See the `deserializing_flattened_field` test for an example why this is needed.
-            fn visit_bytes<E: DeError>(self, value: &[u8]) -> Result<Self::Value, E> {
-                Ok(value.to_vec())
-            }
-        }
-
-        struct BytesVisitor;
-
-        impl<'de> Visitor<'de> for BytesVisitor {
-            type Value = Vec<u8>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("byte array")
-            }
-
-            fn visit_bytes<E: DeError>(self, value: &[u8]) -> Result<Self::Value, E> {
-                Ok(value.to_vec())
-            }
-        }
-
-        let maybe_bytes = if deserializer.is_human_readable() {
-            deserializer.deserialize_str(ChecksummedHexVisitor)
-        } else {
-            deserializer.deserialize_bytes(BytesVisitor)
-        };
-        maybe_bytes.and_then(|bytes| Self::from_bytes(&bytes).map_err(D::Error::custom))
-    }
-}
-
-/// A dummy container for use inside `#[serde(with)]` attribute if the underlying type
-/// implements `AsRef<[u8]>` and `TryFrom<&[u8], _>`.
-#[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
-#[derive(Debug)]
-pub struct ChecksummedHexForm<T>(PhantomData<T>);
-
-impl<T, E> ChecksummedHex<T> for ChecksummedHexForm<T>
-where
-    T: AsRef<[u8]> + for<'a> TryFrom<&'a [u8], Error = E>,
-    E: fmt::Display,
-{
-    type Error = E;
-
-    fn create_bytes(buffer: &T) -> Cow<'_, [u8]> {
-        Cow::Borrowed(buffer.as_ref())
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<T, Self::Error> {
-        T::try_from(bytes)
-    }
-}
-
 #[cfg(test)]
-// Tests taken from https://github.com/slowli/hex-buffer-serde/blob/8ff1523898497d1e4f65781bcb076070109c9df3/src/var_len.rs#L138
 mod tests {
-    use super::*;
+    use alloc::string::String;
 
-    use serde::{Deserialize, Serialize};
-    use serde_json::json;
-
-    use alloc::{
-        borrow::ToOwned,
-        string::{String, ToString},
-        vec,
+    use proptest::{
+        collection::vec,
+        prelude::{any, prop_assert, prop_assert_eq},
     };
-    use core::array::TryFromSliceError;
-    use proptest::prelude::{prop_assert, prop_assert_eq};
     use proptest_attr_macro::proptest;
 
-    #[derive(Debug, Serialize, Deserialize)]
-    struct Buffer([u8; 8]);
-
-    impl AsRef<[u8]> for Buffer {
-        fn as_ref(&self) -> &[u8] {
-            &self.0
-        }
-    }
-
-    impl TryFrom<&[u8]> for Buffer {
-        type Error = TryFromSliceError;
-
-        fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-            <[u8; 8]>::try_from(slice).map(Buffer)
-        }
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct Test {
-        #[serde(with = "ChecksummedHexForm::<Buffer>")]
-        buffer: Buffer,
-        other_field: String,
-    }
+    use super::*;
 
     #[test]
-    fn internal_type() {
-        let json = json!({ "buffer": "0001020304050607", "other_field": "abc" });
-        let value: Test = serde_json::from_value(json.clone()).unwrap();
-        assert!(value
-            .buffer
-            .0
-            .iter()
-            .enumerate()
-            .all(|(i, &byte)| i == usize::from(byte)));
-
-        let json_copy = serde_json::to_value(&value).unwrap();
-        assert_eq!(json, json_copy);
-    }
-
-    #[test]
-    fn error_reporting() {
-        let bogus_jsons = vec![
-            serde_json::json!({
-                "buffer": "bogus",
-                "other_field": "test",
-            }),
-            serde_json::json!({
-                "buffer": "c0ffe",
-                "other_field": "test",
-            }),
-        ];
-
-        for bogus_json in bogus_jsons {
-            let err = serde_json::from_value::<Test>(bogus_json)
-                .unwrap_err()
-                .to_string();
-            assert!(
-                err.contains("expected checksummed hex-encoded byte array"),
-                "{}",
-                err
-            );
-        }
-    }
-
-    #[test]
-    fn internal_type_with_derived_serde_code() {
-        // ...and here, we may use original `serde` code.
-        #[derive(Serialize, Deserialize)]
-        struct OriginalTest {
-            buffer: Buffer,
-            other_field: String,
-        }
-
-        let test = Test {
-            buffer: Buffer([1; 8]),
-            other_field: "a".to_owned(),
-        };
-        assert_eq!(
-            serde_json::to_value(test).unwrap(),
-            json!({
-                "buffer": "0101010101010101",
-                "other_field": "a",
-            })
-        );
-
-        let test = OriginalTest {
-            buffer: Buffer([1; 8]),
-            other_field: "a".to_owned(),
-        };
-        assert_eq!(
-            serde_json::to_value(test).unwrap(),
-            json!({
-                "buffer": [1, 1, 1, 1, 1, 1, 1, 1],
-                "other_field": "a",
-            })
-        );
-    }
-
-    #[test]
-    fn external_type() {
-        #[derive(Debug, PartialEq, Eq)]
-        pub struct Buffer([u8; 8]);
-
-        struct BufferHex(());
-
-        impl ChecksummedHex<Buffer> for BufferHex {
-            type Error = &'static str;
-
-            fn create_bytes(buffer: &Buffer) -> Cow<'_, [u8]> {
-                Cow::Borrowed(&buffer.0)
-            }
-
-            fn from_bytes(bytes: &[u8]) -> Result<Buffer, Self::Error> {
-                if bytes.len() == 8 {
-                    let mut inner = [0; 8];
-                    inner.copy_from_slice(bytes);
-                    Ok(Buffer(inner))
-                } else {
-                    Err("invalid buffer length")
-                }
-            }
-        }
-
-        #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-        struct Test {
-            #[serde(with = "BufferHex")]
-            buffer: Buffer,
-            other_field: String,
-        }
-
-        let json = json!({ "buffer": "0001020304050607", "other_field": "abc" });
-        let value: Test = serde_json::from_value(json.clone()).unwrap();
-        assert!(value
-            .buffer
-            .0
-            .iter()
-            .enumerate()
-            .all(|(i, &byte)| i == usize::from(byte)));
-
-        let json_copy = serde_json::to_value(&value).unwrap();
-        assert_eq!(json, json_copy);
-
-        // Test binary / non-human readable format.
-        let buffer = bincode::serialize(&value).unwrap();
-        // Conversion to hex is needed to be able to search for a pattern.
-        let buffer_hex = encode(&buffer);
-        // Check that the buffer is stored in the serialization compactly,
-        // as original bytes.
-        let needle = "0001020304050607";
-        assert!(buffer_hex.contains(needle));
-
-        let value_copy: Test = bincode::deserialize(&buffer).unwrap();
-        assert_eq!(value_copy, value);
-    }
-
-    #[test]
-    fn deserializing_flattened_field() {
-        // The fields in the flattened structure are somehow read with
-        // a human-readable `Deserializer`, even if the original `Deserializer`
-        // is not human-readable.
-        #[derive(Debug, PartialEq, Serialize, Deserialize)]
-        struct Inner {
-            #[serde(with = "ChecksummedHexForm")]
-            x: Vec<u8>,
-            #[serde(with = "ChecksummedHexForm")]
-            y: [u8; 16],
-        }
-
-        #[derive(Debug, PartialEq, Serialize, Deserialize)]
-        struct Outer {
-            #[serde(flatten)]
-            inner: Inner,
-            z: String,
-        }
-
-        let value = Outer {
-            inner: Inner {
-                x: vec![1; 8],
-                y: [0; 16],
-            },
-            z: "test".to_owned(),
-        };
-
-        let bytes = serde_cbor::to_vec(&value).unwrap();
-        let bytes_hex = encode(&bytes);
-        // Check that byte buffers are stored in the binary form.
-        assert!(bytes_hex.contains(&"01".repeat(8)));
-        assert!(bytes_hex.contains(&"00".repeat(16)));
-        let value_copy = serde_cbor::from_slice(&bytes).unwrap();
-        assert_eq!(value, value_copy);
-    }
-
-    #[test]
-    fn encode_iter_works() {
-        let input = "testing encode lazy";
-        let data = encode(&input);
-        let lazy_data = encode_iter(&input).collect::<String>();
-
-        assert_eq!(data, lazy_data);
-        assert_eq!(
-            decode(&lazy_data)
-                .unwrap()
-                .iter()
-                .map(|&byte| byte as char)
-                .collect::<String>(),
-            "testing encode lazy"
-        );
-    }
-
-    #[test]
-    fn encode_iter_single_zero() {
-        let input = [0_u8];
-        let actual = encode_iter(&input).collect::<String>();
-
-        assert_eq!(actual, "00");
-    }
-
-    #[test]
-    fn decode_zero_hex_string() {
-        let input = "00";
-        let actual = decode(&input).expect("Failed to decode input.");
-
-        assert_eq!(&actual, &[0_u8])
+    fn should_encode_empty_input() {
+        let input = [];
+        let actual = encode(&input);
+        assert!(actual.is_empty());
     }
 
     #[test]
@@ -528,44 +191,46 @@ mod tests {
         );
     }
 
-    #[proptest]
-    fn should_fail_on_invalid_checksum(input: Vec<u8>) {
-        let encoded = encode(&input);
+    proptest::proptest! {
+        #[test]
+        fn should_fail_on_invalid_checksum(input in vec(any::<u8>(), 0..75)) {
+            let encoded = encode(&input);
 
-        // Swap the case of the first letter in the checksum hex-encoded value.
-        let mut expected_error = None;
-        let mutated: String = encoded
-            .char_indices()
-            .map(|(index, mut c)| {
-                if expected_error.is_some() || c.is_ascii_digit() {
-                    return c;
-                }
-                expected_error = Some(base16::DecodeError::InvalidByte {
-                    index,
-                    byte: c as u8,
-                });
-                if c.is_ascii_uppercase() {
-                    c.make_ascii_lowercase();
-                } else {
-                    c.make_ascii_uppercase();
-                }
-                c
-            })
-            .collect();
+            // Swap the case of the first letter in the checksum hex-encoded value.
+            let mut expected_error = None;
+            let mutated: String = encoded
+                .char_indices()
+                .map(|(index, mut c)| {
+                    if expected_error.is_some() || c.is_ascii_digit() {
+                        return c;
+                    }
+                    expected_error = Some(base16::DecodeError::InvalidByte {
+                        index,
+                        byte: c as u8,
+                    });
+                    if c.is_ascii_uppercase() {
+                        c.make_ascii_lowercase();
+                    } else {
+                        c.make_ascii_uppercase();
+                    }
+                    c
+                })
+                .collect();
 
-        // If the encoded form is now all the same case or digits, just return.
-        if string_is_same_case(&mutated) {
-            return Ok(());
+            // If the encoded form is now all the same case or digits, just return.
+            if string_is_same_case(&mutated) {
+                return Ok(());
+            }
+
+            // Assert we can still decode to original input using `base16::decode`.
+            prop_assert_eq!(
+                input,
+                base16::decode(&mutated).expect("Failed to decode input.")
+            );
+
+            // Assert decoding using `checksummed_hex::decode` returns the expected error.
+            prop_assert_eq!(expected_error.unwrap(), decode(&mutated).unwrap_err())
         }
-
-        // Assert we can still decode to original input using `base16::decode`.
-        prop_assert_eq!(
-            input,
-            base16::decode(&mutated).expect("Failed to decode input.")
-        );
-
-        // Assert decoding using `checksummed_hex::decode` returns the expected error.
-        prop_assert_eq!(expected_error.unwrap(), decode(&mutated).unwrap_err())
     }
 
     #[proptest]

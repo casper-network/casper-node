@@ -404,10 +404,7 @@ pub fn map_hashing_error(hashing_error: casper_hashing::Error) -> impl Fn(&'stat
         },
         casper_hashing::Error::IncorrectDigestLength(length) => Error::InvalidArgument {
             context,
-            error: format!(
-                "The deploy hash provided had an invalid length of {}.",
-                length
-            ),
+            error: format!("the hash provided had an invalid length of {}", length),
         },
     }
 }

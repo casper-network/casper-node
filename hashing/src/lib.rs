@@ -22,18 +22,18 @@ use blake2::{
 use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex::{self, ChecksummedHex, ChecksummedHexForm},
+    checksummed_hex,
 };
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Incorrect digest length {0}, expected length {}.", Digest::LENGTH)]
-    /// The digest lenghth was an incorrect size.
+    /// The digest length was an incorrect size.
     IncorrectDigestLength(usize),
     /// There was a decoding error.
     #[error("Base16 decode error {0}.")]
@@ -41,27 +41,10 @@ pub enum Error {
 }
 
 /// The output of the hash function.
-#[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Default,
-    JsonSchema,
-)]
+#[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
-pub struct Digest(
-    #[serde(with = "ChecksummedHexForm::<[u8; Digest::LENGTH]>")]
-    #[schemars(skip, with = "String")]
-    [u8; Digest::LENGTH],
-);
+pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
 
 impl Digest {
     /// The number of bytes in a `Digest`.
@@ -212,7 +195,7 @@ impl UpperHex for Digest {
 
 impl Display for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:10}", checksummed_hex::encode(&self.0))
+        write!(f, "{:10}", base16::encode_lower(&self.0))
     }
 }
 
@@ -264,6 +247,30 @@ impl FromBytes for Digest {
     #[inline(always)]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         FromBytes::from_bytes(bytes).map(|(arr, rem)| (Digest(arr), rem))
+    }
+}
+
+impl Serialize for Digest {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            checksummed_hex::encode(&self.0).serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Digest {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes = if deserializer.is_human_readable() {
+            let hex_string = String::deserialize(deserializer)?;
+            let bytes =
+                checksummed_hex::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
+            <[u8; Digest::LENGTH]>::try_from(bytes.as_ref()).map_err(SerdeError::custom)?
+        } else {
+            <[u8; Digest::LENGTH]>::deserialize(deserializer)?
+        };
+        Ok(Digest(bytes))
     }
 }
 
