@@ -4,6 +4,12 @@
   "description": "The \"data\" field of the events sent on the event stream to clients.",
   "anyOf": [
     {
+      "type": "string",
+      "enum": [
+        "Shutdown"
+      ]
+    },
+    {
       "description": "The version of this node's API server.  This event will always be the first sent to a new client, and will have no associated event ID provided.",
       "type": "object",
       "required": [

@@ -1171,6 +1171,9 @@ async fn should_limit_concurrent_subscribers() {
 /// `resources/test/sse_data_schema.json` across different versions of the codebase.
 #[test]
 fn schema() {
+    // To generate the contents to replace the input JSON files, run the test with and without
+    // the feature enabled and print the `actual_schema by uncommenting the `println!`
+    // towards the end of the test
     let schema_path = format!(
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
@@ -1178,6 +1181,9 @@ fn schema() {
     let expected_schema = fs::read_to_string(schema_path).unwrap();
     let schema = schema_for!(SseData);
     let actual_schema = serde_json::to_string_pretty(&schema).unwrap();
+
+    // println!("{}", actual_schema);
+
     let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
     let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
     assert_json_eq!(actual_schema, expected_schema);
