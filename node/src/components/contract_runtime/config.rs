@@ -6,7 +6,6 @@ use casper_execution_engine::shared::utils;
 const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_MAX_READERS: u32 = 512;
 const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
-const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 
 /// Contract runtime configuration.
 #[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize)]
@@ -27,11 +26,6 @@ pub struct Config {
     ///
     /// Defaults to 5.
     max_query_depth: Option<u64>,
-    /// The maximum number of associated keys per account.
-    ///
-    /// Defaults to 100.
-    max_associated_keys: Option<u32>,
-
     /// Enable synchronizing to disk only after each block is written.
     ///
     /// Defaults to `false`.
@@ -55,11 +49,6 @@ impl Config {
         self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH)
     }
 
-    pub(crate) fn max_associated_keys(&self) -> u32 {
-        self.max_associated_keys
-            .unwrap_or(DEFAULT_MAX_ASSOCIATED_KEYS)
-    }
-
     pub(crate) fn manual_sync_enabled(&self) -> bool {
         self.enable_manual_sync.unwrap_or(false)
     }
@@ -69,7 +58,6 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             max_global_state_size: Some(DEFAULT_MAX_GLOBAL_STATE_SIZE),
-            max_associated_keys: Some(DEFAULT_MAX_ASSOCIATED_KEYS),
             max_readers: Some(DEFAULT_MAX_READERS),
             max_query_depth: Some(DEFAULT_MAX_QUERY_DEPTH),
             enable_manual_sync: Some(false),

@@ -21,16 +21,16 @@ use rand_chacha::ChaCha20Rng;
 
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature, FinalizedBlock,
     HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
 };
-pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload, FinalizedBlock};
+pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload};
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
 pub use datasize::DataSize;
 pub use deploy::{
-    Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployOrTransferHash,
-    DeployValidationFailure, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
+    Approval, Deploy, DeployConfigurationFailure, DeployHash, DeployHeader, DeployMetadata,
+    DeployOrTransferHash, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;

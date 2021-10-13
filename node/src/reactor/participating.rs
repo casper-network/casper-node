@@ -914,7 +914,7 @@ impl reactor::Reactor for Reactor {
                             ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                                 deploy,
                                 source: Source::Peer(sender),
-                                responder: None,
+                                maybe_responder: None,
                             })
                         }
                         Tag::Block => {
@@ -984,7 +984,7 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
-                    responder,
+                    maybe_responder: responder,
                 };
                 self.dispatch_event(
                     effect_builder,

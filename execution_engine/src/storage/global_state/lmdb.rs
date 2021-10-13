@@ -60,7 +60,7 @@ impl LmdbGlobalState {
 
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
-    pub(crate) fn new(
+    pub fn new(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,

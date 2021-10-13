@@ -1,3 +1,4 @@
+//! This module contains executor state of the WASM code.
 mod args;
 mod auction_internal;
 mod externals;
@@ -55,6 +56,7 @@ use crate::{
     storage::global_state::StateReader,
 };
 
+/// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,
     config: EngineConfig,
@@ -65,6 +67,15 @@ pub struct Runtime<'a, R> {
     call_stack: Vec<CallStackElement>,
 }
 
+/// Creates an WASM module instance and a memory instance.
+///
+/// This ensures that a memory instance is properly resolved into a pre-allocated memory area, and a
+/// host function resolver is attached to the module.
+///
+/// The WASM module is also validated to not have a "start" section as we currently don't support
+/// running it.
+///
+/// Both [`ModuleRef`] and a [`MemoryRef`] are ready to be executed.
 pub fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
@@ -967,6 +978,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<Error>,
 {
+    /// Creates a new runtime instance.
     pub fn new(
         config: EngineConfig,
         system_contract_cache: SystemContractCache,
@@ -986,14 +998,17 @@ where
         }
     }
 
+    /// Returns a memory instance.
     pub fn memory(&self) -> &MemoryRef {
         &self.memory
     }
 
+    /// Returns a WASM module instance.
     pub fn module(&self) -> &Module {
         &self.module
     }
 
+    /// Returns the context.
     pub fn context(&self) -> &RuntimeContext<'a, R> {
         &self.context
     }
@@ -1002,14 +1017,17 @@ where
         self.context.charge_gas(amount)
     }
 
+    /// Returns current gas counter.
     fn gas_counter(&self) -> Gas {
         self.context.gas_counter()
     }
 
+    /// Sets new gas counter value.
     fn set_gas_counter(&mut self, new_gas_counter: Gas) {
         self.context.set_gas_counter(new_gas_counter);
     }
 
+    /// Charge for a system contract call.
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
         T: Into<Gas>,
@@ -1017,14 +1035,17 @@ where
         self.context.charge_system_contract_call(amount)
     }
 
+    /// Returns current call stack.
     pub fn call_stack(&self) -> &Vec<CallStackElement> {
         &self.call_stack
     }
 
+    /// Returns bytes from the WASM memory instance.
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
         self.memory.get(ptr, size).map_err(Into::into)
     }
 
+    /// Returns a deserialized type from the WASM memory instance.
     fn t_from_mem<T: FromBytes>(&self, ptr: u32, size: u32) -> Result<T, Error> {
         let bytes = self.bytes_from_mem(ptr, size as usize)?;
         bytesrepr::deserialize(bytes).map_err(Into::into)
@@ -1046,6 +1067,7 @@ where
         bytesrepr::deserialize(bytes).map_err(Into::into)
     }
 
+    /// Returns a deserialized string from the WASM memory instance.
     fn string_from_mem(&self, ptr: u32, size: u32) -> Result<String, Trap> {
         let bytes = self.bytes_from_mem(ptr, size as usize)?;
         bytesrepr::deserialize(bytes).map_err(|e| Error::BytesRepr(e).into())
@@ -1196,6 +1218,15 @@ where
         call_stack_iter.next()
     }
 
+    /// Checks if immediate caller is of session type of the same account as the provided account
+    /// hash.
+    fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
+        if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
+            return account_hash == provided_account_hash;
+        }
+        false
+    }
+
     /// Writes runtime context's phase to dest_ptr in the Wasm memory.
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();
@@ -1302,7 +1333,8 @@ where
         }
     }
 
-    pub fn is_mint(&self, key: Key) -> bool {
+    /// Checks if current context is the mint system contract.
+    pub(crate) fn is_mint(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(MINT) {
             Ok(hash) => hash,
             Err(_) => {
@@ -1313,7 +1345,8 @@ where
         key.into_hash() == Some(hash.value())
     }
 
-    pub fn is_handle_payment(&self, key: Key) -> bool {
+    /// Checks if current context is the `handle_payment` system contract.
+    pub(crate) fn is_handle_payment(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(HANDLE_PAYMENT) {
             Ok(hash) => hash,
             Err(_) => {
@@ -1324,7 +1357,8 @@ where
         key.into_hash() == Some(hash.value())
     }
 
-    pub fn is_auction(&self, key: Key) -> bool {
+    /// Checks if current context is the auction system contract.
+    pub(crate) fn is_auction(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(AUCTION) {
             Ok(hash) => hash,
             Err(_) => {
@@ -1370,6 +1404,7 @@ where
         }
     }
 
+    /// Calls host mint contract.
     pub fn call_host_mint(
         &mut self,
         protocol_version: ProtocolVersion,
@@ -1516,6 +1551,7 @@ where
         Ok(ret)
     }
 
+    /// Calls host `handle_payment` contract.
     pub fn call_host_handle_payment(
         &mut self,
         protocol_version: ProtocolVersion,
@@ -1633,6 +1669,7 @@ where
         Ok(ret)
     }
 
+    /// Calls host standard payment contract.
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
         // context.
@@ -1644,6 +1681,7 @@ where
         result
     }
 
+    /// Calls host auction contract.
     pub fn call_host_auction(
         &mut self,
         protocol_version: ProtocolVersion,

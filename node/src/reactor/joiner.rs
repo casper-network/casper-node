@@ -3,6 +3,7 @@
 mod memory_metrics;
 
 use std::{
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
     sync::Arc,
@@ -646,7 +647,7 @@ impl reactor::Reactor for Reactor {
                     let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(sender),
-                        responder: None,
+                        maybe_responder: None,
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }
@@ -910,12 +911,18 @@ impl reactor::Reactor for Reactor {
                 // Upcoming validators are not used by joiner reactor
                 Effects::new()
             }
+            JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                // no consensus, respond with empty map
+                responder.respond(BTreeMap::new()).ignore()
+            }
         }
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
         if self.linear_chain_sync.stopped_for_upgrade() {
             Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
+        } else if self.linear_chain_sync.stopped_for_downgrade() {
+            Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion))
         } else if self.linear_chain_sync.is_synced() {
             Some(ReactorExit::ProcessShouldContinue)
         } else {

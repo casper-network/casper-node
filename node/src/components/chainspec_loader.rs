@@ -456,21 +456,36 @@ impl ChainspecLoader {
             return Effects::new();
         }
 
-        let unplanned_shutdown = match self.next_upgrade {
-            Some(ref next_upgrade) => highest_block_era_id < next_upgrade.activation_point.era_id(),
-            None => true,
+        let (unplanned_shutdown, should_upgrade_if_valid_run) = match self.next_upgrade {
+            Some(ref next_upgrade) => {
+                let unplanned_shutdown =
+                    highest_block_era_id < next_upgrade.activation_point.era_id();
+                let should_upgrade_if_valid_run = highest_block.header().is_switch_block()
+                    && highest_block_era_id.successor() == next_upgrade.activation_point.era_id();
+                (unplanned_shutdown, should_upgrade_if_valid_run)
+            }
+            None => (true, false),
         };
 
         if unplanned_shutdown {
             if previous_protocol_version == self.chainspec.protocol_config.version {
                 // This is a valid run, restarted after an unplanned shutdown.
-                self.initial_state_root_hash = *highest_block.state_root_hash();
-                info!(
-                    %current_chainspec_activation_point,
-                    %highest_block,
-                    "valid run after an unplanned shutdown before upgrade due"
-                );
-                self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                if should_upgrade_if_valid_run {
+                    warn!(
+                        %current_chainspec_activation_point,
+                        %highest_block,
+                        "valid run after an unplanned shutdown when upgrade was due"
+                    );
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Success));
+                } else {
+                    self.initial_state_root_hash = *highest_block.state_root_hash();
+                    info!(
+                        %current_chainspec_activation_point,
+                        %highest_block,
+                        "valid run after an unplanned shutdown before upgrade due"
+                    );
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                }
             } else {
                 // This is an invalid run, where we previously forked and missed an upgrade.
                 warn!(

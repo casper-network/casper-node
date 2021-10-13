@@ -9,7 +9,7 @@ use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
 
-use casper_execution_engine::core::engine_state::query::GetBidsRequest;
+use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     EraId, Motes, PublicKey, SecretKey, U512,
@@ -98,8 +98,12 @@ impl TestChain {
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        chainspec.protocol_config.activation_point =
-            ActivationPoint::Genesis(Timestamp::now() + 45000.into());
+        let genesis_time = Timestamp::now() + 45000.into();
+        info!(
+            "creating test chain configuration, genesis: {}",
+            genesis_time
+        );
+        chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
 
         chainspec.core_config.minimum_era_height = 1;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
@@ -158,6 +162,7 @@ impl TestChain {
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
+            info!("creating node {}", idx);
             let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
@@ -183,6 +188,7 @@ impl TestChain {
                 .await
                 .into_participating_config()
                 .await?;
+            info!("node {} finished joining", idx);
 
             network
                 .add_node_with_config(config, rng)
@@ -262,7 +268,7 @@ impl SwitchBlocks {
         let bids_result = engine_state
             .get_bids(correlation_id, request)
             .expect("get_bids failed");
-        bids_result.bids().expect("no bids returned").clone()
+        bids_result.into_success().expect("no bids returned")
     }
 }
 
@@ -320,26 +326,25 @@ async fn run_equivocator_network() {
         .await
         .expect("network initialization failed");
     let min_round_len = chain.chainspec.highway_config.min_round_length();
-    let mut maybe_first_message = None;
+    let mut maybe_first_message_time = None;
     net.reactors_mut()
         .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
         .unwrap()
         .set_filter(move |event| {
-            if !matches!(
-                event,
-                ParticipatingEvent::NetworkRequest(_)
-                    | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
-            ) {
-                return Either::Right(event);
-            }
             let now = Timestamp::now();
-            let first_message = if let Some(first_message) = maybe_first_message {
-                first_message
-            } else {
-                maybe_first_message = Some(now);
-                now
+            let first_message_time = match (&event, maybe_first_message_time) {
+                (
+                    ParticipatingEvent::NetworkRequest(_)
+                    | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
+                    Some(first_message_time),
+                ) => first_message_time,
+                (ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }), None) => {
+                    maybe_first_message_time = Some(now);
+                    now
+                }
+                _ => return Either::Right(event),
             };
-            if now < first_message + min_round_len * 3 {
+            if now < first_message_time + min_round_len * 3 {
                 return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
             }
             Either::Right(event)

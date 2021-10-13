@@ -147,7 +147,7 @@ pub(crate) enum Event {
 
 /// A storage component error.
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub enum Error {
     /// Failure to create the root database directory.
     #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
@@ -306,8 +306,9 @@ impl From<lmdb::Error> for Error {
     }
 }
 
+/// Storage component.
 #[derive(DataSize, Debug)]
-pub(crate) struct Storage {
+pub struct Storage {
     /// Storage location.
     root: PathBuf,
     /// Environment holding LMDB databases.
@@ -394,7 +395,7 @@ impl Storage {
     /// If `should_check_integrity` is true, time-consuming integrity checks will be performed
     /// during this call to `new()`, potentially blocking for several minutes.  This should normally
     /// only be required if the node is detected to have restarted after a crash.
-    pub(crate) fn new(
+    pub fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
@@ -708,10 +709,7 @@ impl Storage {
                 .respond(self.get_transfers(&mut self.env.begin_ro_txn()?, &block_hash)?)
                 .ignore(),
             StorageRequest::PutDeploy { deploy, responder } => {
-                let mut txn = self.env.begin_rw_txn()?;
-                let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
-                txn.commit()?;
-                responder.respond(outcome).ignore()
+                responder.respond(self.put_deploy(&*deploy)?).ignore()
             }
             StorageRequest::GetDeploys {
                 deploy_hashes,
@@ -901,6 +899,14 @@ impl Storage {
         })
     }
 
+    /// Put a single deploy into storage.
+    pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, Error> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
+        txn.commit()?;
+        Ok(outcome)
+    }
+
     /// Retrieves single block header by height by looking it up in the index and returning it.
     fn get_block_header_and_metadata_by_height<Tx: Transaction>(
         &self,
@@ -926,14 +932,20 @@ impl Storage {
     }
 
     /// Retrieves a block by hash.
-    fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
+    }
+
+    /// Directly returns a deploy from internal store.
+    pub fn read_deploy_by_hash(&self, deploy_hash: DeployHash) -> Result<Option<Deploy>, Error> {
+        let mut txn = self.env.begin_ro_txn()?;
+        Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
     }
 
     /// Writes a block to storage, updating indices as necessary
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
+    pub fn write_block(&mut self, block: &Block) -> Result<bool, Error> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
         let mut txn = self.env.begin_rw_txn()?;
@@ -997,6 +1009,16 @@ impl Storage {
             .get(&height)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
+    }
+
+    /// Retrieves single block by height by looking it up in the index and returning it.
+    pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, Error> {
+        self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
+    }
+
+    /// Gets the highest block.
+    pub fn read_highest_block(&self) -> Result<Option<Block>, Error> {
+        self.get_highest_block(&mut self.env.begin_ro_txn()?)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1486,11 +1508,11 @@ fn move_storage_files_to_network_subdir(
 /// On-disk storage configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Config {
+pub struct Config {
     /// The path to the folder where any files created or read by the storage component will exist.
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
-    pub(crate) path: PathBuf,
+    pub path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.

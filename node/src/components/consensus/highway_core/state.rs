@@ -751,30 +751,6 @@ impl<C: Context> State<C> {
         self.find_ancestor_proposal(&block.skip_idx[i], height)
     }
 
-    /// Returns the ancestor of the unit with the given `hash`, on the specified `height`, or
-    /// `None` if the unit's height is lower than that.
-    pub(crate) fn find_ancestor_unit<'a>(
-        &'a self,
-        hash: &'a C::Hash,
-        height: u64,
-    ) -> Option<&'a C::Hash> {
-        let unit = self.unit(hash);
-        if unit.seq_number < height {
-            return None;
-        }
-        if unit.seq_number == height {
-            return Some(hash);
-        }
-        #[allow(clippy::integer_arithmetic)] // block.height > height, otherwise we returned.
-        let diff = unit.seq_number - height;
-        // We want to make the greatest step 2^i such that 2^i <= diff.
-        let max_i = log2(diff) as usize;
-        // A unit at height > 0 always has at least its parent entry in skip_idx.
-        #[allow(clippy::integer_arithmetic)]
-        let i = max_i.min(unit.skip_idx.len() - 1);
-        self.find_ancestor_unit(&unit.skip_idx[i], height)
-    }
-
     /// Returns an error if `swunit` is invalid. This can be called even if the dependencies are
     /// not present yet.
     pub(crate) fn pre_validate_unit(&self, swunit: &SignedWireUnit<C>) -> Result<(), UnitError> {
@@ -896,7 +872,11 @@ impl<C: Context> State<C> {
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
     /// or `None` if the sequence number is higher than that of the unit with `hash`.
-    fn find_in_swimlane<'a>(&'a self, hash: &'a C::Hash, seq_number: u64) -> Option<&'a C::Hash> {
+    pub(crate) fn find_in_swimlane<'a>(
+        &'a self,
+        hash: &'a C::Hash,
+        seq_number: u64,
+    ) -> Option<&'a C::Hash> {
         let unit = self.unit(hash);
         match unit.seq_number.checked_sub(seq_number) {
             None => None,          // There is no unit with seq_number in our swimlane.

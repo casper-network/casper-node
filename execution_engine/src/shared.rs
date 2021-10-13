@@ -1,5 +1,4 @@
-#![allow(missing_docs)]
-
+//! The shared logic of the execution engine.
 pub mod additive_map;
 #[macro_use]
 pub mod host_function_costs;

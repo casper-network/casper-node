@@ -57,12 +57,11 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
-
 extern crate alloc;
 
 pub mod contract_api;
 pub mod ext_ffi;
-#[cfg(all(not(test), feature = "no-std-helpers"))]
+#[cfg(all(not(test), feature = "no-std-helpers", not(feature = "std")))]
 mod no_std_handlers;
 pub mod unwrap_or_revert;
 

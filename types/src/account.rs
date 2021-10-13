@@ -7,6 +7,8 @@ pub mod associated_keys;
 mod error;
 mod weight;
 
+use serde::Serialize;
+
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
     convert::TryFrom,
@@ -33,7 +35,7 @@ use crate::{
 };
 
 /// Represents an Account in the global state.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,

@@ -22,7 +22,8 @@ use casper_execution_engine::{
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
         genesis::GenesisSuccess,
-        query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
+        get_bids::{GetBidsRequest, GetBidsResult},
+        query::{QueryRequest, QueryResult},
         upgrade::{UpgradeConfig, UpgradeSuccess},
     },
     storage::trie::Trie,
@@ -37,7 +38,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
@@ -920,6 +921,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
+    /// Request for a list of validator status changes, by public key.
+    ValidatorChanges(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
 }
 
 /// ChainspecLoader component requests.
