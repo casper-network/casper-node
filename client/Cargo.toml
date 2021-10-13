@@ -22,6 +22,7 @@ doc = false
 
 [dependencies]
 async-trait = "0.1.50"
+base16 = "0.2.1"
 base64 = "0.13.0"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node = { version = "1.0.0", path = "../node" }
@@ -44,7 +45,6 @@ cbindgen = { version = "0.18", optional = true }
 
 [dev-dependencies]
 anyhow = "1"
-base16 = "0.2.1"
 casper-node = { path = "../node" }
 futures = "0.3.13"
 hyper = "0.14.4"
