@@ -17,10 +17,6 @@ All notable changes to this project will be documented in this file.  The format
 * Added a check for immediate caller in system contracts
 
 
-### Changed
-* Removed libp2p
-
-
 ## [1.3.0] - 2021-07-19
 
 ### Changed
