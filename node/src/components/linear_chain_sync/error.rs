@@ -76,6 +76,15 @@ pub(crate) enum LinearChainSyncError {
         block_header_with_future_version: Box<BlockHeader>,
     },
 
+    #[error(
+        "Current version is {current_version}, but current block header has older version: \
+         {block_header_with_old_version:?}"
+    )]
+    CurrentBlockHeaderHasOldVersion {
+        current_version: ProtocolVersion,
+        block_header_with_old_version: Box<BlockHeader>,
+    },
+
     #[error(transparent)]
     BlockFetcherError(#[from] FetcherError<Block, NodeId>),
 
@@ -129,4 +138,19 @@ pub(crate) enum LinearChainSyncError {
     /// Error getting era validators from the execution engine.
     #[error(transparent)]
     GetEraValidatorsError(#[from] GetEraValidatorsError),
+
+    #[error("Stored block has unexpected parent hash. parent: {parent:?}, child: {child:?}")]
+    UnexpectedParentHash {
+        parent: Box<BlockHeader>,
+        child: Box<BlockHeader>,
+    },
+
+    #[error("Block has a lower version than its parent.")]
+    LowerVersionThanParent {
+        parent: Box<BlockHeader>,
+        child: Box<BlockHeader>,
+    },
+
+    #[error("Parent block has a height of u64::MAX.")]
+    HeightOverflow { parent: Box<BlockHeader> },
 }

@@ -30,7 +30,7 @@ use crate::{
         event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
-        linear_chain_sync::{self, LinearChainSyncState},
+        linear_chain_sync::{self, LinearChainSyncError, LinearChainSyncState},
         metrics::Metrics,
         network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
@@ -60,8 +60,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, NodeId, Tag,
-        Timestamp,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
+        Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -74,6 +74,9 @@ use crate::{
 pub(crate) enum JoinerEvent {
     /// Finished joining event.
     FinishedJoining { block_header: Box<BlockHeader> },
+
+    /// Shut down with the given exit code.
+    Shutdown(ExitCode),
 
     /// Network event.
     #[from]
@@ -325,6 +328,9 @@ impl Display for JoinerEvent {
             JoinerEvent::FinishedJoining { block_header } => {
                 write!(f, "finished joining with block header: {}", block_header)
             }
+            JoinerEvent::Shutdown(exit_code) => {
+                write!(f, "shutting down with exit code: {:?}", exit_code)
+            }
         }
     }
 }
@@ -347,6 +353,8 @@ pub(crate) struct Reactor {
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
+    /// This is set to `Some` if the node should shut down.
+    exit_code: Option<ExitCode>,
     // Handles request for fetching tries from the network.
     #[data_size(skip)]
     trie_fetcher: Fetcher<Trie<Key, StoredValue>>,
@@ -472,6 +480,23 @@ impl reactor::Reactor for Reactor {
                             Ok(block_header) => Some(JoinerEvent::FinishedJoining {
                                 block_header: Box::new(block_header),
                             }),
+                            Err(LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                                current_version,
+                                block_header_with_future_version,
+                            }) => {
+                                let future_version =
+                                    block_header_with_future_version.protocol_version();
+                                info!(%current_version, %future_version, "restarting for upgrade");
+                                Some(JoinerEvent::Shutdown(ExitCode::Success))
+                            }
+                            Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+                                current_version,
+                                block_header_with_old_version,
+                            }) => {
+                                let old_version = block_header_with_old_version.protocol_version();
+                                info!(%current_version, %old_version, "restarting for downgrade");
+                                Some(JoinerEvent::Shutdown(ExitCode::DowngradeVersion))
+                            }
                             Err(error) => {
                                 fatal!(effect_builder, "{:?}", error).await;
                                 None
@@ -533,6 +558,7 @@ impl reactor::Reactor for Reactor {
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
+                exit_code: None,
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,
@@ -886,11 +912,17 @@ impl reactor::Reactor for Reactor {
                 self.linear_chain_sync = LinearChainSyncState::Done(block_header);
                 Effects::new()
             }
+            JoinerEvent::Shutdown(exit_code) => {
+                self.exit_code = Some(exit_code);
+                Effects::new()
+            }
         }
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        if self.linear_chain_sync.is_synced() {
+        if let Some(exit_code) = self.exit_code {
+            Some(ReactorExit::ProcessShouldExit(exit_code))
+        } else if self.linear_chain_sync.is_synced() {
             Some(ReactorExit::ProcessShouldContinue)
         } else {
             None

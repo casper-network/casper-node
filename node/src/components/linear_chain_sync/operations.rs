@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
 
@@ -163,78 +164,6 @@ fn validate_finality_signatures(
     .map_err(Into::into)
 }
 
-/// Fetches a block header from the network by height.
-async fn fetch_and_store_block_header_by_height(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    height: u64,
-    trusted_key_block_info: &KeyBlockInfo,
-    finality_threshold_fraction: Ratio<u64>,
-) -> Result<Option<Box<BlockHeaderWithMetadata>>, FetcherError<BlockHeaderWithMetadata, NodeId>> {
-    for peer in effect_builder.get_peers_in_random_order().await {
-        match effect_builder
-            .fetch::<BlockHeaderWithMetadata, NodeId>(height, peer)
-            .await
-        {
-            Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
-            Ok(FetchedData::FromPeer { item, .. }) => {
-                let BlockHeaderWithMetadata {
-                    block_header,
-                    block_signatures,
-                } = *item.clone();
-
-                if let Err(error) = validate_finality_signatures(
-                    &block_header,
-                    trusted_key_block_info,
-                    finality_threshold_fraction,
-                    &block_signatures,
-                ) {
-                    warn!(
-                        ?error,
-                        ?peer,
-                        "Error validating finality signatures from peer.",
-                    );
-                    effect_builder.announce_disconnect_from_peer(peer).await;
-                    continue;
-                }
-
-                // Store the block header
-                effect_builder
-                    .put_block_header_to_storage(Box::new(block_header.clone()))
-                    .await;
-
-                // Store the finality signatures
-                effect_builder
-                    .put_signatures_to_storage(block_signatures.clone())
-                    .await;
-
-                return Ok(Some(item));
-            }
-            Err(FetcherError::Absent { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockHeaderWithMetadata::TAG,
-                    ?peer,
-                    "Fast sync could not fetch",
-                );
-                // If the peer we requested doesn't have the item, continue with the next peer
-                continue;
-            }
-            Err(FetcherError::TimedOut { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockHeaderWithMetadata::TAG,
-                    ?peer,
-                    "Peer timed out",
-                );
-                // Peer timed out fetching the item, continue with the next peer
-                continue;
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(None)
-}
-
 /// Key block info used for verifying finality signatures.
 ///
 /// Can come from either:
@@ -277,6 +206,16 @@ async fn get_trusted_key_block_info(
     chainspec: &Chainspec,
     trusted_header: &BlockHeader,
 ) -> Result<KeyBlockInfo, LinearChainSyncError> {
+    // If the trusted block's version is newer than ours we return an error
+    if trusted_header.protocol_version() > chainspec.protocol_config.version {
+        return Err(
+            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version: chainspec.protocol_config.version,
+                block_header_with_future_version: Box::new(trusted_header.clone()),
+            },
+        );
+    }
+
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
     let mut current_header_to_walk_back_from = trusted_header.clone();
@@ -299,6 +238,7 @@ async fn get_trusted_key_block_info(
         if let Some(key_block_info) =
             KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
         {
+            check_block_version(trusted_header, &key_block_info, chainspec)?;
             break Ok(key_block_info);
         }
 
@@ -318,76 +258,168 @@ async fn get_trusted_key_block_info(
     }
 }
 
-/// Fetches a block from the network by height.
-async fn fetch_and_store_block_by_height(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    height: u64,
-    trusted_key_block_info: &KeyBlockInfo,
-    finality_threshold_fraction: Ratio<u64>,
-) -> Result<Option<Box<BlockWithMetadata>>, FetcherError<BlockWithMetadata, NodeId>> {
-    for peer in effect_builder.get_peers_in_random_order().await {
-        match effect_builder
-            .fetch::<BlockWithMetadata, NodeId>(height, peer)
-            .await
-        {
-            Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
-            Ok(FetchedData::FromPeer { item, .. }) => {
-                let BlockWithMetadata {
-                    block,
-                    finality_signatures,
-                } = &*item;
+#[async_trait]
+trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
+    fn header(&self) -> &BlockHeader;
 
-                if let Err(error) = validate_finality_signatures(
-                    block.header(),
-                    trusted_key_block_info,
-                    finality_threshold_fraction,
-                    finality_signatures,
-                ) {
+    fn finality_signatures(&self) -> &BlockSignatures;
+
+    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>);
+}
+
+#[async_trait]
+impl BlockOrHeaderWithMetadata for BlockWithMetadata {
+    fn header(&self) -> &BlockHeader {
+        self.block.header()
+    }
+
+    fn finality_signatures(&self) -> &BlockSignatures {
+        &self.finality_signatures
+    }
+
+    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
+        let block = Box::new(self.block.clone());
+        effect_builder.put_block_to_storage(block).await;
+    }
+}
+
+#[async_trait]
+impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
+    fn header(&self) -> &BlockHeader {
+        &self.block_header
+    }
+
+    fn finality_signatures(&self) -> &BlockSignatures {
+        &self.block_signatures
+    }
+
+    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
+        let header = Box::new(self.block_header.clone());
+        effect_builder.put_block_header_to_storage(header).await;
+    }
+}
+
+/// Fetches the next block or block header from the network by height.
+async fn fetch_and_store_next<I>(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    parent_header: &BlockHeader,
+    trusted_key_block_info: &KeyBlockInfo,
+    chainspec: &Chainspec,
+) -> Result<Option<Box<I>>, LinearChainSyncError>
+where
+    I: BlockOrHeaderWithMetadata,
+    JoinerEvent: From<FetcherRequest<NodeId, I>>,
+    LinearChainSyncError: From<FetcherError<I, NodeId>>,
+{
+    let height = parent_header.height().checked_add(1).ok_or_else(|| {
+        LinearChainSyncError::HeightOverflow {
+            parent: Box::new(parent_header.clone()),
+        }
+    })?;
+    let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
+    let item = loop {
+        let peer = match peers.next() {
+            Some(peer) => peer,
+            None => return Ok(None),
+        };
+        match effect_builder.fetch::<I, NodeId>(height, peer).await {
+            Ok(FetchedData::FromStorage { item }) => {
+                if *item.header().parent_hash() != parent_header.hash() {
+                    return Err(LinearChainSyncError::UnexpectedParentHash {
+                        parent: Box::new(parent_header.clone()),
+                        child: Box::new(item.header().clone()),
+                    });
+                }
+                break item;
+            }
+            Ok(FetchedData::FromPeer { item, .. }) => {
+                if *item.header().parent_hash() != parent_header.hash() {
                     warn!(
-                        ?error,
                         ?peer,
-                        "Error validating finality signatures from peer.",
+                        fetched_header = ?item.header(),
+                        ?parent_header,
+                        "received block with wrong parent from peer",
                     );
                     effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
-                // Store the block
-                effect_builder
-                    .put_block_to_storage(Box::new(block.clone()))
-                    .await;
+                if let Err(error) = validate_finality_signatures(
+                    item.header(),
+                    trusted_key_block_info,
+                    chainspec.highway_config.finality_threshold_fraction,
+                    item.finality_signatures(),
+                ) {
+                    warn!(
+                        ?error,
+                        ?peer,
+                        "error validating finality signatures from peer",
+                    );
+                    effect_builder.announce_disconnect_from_peer(peer).await;
+                    continue;
+                }
 
-                // Store the finality signatures
-                effect_builder
-                    .put_signatures_to_storage(finality_signatures.clone())
-                    .await;
+                // Store the block or header itself, and the finality signatures.
+                item.store_block_or_header(effect_builder).await;
+                let sigs = item.finality_signatures().clone();
+                effect_builder.put_signatures_to_storage(sigs).await;
 
-                return Ok(Some(item));
+                break item;
             }
             Err(FetcherError::Absent { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockWithMetadata::TAG,
-                    ?peer,
-                    "Block by height absent from peer",
-                );
+                warn!(height, tag = ?I::TAG, ?peer, "block by height absent from peer");
                 // If the peer we requested doesn't have the item, continue with the next peer
                 continue;
             }
             Err(FetcherError::TimedOut { .. }) => {
-                warn!(
-                    height,
-                    tag = ?BlockWithMetadata::TAG,
-                    ?peer,
-                    "Peer timed out",
-                );
+                warn!(height, tag = ?I::TAG, ?peer, "peer timed out");
                 // Peer timed out fetching the item, continue with the next peer
                 continue;
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         }
+    };
+
+    if item.header().protocol_version() < parent_header.protocol_version() {
+        return Err(LinearChainSyncError::LowerVersionThanParent {
+            parent: Box::new(parent_header.clone()),
+            child: Box::new(item.header().clone()),
+        });
     }
-    Ok(None)
+
+    check_block_version(item.header(), trusted_key_block_info, chainspec)?;
+
+    Ok(Some(item))
+}
+
+/// Compares the block's version with the current and parent version and returns an error if it is
+/// too new or old.
+fn check_block_version(
+    header: &BlockHeader,
+    trusted_key_block_info: &KeyBlockInfo,
+    chainspec: &Chainspec,
+) -> Result<(), LinearChainSyncError> {
+    let current_version = chainspec.protocol_config.version;
+
+    if header.protocol_version() > current_version {
+        return Err(
+            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version,
+                block_header_with_future_version: Box::new(header.clone()),
+            },
+        );
+    }
+
+    if is_current_era(header, trusted_key_block_info, chainspec)
+        && header.protocol_version() < current_version
+    {
+        return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+            current_version,
+            block_header_with_old_version: Box::new(header.clone()),
+        });
+    }
+
+    Ok(())
 }
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
@@ -460,23 +492,13 @@ async fn fast_sync_to_most_recent(
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height and we are in
     // the current era.
-    let current_version = chainspec.protocol_config.version;
     let mut most_recent_block_header = trusted_block_header;
     loop {
-        // If we encounter a block header of a version which is newer than ours we return an error
-        if most_recent_block_header.protocol_version() > current_version {
-            return Err(
-                LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                    current_version,
-                    block_header_with_future_version: Box::new(most_recent_block_header),
-                },
-            );
-        }
-        let maybe_fetched_block = fetch_and_store_block_header_by_height(
+        let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
-            most_recent_block_header.height() + 1,
+            &most_recent_block_header,
             &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec,
         )
         .await?;
         match maybe_fetched_block {
@@ -489,15 +511,13 @@ async fn fast_sync_to_most_recent(
                     trusted_key_block_info = key_block_info;
                 }
             }
-            // If we could not fetch, we can stop when the most recent header:
-            // 1. has our protocol version
-            // 2. is in the current era
-            None if most_recent_block_header.protocol_version() == current_version
-                && is_current_era(
-                    &most_recent_block_header,
-                    &trusted_key_block_info,
-                    chainspec,
-                ) =>
+            // If we could not fetch, we can stop when the most recent header is in the current
+            // era.
+            None if is_current_era(
+                &most_recent_block_header,
+                &trusted_key_block_info,
+                chainspec,
+            ) =>
             {
                 break
             }
@@ -602,11 +622,11 @@ async fn archival_sync(
     // Sync forward until we are at the current version.
     let mut most_recent_block = trusted_block;
     while most_recent_block.header().protocol_version() < chainspec.protocol_config.version {
-        let maybe_fetched_block_with_metadata = fetch_and_store_block_by_height(
+        let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
             effect_builder,
-            most_recent_block.header().height() + 1,
+            most_recent_block.header(),
             &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec,
         )
         .await?;
         most_recent_block = match maybe_fetched_block_with_metadata {
@@ -637,6 +657,15 @@ pub(crate) async fn run_fast_sync_task(
     // Fetch the trusted header
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
+    if trusted_block_header.protocol_version() > chainspec.protocol_config.version {
+        return Err(
+            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version: chainspec.protocol_config.version,
+                block_header_with_future_version: trusted_block_header,
+            },
+        );
+    }
+
     let era_duration: TimeDiff = std::cmp::max(
         chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
         chainspec.core_config.era_duration,
@@ -658,10 +687,8 @@ pub(crate) async fn run_fast_sync_task(
     }
 
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
-    match maybe_last_emergency_restart_era_id {
-        Some(last_emergency_restart_era)
-            if last_emergency_restart_era > trusted_block_header.era_id() =>
-        {
+    if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
+        if last_emergency_restart_era > trusted_block_header.era_id() {
             return Err(
                 LinearChainSyncError::TryingToJoinBeforeLastEmergencyRestartEra {
                     last_emergency_restart_era,
@@ -670,7 +697,6 @@ pub(crate) async fn run_fast_sync_task(
                 },
             );
         }
-        _ => {}
     }
 
     // If we are at an upgrade:
@@ -685,11 +711,11 @@ pub(crate) async fn run_fast_sync_task(
         // TODO: handle emergency updates
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
-        if fetch_and_store_block_by_height(
+        if fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
-            trusted_block_header.height() + 1,
+            &trusted_block_header,
             &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
+            &*chainspec,
         )
         .await?
         .is_none()
@@ -715,11 +741,11 @@ pub(crate) async fn run_fast_sync_task(
         "Fetching and executing blocks to synchronize to current",
     );
     loop {
-        let block = match fetch_and_store_block_by_height(
+        let block = match fetch_and_store_next::<BlockWithMetadata>(
             effect_builder,
-            most_recent_block_header.height() + 1,
+            &most_recent_block_header,
             &trusted_key_block_info,
-            chainspec.highway_config.finality_threshold_fraction,
+            &*chainspec,
         )
         .await?
         {
@@ -743,14 +769,6 @@ pub(crate) async fn run_fast_sync_task(
             }
             Some(block_with_metadata) => block_with_metadata.block,
         };
-        if block.protocol_version() > chainspec.protocol_config.version {
-            return Err(
-                LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                    current_version: chainspec.protocol_config.version,
-                    block_header_with_future_version: Box::new(block.take_header()),
-                },
-            );
-        }
 
         let mut deploys: Vec<Deploy> = Vec::with_capacity(block.deploy_hashes().len());
         for deploy_hash in block.deploy_hashes() {
@@ -854,11 +872,12 @@ mod tests {
 
     use super::*;
 
-    use casper_types::{EraId, PublicKey, SecretKey};
+    use casper_types::{EraId, ProtocolVersion, PublicKey, SecretKey};
 
     use crate::{
         components::consensus::EraReport,
         crypto::AsymmetricKeyExt,
+        testing::TestRng,
         types::{Block, BlockPayload, FinalizedBlock},
         utils::Loadable,
     };
@@ -968,5 +987,63 @@ mod tests {
             &chainspec,
             now
         ));
+    }
+
+    #[test]
+    fn test_check_block_version() {
+        let mut rng = TestRng::new();
+        let mut chainspec = Chainspec::from_resources("local");
+        let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
+        let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
+        let v1_4_0 = ProtocolVersion::from_parts(1, 4, 0);
+
+        let key_block =
+            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
+        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
+        let header = Block::random_with_specifics(&mut rng, EraId::from(6), 101, v1_3_0, false)
+            .take_header();
+
+        // The new block's protocol version is the current one, 1.3.0.
+        chainspec.protocol_config.version = v1_3_0;
+        check_block_version(&header, &key_block_info, &chainspec).expect("versions are valid");
+
+        // If the current version is only 1.2.0 but the block's is 1.3.0, we have to upgrade.
+        chainspec.protocol_config.version = v1_2_0;
+        match check_block_version(&header, &key_block_info, &chainspec) {
+            Err(LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+                current_version,
+                block_header_with_future_version,
+            }) => {
+                assert_eq!(v1_2_0, current_version);
+                assert_eq!(header, *block_header_with_future_version);
+            }
+            result => panic!("expected future block version error, got {:?}", result),
+        }
+
+        // If the current version is 1.4.0 but the current block's is 1.3.0, we have to downgrade.
+        chainspec.protocol_config.version = v1_4_0;
+        match check_block_version(&header, &key_block_info, &chainspec) {
+            Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+                current_version,
+                block_header_with_old_version,
+            }) => {
+                assert_eq!(v1_4_0, current_version);
+                assert_eq!(header, *block_header_with_old_version);
+            }
+            result => panic!("expected old block version error, got {:?}", result),
+        }
+
+        // If the block is the last one of its era, we don't know whether it's the current block,
+        // so we don't necessarily need to downgrade.
+        let key_block =
+            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
+        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
+        let last_block_height = key_block.height() + chainspec.core_config.minimum_era_height;
+        let header =
+            Block::random_with_specifics(&mut rng, EraId::from(6), last_block_height, v1_3_0, true)
+                .take_header();
+        chainspec.core_config.era_duration = 0.into();
+        chainspec.protocol_config.version = v1_4_0;
+        check_block_version(&header, &key_block_info, &chainspec).expect("versions are valid");
     }
 }

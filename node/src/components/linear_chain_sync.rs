@@ -7,6 +7,7 @@ use datasize::DataSize;
 
 use crate::types::BlockHeader;
 
+pub(crate) use error::LinearChainSyncError;
 pub(crate) use operations::run_fast_sync_task;
 
 #[derive(DataSize, Debug)]
