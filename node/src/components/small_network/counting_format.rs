@@ -20,17 +20,14 @@ use pin_project::pin_project;
 use rand::RngCore;
 use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
-use tracing::{error, trace, warn};
+use tracing::{trace, warn};
+
+use casper_hashing::Digest;
 
 use super::{tls::KeyFingerprint, Message, Payload};
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{
-    components::networking_metrics::NetworkingMetrics,
-    crypto::hash::{self, Digest},
-    types::NodeId,
-    utils,
-};
+use crate::{components::networking_metrics::NetworkingMetrics, types::NodeId, utils};
 
 /// Lazily-evaluated network message ID generator.
 ///
@@ -228,28 +225,13 @@ impl ConnectionId {
     /// node IDs.
     fn create(random_data: TlsRandomData, our_id: NodeId, their_id: NodeId) -> ConnectionId {
         // Hash the resulting random values.
-        let mut id = hash::hash(random_data.combined_random).to_array();
+        let mut id = Digest::hash(random_data.combined_random).value();
 
         // We XOR in a hashes of server and client fingerprint, to ensure that in the case of an
         // accidental collision (e.g. when `server_random` and `client_random` turn out to be all
         // zeros), we still have a chance of producing a reasonable ID.
-        if let Some(our_id_bytes) = our_id.hash_bytes() {
-            utils::xor(&mut id, &our_id_bytes[0..Digest::LENGTH]);
-        } else {
-            error!(
-                ?our_id,
-                "small_network attempted to retrieve bytes of ID, but seems to be libp2p ID?"
-            )
-        }
-
-        if let Some(their_id_bytes) = their_id.hash_bytes() {
-            utils::xor(&mut id, &their_id_bytes[0..Digest::LENGTH]);
-        } else {
-            error!(
-                ?their_id,
-                "small_network attempted to retrieve bytes of ID, but seems to be libp2p ID?"
-            )
-        }
+        utils::xor(&mut id, &our_id.hash_bytes()[0..Digest::LENGTH]);
+        utils::xor(&mut id, &their_id.hash_bytes()[0..Digest::LENGTH]);
 
         ConnectionId(id)
     }
@@ -269,11 +251,10 @@ impl ConnectionId {
         utils::xor(&mut buffer[4..12], &count.to_ne_bytes());
 
         // Hash again and truncate.
-        let full_hash = hash::hash(&buffer);
+        let full_hash = Digest::hash(&buffer);
 
         // Safe to expect here, as we assert earlier that `Digest` is at least 12 bytes.
-        let truncated =
-            TryFrom::try_from(&full_hash.to_array()[0..8]).expect("buffer size mismatch");
+        let truncated = TryFrom::try_from(&full_hash.value()[0..8]).expect("buffer size mismatch");
 
         TraceId(truncated)
     }

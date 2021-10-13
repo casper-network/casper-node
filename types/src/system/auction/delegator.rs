@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,7 @@ use crate::{
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Delegator {
     delegator_public_key: PublicKey,

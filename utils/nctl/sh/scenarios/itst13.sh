@@ -62,8 +62,18 @@ function main() {
     do_await_era_change '3'
     # 15. Assert that restarted validator is producing blocks.
     assert_node_proposed '5' '300'
-    # 16. Check for equivocators
-    assert_no_equivocators_logs
+    # 16. Run Health Checks
+    # ... errors=ignore: ticket sre issue 72
+    # ... restarts=1: due to node being stopped and started
+    # ... ejections=1: node is expected to be ejected in test
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='ignore' \
+            equivocators=0 \
+            doppels=0 \
+            crashes=0 \
+            restarts=1 \
+            ejections=1
+
     log "------------------------------------------------------------"
     log "Scenario itst13 complete"
     log "------------------------------------------------------------"

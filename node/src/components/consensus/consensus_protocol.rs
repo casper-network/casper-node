@@ -9,12 +9,13 @@ use anyhow::Error;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+use casper_hashing::Digest;
+use casper_types::bytesrepr::ToBytes;
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
-    crypto::hash::{self, Digest},
     types::{TimeDiff, Timestamp},
+    NodeRng,
 };
-use casper_types::bytesrepr::ToBytes;
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -137,10 +138,10 @@ impl<VID> EraReport<VID> {
             let hashes = slice_of_validators
                 .iter()
                 .map(|validator| {
-                    hash::hash(validator.to_bytes().expect("Could not serialize validator"))
+                    Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
                 })
                 .collect();
-            hash::hash_vec_merkle_tree(hashes)
+            Digest::hash_vec_merkle_tree(hashes)
         }
 
         // Pattern match here leverages compiler to ensure every field is accounted for
@@ -152,16 +153,15 @@ impl<VID> EraReport<VID> {
 
         let hashed_equivocators = hash_slice_of_validators(equivocators);
         let hashed_inactive_validators = hash_slice_of_validators(inactive_validators);
-        let hashed_rewards = hash::hash_btree_map(rewards).expect("Could not hash rewards");
+        let hashed_rewards = Digest::hash_btree_map(rewards).expect("Could not hash rewards");
 
-        hash::hash_slice_rfold(&[
+        Digest::hash_slice_rfold(&[
             hashed_equivocators,
             hashed_rewards,
             hashed_inactive_validators,
         ])
     }
 }
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TerminalBlockData<C: Context> {
     /// The rewards for participating in consensus.
@@ -197,6 +197,7 @@ pub(crate) type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
+    CreatedMessageToRandomPeer(Vec<u8>),
     InvalidIncomingMessage(Vec<u8>, I, Error),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
@@ -239,11 +240,16 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn as_any(&self) -> &dyn Any;
 
     /// Handles an incoming message (like NewUnit, RequestDependency).
-    fn handle_message(&mut self, sender: I, msg: Vec<u8>, now: Timestamp)
-        -> ProtocolOutcomes<I, C>;
+    fn handle_message(
+        &mut self,
+        rng: &mut NodeRng,
+        sender: I,
+        msg: Vec<u8>,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<I, C>;
 
     /// Current instance of consensus protocol is latest era.
-    fn handle_is_current(&self) -> ProtocolOutcomes<I, C>;
+    fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<I, C>;
 
     /// Triggers consensus' timer.
     fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;

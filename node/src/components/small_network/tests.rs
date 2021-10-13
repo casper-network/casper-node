@@ -27,9 +27,7 @@ use crate::{
     },
     effect::{
         announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
-        requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
-        },
+        requests::{NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
     protocol,
@@ -97,18 +95,6 @@ impl From<StorageRequest> for Event {
     }
 }
 
-impl From<ChainspecLoaderRequest> for Event {
-    fn from(_request: ChainspecLoaderRequest) -> Self {
-        unreachable!()
-    }
-}
-
-impl From<ContractRuntimeRequest> for Event {
-    fn from(_request: ContractRuntimeRequest) -> Self {
-        unreachable!()
-    }
-}
-
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
@@ -164,7 +150,6 @@ impl Reactor for TestReactor {
             registry,
             small_network_identity,
             ChainInfo::create_for_testing(),
-            None,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =

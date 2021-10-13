@@ -116,6 +116,27 @@
       "additionalProperties": false
     },
     {
+      "description": "The given deploy has expired.",
+      "type": "object",
+      "required": [
+        "DeployExpired"
+      ],
+      "properties": {
+        "DeployExpired": {
+          "type": "object",
+          "required": [
+            "deploy_hash"
+          ],
+          "properties": {
+            "deploy_hash": {
+              "$ref": "#/definitions/DeployHash"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "Generic representation of validator's fault in an era.",
       "type": "object",
       "required": [
@@ -210,15 +231,31 @@
       ],
       "properties": {
         "hash": {
-          "$ref": "#/definitions/BlockHash"
+          "description": "`BlockHash`",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
         },
         "header": {
-          "$ref": "#/definitions/JsonBlockHeader"
+          "description": "JSON-friendly block header.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/JsonBlockHeader"
+            }
+          ]
         },
         "body": {
-          "$ref": "#/definitions/JsonBlockBody"
+          "description": "JSON-friendly block body.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/JsonBlockBody"
+            }
+          ]
         },
         "proofs": {
+          "description": "JSON-friendly list of proofs for this block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/JsonProof"
@@ -243,21 +280,43 @@
       ],
       "properties": {
         "parent_hash": {
-          "$ref": "#/definitions/BlockHash"
+          "description": "The parent hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
         },
         "state_root_hash": {
-          "$ref": "#/definitions/Digest"
+          "description": "The state root hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
         },
         "body_hash": {
-          "$ref": "#/definitions/Digest"
+          "description": "The body hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
         },
         "random_bit": {
+          "description": "Randomness bit.",
           "type": "boolean"
         },
         "accumulated_seed": {
-          "$ref": "#/definitions/Digest"
+          "description": "Accumulated seed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
         },
         "era_end": {
+          "description": "The era end.",
           "anyOf": [
             {
               "$ref": "#/definitions/JsonEraEnd"
@@ -268,18 +327,34 @@
           ]
         },
         "timestamp": {
-          "$ref": "#/definitions/Timestamp"
+          "description": "The block timestamp.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Timestamp"
+            }
+          ]
         },
         "era_id": {
-          "$ref": "#/definitions/EraId"
+          "description": "The block era id.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
         },
         "height": {
+          "description": "The block height.",
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
         "protocol_version": {
-          "$ref": "#/definitions/ProtocolVersion"
+          "description": "The protocol version.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ProtocolVersion"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -524,8 +599,10 @@
       "minimum": 0.0
     },
     "ExecutableDeployItem": {
+      "description": "Represents possible variants of an executable deploy.",
       "anyOf": [
         {
+          "description": "Executable specified as raw bytes that represent WASM code and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "ModuleBytes"
@@ -543,7 +620,12 @@
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -552,6 +634,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredContractByHash"
@@ -570,10 +653,16 @@
                   "type": "string"
                 },
                 "entry_point": {
+                  "description": "Name of an entry point.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -582,6 +671,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredContractByName"
@@ -596,13 +686,20 @@
               ],
               "properties": {
                 "name": {
+                  "description": "Named key.",
                   "type": "string"
                 },
                 "entry_point": {
+                  "description": "Name of an entry point.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -611,6 +708,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByHash"
@@ -629,6 +727,7 @@
                   "type": "string"
                 },
                 "version": {
+                  "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                   "type": [
                     "integer",
                     "null"
@@ -637,10 +736,16 @@
                   "minimum": 0.0
                 },
                 "entry_point": {
+                  "description": "Entry point name.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -649,6 +754,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Stored versioned contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByName"
@@ -663,9 +769,11 @@
               ],
               "properties": {
                 "name": {
+                  "description": "Named key.",
                   "type": "string"
                 },
                 "version": {
+                  "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
                   "type": [
                     "integer",
                     "null"
@@ -674,10 +782,16 @@
                   "minimum": 0.0
                 },
                 "entry_point": {
+                  "description": "Entry point name.",
                   "type": "string"
                 },
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -686,6 +800,7 @@
           "additionalProperties": false
         },
         {
+          "description": "A native transfer which does not contain or reference a WASM code.",
           "type": "object",
           "required": [
             "Transfer"
@@ -698,7 +813,12 @@
               ],
               "properties": {
                 "args": {
-                  "$ref": "#/definitions/RuntimeArgs"
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false

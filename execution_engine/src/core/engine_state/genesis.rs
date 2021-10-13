@@ -1,8 +1,9 @@
+//! Support for a genesis process.
 use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
 use datasize::DataSize;
+use num::Zero;
 use num_rational::Ratio;
-use num_traits::Zero;
 use parity_wasm::elements::Module;
 use rand::{
     distributions::{Distribution, Standard},
@@ -11,6 +12,7 @@ use rand::{
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -24,7 +26,7 @@ use casper_types::{
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::{self},
+        handle_payment,
         mint::{
             self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
@@ -32,8 +34,8 @@ use casper_types::{
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Gas, Key,
+    Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -43,25 +45,21 @@ use crate::{
         execution::{AddressGenerator, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{
-        gas::Gas,
-        motes::Motes,
-        newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
 };
 
-pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
+/// Type alias for the system contract registry.
 pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
+/// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
 pub struct GenesisSuccess {
-    pub post_state_hash: Blake2bHash,
+    /// State hash after genesis is committed to the global state.
+    pub post_state_hash: Digest,
+    /// Effects of a successful genesis.
     pub execution_effect: ExecutionEffect,
 }
 
@@ -82,9 +80,12 @@ enum GenesisAccountTag {
     Delegator = 2,
 }
 
+/// Represents details about genesis account's validator status.
 #[derive(DataSize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisValidator {
+    /// Stake of a genesis validator.
     bonded_amount: Motes,
+    /// Delegation rate in the range of 0-100.
     delegation_rate: DelegationRate,
 }
 
@@ -114,6 +115,7 @@ impl FromBytes for GenesisValidator {
 }
 
 impl GenesisValidator {
+    /// Creates new [`GenesisValidator`].
     pub fn new(bonded_amount: Motes, delegation_rate: DelegationRate) -> Self {
         Self {
             bonded_amount,
@@ -121,10 +123,12 @@ impl GenesisValidator {
         }
     }
 
+    /// Returns the bonded amount of a genesis validator.
     pub fn bonded_amount(&self) -> Motes {
         self.bonded_amount
     }
 
+    /// Returns the delegation rate of a genesis validator.
     pub fn delegation_rate(&self) -> DelegationRate {
         self.delegation_rate
     }
@@ -139,18 +143,33 @@ impl Distribution<GenesisValidator> for Standard {
     }
 }
 
+/// This enum represents possible states of a genesis account.
 #[derive(DataSize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GenesisAccount {
+    /// This variant is for internal use only - genesis process will create a virtual system
+    /// account and use it to call system contracts.
     System,
+    /// Genesis account that will be created.
     Account {
+        /// Public key of a genesis account.
         public_key: PublicKey,
+        /// Starting balance of a genesis account.
         balance: Motes,
+        /// If set, it will make this account a genesis validator.
         validator: Option<GenesisValidator>,
     },
+    /// The genesis delegator is a special account that will be created as a delegator.
+    /// It does not have any stake of its own, but will create a real account in the system
+    /// which will delegate to a genesis validator.
     Delegator {
+        /// Validator's public key that has to refer to other instance of
+        /// [`GenesisAccount::Account`] with a `validator` field set.
         validator_public_key: PublicKey,
+        /// Public key of the genesis account that will be created as part of this entry.
         delegator_public_key: PublicKey,
+        /// Starting balance of the account.
         balance: Motes,
+        /// Delegated amount for given `validator_public_key`.
         delegated_amount: Motes,
     },
 }
@@ -423,6 +442,7 @@ impl FromBytes for GenesisAccount {
     }
 }
 
+/// Represents a configuration of a genesis process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenesisConfig {
     name: String,
@@ -432,6 +452,7 @@ pub struct GenesisConfig {
 }
 
 impl GenesisConfig {
+    /// Creates a new genesis config object.
     pub fn new(
         name: String,
         timestamp: u64,
@@ -446,26 +467,32 @@ impl GenesisConfig {
         }
     }
 
+    /// Returns name.
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
 
+    /// Returns timestamp.
     pub fn timestamp(&self) -> u64 {
         self.timestamp
     }
 
+    /// Returns protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
+    /// Returns configuration details of the genesis process.
     pub fn ee_config(&self) -> &ExecConfig {
         &self.ee_config
     }
 
+    /// Returns mutable reference to the configuration.
     pub fn ee_config_mut(&mut self) -> &mut ExecConfig {
         &mut self.ee_config
     }
 
+    /// Returns genesis configuration and consumes the object.
     pub fn take_ee_config(self) -> ExecConfig {
         self.ee_config
     }
@@ -494,6 +521,7 @@ impl Distribution<GenesisConfig> for Standard {
     }
 }
 
+/// Represents the details of a genesis process.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecConfig {
     accounts: Vec<GenesisAccount>,
@@ -508,6 +536,7 @@ pub struct ExecConfig {
 }
 
 impl ExecConfig {
+    /// Creates new genesis configuration.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts: Vec<GenesisAccount>,
@@ -533,20 +562,24 @@ impl ExecConfig {
         }
     }
 
+    /// Returns WASM config.
     pub fn wasm_config(&self) -> &WasmConfig {
         &self.wasm_config
     }
 
+    /// Returns system config.
     pub fn system_config(&self) -> &SystemConfig {
         &self.system_config
     }
 
+    /// Returns all bonded genesis validators.
     pub fn get_bonded_validators(&self) -> impl Iterator<Item = &GenesisAccount> {
         self.accounts
             .iter()
             .filter(|&genesis_account| genesis_account.is_validator())
     }
 
+    /// Returns all bonded genesis delegators.
     pub fn get_bonded_delegators(
         &self,
     ) -> impl Iterator<Item = (&PublicKey, &PublicKey, &Motes, &Motes)> {
@@ -555,34 +588,42 @@ impl ExecConfig {
             .filter_map(|genesis_account| genesis_account.as_delegator())
     }
 
+    /// Returns all genesis accounts.
     pub fn accounts(&self) -> &[GenesisAccount] {
         self.accounts.as_slice()
     }
 
+    /// Adds new genesis account to the config.
     pub fn push_account(&mut self, account: GenesisAccount) {
         self.accounts.push(account)
     }
 
+    /// Returns validator slots.
     pub fn validator_slots(&self) -> u32 {
         self.validator_slots
     }
 
+    /// Returns auction delay.
     pub fn auction_delay(&self) -> u64 {
         self.auction_delay
     }
 
+    /// Returns locked funds period expressed in milliseconds.
     pub fn locked_funds_period_millis(&self) -> u64 {
         self.locked_funds_period_millis
     }
 
+    /// Returns round seigniorage rate.
     pub fn round_seigniorage_rate(&self) -> Ratio<u64> {
         self.round_seigniorage_rate
     }
 
+    /// Returns unbonding delay in eras.
     pub fn unbonding_delay(&self) -> u64 {
         self.unbonding_delay
     }
 
+    /// Returns genesis timestamp expressed in milliseconds.
     pub fn genesis_timestamp_millis(&self) -> u64 {
         self.genesis_timestamp_millis
     }
@@ -627,38 +668,63 @@ impl Distribution<ExecConfig> for Standard {
     }
 }
 
+/// Error returned as a result of a failed genesis process.
 #[derive(Clone, Debug)]
 pub enum GenesisError {
+    /// Error creating a runtime.
     UnableToCreateRuntime,
+    /// Error obtaining the mint's contract key.
     InvalidMintKey,
+    /// Missing mint contract.
     MissingMintContract,
+    /// Unexpected stored value variant.
     UnexpectedStoredValue,
-    MissingPublicKey,
+    /// Error executing a system contract.
     ExecutionError(execution::Error),
+    /// Error executing the mint system contract.
     MintError(mint::Error),
+    /// Error converting a [`CLValue`] to a concrete type.
     CLValue(String),
+    /// Specified validator does not exist among the genesis accounts.
     OrphanedDelegator {
+        /// Validator's public key.
         validator_public_key: PublicKey,
+        /// Delegator's public key.
         delegator_public_key: PublicKey,
     },
+    /// Duplicated delegator entry found for a given validator.
     DuplicatedDelegatorEntry {
+        /// Validator's public key.
         validator_public_key: PublicKey,
+        /// Delegator's public key.
         delegator_public_key: PublicKey,
     },
+    /// Delegation rate outside the allowed range.
     InvalidDelegationRate {
+        /// Delegator's public key.
         public_key: PublicKey,
+        /// Invalid delegation rate specified in the genesis account entry.
         delegation_rate: DelegationRate,
     },
+    /// Invalid bond amount in a genesis account.
     InvalidBondAmount {
+        /// Validator's public key.
         public_key: PublicKey,
     },
+    /// Invalid delegated amount in a genesis account.
     InvalidDelegatedAmount {
+        /// Delegator's public key.
         public_key: PublicKey,
     },
+    /// Failed to create system registry.
     FailedToCreateSystemRegistry,
+    /// Missing system contract hash.
     MissingSystemContractHash(String),
+    /// Invalid number of validator slots configured.
     InvalidValidatorSlots {
+        /// Number of validators in the genesis config.
         validators: usize,
+        /// Number of validator slots specified.
         validator_slots: u32,
     },
 }
@@ -668,7 +734,7 @@ where
     S: StateProvider,
     S::Error: Into<execution::Error>,
 {
-    genesis_config_hash: Blake2bHash,
+    genesis_config_hash: Digest,
     virtual_system_account: Account,
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
@@ -687,7 +753,7 @@ where
     S::Error: Into<execution::Error>,
 {
     pub(crate) fn new(
-        genesis_config_hash: Blake2bHash,
+        genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         engine_config: EngineConfig,

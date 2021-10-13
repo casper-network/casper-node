@@ -57,6 +57,8 @@ pub struct Era<I> {
     validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
     /// Validators that have been faulty in any of the switch blocks after the booking block.
     pub(crate) faulty: HashSet<PublicKey>,
+    /// Validators that are excluded from proposing new blocks.
+    pub(crate) cannot_propose: HashSet<PublicKey>,
     /// Accusations collected in this era so far.
     accusations: HashSet<PublicKey>,
     /// The validator weights.
@@ -69,6 +71,7 @@ impl<I> Era<I> {
         start_time: Timestamp,
         start_height: u64,
         faulty: HashSet<PublicKey>,
+        cannot_propose: HashSet<PublicKey>,
         validators: BTreeMap<PublicKey, U512>,
     ) -> Self {
         Era {
@@ -77,6 +80,7 @@ impl<I> Era<I> {
             start_height,
             validation_states: HashMap::new(),
             faulty,
+            cannot_propose,
             accusations: HashSet::new(),
             validators,
         }
@@ -174,6 +178,7 @@ where
             start_height,
             validation_states,
             faulty,
+            cannot_propose,
             accusations,
             validators,
         } = self;
@@ -209,6 +214,7 @@ where
             .saturating_add(start_height.estimate_heap_size())
             .saturating_add(validation_states.estimate_heap_size())
             .saturating_add(faulty.estimate_heap_size())
+            .saturating_add(cannot_propose.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())
             .saturating_add(validators.estimate_heap_size())
     }

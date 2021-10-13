@@ -4,13 +4,14 @@
 //! module documentation for details.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
 };
 
+use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
     components::{
@@ -155,6 +156,23 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
     }
 }
 
+// A block proposer announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockProposerAnnouncement {
+    /// Hashes of the deploys that expired.
+    DeploysExpired(Vec<DeployHash>),
+}
+
+impl Display for BlockProposerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockProposerAnnouncement::DeploysExpired(hashes) => {
+                write!(f, "pruned hashes: {}", hashes.iter().join(", "))
+            }
+        }
+    }
+}
+
 /// A consensus announcement.
 #[derive(Debug)]
 pub(crate) enum ConsensusAnnouncement {
@@ -216,7 +234,7 @@ where
 }
 
 /// A ContractRuntime announcement.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
     LinearChainBlock(Box<LinearChainBlock>),
@@ -226,6 +244,13 @@ pub(crate) enum ContractRuntimeAnnouncement {
         era_id: EraId,
         /// The operations and transforms committed to global state.
         execution_effect: ExecutionEffect,
+    },
+    /// New era validators.
+    UpcomingEraValidators {
+        /// The era id in which the step was committed to global state.
+        era_that_is_ending: EraId,
+        /// The validators for the eras after the `era_that_is_ending` era.
+        upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
 }
 
@@ -249,9 +274,8 @@ impl ContractRuntimeAnnouncement {
         }
     }
 }
-
 /// A ContractRuntimeAnnouncement's block.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) struct LinearChainBlock {
     /// The block.
     pub(crate) block: Block,
@@ -271,6 +295,15 @@ impl Display for ContractRuntimeAnnouncement {
             }
             ContractRuntimeAnnouncement::StepSuccess { era_id, .. } => {
                 write!(f, "step completed for {}", era_id)
+            }
+            ContractRuntimeAnnouncement::UpcomingEraValidators {
+                era_that_is_ending, ..
+            } => {
+                write!(
+                    f,
+                    "upcoming era validators after current {}.",
+                    era_that_is_ending,
+                )
             }
         }
     }

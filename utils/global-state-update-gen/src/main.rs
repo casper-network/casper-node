@@ -118,6 +118,15 @@ fn main() {
                         .help("Data storage directory containing the global state database file")
                         .takes_value(true)
                         .required(true),
+                )
+                .arg(
+                    Arg::with_name("hash")
+                        .short("s")
+                        .long("state-hash")
+                        .value_name("HEX_STRING")
+                        .help("The global state hash to be used as the base")
+                        .takes_value(true)
+                        .required(false),
                 ),
         )
         .get_matches();

@@ -4,11 +4,9 @@ use async_trait::async_trait;
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
 
-use casper_execution_engine::{
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::trie::Trie,
-};
-use casper_types::{EraId, Key, PublicKey, U512};
+use casper_execution_engine::storage::trie::Trie;
+use casper_hashing::Digest;
+use casper_types::{EraId, Key, PublicKey, StoredValue, U512};
 
 use crate::{
     components::{
@@ -17,7 +15,6 @@ use crate::{
         fetcher::{FetchResult, FetchedData, FetcherError},
         linear_chain_sync::error::{LinearChainSyncError, SignatureValidationError},
     },
-    crypto::hash::Digest,
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
@@ -426,8 +423,8 @@ fn check_block_version(
 /// returns any outstanding descendant tries.
 async fn fetch_trie_and_insert_into_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
-    trie_key: Blake2bHash,
-) -> Result<Vec<Blake2bHash>, LinearChainSyncError> {
+    trie_key: Digest,
+) -> Result<Vec<Digest>, LinearChainSyncError> {
     let fetched_trie =
         fetch_retry_forever::<Trie<Key, StoredValue>>(effect_builder, trie_key).await?;
     match fetched_trie {
@@ -461,7 +458,7 @@ async fn sync_trie_store(
     state_root_hash: Digest,
 ) -> Result<(), LinearChainSyncError> {
     info!(?state_root_hash, "syncing trie store",);
-    let mut outstanding_trie_keys = vec![Blake2bHash::from(state_root_hash)];
+    let mut outstanding_trie_keys = vec![state_root_hash];
     while let Some(trie_key) = outstanding_trie_keys.pop() {
         let missing_descendant_trie_keys =
             fetch_trie_and_insert_into_trie_store(effect_builder, trie_key).await?;

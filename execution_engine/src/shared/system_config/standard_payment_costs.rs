@@ -1,13 +1,16 @@
+//! Costs of the standard payment system contract.
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_PAY_COST: u32 = 10_000;
+/// Default cost of the `pay` standard payment entry point.
+const DEFAULT_PAY_COST: u32 = 10_000;
 
-/// Description of costs of calling standard payment entrypoints.
+/// Description of the costs of calling standard payment entry points.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StandardPaymentCosts {
+    /// Cost of calling the `pay` entry point.
     pub pay: u32,
 }
 
@@ -44,6 +47,7 @@ impl Distribution<StandardPaymentCosts> for Standard {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{num, prop_compose};

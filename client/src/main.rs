@@ -8,10 +8,11 @@ mod generate_completion;
 mod get_account_info;
 mod get_auction_info;
 mod get_balance;
+mod get_dictionary_item;
 mod get_era_info_by_switch_block;
 mod get_state_hash;
+mod get_validator_changes;
 mod keygen;
-mod query_dictionary;
 mod query_global_state;
 
 use std::process;
@@ -23,7 +24,7 @@ use casper_node::rpcs::{
     account::PutDeploy,
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     docs::ListRpcs,
-    info::GetDeploy,
+    info::{GetDeploy, GetValidatorChanges},
     state::{GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, QueryGlobalState},
 };
 
@@ -54,6 +55,7 @@ enum DisplayOrder {
     GetAccountInfo,
     GetEraInfo,
     GetAuctionInfo,
+    GetValidatorChanges,
     Keygen,
     GenerateCompletion,
     GetRpcs,
@@ -85,6 +87,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
             DisplayOrder::GetEraInfo as usize,
         ))
         .subcommand(GetAuctionInfo::build(DisplayOrder::GetAuctionInfo as usize))
+        .subcommand(GetValidatorChanges::build(
+            DisplayOrder::GetValidatorChanges as usize,
+        ))
         .subcommand(Keygen::build(DisplayOrder::Keygen as usize))
         .subcommand(GenerateCompletion::build(
             DisplayOrder::GenerateCompletion as usize,
@@ -94,9 +99,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(GetDictionaryItem::build(
             DisplayOrder::GetDictionaryItem as usize,
         ))
-        .subcommand(QueryGlobalState::build(
-            DisplayOrder::QueryGlobalState as usize,
-        ))
+        .subcommand(
+            QueryGlobalState::build(DisplayOrder::QueryGlobalState as usize).alias("query-state"),
+        )
 }
 
 #[tokio::main]
@@ -122,6 +127,9 @@ async fn main() {
             (GetEraInfoBySwitchBlock::run(matches).await, matches)
         }
         (GetAuctionInfo::NAME, Some(matches)) => (GetAuctionInfo::run(matches).await, matches),
+        (GetValidatorChanges::NAME, Some(matches)) => {
+            (GetValidatorChanges::run(matches).await, matches)
+        }
         (Keygen::NAME, Some(matches)) => (Keygen::run(matches).await, matches),
         (GenerateCompletion::NAME, Some(matches)) => {
             (GenerateCompletion::run(matches).await, matches)

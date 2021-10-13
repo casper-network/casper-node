@@ -15,7 +15,7 @@ use tracing::Span;
 use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
-        announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -84,15 +84,13 @@ pub(crate) enum Event<P> {
     /// Housekeeping for the outgoing manager.
     SweepOutgoing,
 
-    /// Blocklist announcement
+    /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
 
-    /// Announcement from the linear chain.
-    ///
-    /// Used to track validator sets.
+    /// Contract runtime announcement.
     #[from]
-    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+    ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 }
 
 impl From<NetworkRequest<NodeId, ProtocolMessage>> for Event<ProtocolMessage> {
@@ -136,11 +134,11 @@ impl<P: Display> Display for Event<P> {
             Event::BlocklistAnnouncement(ann) => {
                 write!(f, "handling blocklist announcement: {}", ann)
             }
+            Event::ContractRuntimeAnnouncement(ann) => {
+                write!(f, "handling contract runtime announcement: {}", ann)
+            }
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
-            }
-            Event::LinearChainAnnouncement(ann) => {
-                write!(f, "linear chain announcement: {}", ann)
             }
         }
     }

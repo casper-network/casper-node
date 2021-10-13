@@ -19,7 +19,7 @@ mod event;
 mod http_server;
 pub mod rpcs;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
@@ -28,14 +28,13 @@ use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
     QueryResult,
 };
+use casper_hashing::Digest;
 use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
-
 use super::Component;
 use crate::{
     components::contract_runtime::EraValidatorsRequest,
-    crypto::hash::Digest,
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
@@ -48,7 +47,6 @@ use crate::{
     utils::{self, ListeningError},
     NodeRng,
 };
-
 pub use config::Config;
 pub(crate) use event::Event;
 
@@ -83,13 +81,17 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RpcServer {}
+pub(crate) struct RpcServer {
+    /// The instant at which the node has started.
+    node_startup_instant: Instant,
+}
 
 impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        node_startup_instant: Instant,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -102,7 +104,9 @@ impl RpcServer {
             config.qps_limit,
         ));
 
-        Ok(RpcServer {})
+        Ok(RpcServer {
+            node_startup_instant,
+        })
     }
 }
 
@@ -115,7 +119,7 @@ impl RpcServer {
         path: Vec<String>,
         responder: Responder<Result<QueryResult, engine_state::Error>>,
     ) -> Effects<Event> {
-        let query = QueryRequest::new(state_root_hash.into(), base_key, path);
+        let query = QueryRequest::new(state_root_hash, base_key, path);
         effect_builder
             .query_global_state(query)
             .event(move |result| Event::QueryGlobalStateResult {
@@ -131,7 +135,7 @@ impl RpcServer {
         protocol_version: ProtocolVersion,
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     ) -> Effects<Event> {
-        let request = EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+        let request = EraValidatorsRequest::new(state_root_hash, protocol_version);
         effect_builder
             .get_era_validators_from_contract_runtime(request)
             .event(move |result| Event::QueryEraValidatorsResult {
@@ -147,7 +151,7 @@ impl RpcServer {
         purse_uref: URef,
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     ) -> Effects<Event> {
-        let query = BalanceRequest::new(state_root_hash.into(), purse_uref);
+        let query = BalanceRequest::new(state_root_hash, purse_uref);
         effect_builder
             .get_balance(query)
             .event(move |result| Event::GetBalanceResult {
@@ -234,7 +238,7 @@ where
                 state_root_hash,
                 responder,
             }) => {
-                let get_bids_request = GetBidsRequest::new(state_root_hash.into());
+                let get_bids_request = GetBidsRequest::new(state_root_hash);
                 effect_builder
                     .get_bids(get_bids_request)
                     .event(move |result| Event::GetBidsResult {
@@ -260,18 +264,26 @@ where
                     peers,
                     main_responder: responder,
                 }),
-            Event::RpcRequest(RpcRequest::GetStatus { responder }) => async move {
-                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
-                    effect_builder.get_highest_block_from_storage(),
-                    effect_builder.network_peers(),
-                    effect_builder.get_chainspec_info(),
-                    effect_builder.consensus_status()
-                );
-                let status_feed =
-                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
-                responder.respond(status_feed).await;
+            Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
+                let node_uptime = self.node_startup_instant.elapsed();
+                async move {
+                    let (last_added_block, peers, chainspec_info, consensus_status) = join!(
+                        effect_builder.get_highest_block_from_storage(),
+                        effect_builder.network_peers(),
+                        effect_builder.get_chainspec_info(),
+                        effect_builder.consensus_status()
+                    );
+                    let status_feed = StatusFeed::new(
+                        last_added_block,
+                        peers,
+                        chainspec_info,
+                        consensus_status,
+                        node_uptime,
+                    );
+                    responder.respond(status_feed).await;
+                }
+                .ignore()
             }
-            .ignore(),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
@@ -308,5 +320,55 @@ where
                 main_responder,
             } => main_responder.respond(peers).ignore(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use assert_json_diff::assert_json_eq;
+    use schemars::schema_for_value;
+    use serde_json::Value;
+
+    use crate::rpcs::docs::OPEN_RPC_SCHEMA;
+
+    #[test]
+    fn schema() {
+        // The expected schema depends on the hashing algorithm selected by the `casper-mainnet`
+        // feature.
+        //
+        // To generate the contents to replace the input JSON files, run the test with and without
+        // the feature enabled and print the `actual_schema_string` by uncommenting the `println!`
+        // towards the end of the test
+        // ```
+        // cargo t --features=casper-mainnet components::rpc_server::tests::schema -- --nocapture
+        // cargo t --no-default-features components::rpc_server::tests::schema -- --nocapture
+        // ```
+        //
+        // Note: Please review the diff of the input files to avoid any breaking changes.
+
+        #[cfg(feature = "casper-mainnet")]
+        let schema_path = format!(
+            "{}/../resources/test/rpc_schema_hashing_V1.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+
+        #[cfg(not(feature = "casper-mainnet"))]
+        let schema_path = format!(
+            "{}/../resources/test/rpc_schema_hashing_V2.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+
+        let expected_schema = fs::read_to_string(schema_path).unwrap();
+        let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
+
+        let actual_schema = schema_for_value!(OPEN_RPC_SCHEMA.clone());
+        let actual_schema_string = serde_json::to_string_pretty(&actual_schema).unwrap();
+        let actual_schema: Value = serde_json::from_str(&actual_schema_string).unwrap();
+
+        // println!("{}", actual_schema_string);
+
+        assert_json_eq!(actual_schema, expected_schema);
     }
 }

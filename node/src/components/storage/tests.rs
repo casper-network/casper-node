@@ -12,6 +12,7 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
+use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::{
@@ -24,7 +25,7 @@ use crate::{
         consensus::EraReport,
         storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
     },
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
@@ -370,7 +371,6 @@ fn switch_block_for_block_header(
     )
     .expect("Could not create block")
 }
-
 #[test]
 fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let mut harness = ComponentHarness::default();
@@ -385,7 +385,6 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let alice_public_key = PublicKey::from(&alice_secret_key);
     let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
     let bob_public_key = PublicKey::from(&bob_secret_key);
-
     {
         let FinalitySignature {
             public_key,
@@ -454,7 +453,6 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let switch_block = switch_block_for_block_header(block.header(), genesis_validator_weights);
     let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
     assert!(was_new, "putting switch block should have returned `true`");
-
     {
         let block_header_with_metadata = storage
             .read_block_header_and_sufficient_finality_signatures_by_height(block.header().height())
@@ -469,7 +467,6 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
             block_header_with_metadata.block_signatures, block_signatures,
             "Should have retrieved expected block signatures"
         );
-
         let block_with_metadata = storage
             .read_block_and_sufficient_finality_signatures_by_height(block.header().height())
             .expect("should not throw exception")
@@ -1113,6 +1110,7 @@ fn should_hard_reset() {
 fn should_create_subdir_named_after_network() {
     let harness = ComponentHarness::default();
     let cfg = new_config(&harness);
+
     let network_name = "test";
     let mut chainspec = Chainspec::from_resources("local");
     chainspec.network_config.name = network_name.to_string();
@@ -1383,15 +1381,18 @@ fn can_put_and_get_blocks_v2() {
             block_body_merkle.clone().take_hashes_and_proofs()
         {
             assert_eq!(
-                txn.get_value::<_, [Digest; 2]>(storage.block_body_v2_db, &node_hash)
-                    .unwrap()
-                    .unwrap(),
-                [value_hash, proof_of_rest]
+                txn.get_value_bytesrepr::<_, (Digest, Digest)>(
+                    storage.block_body_v2_db,
+                    &node_hash
+                )
+                .unwrap()
+                .unwrap(),
+                (value_hash, proof_of_rest)
             );
         }
 
         assert_eq!(
-            txn.get_value::<_, Vec<DeployHash>>(
+            txn.get_value_bytesrepr::<_, Vec<DeployHash>>(
                 storage.deploy_hashes_db,
                 block_body_merkle.deploy_hashes.value_hash()
             )
@@ -1401,7 +1402,7 @@ fn can_put_and_get_blocks_v2() {
         );
 
         assert_eq!(
-            txn.get_value::<_, Vec<DeployHash>>(
+            txn.get_value_bytesrepr::<_, Vec<DeployHash>>(
                 storage.transfer_hashes_db,
                 block_body_merkle.transfer_hashes.value_hash()
             )
@@ -1411,7 +1412,7 @@ fn can_put_and_get_blocks_v2() {
         );
 
         assert_eq!(
-            txn.get_value::<_, PublicKey>(
+            txn.get_value_bytesrepr::<_, PublicKey>(
                 storage.proposer_db,
                 block_body_merkle.proposer.value_hash()
             )

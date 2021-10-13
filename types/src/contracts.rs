@@ -14,8 +14,9 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -44,27 +45,83 @@ pub enum Error {
     /// Attempt to override an existing or previously existing version with a
     /// new header (this is not allowed to ensure immutability of a given
     /// version).
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(1, Error::PreviouslyUsedVersion as u8);
+    /// ```
     PreviouslyUsedVersion = 1,
     /// Attempted to disable a contract that does not exist.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(2, Error::ContractNotFound as u8);
+    /// ```
     ContractNotFound = 2,
     /// Attempted to create a user group which already exists (use the update
     /// function to change an existing user group).
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(3, Error::GroupAlreadyExists as u8);
+    /// ```
     GroupAlreadyExists = 3,
     /// Attempted to add a new user group which exceeds the allowed maximum
     /// number of groups.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(4, Error::MaxGroupsExceeded as u8);
+    /// ```
     MaxGroupsExceeded = 4,
     /// Attempted to add a new URef to a group, which resulted in the total
     /// number of URefs across all user groups to exceed the allowed maximum.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(5, Error::MaxTotalURefsExceeded as u8);
+    /// ```
     MaxTotalURefsExceeded = 5,
     /// Attempted to remove a URef from a group, which does not exist in the
     /// group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(6, Error::GroupDoesNotExist as u8);
+    /// ```
     GroupDoesNotExist = 6,
     /// Attempted to remove unknown URef from the group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(7, Error::UnableToRemoveURef as u8);
+    /// ```
     UnableToRemoveURef = 7,
     /// Group is use by at least one active contract.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(8, Error::GroupInUse as u8);
+    /// ```
     GroupInUse = 8,
     /// URef already exists in given group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(9, Error::URefAlreadyExists as u8);
+    /// ```
     URefAlreadyExists = 9,
+}
+
+impl TryFrom<u8> for Error {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let error = match value {
+            v if v == Self::PreviouslyUsedVersion as u8 => Self::PreviouslyUsedVersion,
+            v if v == Self::ContractNotFound as u8 => Self::ContractNotFound,
+            v if v == Self::GroupAlreadyExists as u8 => Self::GroupAlreadyExists,
+            v if v == Self::MaxGroupsExceeded as u8 => Self::MaxGroupsExceeded,
+            v if v == Self::MaxTotalURefsExceeded as u8 => Self::MaxTotalURefsExceeded,
+            v if v == Self::GroupDoesNotExist as u8 => Self::GroupDoesNotExist,
+            v if v == Self::UnableToRemoveURef as u8 => Self::UnableToRemoveURef,
+            v if v == Self::GroupInUse as u8 => Self::GroupInUse,
+            v if v == Self::URefAlreadyExists as u8 => Self::URefAlreadyExists,
+            _ => return Err(()),
+        };
+        Ok(error)
+    }
 }
 
 /// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
@@ -142,7 +199,7 @@ impl Display for FromStrError {
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// associated with one or more user groups which are allowed to call it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Group(String);
 
 impl Group {
@@ -259,9 +316,9 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 /// Collection of named groups.
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
-/// A newtype wrapping a `HashAddr` which is the raw bytes of
-/// the ContractHash
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+/// A newtype wrapping a `HashAddr` which references a [`Contract`] in the global state.
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractHash(HashAddr);
 
 impl ContractHash {
@@ -391,7 +448,7 @@ impl TryFrom<&Vec<u8>> for ContractHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractHash {
     fn schema_name() -> String {
         String::from("ContractHash")
@@ -405,9 +462,9 @@ impl JsonSchema for ContractHash {
     }
 }
 
-/// A newtype wrapping a `HashAddr` which is the raw bytes of
-/// the ContractPackageHash
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+/// A newtype wrapping a `HashAddr` which references a [`ContractPackage`] in the global state.
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackageHash(HashAddr);
 
 impl ContractPackageHash {
@@ -533,7 +590,7 @@ impl TryFrom<&Vec<u8>> for ContractPackageHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractPackageHash {
     fn schema_name() -> String {
         String::from("ContractPackageHash")
@@ -1078,7 +1135,7 @@ impl Default for Contract {
 /// Context of method execution
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
     Session = 0,
@@ -1122,7 +1179,7 @@ pub type Parameters = Vec<Parameter>;
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
     args: Parameters,
@@ -1253,7 +1310,7 @@ impl FromBytes for EntryPoint {
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
     Public,
@@ -1316,7 +1373,7 @@ impl FromBytes for EntryPointAccess {
 
 /// Parameter to a method
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Parameter {
     name: String,
     cl_type: CLType,

@@ -1,3 +1,4 @@
+//!  This module contains all the execution related code.
 pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
@@ -8,6 +9,7 @@ pub mod execute_request;
 pub mod execution_effect;
 pub mod execution_result;
 pub mod genesis;
+pub mod get_bids;
 pub mod op;
 pub mod query;
 pub mod run_genesis_request;
@@ -24,10 +26,12 @@ use std::{
     rc::Rc,
 };
 
+use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
@@ -43,7 +47,8 @@ use casper_types::{
         CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef,
+    U512,
 };
 
 pub use self::{
@@ -52,12 +57,13 @@ pub use self::{
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
-    executable_deploy_item::ExecutableDeployItem,
+    executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
-    query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
+    get_bids::{GetBidsRequest, GetBidsResult},
+    query::{QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -75,24 +81,33 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        additive_map::AdditiveMap,
-        gas::Gas,
-        motes::Motes,
-        newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
-        transform::Transform,
+        additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform,
         wasm_prep::Preprocessor,
     },
-    storage::{global_state::StateProvider, trie::Trie},
+    storage::{
+        global_state::{lmdb::LmdbGlobalState, StateProvider},
+        trie::Trie,
+    },
 };
 
+/// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+/// The maximum amount of gas a payment code can use.
+///
+/// This value also indicates the minimum balance of the main purse of an account when
+/// executing payment code, as such amount is held as collateral to compensate for
+/// code execution.
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 
+/// Main implementation of an execution engine state.
+///
+/// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
+/// Methods implemented on this structure are the external API intended to be used by the users such
+/// as the node, test framework, and others.
 #[derive(Debug)]
 pub struct EngineState<S> {
     config: EngineConfig,
@@ -100,11 +115,22 @@ pub struct EngineState<S> {
     state: S,
 }
 
+impl EngineState<LmdbGlobalState> {
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
+    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+        if self.state.environment.is_manual_sync_enabled() {
+            self.state.environment.sync()?
+        }
+        Ok(())
+    }
+}
+
 impl<S> EngineState<S>
 where
     S: StateProvider,
     S::Error: Into<execution::Error>,
 {
+    /// Creates new engine state.
     pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
         let system_contract_cache = Default::default();
         EngineState {
@@ -114,18 +140,31 @@ where
         }
     }
 
+    /// Returns engine config.
     pub fn config(&self) -> &EngineConfig {
         &self.config
     }
 
+    /// Updates current engine config with a new instance.
     pub fn update_config(&mut self, new_config: EngineConfig) {
         self.config = new_config
     }
 
+    /// Commits genesis process.
+    ///
+    /// This process is run only once per network to initiate the system. By definition users are
+    /// unable to execute smart contracts on a network without a genesis.
+    ///
+    /// Takes genesis configuration passed through [`ExecConfig`] and creates the system contracts,
+    /// sets up the genesis accounts, and sets up the auction state based on that. At the end of
+    /// the process, [`SystemContractRegistry`] is persisted under the special global state space
+    /// [`Key::SystemContractRegistry`].
+    ///
+    /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
     pub fn commit_genesis(
         &self,
         correlation_id: CorrelationId,
-        genesis_config_hash: Blake2bHash,
+        genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
     ) -> Result<GenesisSuccess, Error> {
@@ -134,7 +173,7 @@ where
 
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            // NOTE: As genesis is ran once per instance condition below is considered programming
+            // NOTE: As genesis is run once per instance condition below is considered programming
             // error
             Ok(None) => panic!("state has not been initialized properly"),
             Err(error) => return Err(error),
@@ -190,6 +229,11 @@ where
         })
     }
 
+    /// Commits upgrade.
+    ///
+    /// This process applies changes to the global state.
+    ///
+    /// Returns [`UpgradeSuccess`].
     pub fn commit_upgrade(
         &self,
         correlation_id: CorrelationId,
@@ -382,16 +426,19 @@ where
         })
     }
 
-    pub fn tracking_copy(
-        &self,
-        hash: Blake2bHash,
-    ) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
+    /// Creates a new tracking copy instance.
+    pub fn tracking_copy(&self, hash: Digest) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
         match self.state.checkout(hash).map_err(Into::into)? {
             Some(tc) => Ok(Some(TrackingCopy::new(tc))),
             None => Ok(None),
         }
     }
 
+    /// Executes a query.
+    ///
+    /// For a given root [`Key`] it does a path lookup through the named keys.
+    ///
+    /// Returns the value stored under a [`URef`] wrapped in a [`QueryResult`].
     pub fn run_query(
         &self,
         correlation_id: CorrelationId,
@@ -415,6 +462,13 @@ where
             .into())
     }
 
+    /// Runs a deploy execution request.
+    ///
+    /// For each deploy stored in the request it will execute it.
+    ///
+    /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
+    ///
+    /// Return execution results which contains results from each deploy ran.
     pub fn run_execute(
         &self,
         correlation_id: CorrelationId,
@@ -487,10 +541,11 @@ where
         Ok(account)
     }
 
+    /// Get the balance of a passed purse referenced by its [`URef`].
     pub fn get_purse_balance(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
         let tracking_copy = match self.tracking_copy(state_hash)? {
@@ -506,13 +561,19 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
+    /// Executes a native transfer.
+    ///
+    /// Native transfers do not involve WASM at all, and also skip executing payment code.
+    /// Therefore this is the fastest and cheapest way to transfer tokens from account to account.
+    ///
+    /// Returns an [`ExecutionResult`] for a successful native transfer.
     #[allow(clippy::too_many_arguments)]
     pub fn transfer(
         &self,
         correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
-        prestate_hash: Blake2bHash,
+        prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
@@ -685,10 +746,7 @@ where
             proposer_main_purse_balance_key,
         ) {
             Ok(execution_result) => execution_result,
-            Err(error) => {
-                let exec_error = ExecError::from(error);
-                ExecutionResult::precondition_failure(exec_error.into())
-            }
+            Err(error) => ExecutionResult::precondition_failure(error),
         };
 
         // All wasmless transfer preconditions are met.
@@ -1087,13 +1145,23 @@ where
         Ok(execution_result)
     }
 
+    /// Executes a deploy.
+    ///
+    /// A deploy execution consists of running the payment code, which is expected to deposit funds
+    /// into the payment purse, and then running the session code with a specific gas limit. For
+    /// running payment code, we lock [`MAX_PAYMENT`] amount of motes from the user as collateral.
+    /// If both the payment code and the session code execute successfully, a fraction of the
+    /// unspent collateral will be transferred back to the proposer of the deploy, as specified
+    /// in the request.
+    ///
+    /// Returns [`ExecutionResult`], or an error condition.
     #[allow(clippy::too_many_arguments)]
     pub fn deploy(
         &self,
         correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
-        prestate_hash: Blake2bHash,
+        prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
@@ -1382,25 +1450,25 @@ where
             proposer_account.main_purse()
         };
 
+        let proposer_main_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, proposer_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
         if let Some(forced_transfer) =
             payment_result.check_forced_transfer(payment_purse_balance, deploy_item.gas_price)
         {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
-            let proposer_main_purse_balance_key = {
-                // Get reward purse Key from handle payment contract
-                // payment_code_spec_6: system contract validity
-                match tracking_copy
-                    .borrow_mut()
-                    .get_purse_balance_key(correlation_id, proposer_purse.into())
-                {
-                    Ok(key) => key,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error.into()));
-                    }
-                }
-            };
-
             let error = match forced_transfer {
                 ForcedTransferResult::InsufficientPayment => Error::InsufficientPayment,
                 ForcedTransferResult::GasConversionOverflow => Error::GasConversionOverflow,
@@ -1427,10 +1495,7 @@ where
                 proposer_main_purse_balance_key,
             ) {
                 Ok(execution_result) => return Ok(execution_result),
-                Err(error) => {
-                    let exec_error = ExecError::from(error);
-                    return Ok(ExecutionResult::precondition_failure(exec_error.into()));
-                }
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             }
         };
 
@@ -1510,6 +1575,29 @@ where
                 Key::DeployInfo(deploy_hash),
                 StoredValue::DeployInfo(deploy_info),
             );
+        }
+
+        // Session execution was zero cost.
+        // Check if the payment purse can cover the minimum floor for session execution.
+        if session_result.cost().is_zero() && payment_purse_balance < max_payment_cost {
+            // When session code structure is valid but still has 0 cost we should propagate the
+            // error.
+            let error = session_result
+                .as_error()
+                .cloned()
+                .unwrap_or(Error::InsufficientPayment);
+
+            match ExecutionResult::new_payment_code_error(
+                error,
+                max_payment_cost,
+                account_main_purse_balance,
+                session_result.cost(),
+                account_main_purse_balance_key,
+                proposer_main_purse_balance_key,
+            ) {
+                Ok(execution_result) => return Ok(execution_result),
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            }
         }
 
         let post_session_rc = if session_result.is_failure() {
@@ -1635,12 +1723,18 @@ where
         Ok(ret)
     }
 
+    /// Apply effects of the execution.
+    ///
+    /// This is also refered to as "committing" the effects into the global state. This method has
+    /// to be run after an execution has been made to persists the effects of it.
+    ///
+    /// Returns new state root hash.
     pub fn apply_effect(
         &self,
         correlation_id: CorrelationId,
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Blake2bHash, Error>
+    ) -> Result<Digest, Error>
     where
         Error: From<S::Error>,
     {
@@ -1649,24 +1743,26 @@ where
             .map_err(Error::from)
     }
 
-    pub fn read_trie(
+    /// Gets a trie object for given state root hash.
+    pub fn get_trie(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Error>
     where
         Error: From<S::Error>,
     {
         self.state
-            .read_trie(correlation_id, &trie_key)
+            .get_trie(correlation_id, &trie_key)
             .map_err(Error::from)
     }
 
+    /// Puts a trie and finds missing descendant trie keys.
     pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<Vec<Blake2bHash>, Error>
+    ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
@@ -1677,11 +1773,12 @@ where
         Ok(missing_descendant_trie_keys)
     }
 
+    /// Performs a lookup for a list of missing root hashes.
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Error>
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
@@ -1750,7 +1847,7 @@ where
                 .into_bytes()
                 .map_err(Error::from)?
                 .to_vec();
-            DeployHash::new(Blake2bHash::new(&bytes).value())
+            DeployHash::new(Digest::hash(&bytes).value())
         };
 
         let get_era_validators_call_stack = {
@@ -1792,6 +1889,7 @@ where
         }
     }
 
+    /// Gets current bids from the auction system.
     pub fn get_bids(
         &self,
         correlation_id: CorrelationId,
@@ -1821,6 +1919,7 @@ where
         Ok(GetBidsResult::Success { bids })
     }
 
+    /// Executes a step request.
     pub fn commit_step(
         &self,
         correlation_id: CorrelationId,
@@ -1884,7 +1983,7 @@ where
         let deploy_hash = {
             // seeds address generator w/ protocol version
             let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
-            DeployHash::new(Blake2bHash::new(&bytes).value())
+            DeployHash::new(Digest::hash(&bytes).value())
         };
 
         let base_key = Key::from(*auction_contract_hash);
@@ -2051,37 +2150,17 @@ where
             )
             .map_err(Into::into)?;
 
-        let next_era_validators = {
-            let mut era_validators = match self.get_era_validators(
-                correlation_id,
-                GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
-            ) {
-                Ok(era_validators) => era_validators,
-                Err(error) => {
-                    return Err(StepError::GetEraValidatorsError(error));
-                }
-            };
-
-            let era_id = &step_request.next_era_id;
-            match era_validators.remove(era_id) {
-                Some(validator_weights) => validator_weights,
-                None => {
-                    return Err(StepError::EraValidatorsMissing(*era_id));
-                }
-            }
-        };
-
         Ok(StepSuccess {
             post_state_hash,
-            next_era_validators,
             execution_effect,
         })
     }
 
+    /// Gets the balance of a given public key.
     pub fn get_balance(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
         public_key: PublicKey,
     ) -> Result<BalanceResult, Error> {
         // Look up the account, get the main purse, and then do the existing balance check
@@ -2128,7 +2207,7 @@ where
     fn get_system_contract_registry(
         &self,
         correlation_id: CorrelationId,
-        state_root_hash: Blake2bHash,
+        state_root_hash: Digest,
     ) -> Result<SystemContractRegistry, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
@@ -2144,10 +2223,11 @@ where
         result
     }
 
+    /// Returns mint system contract hash.
     pub fn get_system_mint_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let mint_hash = registry.get(MINT).ok_or_else(|| {
@@ -2157,10 +2237,11 @@ where
         Ok(*mint_hash)
     }
 
+    /// Returns auction system contract hash.
     pub fn get_system_auction_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let auction_hash = registry.get(AUCTION).ok_or_else(|| {
@@ -2170,10 +2251,11 @@ where
         Ok(*auction_hash)
     }
 
+    /// Returns handle payment system contract hash.
     pub fn get_handle_payment_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
@@ -2183,10 +2265,11 @@ where
         Ok(*handle_payment)
     }
 
+    /// Returns standard payment system contract hash.
     pub fn get_standard_payment_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {

@@ -8,6 +8,7 @@ use futures::FutureExt;
 use tempfile::TempDir;
 use thiserror::Error;
 
+
 use super::*;
 use crate::{
     components::{deploy_acceptor, in_memory_network::NetworkController, storage},
@@ -77,7 +78,7 @@ reactor!(Reactor {
             chainspec_loader.hard_reset_to_start_of_era(),
             false,
         );
-        deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
+        deploy_acceptor = DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec(), registry);
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
     }
 
@@ -176,7 +177,7 @@ impl Reactor {
                         ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
-                            responder: None,
+                            maybe_responder: None,
                         }),
                     )
                 }
@@ -266,7 +267,6 @@ enum ExpectedFetchedDeployResult {
         expected_peer: NodeId,
     },
 }
-
 async fn assert_settled(
     node_id: &NodeId,
     deploy_hash: DeployHash,
@@ -336,7 +336,7 @@ async fn should_fetch_from_local() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_to_store_on = &node_ids[0];
@@ -356,7 +356,6 @@ async fn should_fetch_from_local() {
     let expected_result = ExpectedFetchedDeployResult::FromStorage {
         expected_deploy: Box::new(deploy),
     };
-
     assert_settled(
         &node_id,
         deploy_hash,
@@ -384,7 +383,7 @@ async fn should_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_with_deploy = node_ids[0];
@@ -406,7 +405,6 @@ async fn should_fetch_from_peer() {
         expected_deploy: Box::new(deploy),
         expected_peer: node_with_deploy,
     };
-
     assert_settled(
         &node_without_deploy,
         deploy_hash,
@@ -434,7 +432,7 @@ async fn should_timeout_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
     let deploy_hash = *deploy.id();
 
     let holding_node = node_ids[0];

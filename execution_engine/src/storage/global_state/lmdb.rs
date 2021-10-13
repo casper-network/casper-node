@@ -1,23 +1,21 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::shared::{
-    additive_map::AdditiveMap,
-    newtypes::{Blake2bHash, CorrelationId},
-    stored_value::StoredValue,
-    transform::Transform,
-};
-use casper_types::Key;
+use casper_hashing::Digest;
+use casper_types::{Key, StoredValue};
 
-use crate::storage::{
-    error,
-    global_state::{commit, StateProvider, StateReader},
-    store::Store,
-    transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
-    trie_store::{
-        lmdb::LmdbTrieStore,
-        operations::{
-            keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+use crate::{
+    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    storage::{
+        error,
+        global_state::{commit, StateProvider, StateReader},
+        store::Store,
+        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
+        trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
+        trie_store::{
+            lmdb::LmdbTrieStore,
+            operations::{
+                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+            },
         },
     },
 };
@@ -30,7 +28,7 @@ pub struct LmdbGlobalState {
     pub(crate) trie_store: Arc<LmdbTrieStore>,
     // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
-    pub(crate) empty_root_hash: Blake2bHash,
+    pub(crate) empty_root_hash: Digest,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -40,7 +38,7 @@ pub struct LmdbGlobalStateView {
     /// Trie store held within LMDB.
     pub(crate) store: Arc<LmdbTrieStore>,
     /// Root hash of this "view".
-    pub(crate) root_hash: Blake2bHash,
+    pub(crate) root_hash: Digest,
 }
 
 impl LmdbGlobalState {
@@ -49,11 +47,12 @@ impl LmdbGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
     ) -> Result<Self, error::Error> {
-        let root_hash: Blake2bHash = {
+        let root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
             let mut txn = environment.create_read_write_txn()?;
             trie_store.put(&mut txn, &root_hash, &root)?;
             txn.commit()?;
+            environment.env().sync(true)?;
             root_hash
         };
         Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
@@ -61,10 +60,10 @@ impl LmdbGlobalState {
 
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
-    pub(crate) fn new(
+    pub fn new(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
-        empty_root_hash: Blake2bHash,
+        empty_root_hash: Digest,
     ) -> Self {
         LmdbGlobalState {
             environment,
@@ -155,7 +154,7 @@ impl StateProvider for LmdbGlobalState {
 
     type Reader = LmdbGlobalStateView;
 
-    fn checkout(&self, state_hash: Blake2bHash) -> Result<Option<Self::Reader>, Self::Error> {
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
         let maybe_state = maybe_root.map(|_| LmdbGlobalStateView {
@@ -170,9 +169,9 @@ impl StateProvider for LmdbGlobalState {
     fn commit(
         &self,
         correlation_id: CorrelationId,
-        prestate_hash: Blake2bHash,
+        prestate_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Blake2bHash, Self::Error> {
+    ) -> Result<Digest, Self::Error> {
         commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
             &self.environment,
             &self.trie_store,
@@ -183,14 +182,14 @@ impl StateProvider for LmdbGlobalState {
         .map_err(Into::into)
     }
 
-    fn empty_root(&self) -> Blake2bHash {
+    fn empty_root(&self) -> Digest {
         self.empty_root_hash
     }
 
-    fn read_trie(
+    fn get_trie(
         &self,
         _correlation_id: CorrelationId,
-        trie_key: &Blake2bHash,
+        trie_key: &Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
@@ -202,7 +201,7 @@ impl StateProvider for LmdbGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<Blake2bHash, Self::Error> {
+    ) -> Result<Digest, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         let trie_hash = put_trie::<
             Key,
@@ -219,8 +218,8 @@ impl StateProvider for LmdbGlobalState {
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Self::Error> {
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
             missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
@@ -239,7 +238,7 @@ mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use crate::shared::newtypes::Blake2bHash;
+    use casper_hashing::Digest;
     use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
@@ -284,7 +283,7 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
+    fn create_test_state() -> (LmdbGlobalState, Digest) {
         let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
@@ -292,6 +291,7 @@ mod tests {
                 &temp_dir.path().to_path_buf(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
+                true,
             )
             .unwrap(),
         );
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _) = create_test_state();
-        let fake_hash: Blake2bHash = Blake2bHash::new(&[1u8; 32]);
+        let fake_hash: Digest = Digest::hash(&[1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

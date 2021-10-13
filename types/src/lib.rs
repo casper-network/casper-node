@@ -1,11 +1,9 @@
 //! Types used to allow creation of Wasm contracts and tests for use on the Casper Platform.
-//!
-//! # `no_std`
-//!
-//! By default, the library is `no_std`, however you can enable full `std` functionality by enabling
-//! the crate's `std` feature.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(
+    not(any(feature = "json-schema", feature = "datasize", feature = "gens", test)),
+    no_std
+)]
 #![doc(html_root_url = "https://docs.rs/casper-types/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
@@ -14,12 +12,9 @@
 )]
 #![warn(missing_docs)]
 
-#[cfg_attr(not(any(feature = "std", test)), macro_use)]
+#[cfg_attr(not(test), macro_use)]
 extern crate alloc;
 
-#[cfg(any(feature = "std", test))]
-#[macro_use]
-extern crate std;
 
 mod access_rights;
 pub mod account;
@@ -34,15 +29,18 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
+mod gas;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
 mod json_pretty_printer;
 mod key;
+mod motes;
 mod named_key;
 mod phase;
 mod protocol_version;
 pub mod runtime_args;
 mod semver;
+mod stored_value;
 pub mod system;
 mod tagged;
 mod transfer;
@@ -68,18 +66,21 @@ pub use deploy_info::DeployInfo;
 pub use execution_result::{
     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };
+pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    DictionaryAddr, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
+pub use motes::Motes;
 pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 #[doc(inline)]
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
+pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
 pub use transfer::{
     DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
@@ -92,7 +93,6 @@ pub use crate::{
     era_id::EraId,
     uint::{UIntParseError, U128, U256, U512},
 };
-
 #[cfg(not(any(feature = "std", feature = "no-std")))]
 compile_error!(
     "casper-types requires one of 'std' (enabled by default) or 'no-std' features to be enabled"

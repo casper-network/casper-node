@@ -4,11 +4,10 @@ use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
 use casper_execution_engine::{
-    core, core::ValidationError, shared::stored_value::StoredValue,
-    storage::trie::merkle_proof::TrieMerkleProof,
+    core, core::ValidationError, storage::trie::merkle_proof::TrieMerkleProof,
 };
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::hash::Digest,
     rpcs::{
         chain::{BlockIdentifier, EraSummary, GetEraInfoResult},
         state::GlobalStateIdentifier,
@@ -18,7 +17,7 @@ use casper_node::{
         JsonBlockHeader,
     },
 };
-use casper_types::{bytesrepr, Key, U512};
+use casper_types::{bytesrepr, Key, StoredValue, U512};
 
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
@@ -107,7 +106,7 @@ pub(crate) fn validate_get_era_info_response(
             };
 
             core::validate_query_proof(
-                &state_root_hash.to_owned().into(),
+                &state_root_hash.to_owned(),
                 &proofs,
                 &key,
                 path,
@@ -163,20 +162,14 @@ pub(crate) fn validate_query_response(
                 .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
             serde_json::from_value(value.to_owned())?
         };
-        match json_compatibility::StoredValue::try_from(proof_value) {
+        match json_compatibility::StoredValue::try_from(proof_value.clone()) {
             Ok(json_proof_value) if json_proof_value == value => (),
             _ => return Err(ValidateResponseError::SerializedValueNotContainedInProof),
         }
     }
 
-    core::validate_query_proof(
-        &state_root_hash.to_owned().into(),
-        &proofs,
-        key,
-        path,
-        proof_value,
-    )
-    .map_err(Into::into)
+    core::validate_query_proof(&state_root_hash.to_owned(), &proofs, key, path, proof_value)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_query_global_state(
@@ -230,14 +223,8 @@ pub(crate) fn validate_query_global_state(
         (GlobalStateIdentifier::StateRootHash(hash), None) => hash,
     };
 
-    core::validate_query_proof(
-        &state_root_hash.to_owned().into(),
-        &proofs,
-        key,
-        path,
-        proof_value,
-    )
-    .map_err(Into::into)
+    core::validate_query_proof(&state_root_hash.to_owned(), &proofs, key, path, proof_value)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_get_balance_response(
@@ -276,13 +263,8 @@ pub(crate) fn validate_get_balance_response(
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?
     };
 
-    core::validate_balance_proof(
-        &state_root_hash.to_owned().into(),
-        &balance_proof,
-        *key,
-        &balance,
-    )
-    .map_err(Into::into)
+    core::validate_balance_proof(&state_root_hash.to_owned(), &balance_proof, *key, &balance)
+        .map_err(Into::into)
 }
 
 pub(crate) fn validate_get_block_response(

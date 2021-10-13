@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::TimeDiff;
 
+use super::PayloadWeights;
+
 /// Default binding address.
 ///
 /// Uses a fixed port per node, but binds on any interface.
@@ -28,11 +30,11 @@ impl Default for Config {
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
             gossip_interval: TimeDiff::from_str(DEFAULT_GOSSIP_INTERVAL).unwrap(),
-            isolation_reconnect_delay: TimeDiff::from_seconds(2),
             initial_gossip_delay: TimeDiff::from_seconds(5),
             max_addr_pending_time: TimeDiff::from_seconds(60),
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
+            estimator_weights: Default::default(),
         }
     }
 }
@@ -52,8 +54,6 @@ pub struct Config {
     pub known_addresses: Vec<String>,
     /// Interval in milliseconds used for gossiping.
     pub gossip_interval: TimeDiff,
-    /// Minimum amount of time that has to pass before attempting to reconnect after isolation.
-    pub isolation_reconnect_delay: TimeDiff,
     /// Initial delay before the first round of gossip.
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for an address to be kept in the pending set.
@@ -62,6 +62,8 @@ pub struct Config {
     pub max_outgoing_byte_rate_non_validators: u32,
     /// Maximum of requests answered from non-validating peers. Unlimited if 0.
     pub max_incoming_message_rate_non_validators: u32,
+    /// Weight distribution for the payload impact estimator.
+    pub estimator_weights: PayloadWeights,
 }
 
 #[cfg(test)]

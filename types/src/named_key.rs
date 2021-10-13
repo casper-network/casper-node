@@ -3,7 +3,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A named key.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct NamedKey {
     /// The name of the entry.

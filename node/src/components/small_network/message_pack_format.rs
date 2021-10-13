@@ -13,7 +13,6 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use rmp_serde::{self};
 use serde::{Deserialize, Serialize};
 use tokio_serde::{Deserializer, Serializer};
 
