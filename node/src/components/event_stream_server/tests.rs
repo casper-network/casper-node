@@ -1171,9 +1171,9 @@ async fn should_limit_concurrent_subscribers() {
 /// `resources/test/sse_data_schema.json` across different versions of the codebase.
 #[test]
 fn schema() {
-    // To generate the contents to replace the input JSON files, run the test with and without
-    // the feature enabled and print the `actual_schema by uncommenting the `println!`
-    // towards the end of the test
+    // To generate the contents to replace the input JSON files, run the test
+    // and print the `actual_schema by uncommenting the `println!`
+    // towards the end of the test.
     let schema_path = format!(
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
