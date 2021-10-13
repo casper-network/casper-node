@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use casper_engine_test_support::LmdbWasmTestContext;
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::ProtocolVersion;
 use fs_extra::dir;
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ impl LmdbFixtureState {
     }
 }
 
-/// Creates a [`LmdbWasmTestContext`] from a named fixture directory.
+/// Creates a [`LmdbWasmTestBuilder`] from a named fixture directory.
 ///
 /// As part of this process a new temporary directory will be created to store LMDB files from given
 /// fixture, and a builder will be created using it.
@@ -59,7 +59,7 @@ impl LmdbFixtureState {
 /// genesis request for given fixture, and a temporary directory which has to be kept in scope.
 pub fn builder_from_global_state_fixture(
     fixture_name: &str,
-) -> (LmdbWasmTestContext, LmdbFixtureState, TempDir) {
+) -> (LmdbWasmTestBuilder, LmdbFixtureState, TempDir) {
     let source = path_to_lmdb_fixtures().join(fixture_name);
     let to = tempfile::tempdir().expect("should create temp dir");
     fs_extra::copy_items(&[source], &to, &dir::CopyOptions::default())
@@ -70,7 +70,7 @@ pub fn builder_from_global_state_fixture(
         serde_json::from_reader(File::open(&path_to_state).unwrap()).unwrap();
     let path_to_gs = to.path().join(fixture_name);
     (
-        LmdbWasmTestContext::open(
+        LmdbWasmTestBuilder::open(
             &path_to_gs,
             EngineConfig::default(),
             lmdb_fixture_state.post_state_hash,
@@ -88,13 +88,13 @@ pub fn builder_from_global_state_fixture(
 pub fn generate_fixture(
     name: &str,
     genesis_request: RunGenesisRequest,
-    post_genesis_setup: impl FnOnce(&mut LmdbWasmTestContext),
+    post_genesis_setup: impl FnOnce(&mut LmdbWasmTestBuilder),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let lmdb_fixtures_root = path_to_lmdb_fixtures();
     let fixture_root = lmdb_fixtures_root.join(name);
 
     let engine_config = EngineConfig::default();
-    let mut builder = LmdbWasmTestContext::new_with_config(&fixture_root, engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, engine_config);
 
     builder.run_genesis(&genesis_request);
 

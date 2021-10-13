@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, Key, RuntimeArgs};
@@ -16,7 +16,7 @@ const METHOD_INC: &str = "inc";
 #[ignore]
 #[test]
 fn should_run_counter_example_contract() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -99,7 +99,7 @@ fn should_run_counter_example_contract() {
 #[ignore]
 #[test]
 fn should_default_contract_hash_arg() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     // This test runs a contract that's after every call extends the same key with
     // more data
@@ -158,7 +158,7 @@ fn should_default_contract_hash_arg() {
 #[ignore]
 #[test]
 fn should_call_counter_contract_directly() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

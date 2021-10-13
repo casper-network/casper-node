@@ -17,12 +17,6 @@ mod wasm_test_builder;
 
 use casper_types::account::AccountHash;
 
-/// The address of a [`URef`](casper_types::URef) (unforgeable reference) on the network.
-pub type URefAddr = [u8; 32];
-
-/// The hash of a smart contract stored on the network, which can be used to reference the contract.
-pub type Hash = [u8; 32];
-
 /// Default initial balance of a test account in motes.
 pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
 
@@ -47,7 +41,7 @@ pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
-pub use wasm_test_builder::{InMemoryWasmTestContext, LmdbWasmTestContext, WasmTestContext};
+pub use wasm_test_builder::{InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder};
 
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;

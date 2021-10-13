@@ -1,7 +1,7 @@
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
@@ -39,21 +39,21 @@ fn should_charge_gas_for_subcall() {
     )
     .build();
 
-    let mut context = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
-    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context.exec(do_nothing_request).expect_success().commit();
+    builder.exec(do_nothing_request).expect_success().commit();
 
-    context.exec(do_something_request).expect_success().commit();
+    builder.exec(do_something_request).expect_success().commit();
 
-    context.exec(no_subcall_request).expect_success().commit();
+    builder.exec(no_subcall_request).expect_success().commit();
 
-    let do_nothing_cost = context.exec_costs(0)[0];
+    let do_nothing_cost = builder.exec_costs(0)[0];
 
-    let do_something_cost = context.exec_costs(1)[0];
+    let do_something_cost = builder.exec_costs(1)[0];
 
-    let no_subcall_cost = context.exec_costs(2)[0];
+    let no_subcall_cost = builder.exec_costs(2)[0];
 
     assert_ne!(
         do_nothing_cost, do_something_cost,
@@ -128,31 +128,31 @@ fn should_add_all_gas_for_subcall() {
     )
     .build();
 
-    let mut context = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
-    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context
+    builder
         .exec(add_zero_gas_from_session_request)
         .expect_success()
         .commit();
-    context
+    builder
         .exec(add_some_gas_from_session_request)
         .expect_success()
         .commit();
-    context
+    builder
         .exec(add_zero_gas_via_subcall_request)
         .expect_success()
         .commit();
-    context
+    builder
         .exec(add_some_gas_via_subcall_request)
         .expect_success()
         .commit();
 
-    let add_zero_gas_from_session_cost = context.exec_costs(0)[0];
-    let add_some_gas_from_session_cost = context.exec_costs(1)[0];
-    let add_zero_gas_via_subcall_cost = context.exec_costs(2)[0];
-    let add_some_gas_via_subcall_cost = context.exec_costs(3)[0];
+    let add_zero_gas_from_session_cost = builder.exec_costs(0)[0];
+    let add_some_gas_from_session_cost = builder.exec_costs(1)[0];
+    let add_zero_gas_via_subcall_cost = builder.exec_costs(2)[0];
+    let add_some_gas_via_subcall_cost = builder.exec_costs(3)[0];
 
     assert!(add_some_gas_from_session_cost.value() > gas_to_add);
     assert_eq!(
@@ -187,22 +187,22 @@ fn expensive_subcall_should_cost_more() {
     )
     .build();
 
-    let mut context = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     // store the contracts first
-    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context
+    builder
         .exec(store_do_nothing_request)
         .expect_success()
         .commit();
 
-    context
+    builder
         .exec(store_calculation_request)
         .expect_success()
         .commit();
 
-    let account = context
+    let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
@@ -232,19 +232,19 @@ fn expensive_subcall_should_cost_more() {
     )
     .build();
 
-    context
+    builder
         .exec(call_do_nothing_request)
         .expect_success()
         .commit();
 
-    context
+    builder
         .exec(call_expensive_calculation_request)
         .expect_success()
         .commit();
 
-    let do_nothing_cost = context.exec_costs(2)[0];
+    let do_nothing_cost = builder.exec_costs(2)[0];
 
-    let expensive_calculation_cost = context.exec_costs(3)[0];
+    let expensive_calculation_cost = builder.exec_costs(3)[0];
 
     assert!(
         do_nothing_cost < expensive_calculation_cost,

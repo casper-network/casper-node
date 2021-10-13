@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, ARG_AMOUNT,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
     DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
@@ -21,8 +21,8 @@ const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
 const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
-fn setup() -> (InMemoryWasmTestContext, ContractHash) {
-    let mut builder = InMemoryWasmTestContext::default();
+fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -73,7 +73,7 @@ fn setup() -> (InMemoryWasmTestContext, ContractHash) {
 }
 
 fn query_dictionary_item(
-    context: &InMemoryWasmTestContext,
+    builder: &InMemoryWasmTestBuilder,
     key: Key,
     dictionary_name: Option<String>,
     dictionary_item_key: String,
@@ -83,7 +83,7 @@ fn query_dictionary_item(
     let address = match key {
         Key::Account(_) | Key::Hash(_) => {
             if let Some(name) = dictionary_name {
-                let stored_value = context.query(None, key, &[])?;
+                let stored_value = builder.query(None, key, &[])?;
 
                 let named_keys = match &stored_value {
                     StoredValue::Account(account) => account.named_keys(),
@@ -109,7 +109,7 @@ fn query_dictionary_item(
         Key::Dictionary(address) => Key::Dictionary(address),
         _ => return Err("Unsupported key type for a query to a dictionary item".to_string()),
     };
-    context.query(None, address, &empty_path)
+    builder.query(None, address, &empty_path)
 }
 
 #[ignore]
@@ -450,7 +450,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 #[ignore]
 #[test]
 fn dictionary_put_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -494,7 +494,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
 #[ignore]
 #[test]
 fn dictionary_get_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -537,7 +537,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
 
 #[ignore]
 #[test]
-fn should_query_dictionary_items_with_test_context() {
+fn should_query_dictionary_items_with_test_builder() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
         Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
@@ -551,7 +551,7 @@ fn should_query_dictionary_items_with_test_context() {
         genesis_config.protocol_version(),
         genesis_config.take_ee_config(),
     );
-    // let mut test_context = TestContextBuilder::new()
+    // let mut test_builder = TestContextBuilder::new()
     //     .with_public_key(
     //         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
     //         U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
@@ -568,12 +568,12 @@ fn should_query_dictionary_items_with_test_context() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut context = InMemoryWasmTestContext::default();
-    context.run_genesis(&run_genesis_request).commit();
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&run_genesis_request).commit();
 
-    context.exec(exec_request).commit().expect_success();
+    builder.exec(exec_request).commit().expect_success();
 
-    let default_account = context
+    let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let contract_hash = default_account
@@ -593,7 +593,7 @@ fn should_query_dictionary_items_with_test_context() {
     {
         // Query through account's named keys
         let queried_value = query_dictionary_item(
-            &context,
+            &builder,
             Key::from(*DEFAULT_ACCOUNT_ADDR),
             Some(dictionary::DICTIONARY_REF.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
@@ -607,7 +607,7 @@ fn should_query_dictionary_items_with_test_context() {
     {
         // Query through account's named keys
         let queried_value = query_dictionary_item(
-            &context,
+            &builder,
             Key::from(*DEFAULT_ACCOUNT_ADDR),
             Some(dictionary::DICTIONARY_REF.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
@@ -621,7 +621,7 @@ fn should_query_dictionary_items_with_test_context() {
     {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
-            &context,
+            &builder,
             Key::from(contract_hash),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
@@ -635,7 +635,7 @@ fn should_query_dictionary_items_with_test_context() {
     {
         // Query through dictionary URef itself
         let queried_value = query_dictionary_item(
-            &context,
+            &builder,
             Key::from(dictionary_uref),
             None,
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
@@ -652,7 +652,7 @@ fn should_query_dictionary_items_with_test_context() {
         let dictionary_item_key = Key::dictionary(dictionary_uref, dictionary_item_name);
 
         let queried_value =
-            query_dictionary_item(&context, dictionary_item_key, None, String::new())
+            query_dictionary_item(&builder, dictionary_item_key, None, String::new())
                 .expect("should query");
         let value = CLValue::try_from(queried_value).expect("should have cl value");
         let value: String = value.into_t().expect("should be string");

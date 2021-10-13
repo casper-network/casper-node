@@ -2,7 +2,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNTS,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
@@ -80,14 +80,14 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    let mut context = InMemoryWasmTestContext::default();
-    context.run_genesis(&run_genesis_request);
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&run_genesis_request);
 
-    context.exec(exec_request_1).expect_success().commit();
+    builder.exec(exec_request_1).expect_success().commit();
 
-    context.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).commit();
 
-    let response = context.get_exec_result(1).expect("should have a response");
+    let response = builder.get_exec_result(1).expect("should have a response");
     let error_message = utils::get_error_message(response);
 
     // Error::UnbondTooLarge,

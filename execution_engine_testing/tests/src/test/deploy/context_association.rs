@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 
@@ -16,7 +16,7 @@ const ARG_AMOUNT: &str = "amount";
 #[test]
 fn should_put_system_contract_hashes_to_account_context() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let request = {
         let deploy = DeployItemBuilder::new()

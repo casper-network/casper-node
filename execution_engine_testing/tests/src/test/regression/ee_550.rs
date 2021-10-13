@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, ARG_AMOUNT,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs};
@@ -39,7 +39,7 @@ fn should_run_ee_550_remove_with_saturated_threshold_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
@@ -76,7 +76,7 @@ fn should_run_ee_550_update_with_saturated_threshold_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)

@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
@@ -26,7 +26,7 @@ fn should_charge_non_main_purse() {
     let account_1_funding_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
     let account_1_purse_funding_amount = *DEFAULT_PAYMENT;
 
-    let mut context = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let setup_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -42,9 +42,9 @@ fn should_charge_non_main_purse() {
     )
     .build();
 
-    context.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    context
+    builder
         .exec(setup_exec_request)
         .expect_success()
         .commit()
@@ -53,14 +53,14 @@ fn should_charge_non_main_purse() {
         .commit();
 
     // get account_1
-    let account_1 = context
+    let account_1 = builder
         .get_account(ACCOUNT_1_ADDR)
         .expect("should have account");
     // get purse
     let purse_key = account_1.named_keys()[TEST_PURSE_NAME];
     let purse = purse_key.into_uref().expect("should have uref");
 
-    let purse_starting_balance = context.get_purse_balance(purse);
+    let purse_starting_balance = builder.get_purse_balance(purse);
 
     assert_eq!(
         purse_starting_balance, account_1_purse_funding_amount,
@@ -86,18 +86,18 @@ fn should_charge_non_main_purse() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let proposer_reward_starting_balance = context.get_proposer_purse_balance();
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    context
+    builder
         .exec(account_payment_exec_request)
         .expect_success()
         .commit();
 
-    let transaction_fee = context.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let expected_resting_balance = account_1_purse_funding_amount - transaction_fee;
 
-    let purse_final_balance = context.get_purse_balance(purse);
+    let purse_final_balance = builder.get_purse_balance(purse);
 
     assert_eq!(
         purse_final_balance, expected_resting_balance,

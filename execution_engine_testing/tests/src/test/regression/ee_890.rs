@@ -1,7 +1,7 @@
 use parity_wasm::{self, builder};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, ARG_AMOUNT,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
@@ -50,12 +50,12 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let mut context = InMemoryWasmTestContext::default();
-    context
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .commit();
-    let message = context.exec_error_message(0).expect("should fail");
+    let message = builder.exec_error_message(0).expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),
         "Error message {:?} does not contain expected pattern",
@@ -78,12 +78,12 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let mut context = InMemoryWasmTestContext::default();
-    context
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .commit();
-    let message = context.exec_error_message(0).expect("should fail");
+    let message = builder.exec_error_message(0).expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),
         "Error message {:?} does not contain expected pattern",

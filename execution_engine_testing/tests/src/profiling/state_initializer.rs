@@ -7,7 +7,7 @@ use std::{env, path::PathBuf};
 use clap::{crate_version, App};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestContext, ARG_AMOUNT, DEFAULT_ACCOUNTS,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
     DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
@@ -65,7 +65,7 @@ fn main() {
     };
 
     let engine_config = EngineConfig::default();
-    let mut builder = LmdbWasmTestContext::new_with_config(&data_dir, engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(&data_dir, engine_config);
 
     let exec_config = ExecConfig::new(
         DEFAULT_ACCOUNTS.clone(),

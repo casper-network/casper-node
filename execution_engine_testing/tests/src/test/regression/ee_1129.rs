@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNTS,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
@@ -61,7 +61,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
     let auction = builder.get_auction_contract_hash();
@@ -123,7 +123,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
     let auction = builder.get_auction_contract_hash();
@@ -173,7 +173,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_mint_contract_call() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -221,7 +221,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_session_contract_by_uref() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -269,7 +269,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_payment_contract_by_uref() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -315,7 +315,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_contract_package_by_uref() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -368,7 +368,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -435,7 +435,7 @@ fn do_nothing_without_memory() -> Vec<u8> {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_module_without_memory() {
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 

@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::RuntimeArgs;
@@ -16,13 +16,13 @@ fn should_run_ee_771_regression() {
     )
     .build();
 
-    let mut context = InMemoryWasmTestContext::default();
-    context
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit();
 
-    let response = context.get_exec_result(0).expect("should have a response");
+    let response = builder.get_exec_result(0).expect("should have a response");
 
     let error = response[0].as_error().expect("should have error");
     assert_eq!(

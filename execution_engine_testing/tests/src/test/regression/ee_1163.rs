@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_GAS_PRICE, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
@@ -19,14 +19,14 @@ use casper_types::{
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
-fn setup() -> InMemoryWasmTestContext {
-    let mut builder = InMemoryWasmTestContext::default();
+fn setup() -> InMemoryWasmTestBuilder {
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
     builder
 }
 
 fn should_charge_for_user_error(
-    builder: &mut InMemoryWasmTestContext,
+    builder: &mut InMemoryWasmTestBuilder,
     request: ExecuteRequest,
 ) -> Error {
     let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);

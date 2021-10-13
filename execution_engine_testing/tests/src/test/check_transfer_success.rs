@@ -2,7 +2,7 @@ use core::convert::TryFrom;
 use std::path::PathBuf;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_CONFIG,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
 };
@@ -57,24 +57,24 @@ fn test_check_transfer_success_with_source_only() {
     // build a request to execute the deploy.
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut context = InMemoryWasmTestContext::default();
-    context.run_genesis(&run_genesis_request).commit();
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&run_genesis_request).commit();
 
     // we need this to figure out what the transfer fee is.
-    let proposer_starting_balance = context.get_proposer_purse_balance();
+    let proposer_starting_balance = builder.get_proposer_purse_balance();
 
     // Getting main purse URef to verify transfer
-    let source_purse = context
+    let source_purse = builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    context.exec(exec_request).commit().expect_success();
+    builder.exec(exec_request).commit().expect_success();
 
-    let transaction_fee = context.get_proposer_purse_balance() - proposer_starting_balance;
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
-    let actual_source_ending_balance = Motes::new(context.get_purse_balance(source_purse));
+    let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
 
     assert_eq!(expected_source_ending_balance, actual_source_ending_balance);
 }
@@ -117,23 +117,23 @@ fn test_check_transfer_success_with_source_only_errors() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    // Set up test context and run genesis.
-    let mut context = InMemoryWasmTestContext::default();
-    context.run_genesis(&run_genesis_request).commit();
+    // Set up test builder and run genesis.
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&run_genesis_request).commit();
 
     // compare proposer balance before and after the transaction to get the tx fee.
-    let proposer_starting_balance = context.get_proposer_purse_balance();
-    let source_purse = context
+    let proposer_starting_balance = builder.get_proposer_purse_balance();
+    let source_purse = builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    context.exec(exec_request).commit().expect_success();
+    builder.exec(exec_request).commit().expect_success();
 
-    let transaction_fee = context.get_proposer_purse_balance() - proposer_starting_balance;
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
-    let actual_source_ending_balance = Motes::new(context.get_purse_balance(source_purse));
+    let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
 
     assert!(expected_source_ending_balance != actual_source_ending_balance);
 }
@@ -172,29 +172,29 @@ fn test_check_transfer_success_with_source_and_target() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut context = InMemoryWasmTestContext::default();
-    context.run_genesis(&run_genesis_request).commit();
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&run_genesis_request).commit();
 
     // we need this to figure out what the transfer fee is.
-    let proposer_starting_balance = context.get_proposer_purse_balance();
+    let proposer_starting_balance = builder.get_proposer_purse_balance();
 
     // Getting main purse URef to verify transfer
-    let source_purse = context
+    let source_purse = builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    context.exec(exec_request).commit().expect_success();
+    builder.exec(exec_request).commit().expect_success();
 
-    let transaction_fee = context.get_proposer_purse_balance() - proposer_starting_balance;
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
-    let actual_source_ending_balance = Motes::new(context.get_purse_balance(source_purse));
+    let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
 
     assert_eq!(expected_source_ending_balance, actual_source_ending_balance);
 
     // retrieve newly created purse URef
-    context
+    builder
         .query(
             None,
             Key::Account(*DEFAULT_ACCOUNT_ADDR),
@@ -202,8 +202,8 @@ fn test_check_transfer_success_with_source_and_target() {
         )
         .expect("new purse should exist");
 
-    // let target_purse = context
-    let default_account = context.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    // let target_purse = builder
+    let default_account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
     let target_purse = default_account
         .named_keys()
         .get(NEW_PURSE_NAME)
@@ -212,7 +212,7 @@ fn test_check_transfer_success_with_source_and_target() {
         .expect("uref");
 
     let expected_balance = U512::from(SECOND_TRANSFER_AMOUNT);
-    let target_balance = context.get_purse_balance(target_purse);
+    let target_balance = builder.get_purse_balance(target_purse);
 
     assert_eq!(expected_balance, target_balance);
 }

@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
@@ -33,15 +33,15 @@ fn should_run_refund_purse_contract_account_1() {
     refund_tests(&mut builder, ACCOUNT_1_ADDR);
 }
 
-fn initialize() -> InMemoryWasmTestContext {
-    let mut builder = InMemoryWasmTestContext::default();
+fn initialize() -> InMemoryWasmTestBuilder {
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder
 }
 
-fn transfer(builder: &mut InMemoryWasmTestContext, account_hash: AccountHash, amount: U512) {
+fn transfer(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash, amount: U512) {
     let exec_request = {
         ExecuteRequestBuilder::standard(
             *DEFAULT_ACCOUNT_ADDR,
@@ -57,7 +57,7 @@ fn transfer(builder: &mut InMemoryWasmTestContext, account_hash: AccountHash, am
     builder.exec(exec_request).expect_success().commit();
 }
 
-fn refund_tests(builder: &mut InMemoryWasmTestContext, account_hash: AccountHash) {
+fn refund_tests(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash) {
     let create_purse_request_1 = {
         ExecuteRequestBuilder::standard(
             account_hash,

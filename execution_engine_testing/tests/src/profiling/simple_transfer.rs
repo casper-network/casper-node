@@ -12,7 +12,7 @@ use std::{env, io, path::PathBuf};
 use clap::{crate_version, App, Arg};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestContext, DEFAULT_PAYMENT,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::core::engine_state::EngineConfig;
 use casper_hashing::Digest;
@@ -112,7 +112,7 @@ fn main() {
     let engine_config = EngineConfig::default();
 
     let mut test_builder =
-        LmdbWasmTestContext::open(&args.data_dir, engine_config, Digest::hash(&root_hash));
+        LmdbWasmTestBuilder::open(&args.data_dir, engine_config, Digest::hash(&root_hash));
 
     test_builder.exec(exec_request).expect_success().commit();
 

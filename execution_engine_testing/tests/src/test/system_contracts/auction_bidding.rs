@@ -2,7 +2,7 @@ use assert_matches::assert_matches;
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestContext, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
     DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
@@ -53,7 +53,7 @@ const DELEGATION_RATE: DelegationRate = 42;
 #[test]
 fn should_run_successful_bond_and_unbond_and_slashing() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let exec_request = ExecuteRequestBuilder::standard(
@@ -204,7 +204,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     let new_validator_hash = AccountHash::from(&new_validator_pk);
     assert_ne!(&DEFAULT_PROPOSER_PUBLIC_KEY.clone(), &new_validator_pk);
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let transfer_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
     let delegation_rate: DelegationRate = 10;
@@ -280,7 +280,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
@@ -325,7 +325,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -372,7 +372,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -403,7 +403,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
@@ -558,7 +558,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestContext::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;

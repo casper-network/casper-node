@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestContext, DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, ApiError, RuntimeArgs, U512};
@@ -15,17 +15,17 @@ const ARG_VALUE1: &str = "value1";
 fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
     let exec_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_GET_ARG, args).build();
-    let mut context = InMemoryWasmTestContext::default();
-    context
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit();
 
-    if !context.is_error() {
+    if !builder.is_error() {
         return Ok(());
     }
 
-    let response = context.get_exec_result(0).expect("should have a response");
+    let response = builder.get_exec_result(0).expect("should have a response");
 
     let error_message = utils::get_error_message(response);
 
