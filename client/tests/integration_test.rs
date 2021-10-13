@@ -824,9 +824,8 @@ mod get_deploy {
             server_handle.get_deploy("012345",).await,
             Err(Error::InvalidArgument {
                 context: "deploy",
-                // error: "The deploy hash provided had an invalid length of 6."
-                error: _
-            })
+                error,
+            }) if error == "the hash provided had an invalid length of 6"
         ));
     }
 }
