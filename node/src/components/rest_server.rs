@@ -197,7 +197,7 @@ mod tests {
     use schemars::schema_for;
     use serde_json::Value;
 
-    use crate::types::GetStatusResult;
+    use crate::{rpcs::info::GetValidatorChangesResult, types::GetStatusResult};
 
     #[test]
     fn schema_status() {
@@ -209,6 +209,22 @@ mod tests {
         let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
 
         let actual_schema = schema_for!(GetStatusResult);
+        let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
+        let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+
+        assert_json_eq!(actual_schema, expected_schema);
+    }
+
+    #[test]
+    fn schema_validator_changes() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_validator_changes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let expected_schema = fs::read_to_string(schema_path).unwrap();
+        let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
+
+        let actual_schema = schema_for!(GetValidatorChangesResult);
         let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
         let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
 
