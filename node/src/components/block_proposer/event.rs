@@ -10,7 +10,7 @@ use casper_types::Motes;
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
+    types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock, Timestamp},
 };
 
 /// Information about a deploy.
@@ -33,6 +33,7 @@ pub(crate) enum Event {
         finalized_deploys: Vec<(DeployHash, DeployHeader)>,
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
+        last_finalized_timestamp: Timestamp,
     },
     /// A new deploy has been received by this node and stored: it should be retrieved from storage
     /// and buffered here.

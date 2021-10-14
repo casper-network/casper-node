@@ -61,7 +61,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag},
+    types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag, Timestamp},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -506,13 +506,15 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, ParticipatingEvent>,
             registry,
         )?;
+        let (next_finalized_block, last_finalized_timestamp) = maybe_latest_block_header
+            .as_ref()
+            .map(|block_header| (block_header.height() + 1, block_header.timestamp()))
+            .unwrap_or_else(|| (0, Timestamp::now()));
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
             effect_builder,
-            maybe_latest_block_header
-                .as_ref()
-                .map(|block_header| block_header.height() + 1)
-                .unwrap_or(0),
+            next_finalized_block,
+            last_finalized_timestamp,
             chainspec_loader.chainspec().as_ref(),
             config.block_proposer,
         )?;

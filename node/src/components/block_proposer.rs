@@ -99,6 +99,7 @@ impl BlockProposer {
         registry: Registry,
         effect_builder: EffectBuilder<REv>,
         next_finalized_block: BlockHeight,
+        last_finalized_timestamp: Timestamp,
         chainspec: &Chainspec,
         local_config: Config,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
@@ -111,6 +112,7 @@ impl BlockProposer {
             .event(move |finalized_deploys| Event::Loaded {
                 finalized_deploys,
                 next_finalized_block,
+                last_finalized_timestamp,
             });
 
         let block_proposer = BlockProposer {
@@ -154,6 +156,7 @@ where
                 Event::Loaded {
                     finalized_deploys,
                     next_finalized_block,
+                    last_finalized_timestamp,
                 },
             ) => {
                 let mut new_ready_state = BlockProposerReady {
@@ -165,6 +168,7 @@ where
                     deploy_config: *deploy_config,
                     request_queue: Default::default(),
                     local_config: local_config.clone(),
+                    last_finalized_timestamp,
                 };
 
                 // Replay postponed events onto new state.
@@ -208,7 +212,6 @@ where
 
 /// State of operational block proposer.
 #[derive(DataSize, Debug)]
-#[cfg_attr(test, derive(Default))]
 struct BlockProposerReady {
     /// Set of deploys currently stored in the block proposer.
     sets: BlockProposerDeploySets,
@@ -222,6 +225,8 @@ struct BlockProposerReady {
     request_queue: RequestQueue,
     /// The block proposer configuration, containing local settings for selecting deploys.
     local_config: Config,
+    /// The timestamp of the last finalized block, used to purge `Deploy`s.
+    last_finalized_timestamp: Timestamp,
 }
 
 impl BlockProposerReady {
@@ -269,7 +274,7 @@ impl BlockProposerReady {
                     .event(|_| Event::Prune);
 
                 // Announce pruned hashes
-                let pruned_hashes = self.prune(Timestamp::now());
+                let pruned_hashes = self.prune(self.last_finalized_timestamp);
                 let pruned_count = pruned_hashes.total_pruned;
                 debug!(%pruned_count, "pruned deploys from buffer");
                 effects.extend(
@@ -285,6 +290,9 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::FinalizedBlock(block) => {
+                // We have received a finalized block, set the timestamp to
+                // allow for pruning.
+                self.last_finalized_timestamp = block.timestamp();
                 let deploys = block
                     .deploy_hashes()
                     .iter()
@@ -520,5 +528,19 @@ impl BlockProposerReady {
 
     fn contains_finalized(&self, dep: &DeployHash) -> bool {
         self.sets.finalized_deploys.contains_key(dep) || self.unhandled_finalized.contains(dep)
+    }
+}
+
+#[cfg(test)]
+impl Default for BlockProposerReady {
+    fn default() -> Self {
+        BlockProposerReady {
+            sets: BlockProposerDeploySets::default(),
+            unhandled_finalized: Default::default(),
+            deploy_config: Default::default(),
+            request_queue: Default::default(),
+            local_config: Default::default(),
+            last_finalized_timestamp: Timestamp::now(),
+        }
     }
 }
