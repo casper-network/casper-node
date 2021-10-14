@@ -1,7 +1,6 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
-mod counting_channel;
 mod display_error;
 pub mod ds;
 mod external;
@@ -24,8 +23,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-#[cfg(test)]
-use std::{env, str::FromStr};
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
@@ -35,7 +32,6 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
 
-pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, CountingSender};
 pub(crate) use display_error::display_error;
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
@@ -353,30 +349,6 @@ macro_rules! unregister_metric {
                 )
             });
     };
-}
-
-/// Reads an envvar from the environment and, if present, parses it.
-///
-/// Only absent envvars are returned as `None`.
-///
-/// # Panics
-///
-/// Panics on any parse error.
-#[cfg(test)]
-pub fn read_env<T: FromStr>(name: &str) -> Option<T>
-where
-    <T as FromStr>::Err: Debug,
-{
-    match env::var(name) {
-        Ok(raw) => Some(
-            raw.parse()
-                .unwrap_or_else(|_| panic!("cannot parse envvar `{}`", name)),
-        ),
-        Err(env::VarError::NotPresent) => None,
-        Err(err) => {
-            panic!("{:?}", err)
-        }
-    }
 }
 
 /// XORs two byte sequences.

@@ -28,8 +28,7 @@ steps:
     image: casperlabs/node-build-u1804
     commands:
       - cargo install cargo-audit
-#      - cargo generate-lockfile
-#      - cargo audit --ignore RUSTSEC-2021-0073 --ignore RUSTSEC-2021-0076
+      - make audit
 
 trigger:
   branch:

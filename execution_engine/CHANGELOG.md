@@ -11,10 +11,16 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## [1.3.4] - 2021-09-23
+
+### Added
+* Added a check for immediate caller in system contracts
+
+
 ## [1.3.0] - 2021-07-19
 
 ### Changed
-* Update pinned version of Rust to `nightly-2021-06-17`
+* Update pinned version of Rust to `nightly-2021-06-17`.
 
 
 
@@ -60,6 +66,7 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
+[1.3.4]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.3.4
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1

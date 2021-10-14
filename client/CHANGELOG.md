@@ -11,10 +11,26 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## [1.3.4] - 2021-09-23
+
+### Added
+* RPM package build and publish.
+* New client binary command `get-validator-changes` that returns status changes of active validators.
+
+### Changed
+* Support building and testing using stable Rust.
+* Support `URef`, `PublicKey` and `AccountHash` as transfer targets for `transfer` and `make-transfer`.
+
+### Fixed
+* Stop silently ignoring parse errors for `--session-args-complex` or `--payment-args-complex`.
+
+
+
 ## [1.3.0] - 2021-07-21
 
 ### Added
 * Add support for retrieving historical auction information via the addition of an optional `--block-identifier` arg in the `get-auction-info` subcommand.
+* Add `keygen::generate_files` to FFI.
 
 ### Changed
 * Change `account-address` subcommand to output properly formatted string.
@@ -22,6 +38,7 @@ All notable changes to this project will be documented in this file.  The format
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to not overwrite files unless `--force` is passed.
 * Change `make-deploy`, `make-transfer` and `sign-deploy` to use transactional file writing for enhanced safety and reliability.
 * Update pinned version of Rust to `nightly-2021-06-17`
+* Change the Rust interface of the client library to expose `async` functions, instead of running an executor internally.
 
 
 
@@ -64,6 +81,7 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
+[1.3.4]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.3.4
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
