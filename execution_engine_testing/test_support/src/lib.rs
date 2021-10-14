@@ -65,11 +65,9 @@ pub const DEFAULT_BLOCK_TIME: u64 = 0;
 pub const DEFAULT_GAS_PRICE: u64 = 1;
 /// Amount named argument.
 pub const ARG_AMOUNT: &str = "amount";
-/// TImestamp increment in milliseconds.
-pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30000; // 30 seconds
+/// Timestamp increment in milliseconds.
+pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
 
-// NOTE: Those values could be constants but are kept as once_cell::sync::Lazy to avoid changes of
-// `*FOO` into `FOO` back and forth.
 /// Default genesis config hash.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
 /// Default account public key.
