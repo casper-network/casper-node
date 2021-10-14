@@ -146,6 +146,8 @@ mod args_complex {
 
     use serde::de::{Deserializer, Error as SerdeError, Visitor};
 
+    use casper_types::checksummed_hex;
+
     use super::*;
 
     #[derive(Debug, Deserialize)]
@@ -172,14 +174,14 @@ mod args_complex {
                 self,
                 hex_encoded_input: &str,
             ) -> StdResult<Self::Value, E> {
-                base16::decode(hex_encoded_input).map_err(SerdeError::custom)
+                checksummed_hex::decode(hex_encoded_input).map_err(SerdeError::custom)
             }
 
             fn visit_borrowed_str<E: SerdeError>(
                 self,
                 hex_encoded_input: &'de str,
             ) -> StdResult<Self::Value, E> {
-                base16::decode(hex_encoded_input).map_err(SerdeError::custom)
+                checksummed_hex::decode(hex_encoded_input).map_err(SerdeError::custom)
             }
         }
 
