@@ -75,8 +75,8 @@ pub const DEFAULT_GAS_PRICE: u64 = 1;
 pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
 /// Amount named argument.
 pub const ARG_AMOUNT: &str = "amount";
-/// TImestamp increment in milliseconds.
-pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30000; // 30 seconds
+/// Timestamp increment in milliseconds.
+pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
 
 /// Default genesis config hash.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
