@@ -24,12 +24,8 @@ export WASM_PACKAGE_VERSION="$(grep ^version $NODE_CONFIG_FILE | sed -e s'/.*= "
 export CL_WASM_DIR="$RUN_DIR/target/wasm32-unknown-unknown/release"
 export CL_OUTPUT_S3_DIR="$RUN_DIR/s3_artifacts/${WASM_PACKAGE_VERSION}"
 export CL_WASM_PACKAGE="$CL_OUTPUT_S3_DIR/casper-contracts.tar.gz"
-export CL_VAULT_URL="${CL_VAULT_HOST}/v1/sre/cicd/s3/aws_credentials"
-export CREDENTIAL_FILE_TMP="$RUN_DIR/s3_vault_output.json"
 export CL_S3_BUCKET='casperlabs-cicd-artifacts'
 export CL_S3_LOCATION="wasm_contracts/${WASM_PACKAGE_VERSION}"
-
-echo "-H \"X-Vault-Token: $CL_VAULT_TOKEN\"" > ~/.curlrc
 
 if [ ! -d $CL_OUTPUT_S3_DIR ]; then
   mkdir -p "${CL_OUTPUT_S3_DIR}"
@@ -47,17 +43,11 @@ else
   exit 1
 fi
 
-# get aws credentials files
-curl -s -q -X GET $CL_VAULT_URL --output $CREDENTIAL_FILE_TMP
-if [ ! -f $CREDENTIAL_FILE_TMP ]; then
-  echo "[ERROR] Unable to fetch aws credentials from vault: $CL_VAULT_URL"
-  exit 1
+# upload to s3
+if [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_ACCESS_KEY_ID" ]; then
+    log "ERROR: AWS KEYS neeeded to run. Contact SRE."
+    exit 1
 else
-  echo "[INFO] Found credentials file - $CREDENTIAL_FILE_TMP"
-  # get just the body required by bintray, strip off vault payload
-  export AWS_ACCESS_KEY_ID=$(/bin/cat $CREDENTIAL_FILE_TMP | jq -r .data.cicd_agent_to_s3.aws_access_key)
-  export AWS_SECRET_ACCESS_KEY=$(/bin/cat $CREDENTIAL_FILE_TMP | jq -r .data.cicd_agent_to_s3.aws_secret_key)
-  echo "[INFO] Going to upload wasm package: ${CL_WASM_PACKAGE} to s3 bucket: s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}"
-  s3cmd put ${CL_WASM_PACKAGE} s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/casper-contracts.tar.gz
+    s3cmd put ${CL_WASM_PACKAGE} s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/casper-contracts.tar.gz
 fi
 
