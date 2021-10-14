@@ -15,14 +15,6 @@ mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
 
-use casper_types::account::AccountHash;
-
-/// Default initial balance of a test account in motes.
-pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
-
-/// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000u64;
-
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
@@ -34,7 +26,7 @@ use casper_execution_engine::{
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::Digest;
-use casper_types::{Motes, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
@@ -63,7 +55,7 @@ pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 6234
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
-/// Default gensis timestamp in milliseconds.
+/// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 /// Default maximum number of associated keys.
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
@@ -71,8 +63,6 @@ pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
 pub const DEFAULT_GAS_PRICE: u64 = 1;
-/// Address of a mocked account.
-pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
 /// Amount named argument.
 pub const ARG_AMOUNT: &str = "amount";
 /// TImestamp increment in milliseconds.
@@ -94,6 +84,10 @@ pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
 /// Default account key.
 pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
+/// Default initial balance of a test account in motes.
+pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
+/// Minimal amount for a transfer that creates new accounts.
+pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000u64;
 /// Default proposer public key.
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();

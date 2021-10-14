@@ -52,7 +52,7 @@ impl DeployItemBuilder {
         self.with_payment_bytes(vec![], args)
     }
 
-    /// Sets the payment bytes of a deploy by reading a file and .
+    /// Sets the payment bytes of a deploy by reading a file and passing [`RuntimeArgs`].
     pub fn with_payment_code<T: AsRef<Path>>(self, file_name: T, args: RuntimeArgs) -> Self {
         let module_bytes = utils::read_wasm_file_bytes(file_name);
         self.with_payment_bytes(module_bytes, args)
