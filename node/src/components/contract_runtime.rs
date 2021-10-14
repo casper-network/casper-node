@@ -20,7 +20,7 @@ use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -521,7 +521,11 @@ where
                         .ignore()
                     }
                     ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
-                        debug!(?finalized_block, "execute block");
+                        let block_height = finalized_block.height();
+                        info!(
+                        %block_height,
+                        "executing block"
+                        );
                         effect_builder
                             .get_block_at_height_local(finalized_block.height())
                             .event(move |maybe_block| {
@@ -824,6 +828,11 @@ impl ContractRuntime {
             state.state_root_hash,
             next_era_validator_weights,
         );
+
+        let block_height = block.height();
+        let block_hash = *block.hash();
+
+        info!(%block_hash, %block_height, "finished executing block");
 
         let mut effects = effect_builder
             .announce_linear_chain_block(block, state.execution_results)
