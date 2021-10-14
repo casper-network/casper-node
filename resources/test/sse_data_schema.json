@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SseData",
   "description": "The \"data\" field of the events sent on the event stream to clients.",
-  "anyOf": [
+  "oneOf": [
     {
       "description": "The version of this node's API server.  This event will always be the first sent to a new client, and will have no associated event ID provided.",
       "type": "object",
@@ -523,7 +523,7 @@
       "minimum": 0.0
     },
     "ExecutableDeployItem": {
-      "anyOf": [
+      "oneOf": [
         {
           "type": "object",
           "required": [
@@ -748,7 +748,7 @@
     },
     "CLType": {
       "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
-      "anyOf": [
+      "oneOf": [
         {
           "type": "string",
           "enum": [
@@ -937,7 +937,7 @@
     },
     "ExecutionResult": {
       "description": "The result of executing a single deploy.",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "The result of a failed execution.",
           "type": "object",
@@ -1116,7 +1116,7 @@
     },
     "Transform": {
       "description": "The actual transformation performed while executing a deploy.",
-      "anyOf": [
+      "oneOf": [
         {
           "type": "string",
           "enum": [
@@ -1402,7 +1402,7 @@
     },
     "SeigniorageAllocation": {
       "description": "Information about a seigniorage allocation",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "Info about a seigniorage allocation for a validator",
           "type": "object",
