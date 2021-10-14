@@ -551,12 +551,6 @@ fn should_query_dictionary_items_with_test_builder() {
         genesis_config.protocol_version(),
         genesis_config.take_ee_config(),
     );
-    // let mut test_builder = TestContextBuilder::new()
-    //     .with_public_key(
-    //         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-    //         U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
-    //     )
-    //     .build();
 
     let dictionary_code = PathBuf::from(DICTIONARY_WASM);
     let deploy_item = DeployItemBuilder::new()

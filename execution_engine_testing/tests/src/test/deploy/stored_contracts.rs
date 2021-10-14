@@ -39,7 +39,7 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
 }
 
-fn store_payment_to_account_builder(
+fn store_payment_to_account_context(
     builder: &mut WasmTestBuilder<InMemoryGlobalState>,
 ) -> (Account, ContractHash) {
     // store payment contract
@@ -139,7 +139,7 @@ fn should_exec_stored_code_by_hash() {
     // store payment
     let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
 
-    let (default_account, hash) = store_payment_to_account_builder(&mut builder);
+    let (default_account, hash) = store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
@@ -226,7 +226,7 @@ fn should_exec_stored_code_by_named_hash() {
     // store payment
     let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
 
-    let (default_account, _) = store_payment_to_account_builder(&mut builder);
+    let (default_account, _) = store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
