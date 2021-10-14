@@ -83,7 +83,7 @@ use crate::{
         wasm_prep::Preprocessor,
     },
     storage::{
-        global_state::{CommitResult, StateProvider},
+        global_state::{lmdb::LmdbGlobalState, CommitResult, StateProvider},
         protocol_data::ProtocolData,
         trie::Trie,
     },
@@ -101,6 +101,16 @@ pub struct EngineState<S> {
     config: EngineConfig,
     system_contract_cache: SystemContractCache,
     state: S,
+}
+
+impl EngineState<LmdbGlobalState> {
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
+    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+        if self.state.environment.is_manual_sync_enabled() {
+            self.state.environment.sync()?
+        }
+        Ok(())
+    }
 }
 
 impl<S> EngineState<S>
