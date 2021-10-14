@@ -8,7 +8,6 @@ use futures::FutureExt;
 use tempfile::TempDir;
 use thiserror::Error;
 
-
 use super::*;
 use crate::{
     components::{deploy_acceptor, in_memory_network::NetworkController, storage},
@@ -132,7 +131,7 @@ impl Reactor {
 
                     let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash) {
                         Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
-                        _ => FetchedOrNotFound::NotFound(deploy_hash),
+                        Ok(None) | Err(_) => FetchedOrNotFound::NotFound(deploy_hash),
                     };
 
                     match Message::new_get_response(&fetched_or_not_found_deploy) {
@@ -267,6 +266,7 @@ enum ExpectedFetchedDeployResult {
         expected_peer: NodeId,
     },
 }
+
 async fn assert_settled(
     node_id: &NodeId,
     deploy_hash: DeployHash,
@@ -282,7 +282,7 @@ async fn assert_settled(
 
     network.settle_on(rng, has_responded, timeout).await;
 
-    let maybe_stored_deploy = network
+    let mut maybe_stored_deploy = network
         .nodes()
         .get(node_id)
         .unwrap()
@@ -290,6 +290,9 @@ async fn assert_settled(
         .inner()
         .storage
         .get_deploy_by_hash(deploy_hash);
+    if let Some(deploy) = &mut maybe_stored_deploy {
+        assert_eq!(Ok(()), deploy.is_valid()); // Set the `is_valid` flag for the comparison.
+    }
 
     // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
     let actual_fetcher_result = fetched.lock().unwrap().1.clone();
@@ -383,7 +386,7 @@ async fn should_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random_valid_native_transfer(&mut rng);
+    let mut deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_with_deploy = node_ids[0];
@@ -401,6 +404,7 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
+    assert_eq!(Ok(()), deploy.is_valid()); // Set the `is_valid` flag for the comparison.
     let expected_result = ExpectedFetchedDeployResult::FromPeer {
         expected_deploy: Box::new(deploy),
         expected_peer: node_with_deploy,
