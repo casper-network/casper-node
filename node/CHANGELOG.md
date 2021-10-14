@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [1.3.4] - 2021-09-23
 
+### Added
+* Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+
 ### Changed
 * Removed libp2p
 

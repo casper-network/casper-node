@@ -514,6 +514,9 @@ where
                                     correlation_id,
                                     &*trie,
                                 );
+                            if let Err(lmdb_error) = engine_state.flush_environment() {
+                                error!(?lmdb_error, "PutTrie: error flushing LMDB environment")
+                            }
                             metrics.put_trie.observe(start.elapsed().as_secs_f64());
                             trace!(?result, "put_trie response");
                             responder.respond(result).await
@@ -670,6 +673,7 @@ impl ContractRuntime {
             path.as_path(),
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
+            contract_runtime_config.manual_sync_enabled(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(
@@ -956,6 +960,9 @@ impl ContractRuntime {
                     // block.
                     Err(_err) => panic!("unable to commit"),
                 }
+            }
+            if let Err(error) = engine_state.flush_environment() {
+                error!(?error, "unable to flush LMDB environment");
             }
             state
         }

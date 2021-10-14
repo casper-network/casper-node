@@ -309,6 +309,11 @@ verify_accounts = true
 # If unset, defaults to 5.
 #max_query_depth = 5
 
+# Enable manual synchronizing to disk.
+#
+# If unset, defaults to true.
+#enable_manual_sync = true
+
 
 # ========================================================
 # Configuration options for synchronizing the linear chain
