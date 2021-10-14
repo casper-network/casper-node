@@ -10,7 +10,7 @@
 # Step 05: Assert nodes 1&10 didn't upgrade.
 # Step 06: Assert nodes 2-9 didn't stall.
 # Step 07: Assert nodes 1&10 did stall.
-# Step 08: Await 7 era.
+# Step 08: Await 10 era.
 # Step 09: Stage nodes 1&10 and restart.
 # Step 10: Assert all nodes are running
 # Step 11: Assert lfbs are in sync
@@ -215,11 +215,11 @@ function _step_07()
     done
 }
 
-# Step 08: Await 7 eras.
+# Step 08: Await 10 eras.
 function _step_08()
 {
-    log_step_upgrades 8 "awaiting 7 eras"
-    await_n_eras '7' 'true' '5.0' '2'
+    log_step_upgrades 8 "awaiting 10 eras"
+    await_n_eras '10' 'true' '5.0' '2'
 }
 
 # Step 09: Stage nodes 1&10 and restart.
