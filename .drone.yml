@@ -174,10 +174,10 @@ steps:
   commands:
     - "./build_wasm_package.sh"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
   when:
     branch:
     - master
@@ -251,21 +251,21 @@ steps:
     event:
       - push
 
-- name: nctl-upgrade-test
-  image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-  commands:
-    - "python3 -m pip install supervisor toml"
-    - "apt update && apt install lsof -y"
-    - "bash -i ./ci/nctl_upgrade.sh"
-  when:
-    branch:
-      - trying
-      - staging
+#- name: nctl-upgrade-test
+#  image: casperlabs/node-build-u1804
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: put-drone-aws-ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: put-drone-aws-sk
+#  commands:
+#    - "python3 -m pip install supervisor toml"
+#    - "apt update && apt install lsof -y"
+#    - "bash -i ./ci/nctl_upgrade.sh"
+#  when:
+#    branch:
+#      - trying
+#      - staging
 
 depends_on:
   - pre-checks
@@ -394,23 +394,6 @@ steps:
       - "feat-*"
     event:
       - push
-
-# Build failed so remove the update_package candidate
-#- name: del-upgrade_package-s3
-#  image: casperlabs/s3cmd-build:latest
-#  commands:
-#    - ./ci/upgrade_package_s3_storage.sh del
-#  environment:
-#    CL_VAULT_TOKEN:
-#      from_secret: vault_token
-#    CL_VAULT_HOST:
-#      from_secret: vault_host
-#  when:
-#    branch:
-#      - master
-#      - "release-*"
-#    event:
-#      - push
 
 - name: notify
   image: plugins/slack
