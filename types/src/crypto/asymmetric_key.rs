@@ -281,7 +281,7 @@ impl Display for PublicKey {
             formatter,
             "PubKey::{}({:10})",
             self.variant_name(),
-            HexFmt(&Into::<Vec<u8>>::into(self))
+            HexFmt(Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -514,7 +514,7 @@ impl Display for Signature {
             formatter,
             "Sig::{}({:10})",
             self.variant_name(),
-            HexFmt(&Into::<Vec<u8>>::into(*self))
+            HexFmt(Into::<Vec<u8>>::into(*self))
         )
     }
 }

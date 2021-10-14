@@ -485,8 +485,8 @@ impl Display for FinalizedBlock {
             random bit {}, timestamp {}",
             self.era_id,
             self.height,
-            format!("[{}]", itertools::join(&self.deploy_hashes, ", ")),
-            format!("[{}]", itertools::join(&self.transfer_hashes, ", ")),
+            HexList(&self.deploy_hashes),
+            HexList(&self.transfer_hashes),
             self.random_bit,
             self.timestamp,
         )?;

@@ -18,7 +18,7 @@ const HEX_CHARS: [char; 22] = [
 
 /// Takes a slice of bytes and breaks it up into a vector of *nibbles* (ie, 4-bit values)
 /// represented as `u8`s.
-fn bytes_to_nibbles(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = u8> + '_ {
+fn bytes_to_nibbles<'a, T: 'a + AsRef<[u8]>>(input: &'a T) -> impl Iterator<Item = u8> + 'a {
     input
         .as_ref()
         .iter()
@@ -51,18 +51,17 @@ fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
 ///   - Uses hash bits rather than nibbles
 ///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
-pub fn encode(input: &(impl AsRef<[u8]> + ?Sized)) -> String {
+pub fn encode<T: AsRef<[u8]>>(input: T) -> String {
     if input.as_ref().len() > SMALL_BYTES_COUNT {
-        return base16::encode_lower(input);
+        return base16::encode_lower(&input);
     }
-    encode_iter(input).collect()
+    encode_iter(&input).collect()
 }
 
 /// `encode` but it returns an iterator.
-fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = char> + '_ {
-    let input_bytes = input.as_ref();
-    let nibbles = bytes_to_nibbles(input_bytes);
-    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input));
+fn encode_iter<'a, T: 'a + AsRef<[u8]>>(input: &'a T) -> impl Iterator<Item = char> + 'a {
+    let nibbles = bytes_to_nibbles(input);
+    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input.as_ref()));
     nibbles.map(move |mut nibble| {
         // Base 16 numbers greater than 10 are represented by the ascii characters a through f.
         if nibble >= 10 && hash_bits.next().unwrap_or(true) {
@@ -76,7 +75,7 @@ fn encode_iter(input: &(impl AsRef<[u8]> + ?Sized)) -> impl Iterator<Item = char
 
 /// Returns true if all chars in a string are uppercase or lowercase.
 /// Returns false if the string is mixed case or if there are no alphabetic chars.
-fn string_is_same_case<T: AsRef<[u8]> + ?Sized>(s: &T) -> bool {
+fn string_is_same_case<T: AsRef<[u8]>>(s: T) -> bool {
     const LOWER_RANGE: RangeInclusive<u8> = b'a'..=b'f';
     const UPPER_RANGE: RangeInclusive<u8> = b'A'..=b'F';
 
@@ -109,8 +108,8 @@ fn string_is_same_case<T: AsRef<[u8]> + ?Sized>(s: &T) -> bool {
 /// skipped.
 ///
 /// [1]: https://eips.ethereum.org/EIPS/eip-55
-pub fn decode(input: &(impl AsRef<[u8]> + ?Sized)) -> Result<Vec<u8>, base16::DecodeError> {
-    let bytes = base16::decode(input)?;
+pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<Vec<u8>, base16::DecodeError> {
+    let bytes = base16::decode(input.as_ref())?;
 
     // If the string was not small or not mixed case, don't verify the checksum.
     if bytes.len() > SMALL_BYTES_COUNT || string_is_same_case(input.as_ref()) {
