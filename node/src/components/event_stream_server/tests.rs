@@ -1172,7 +1172,7 @@ async fn should_limit_concurrent_subscribers() {
 #[test]
 fn schema() {
     // To generate the contents to replace the input JSON files, run the test
-    // and print the `actual_schema by uncommenting the `println!`
+    // and print the `actual_schema`  by uncommenting the `println!`
     // towards the end of the test.
     let schema_path = format!(
         "{}/../resources/test/sse_data_schema.json",

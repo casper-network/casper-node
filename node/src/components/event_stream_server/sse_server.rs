@@ -681,7 +681,7 @@ mod tests {
         should_filter_out(&finality_signature, &MAIN_FILTER[..], getter.clone()).await;
 
         // `EventFilter::DeployAccepted` should filter out everything except `ApiVersion`s and
-        // `DeployAccepted`s and Shutdown's.
+        // `DeployAccepted`s and `Shutdown`'s.
         should_not_filter_out(&api_version, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_not_filter_out(&deploy_accepted, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..], getter.clone()).await;
