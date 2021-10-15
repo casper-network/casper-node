@@ -5,7 +5,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
-/// TODO: doc comment.
+/// Builder for creating a [`StepRequest`].
 #[derive(Debug)]
 pub struct StepRequestBuilder {
     parent_state_hash: Digest,
