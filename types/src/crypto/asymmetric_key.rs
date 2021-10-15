@@ -84,9 +84,10 @@ where
             return Err(Error::AsymmetricKey("too short".to_string()));
         }
 
-        let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
+        let (tag_hex, key_hex) = input.as_ref().split_at(2);
         let mut tag = [0u8; 1];
-        hex::decode_to_slice(tag_bytes, tag.as_mut())?;
+        hex::decode_to_slice(tag_hex, tag.as_mut())?;
+        let key_bytes = hex::decode(key_hex)?;
 
         match tag[0] {
             SYSTEM_TAG => {
