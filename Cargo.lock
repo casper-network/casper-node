@@ -520,6 +520,7 @@ version = "1.0.0"
 dependencies = [
  "assert_matches",
  "base16",
+ "bincode",
  "blake2",
  "casper-types",
  "criterion",

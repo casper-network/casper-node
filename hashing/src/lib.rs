@@ -255,22 +255,26 @@ impl Serialize for Digest {
         if serializer.is_human_readable() {
             checksummed_hex::encode(&self.0).serialize(serializer)
         } else {
-            self.0.serialize(serializer)
+            // This is to keep backwards compatibility with how HexForm encodes
+            // byte arrays. HexForm treats this like a slice.
+            (&self.0[..]).serialize(serializer)
         }
     }
 }
 
 impl<'de> Deserialize<'de> for Digest {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let bytes = if deserializer.is_human_readable() {
+        if deserializer.is_human_readable() {
             let hex_string = String::deserialize(deserializer)?;
             let bytes =
                 checksummed_hex::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
-            <[u8; Digest::LENGTH]>::try_from(bytes.as_ref()).map_err(SerdeError::custom)?
+            let data =
+                <[u8; Digest::LENGTH]>::try_from(bytes.as_ref()).map_err(SerdeError::custom)?;
+            Ok(Digest::from(data))
         } else {
-            <[u8; Digest::LENGTH]>::deserialize(deserializer)?
-        };
-        Ok(Digest(bytes))
+            let data = <Vec<u8>>::deserialize(deserializer)?;
+            Digest::try_from(data.as_slice()).map_err(D::Error::custom)
+        }
     }
 }
 
@@ -467,5 +471,18 @@ mod test {
             hash_lower_hex,
             "f3bc94beb2470d5c09f575b439d5f238bdc943233774c7aa59e597cc2579e148"
         );
+    }
+
+    #[test]
+    fn digest_deserialize_regression() {
+        let input = Digest([0; 32]);
+        let serialized = bincode::serialize(&input).expect("failed to serialize.");
+
+        let expected = vec![
+            32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+
+        assert_eq!(expected, serialized);
     }
 }
