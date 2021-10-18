@@ -282,7 +282,7 @@ async fn assert_settled(
 
     network.settle_on(rng, has_responded, timeout).await;
 
-    let mut maybe_stored_deploy = network
+    let maybe_stored_deploy = network
         .nodes()
         .get(node_id)
         .unwrap()
@@ -290,9 +290,6 @@ async fn assert_settled(
         .inner()
         .storage
         .get_deploy_by_hash(deploy_hash);
-    if let Some(deploy) = &mut maybe_stored_deploy {
-        assert_eq!(Ok(()), deploy.is_valid()); // Set the `is_valid` flag for the comparison.
-    }
 
     // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
     let actual_fetcher_result = fetched.lock().unwrap().1.clone();
@@ -305,7 +302,8 @@ async fn assert_settled(
             ExpectedFetchedDeployResult::FromStorage { expected_deploy },
             Some(Ok(FetchedData::FromStorage { item })),
             Some(stored_deploy),
-        ) if expected_deploy == item && stored_deploy == *item => {}
+        ) if expected_deploy.equals_ignoring_is_valid(&*item)
+            && stored_deploy.equals_ignoring_is_valid(&*item) => {}
         // FromPeer case: deploys should correspond, storage should be present and correspond, and
         // peers should correspond.
         (
@@ -315,7 +313,9 @@ async fn assert_settled(
             },
             Some(Ok(FetchedData::FromPeer { item, peer })),
             Some(stored_deploy),
-        ) if expected_deploy == item && stored_deploy == *item && expected_peer == peer => {}
+        ) if expected_deploy.equals_ignoring_is_valid(&*item)
+            && stored_deploy.equals_ignoring_is_valid(&*item)
+            && expected_peer == peer => {}
         // Sad path case
         (expected_result, actual_fetcher_result, maybe_stored_deploy) => {
             panic!(
@@ -386,7 +386,7 @@ async fn should_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let mut deploy = Deploy::random_valid_native_transfer(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_with_deploy = node_ids[0];
@@ -404,7 +404,6 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
-    assert_eq!(Ok(()), deploy.is_valid()); // Set the `is_valid` flag for the comparison.
     let expected_result = ExpectedFetchedDeployResult::FromPeer {
         expected_deploy: Box::new(deploy),
         expected_peer: node_with_deploy,
