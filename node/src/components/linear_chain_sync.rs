@@ -248,7 +248,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         block: &Block,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Send + Display + 'static,
         REv: ReactorEventT<I>,
     {
         self.peers.reset(rng);
@@ -290,8 +290,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         self.state = State::Done(latest_block);
     }
 
-    /// Handles an event indicating that a linear chain block has been executed and handled by
-    /// consensus component. This is a signal that we can safely continue with the next blocks,
+    /// Handles an event indicating that a linear chain block has been executed.
+    /// This is a signal that we can safely continue with the next blocks,
     /// without worrying about timing and/or ordering issues.
     /// Returns effects that are created as a response to that event.
     fn block_handled<REv>(
@@ -301,7 +301,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         block: Block,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Send + Display + 'static,
         REv: ReactorEventT<I>,
     {
         let height = block.height();
@@ -439,7 +439,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Send + Display + 'static,
         REv: ReactorEventT<I>,
     {
         let peer = self.peers.random_unsafe();
@@ -798,9 +798,9 @@ where
                                     "attempting to execute a block with a newer protocol version;\
                                     shutting down to upgrade"
                                 );
-                                return effect_builder
+                                effect_builder
                                     .immediately()
-                                    .event(|_| Event::Shutdown(StopReason::ForUpgrade));
+                                    .event(|_| Event::Shutdown(StopReason::ForUpgrade))
                             }
                             Ordering::Greater => {
                                 warn!(
@@ -810,23 +810,25 @@ where
                                     "attempting to execute a block with an older protocol version;\
                                     shutting down to downgrade"
                                 );
-                                return effect_builder
+                                effect_builder
                                     .immediately()
-                                    .event(|_| Event::Shutdown(StopReason::ForDowngrade));
+                                    .event(|_| Event::Shutdown(StopReason::ForDowngrade))
                             }
-                            _ => (),
+                            Ordering::Equal => {
+                                let block_hash = block_to_execute.hash();
+                                let block_height = block_to_execute.height();
+                                info!(%block_hash, %block_height, "deploys for linear chain block found");
+                                // Reset used peers so we can download next block with the full set.
+                                self.peers.reset(rng);
+                                // Execute block
+                                execute_block(
+                                    effect_builder,
+                                    *block_to_execute,
+                                    self.initial_execution_pre_state.clone(),
+                                )
+                                .ignore()
+                            }
                         }
-                        let block_hash = block_to_execute.hash();
-                        trace!(%block_hash, "deploys for linear chain block found");
-                        // Reset used peers so we can download next block with the full set.
-                        self.peers.reset(rng);
-                        // Execute block
-                        execute_block(
-                            effect_builder,
-                            *block_to_execute,
-                            self.initial_execution_pre_state.clone(),
-                        )
-                        .ignore()
                     }
                     event::DeploysResult::NotFound(block, peer) => {
                         let block_hash = block.hash();
@@ -876,9 +878,8 @@ where
             Event::BlockHandled(block) => {
                 let block_height = block.height();
                 let block_hash = *block.hash();
-                let effects = self.block_handled(rng, effect_builder, *block);
-                trace!(%block_height, %block_hash, "block handled");
-                effects
+                info!(%block_hash, %block_height, "executed block");
+                self.block_handled(rng, effect_builder, *block)
             }
             Event::GotUpgradeActivationPoint(next_upgrade_activation_point) => {
                 trace!(%next_upgrade_activation_point, "new activation point");
@@ -907,7 +908,7 @@ where
     }
 }
 
-fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
+fn fetch_block_deploys<I: Clone + Send + 'static + Display, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block: Block,
@@ -915,9 +916,19 @@ fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
+    let block_height = block.height();
+    let block_hash = *block.hash();
+    info!(
+        %block_hash, %block_height, %peer,
+        "validating block from peer"
+    );
     effect_builder
         .validate_block(peer.clone(), block.clone())
         .event(move |valid| {
+            info!(
+                %block_hash, %block_height,  %peer, valid,
+                "completed validating block from peer"
+            );
             if valid {
                 Event::GetDeploysResult(DeploysResult::Found(Box::new(block)))
             } else {
