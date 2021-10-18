@@ -245,7 +245,7 @@ function _setup_asset_global_state_toml() {
 
     PATH_TO_NET="$(get_path_to_net)"
 
-    if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "140" ]; then
+    if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -gt "140" ]; then
         # Check new data.lmdb path under ..storage/<chain_name>/
         if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)/data.lmdb" ]; then
             GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
@@ -341,8 +341,10 @@ function _main()
                                  "$PROTOCOL_VERSION" \
                                  "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
                                  false
-        _setup_asset_global_state_toml "$NODE_ID" \
-                                      "$PROTOCOL_VERSION"
+        if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "140" ]; then
+            _setup_asset_global_state_toml "$NODE_ID" \
+                                          "$PROTOCOL_VERSION"
+        fi
         sleep 1.0
     else
         log "ATTENTION :: no more staged upgrades to rollout !!!"
