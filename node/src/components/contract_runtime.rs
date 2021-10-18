@@ -52,6 +52,8 @@ pub use types::BlockAndExecutionEffects;
 pub(crate) use types::EraValidatorsRequest;
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
+///
+/// TODO: Fine tune this constant to the machine executing the node.
 const MAX_PARALLEL_INTENSIVE_TASKS: usize = 4;
 
 /// Semaphore enforcing maximum number of parallel resource intensive tasks.
