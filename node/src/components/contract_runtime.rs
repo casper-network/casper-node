@@ -401,12 +401,11 @@ where
                 transfers,
                 responder,
             } => {
-                trace!(
+                let block_height = finalized_block.height();
+                info!(
                     ?protocol_version,
-                    ?execution_pre_state,
-                    ?finalized_block,
-                    ?deploys,
-                    "execute block request"
+                    %block_height,
+                    "executing block"
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
@@ -420,7 +419,7 @@ where
                         deploys,
                         transfers,
                     );
-                    trace!(?result, "execute block response");
+                    info!(?protocol_version, %block_height, "finished executing block");
                     responder.respond(result).await
                 })
                 .ignore()
