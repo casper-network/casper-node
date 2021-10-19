@@ -4,6 +4,9 @@ use std::{
     sync::Arc,
 };
 
+use lmdb::DatabaseFlags;
+use num_rational::Ratio;
+
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineState},
     storage::{
@@ -14,13 +17,12 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_node::{
     storage::Storage,
-    types::{Chainspec, Deploy, DeployHash},
-    utils::Loadable,
+    types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
+use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
-use lmdb::DatabaseFlags;
 
 /// Gets many deploys by hash.
 pub fn get_many_deploys_by_hash(
@@ -129,12 +131,14 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
     storage_config.path = chain_download_path.clone();
-    let chainspec = Arc::new(Chainspec::from_path("TODO")?);
     Ok(Storage::new(
         &WithDir::new(chain_download_path, storage_config),
-        chainspec,
         None,
+        ProtocolVersion::from_parts(0, 0, 0),
         false,
+        "test",
+        Ratio::new(1, 3),
+        None,
     )?)
 }
 

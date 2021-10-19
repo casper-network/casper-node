@@ -3729,6 +3729,7 @@ dependencies = [
  "indicatif",
  "jsonrpc-lite",
  "lmdb",
+ "num-rational 0.4.0",
  "reqwest",
  "serde",
  "serde_json",

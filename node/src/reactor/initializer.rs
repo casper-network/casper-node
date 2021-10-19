@@ -192,9 +192,18 @@ impl Reactor {
         let storage_config = config.map_ref(|cfg| cfg.storage.clone());
         let storage = Storage::new(
             &storage_config,
-            chainspec_loader.chainspec().clone(),
             hard_reset_to_start_of_era,
+            chainspec_loader.chainspec().protocol_config.version,
             crashed,
+            &chainspec_loader.chainspec().network_config.name,
+            chainspec_loader
+                .chainspec()
+                .highway_config
+                .finality_threshold_fraction,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .last_emergency_restart,
         )?;
 
         let contract_runtime = ContractRuntime::new(

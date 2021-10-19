@@ -6,7 +6,6 @@
 //! * storing and loading blocks,
 //! * storing and loading deploys,
 //! * [temporary until refactored] holding `DeployMetadata` for each deploy,
-//! * holding a read-only copy of the chainspec,
 //! * keeping an index of blocks by height and
 //! * [unimplemented] managing disk usage by pruning blocks and deploys from storage.
 //!
@@ -48,7 +47,6 @@ use std::{
     convert::TryFrom,
     fs, io, mem,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -56,6 +54,7 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
+use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -66,7 +65,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, PublicKey, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
 };
 
 pub(crate) use crate::effect::requests::StorageRequest; // Needed by reactor! macro in fetcher tests...
@@ -78,7 +77,7 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Chainspec, Deploy, DeployHash,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
         DeployHeader, DeployMetadata, HashingAlgorithmVersion, MerkleBlockBody,
         MerkleBlockBodyPart, MerkleLinkedListNode, TimeDiff,
     },
@@ -299,8 +298,6 @@ impl From<lmdb::Error> for Error {
 /// Storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
-    /// The chainspec.
-    chainspec: Arc<Chainspec>,
     /// Storage location.
     root: PathBuf,
     /// Environment holding LMDB databases.
@@ -345,6 +342,11 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// The fraction of validators, by weight, that have to sign a block to prove its finality.
+    #[data_size(skip)]
+    finality_threshold_fraction: Ratio<u64>,
+    /// The most recent era in which the network was manually restarted.
+    last_emergency_restart: Option<EraId>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -378,15 +380,18 @@ impl Storage {
     /// only be required if the node is detected to have restarted after a crash.
     pub fn new(
         cfg: &WithDir<Config>,
-        chainspec: Arc<Chainspec>,
         hard_reset_to_start_of_era: Option<EraId>,
+        protocol_version: ProtocolVersion,
         should_check_integrity: bool,
+        network_name: &str,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
         // Create the database directory.
         let mut root = cfg.with_dir(config.path.clone());
-        let network_subdir = root.join(chainspec.network_config.name.clone());
+        let network_subdir = root.join(network_name);
 
         if !network_subdir.exists() {
             fs::create_dir_all(&network_subdir)
@@ -451,7 +456,7 @@ impl Storage {
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
                 if block_header.era_id() >= invalid_era
-                    && block_header.protocol_version() < chainspec.protocol_config.version
+                    && block_header.protocol_version() < protocol_version
                 {
                     match block_header.hashing_algorithm_version() {
                         HashingAlgorithmVersion::V1 => {
@@ -548,7 +553,6 @@ impl Storage {
 
         Ok(Storage {
             root,
-            chainspec,
             env,
             block_header_db,
             block_body_v1_db,
@@ -564,6 +568,8 @@ impl Storage {
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
+            finality_threshold_fraction,
+            last_emergency_restart,
         })
     }
 
@@ -1427,8 +1433,7 @@ impl Storage {
         tx: &mut Tx,
         block_header: &BlockHeader,
     ) -> Result<Option<BlockSignatures>, Error> {
-        if let Some(last_emergency_restart) = self.chainspec.protocol_config.last_emergency_restart
-        {
+        if let Some(last_emergency_restart) = self.last_emergency_restart {
             if block_header.era_id() <= last_emergency_restart {
                 debug!(
                     ?block_header,
@@ -1457,7 +1462,7 @@ impl Storage {
             None => return Err(Error::InvalidSwitchBlock(Box::new(switch_block_header))),
             Some(validator_weights) => consensus::check_sufficient_finality_signatures(
                 validator_weights,
-                self.chainspec.highway_config.finality_threshold_fraction,
+                self.finality_threshold_fraction,
                 &block_signatures,
             ),
         };

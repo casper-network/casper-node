@@ -73,9 +73,18 @@ reactor!(Reactor {
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
-            chainspec_loader.chainspec().clone(),
             chainspec_loader.hard_reset_to_start_of_era(),
+            chainspec_loader.chainspec().protocol_config.version,
             false,
+            &chainspec_loader.chainspec().network_config.name,
+            chainspec_loader
+                .chainspec()
+                .highway_config
+                .finality_threshold_fraction,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .last_emergency_restart,
         );
         deploy_acceptor = DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec(), registry);
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);

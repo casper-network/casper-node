@@ -4,10 +4,10 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
-    sync::Arc,
 };
 
 use lmdb::{Cursor, Transaction};
+use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
@@ -29,10 +29,10 @@ use crate::{
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, Deploy,
-        DeployHash, DeployMetadata, FinalitySignature, FinalizedBlock, HashingAlgorithmVersion,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
+        DeployMetadata, FinalitySignature, FinalizedBlock, HashingAlgorithmVersion,
     },
-    utils::{Loadable, WithDir},
+    utils::WithDir,
 };
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
@@ -60,9 +60,12 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        Arc::new(Chainspec::from_resources("local")),
         None,
+        ProtocolVersion::from_parts(1, 0, 0),
         false,
+        "test",
+        Ratio::new(1, 3),
+        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -79,13 +82,14 @@ fn storage_fixture_with_hard_reset(
     reset_era_id: EraId,
 ) -> Storage {
     let cfg = new_config(harness);
-    let mut chainspec = Chainspec::from_resources("local");
-    chainspec.protocol_config.version = ProtocolVersion::from_parts(1, 1, 0);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        Arc::new(chainspec),
         Some(reset_era_id),
+        ProtocolVersion::from_parts(1, 1, 0),
         false,
+        "test",
+        Ratio::new(1, 3),
+        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -103,13 +107,14 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
     protocol_version: ProtocolVersion,
 ) -> Storage {
     let cfg = new_config(harness);
-    let mut chainspec = Chainspec::from_resources("local");
-    chainspec.protocol_config.version = protocol_version;
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        Arc::new(chainspec),
         Some(reset_era_id),
+        protocol_version,
         false,
+        "test",
+        Ratio::new(1, 3),
+        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -1112,13 +1117,14 @@ fn should_create_subdir_named_after_network() {
     let cfg = new_config(&harness);
 
     let network_name = "test";
-    let mut chainspec = Chainspec::from_resources("local");
-    chainspec.network_config.name = network_name.to_string();
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
-        Arc::new(chainspec),
         None,
+        ProtocolVersion::from_parts(1, 0, 0),
         false,
+        network_name,
+        Ratio::new(1, 3),
+        None,
     )
     .unwrap();
 

@@ -3,12 +3,12 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
-    sync::Arc,
     time::Duration,
 };
 
 use derive_more::From;
 use futures::channel::oneshot;
+use num_rational::Ratio;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
@@ -22,7 +22,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
-    CLValue, StoredValue, URef, U512,
+    CLValue, ProtocolVersion, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -368,8 +368,16 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let chainspec = Arc::new(Chainspec::from_resources("local"));
-        let storage = Storage::new(&storage_withdir, chainspec, None, false).unwrap();
+        let storage = Storage::new(
+            &storage_withdir,
+            None,
+            ProtocolVersion::from_parts(1, 0, 0),
+            false,
+            "test",
+            Ratio::new(1, 3),
+            None,
+        )
+        .unwrap();
 
         let deploy_acceptor = DeployAcceptor::new(
             super::Config::new(VERIFY_ACCOUNTS),

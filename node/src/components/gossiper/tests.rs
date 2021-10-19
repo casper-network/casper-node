@@ -5,10 +5,10 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
-    sync::Arc,
 };
 
 use derive_more::From;
+use num_rational::Ratio;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
@@ -178,9 +178,12 @@ impl reactor::Reactor for Reactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
-            Arc::new(Chainspec::from_resources("local")),
             None,
+            ProtocolVersion::from_parts(1, 0, 0),
             false,
+            "test",
+            Ratio::new(1, 3),
+            None,
         )
         .unwrap();
 
