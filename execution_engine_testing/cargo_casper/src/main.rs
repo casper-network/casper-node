@@ -13,7 +13,7 @@ use once_cell::sync::Lazy;
 pub mod common;
 mod contract_package;
 pub mod dependency;
-mod erc20;
+//mod erc20;
 mod makefile;
 mod rust_toolchain;
 mod simple;
@@ -27,9 +27,6 @@ const USAGE: &str = r#"cargo casper [FLAGS] <path>
 const AFTER_HELP: &str = r#"NOTE:
     If no other flag is provided, a trivial example contract and tests are created"#;
 
-const ERC20_ARG_NAME: &str = "erc20";
-const ERC20_ARG_ABOUT: &str = "Create a basic ERC-20 contract and tests";
-
 const ROOT_PATH_ARG_NAME: &str = "path";
 const ROOT_PATH_ARG_VALUE_NAME: &str = "path";
 const ROOT_PATH_ARG_ABOUT: &str = "Path to new folder for contract and tests";
@@ -41,15 +38,14 @@ const FAILURE_EXIT_CODE: i32 = 101;
 
 static ARGS: Lazy<Args> = Lazy::new(Args::new);
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-enum ProjectKind {
-    Simple,
-    Erc20,
-}
+// #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+// enum ProjectKind {
+//     Simple,
+//     Erc20,
+// }
 
 #[derive(Debug)]
 struct Args {
-    project_kind: ProjectKind,
     root_path: PathBuf,
     workspace_path: Option<PathBuf>,
 }
@@ -73,11 +69,6 @@ impl Args {
             }
         });
 
-        let project_kind_arg = Arg::new(ERC20_ARG_NAME)
-            .takes_value(false)
-            .long(ERC20_ARG_NAME)
-            .about(ERC20_ARG_ABOUT);
-
         let root_path_arg = Arg::new(ROOT_PATH_ARG_NAME)
             .required(true)
             .value_name(ROOT_PATH_ARG_VALUE_NAME)
@@ -93,16 +84,9 @@ impl Args {
             .about(crate_description!())
             .override_usage(USAGE)
             .after_help(AFTER_HELP)
-            .arg(project_kind_arg)
             .arg(root_path_arg)
             .arg(workspace_path_arg)
             .get_matches_from(filtered_args_iter);
-
-        let project_kind = if arg_matches.is_present(ERC20_ARG_NAME) {
-            ProjectKind::Erc20
-        } else {
-            ProjectKind::Simple
-        };
 
         let root_path = arg_matches
             .value_of(ROOT_PATH_ARG_NAME)
@@ -114,14 +98,9 @@ impl Args {
             .map(PathBuf::from);
 
         Args {
-            project_kind,
             root_path,
             workspace_path,
         }
-    }
-
-    pub fn project_kind(&self) -> ProjectKind {
-        self.project_kind
     }
 
     pub fn root_path(&self) -> &Path {

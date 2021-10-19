@@ -16,12 +16,14 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Support building and testing using stable Rust.
 
+### Removed
+* Removed support for generating an ERC-20 contract.
 
 
 ## [1.3.3] - 2021-09-13
 
 ### Added
-* Add support for generating an ERC-20 contract.
+* Added support for generating an ERC-20 contract.
 
 
 
