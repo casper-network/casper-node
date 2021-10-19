@@ -45,7 +45,8 @@ fn output_from_command(mut command: Command) -> Output {
     }
 }
 
-fn run_tool_and_resulting_tests() {
+#[test]
+fn should_run_cargo_casper() {
     let temp_dir = tempfile::tempdir().unwrap().into_path();
 
     // Run 'cargo-casper <test dir>/<subdir> --workspace-path=<path to casper-node root>'
@@ -82,9 +83,4 @@ fn run_tool_and_resulting_tests() {
 
     // Cleans up temporary directory, but leaves it otherwise if the test failed.
     fs::remove_dir_all(&temp_dir).unwrap();
-}
-
-#[test]
-fn should_run_cargo_casper_for_simple_example() {
-    run_tool_and_resulting_tests();
 }
