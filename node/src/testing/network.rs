@@ -289,10 +289,16 @@ where
         self.nodes.values().map(|runner| runner.reactor().inner())
     }
 
+    /// Returns an iterator over all runners, mutable.
+    pub(crate) fn runners_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut Runner<ConditionCheckReactor<R>>> {
+        self.nodes.values_mut()
+    }
+
     /// Returns an iterator over all reactors, mutable.
     pub fn reactors_mut(&mut self) -> impl Iterator<Item = &mut R> {
-        self.nodes
-            .values_mut()
+        self.runners_mut()
             .map(|runner| runner.reactor_mut().inner_mut())
     }
 
