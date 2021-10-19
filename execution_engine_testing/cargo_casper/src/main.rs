@@ -15,7 +15,6 @@ mod contract_package;
 pub mod dependency;
 mod makefile;
 mod rust_toolchain;
-mod simple;
 mod tests_package;
 mod travis_yml;
 
