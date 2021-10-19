@@ -16,8 +16,6 @@ static CONTRACT_PACKAGE_ROOT: Lazy<PathBuf> = Lazy::new(|| ARGS.root_path().join
 static CARGO_TOML: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("Cargo.toml"));
 static INTEGRATION_TESTS_RS: Lazy<PathBuf> =
     Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("src/integration_tests.rs"));
-static _TEST_FIXTURE_RS: Lazy<PathBuf> =
-    Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("src/test_fixture.rs"));
 
 static CARGO_TOML_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(

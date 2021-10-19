@@ -13,7 +13,6 @@ use once_cell::sync::Lazy;
 pub mod common;
 mod contract_package;
 pub mod dependency;
-//mod erc20;
 mod makefile;
 mod rust_toolchain;
 mod simple;
@@ -37,12 +36,6 @@ const WORKSPACE_PATH_ARG_LONG: &str = "workspace-path";
 const FAILURE_EXIT_CODE: i32 = 101;
 
 static ARGS: Lazy<Args> = Lazy::new(Args::new);
-
-// #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-// enum ProjectKind {
-//     Simple,
-//     Erc20,
-// }
 
 #[derive(Debug)]
 struct Args {
