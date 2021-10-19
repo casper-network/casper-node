@@ -3675,27 +3675,8 @@ where
         let immediate_caller = match self.get_immediate_caller() {
             Some(call_stack_element) => call_stack_element,
             None => {
-                // Empty call stack is strictly a programming error.
-                // A Runtime can't be created with empty call stack or with a stored variant as
-                // first as the constructor is guarded with debug assertions.
-                match self.call_stack().first() {
-                    Some(CallStackElement::Session { account_hash }) => {
-                        // For example the genesis process originates with a session code started by
-                        // a system account.
-                        return Ok(account_hash == &PublicKey::System.to_account_hash());
-                    }
-                    Some(
-                        CallStackElement::StoredContract { .. }
-                        | CallStackElement::StoredSession { .. },
-                    )
-                    | None => {
-                        debug_assert!(
-                            false,
-                            "First element of the stack should be present and not a stored variant."
-                        );
-                        return Ok(false);
-                    }
-                }
+                // Immediate caller is assumed to exist at a time this check is run.
+                return Ok(false);
             }
         };
 
