@@ -45,7 +45,7 @@ fn output_from_command(mut command: Command) -> Output {
     }
 }
 
-fn run_tool_and_resulting_tests(maybe_extra_flag: Option<&str>) {
+fn run_tool_and_resulting_tests() {
     let temp_dir = tempfile::tempdir().unwrap().into_path();
 
     // Run 'cargo-casper <test dir>/<subdir> --workspace-path=<path to casper-node root>'
@@ -53,9 +53,6 @@ fn run_tool_and_resulting_tests(maybe_extra_flag: Option<&str>) {
     let test_dir = temp_dir.join(subdir);
     let mut tool_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
     tool_cmd.arg(&test_dir);
-    if let Some(extra_flag) = maybe_extra_flag {
-        tool_cmd.arg(extra_flag);
-    }
     tool_cmd.arg(&*WORKSPACE_PATH_ARG);
 
     // The CI environment doesn't have a Git user configured, so we can set the env var `USER` for
@@ -89,10 +86,5 @@ fn run_tool_and_resulting_tests(maybe_extra_flag: Option<&str>) {
 
 #[test]
 fn should_run_cargo_casper_for_simple_example() {
-    run_tool_and_resulting_tests(None);
-}
-
-#[test]
-fn should_run_cargo_casper_for_erc20_example() {
-    run_tool_and_resulting_tests(Some("--erc20"));
+    run_tool_and_resulting_tests();
 }
