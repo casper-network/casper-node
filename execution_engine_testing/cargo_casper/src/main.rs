@@ -23,8 +23,6 @@ const USAGE: &str = r#"cargo casper [FLAGS] <path>
     cd <path>
     make prepare
     make test"#;
-const AFTER_HELP: &str = r#"NOTE:
-    If no other flag is provided, a trivial example contract and tests are created"#;
 
 const ROOT_PATH_ARG_NAME: &str = "path";
 const ROOT_PATH_ARG_VALUE_NAME: &str = "path";
@@ -76,7 +74,6 @@ impl Args {
             .version(crate_version!())
             .about(crate_description!())
             .override_usage(USAGE)
-            .after_help(AFTER_HELP)
             .arg(root_path_arg)
             .arg(workspace_path_arg)
             .get_matches_from(filtered_args_iter);
