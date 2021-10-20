@@ -33,6 +33,7 @@ pub(crate) enum Event {
         finalized_deploys: Vec<(DeployHash, DeployHeader)>,
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
+        /// The timestamp of the last finalized block.
         last_finalized_timestamp: Timestamp,
     },
     /// A new deploy has been received by this node and stored: it should be retrieved from storage
