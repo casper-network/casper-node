@@ -254,7 +254,6 @@ impl ChainspecLoader {
         self.reactor_exit
     }
 
-
     pub(crate) fn chainspec(&self) -> &Arc<Chainspec> {
         &self.chainspec
     }
@@ -262,7 +261,6 @@ impl ChainspecLoader {
     pub(crate) fn next_upgrade(&self) -> Option<NextUpgrade> {
         self.next_upgrade.clone()
     }
-
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
     /// subsequent eras are deleted from storage.

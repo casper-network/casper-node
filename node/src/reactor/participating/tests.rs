@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use either::Either;
@@ -12,24 +12,24 @@ use tokio::time;
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
-    EraId, Motes, PublicKey, SecretKey, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 use crate::{
-    components::{consensus, gossiper, small_network, storage},
+    components::{chainspec_loader::NextUpgrade, consensus, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    effect::EffectExt,
+    effect::{requests::ContractRuntimeRequest, EffectExt},
     reactor::{
         initializer, joiner,
         participating::{self, ParticipatingEvent},
-        ReactorExit, Runner,
+        Reactor, ReactorExit, Runner,
     },
     testing::{
         self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor, TestRng,
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ExitCode, Timestamp,
     },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
@@ -403,5 +403,98 @@ async fn run_equivocator_network() {
         assert!(bids[1][pk].staked_amount() >= stake);
         assert!(bids[2][pk].staked_amount() >= stake);
         assert!(bids[3][pk].staked_amount() >= stake);
+    }
+}
+
+#[tokio::test]
+async fn dont_upgrade_without_switch_block() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Set up a network with only a single validator.
+    let alice_sk = Arc::new(SecretKey::random(&mut rng));
+    let alice_pk = PublicKey::from(&*alice_sk);
+    let keys: Vec<Arc<SecretKey>> = vec![alice_sk];
+    let stakes: BTreeMap<PublicKey, U512> = iter::once((alice_pk, U512::from(100))).collect();
+
+    // Eras have exactly two blocks each, and there is one block per second.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // An upgrade is scheduled for era 2, after the switch block in era 1 (height 2).
+    // We artificially delay the execution of that block.
+    for runner in net.runners_mut() {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let upgrade = NextUpgrade::new(
+                    ActivationPoint::EraId(2.into()),
+                    ProtocolVersion::from_parts(999, 0, 0),
+                );
+                effect_builder
+                    .announce_upgrade_activation_point_read(upgrade)
+                    .ignore()
+            })
+            .await;
+        let mut exec_request_received = false;
+        runner.reactor_mut().inner_mut().set_filter(move |event| {
+            if let ParticipatingEvent::ContractRuntime(request) = &event {
+                if let ContractRuntimeRequest::EnqueueBlockForExecution {
+                    finalized_block, ..
+                } = request.as_ref()
+                {
+                    if finalized_block.era_report().is_some()
+                        && finalized_block.era_id() == EraId::from(1)
+                        && !exec_request_received
+                    {
+                        info!("delaying {}", finalized_block);
+                        exec_request_received = true;
+                        return Either::Left(
+                            time::sleep(Duration::from_secs(10)).event(move |_| event),
+                        );
+                    }
+                    info!("not delaying {}", finalized_block);
+                }
+            }
+            Either::Right(event)
+        });
+    }
+
+    // Run until the node shuts down for the upgrade.
+    let timeout = Duration::from_secs(120);
+    net.settle_on(
+        &mut rng,
+        |nodes| {
+            nodes
+                .values()
+                .all(|runner| runner.participating().maybe_exit().is_some())
+        },
+        timeout,
+    )
+    .await;
+
+    // Verify that the switch block has been stored: Even though it was delayed the node didn't
+    // restart before executing and storing it.
+    for runner in net.nodes().values() {
+        let header = runner
+            .participating()
+            .storage()
+            .read_block_header_and_sufficient_finality_signatures_by_height(2)
+            .expect("failed to read from storage")
+            .expect("missing switch block")
+            .block_header;
+        assert_eq!(EraId::from(1), header.era_id());
+        assert!(header.is_switch_block());
+        assert_eq!(
+            Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
+            runner.participating().maybe_exit()
+        );
     }
 }
