@@ -117,7 +117,7 @@ pub trait DocExample {
 
 /// The main schema for the casper node's RPC server, compliant with
 /// [the OpenRPC Specification](https://spec.open-rpc.org).
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct OpenRpcSchema {
     openrpc: String,
     info: OpenRpcInfoField,
@@ -288,7 +288,7 @@ impl OpenRpcSchema {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcInfoField {
     version: String,
     title: String,
@@ -297,26 +297,26 @@ struct OpenRpcInfoField {
     license: OpenRpcLicenseField,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcContactField {
     name: String,
     url: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcLicenseField {
     name: String,
     url: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcServerEntry {
     name: String,
     url: String,
 }
 
 /// The struct containing the documentation for the RPCs.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct Method {
     name: String,
     summary: String,
@@ -325,21 +325,21 @@ pub struct Method {
     examples: Vec<Example>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct SchemaParam {
     name: String,
     schema: Schema,
     required: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct ResponseResult {
     name: String,
     schema: Schema,
 }
 
 /// An example pair of request params and response result.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct Example {
     name: String,
     params: Vec<ExampleParam>,
@@ -393,19 +393,19 @@ impl Example {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct ExampleParam {
     name: String,
     value: Value,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct ExampleResult {
     name: String,
     value: Value,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct Components {
     schemas: Map<String, Schema>,
 }
