@@ -1141,19 +1141,19 @@ impl Storage {
 
     /// Retrieves the state root hashes from storage to check the integrity of the trie store.
     pub(crate) fn read_state_root_hashes_for_trie_check(&self) -> Result<Vec<Digest>, Error> {
-        let mut blake_hashes: Vec<Digest> = Vec::new();
+        let mut hashes: Vec<Digest> = Vec::new();
         let txn = self.env.begin_ro_txn()?;
         let mut cursor = txn.open_ro_cursor(self.block_header_db)?;
         for (_, raw_val) in cursor.iter() {
             let header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let blake_hash = *header.state_root_hash();
-            blake_hashes.push(blake_hash);
+            let hash = *header.state_root_hash();
+            hashes.push(hash);
         }
 
-        blake_hashes.sort();
-        blake_hashes.dedup();
+        hashes.sort();
+        hashes.dedup();
 
-        Ok(blake_hashes)
+        Ok(hashes)
     }
 
     /// Retrieves a single block header in a separate transaction from storage.
