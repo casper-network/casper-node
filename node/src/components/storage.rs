@@ -69,7 +69,7 @@ use casper_types::{
 };
 
 pub(crate) use crate::effect::requests::StorageRequest; /* Needed by reactor! macro in
-                                                          * fetcher tests... */
+                                                         * fetcher tests... */
 use crate::{
     components::{consensus, consensus::error::FinalitySignatureError, Component},
     crypto,
