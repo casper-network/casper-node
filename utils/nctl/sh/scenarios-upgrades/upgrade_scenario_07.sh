@@ -84,7 +84,7 @@ function _step_01()
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
     log "... Starting 5 non-validators"
-    for i in $(seq 6 10); do 
+    for i in $(seq 6 10); do
         source "$NCTL/sh/node/start.sh" node="$i"
     done
 }
@@ -105,7 +105,7 @@ function _step_03()
     log_step_upgrades 3 "upgrading 2 thru 9"
 
     log "... setting upgrade assets"
- 
+
     for i in $(seq 2 9); do
         if [ "$i" -le '5' ]; then
             log "... staging upgrade on validator node-$i"
@@ -228,6 +228,12 @@ function _step_09()
     local PROTOCOL_VERSION=${1}
     local ACTIVATION_POINT=${2}
     local HASH=${3}
+    local PATH_TO_NODE_CONFIG_UPGRADE
+    local N2_PROTO_VERSION
+
+    # Node 2 would be running the upgrade if we made it this far in the test.
+    # sed is for switching from: ie. 1.0.0 -> 1_0_0
+    N2_PROTO_VERSION="$(get_node_protocol_version 2 | sed 's/\./_/g')"
 
     log_step_upgrades 9 "upgrading nodes 1&10"
 
@@ -241,6 +247,9 @@ function _step_09()
         fi
         _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$i"
         echo ""
+        # add hash to upgrades config
+        PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"
+        _update_node_config_on_start "$PATH_TO_NODE_CONFIG_UPGRADE" "$HASH"
     done
 
     log "... restarting nodes 1 & 10"
@@ -269,7 +278,7 @@ function _step_10()
         nctl-status; nctl-assets-dump
         exit 1
     else
-        log "... $RUNNING_COUNT of 10 nodes found running![expected]"
+        log "... $RUNNING_COUNT of 10 nodes found running [expected]"
     fi
 }
 
@@ -284,7 +293,7 @@ function _step_11()
     LOOPS_ALLOWED=1200
 
     log_step_upgrades 11 "Asserting all nodes are in sync..."
-    
+
     while [ "$LOOPS_ALLOWED" != '0' ]; do
         NODES_IN_SYNC=$(nctl-view-chain-lfb | awk '{print $NF}' | uniq -c | sed 's/^ *//g' | awk '{ print $1 }')
         if [ "$NODES_IN_SYNC" = '10' ]; then
