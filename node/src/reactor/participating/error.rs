@@ -1,9 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    components::{
-        contract_runtime, contract_runtime::BlockExecutionError, small_network, storage,
-    },
+    components::{contract_runtime, contract_runtime::BlockExecutionError, small_network, storage},
     types::{Block, BlockHeader},
     utils::ListeningError,
 };
@@ -16,7 +14,6 @@ pub(crate) enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
-
 
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]

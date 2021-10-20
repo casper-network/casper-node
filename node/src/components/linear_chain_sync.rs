@@ -18,7 +18,6 @@ pub(crate) enum LinearChainSyncState {
 }
 
 impl LinearChainSyncState {
-
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
         !matches!(self, Self::Syncing)
@@ -30,5 +29,4 @@ impl LinearChainSyncState {
             Self::NotGoingToSync | Self::Syncing => None,
         }
     }
-
 }
