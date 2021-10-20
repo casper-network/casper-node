@@ -66,6 +66,7 @@ pub enum FetchedOrNotFound<T, Id> {
     Fetched(T),
     NotFound(Id),
 }
+
 pub(crate) trait ItemFetcher<T: Item + 'static> {
     /// Indicator on whether it is safe to respond to all of our responders. For example, [Deploy]s
     /// and [BlockHeader]s are safe because their [Item::id] is all that is needed for
@@ -73,9 +74,11 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
     /// require validation. These are not infallible, and only the responders corresponding to the
     /// node queried may be responded to.
     const SAFE_TO_RESPOND_TO_ALL: bool;
+
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
     fn metrics(&mut self) -> &FetcherMetrics;
+
     fn peer_timeout(&self) -> Duration;
 
     /// We've been asked to fetch the item by another component of this node.  We'll try to get it
@@ -258,6 +261,7 @@ impl<T: Item> Fetcher<T> {
 
 impl ItemFetcher<Deploy> for Fetcher<Deploy> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<Deploy>>>> {
@@ -267,6 +271,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
     fn metrics(&mut self) -> &FetcherMetrics {
         &self.metrics
     }
+
     fn peer_timeout(&self) -> Duration {
         self.get_from_peer_timeout
     }
@@ -290,6 +295,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 
 impl ItemFetcher<Block> for Fetcher<Block> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<Block>>>> {
@@ -299,6 +305,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
     fn metrics(&mut self) -> &FetcherMetrics {
         &self.metrics
     }
+
     fn peer_timeout(&self) -> Duration {
         self.get_from_peer_timeout
     }
@@ -321,6 +328,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
 
 impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockWithMetadata>>>> {
@@ -330,6 +338,7 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
     fn metrics(&mut self) -> &FetcherMetrics {
         &self.metrics
     }
+
     fn peer_timeout(&self) -> Duration {
         self.get_from_peer_timeout
     }
@@ -387,6 +396,7 @@ type GlobalStorageTrie = Trie<Key, StoredValue>;
 
 impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<Digest, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
@@ -396,6 +406,7 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
     fn metrics(&mut self) -> &FetcherMetrics {
         &self.metrics
     }
+
     fn peer_timeout(&self) -> Duration {
         self.get_from_peer_timeout
     }
@@ -456,6 +467,7 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
             })
     }
 }
+
 impl<T, REv> Component<REv> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,

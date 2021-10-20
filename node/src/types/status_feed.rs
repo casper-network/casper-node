@@ -154,7 +154,7 @@ pub struct GetStatusResult {
     /// The chainspec name.
     pub chainspec_name: String,
     /// The state root hash used at the start of the current session.
-    #[deprecated(since = "1.4.0")]
+    #[deprecated(since = "1.5.0")]
     pub starting_state_root_hash: Option<Digest>,
     /// The node ID and network address of each connected peer.
     pub peers: PeersMap,

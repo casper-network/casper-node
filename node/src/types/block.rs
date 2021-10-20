@@ -1506,6 +1506,7 @@ impl Block {
         )
         .expect("Could not create random block with specifics")
     }
+
     fn from_unverified(unverified_block: UnverifiedBlock) -> Result<Block, BlockValidationError> {
         let UnverifiedBlock { hash, header, body } = unverified_block;
         let block = Block { hash, header, body };

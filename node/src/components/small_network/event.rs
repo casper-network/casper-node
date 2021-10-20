@@ -14,8 +14,9 @@ use tracing::Span;
 
 use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
 use crate::{
+    components::contract_runtime::ContractRuntimeAnnouncement,
     effect::{
-        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
+        announcements::BlocklistAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,

@@ -34,12 +34,12 @@ steps:
       - make setup-rs
       - make doc
 
-#  - name: cargo-audit
-#    image: casperlabs/node-build-u1804
-#    commands:
-#      - make setup-audit
-#      - cargo generate-lockfile
-#      - make audit
+  - name: cargo-audit
+    image: casperlabs/node-build-u1804
+    commands:
+      - make setup-audit
+      - cargo generate-lockfile
+      - make audit
 
 trigger:
   branch:

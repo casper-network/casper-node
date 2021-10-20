@@ -86,11 +86,11 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     message::{Message, MessageKind, Payload, PayloadWeights},
 };
-use super::consensus;
+use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement, NetworkAnnouncement},
+        announcements::{BlocklistAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },

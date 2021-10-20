@@ -1091,7 +1091,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a block and sufficient finality signatures from storage.
+    /// Gets a block and sufficient finality signatures from storage.
     pub(crate) async fn get_block_and_sufficient_finality_signatures_by_height_from_storage(
         self,
         block_height: u64,
@@ -1145,7 +1145,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get the highest block with its associated metadata.
+    /// Gets the highest block with its associated metadata.
     pub(crate) async fn get_highest_block_with_metadata_from_storage(
         self,
     ) -> Option<BlockWithMetadata>
@@ -1159,7 +1159,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Fetch an item from a fetcher.
+    /// Fetches an item from a fetcher.
     pub(crate) async fn fetch<T, I>(self, id: T::Id, peer: I) -> FetchResult<T, I>
     where
         REv: From<FetcherRequest<I, T>>,
