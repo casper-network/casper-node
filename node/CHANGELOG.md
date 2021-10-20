@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-## [Unreleased]
+## [1.4.0] - 2021-10-04
 
 ### Added
 * Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
@@ -26,23 +26,23 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
-  * `standstill_timeout` causes the node to restart if no progress is made.
-  * `request_state_interval` makes the node periodically request the latest state from a peer.
-  * `log_synchronizer_interval` periodically logs the number of entries in the synchronizer queues.
+* `standstill_timeout` causes the node to restart if no progress is made.
+* `request_state_interval` makes the node periodically request the latest state from a peer.
+* `log_synchronizer_interval` periodically logs the number of entries in the synchronizer queues.
 * Add support for providing node uptime via the addition of an `uptime` parameter in the response to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
 * The following parameters in the `[gossip]` section of the config has been renamed:
-  * `[finished_entry_duration_secs]` => `[finished_entry_duration]`
-  * `[gossip_request_timeout_secs]` => `[gossip_request_timeout]`
-  * `[get_remainder_timeout_secs]` => `[get_remainder_timeout]`
+* `[finished_entry_duration_secs]` => `[finished_entry_duration]`
+* `[gossip_request_timeout_secs]` => `[gossip_request_timeout]`
+* `[get_remainder_timeout_secs]` => `[get_remainder_timeout]`
 * The following parameters in config now follow the humantime convention ('30sec', '120min', etc.):
-  * `[network][gossip_interval]`
-  * `[gossip][finished_entry_duration]`
-  * `[gossip][gossip_request_timeout]`
-  * `[gossip][get_remainder_timeout]`
-  * `[fetcher][get_from_peer_timeout]`
-  
+* `[network][gossip_interval]`
+* `[gossip][finished_entry_duration]`
+* `[gossip][gossip_request_timeout]`
+* `[gossip][get_remainder_timeout]`
+* `[fetcher][get_from_peer_timeout]`
+
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
@@ -218,7 +218,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
