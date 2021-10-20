@@ -68,7 +68,8 @@ use casper_types::{
     EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
 };
 
-pub(crate) use crate::effect::requests::StorageRequest; // Needed by reactor! macro in fetcher tests...
+pub(crate) use crate::effect::requests::StorageRequest; /* Needed by reactor! macro in
+                                                          * fetcher tests... */
 use crate::{
     components::{consensus, consensus::error::FinalitySignatureError, Component},
     crypto,
