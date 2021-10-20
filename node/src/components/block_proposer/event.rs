@@ -41,8 +41,6 @@ pub(crate) enum Event {
         hash: DeployOrTransferHash,
         deploy_info: Box<DeployInfo>,
     },
-    /// The block proposer has been asked to prune stale deploys.
-    Prune,
     /// A block has been finalized. We should never propose its deploys again.
     FinalizedBlock(Box<FinalizedBlock>),
 }
@@ -60,7 +58,6 @@ impl Display for Event {
                 next_finalized_block
             ),
             Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
-            Event::Prune => write!(f, "block-proposer prune"),
             Event::FinalizedBlock(block) => {
                 write!(f, "block-proposer finalized block {}", block)
             }

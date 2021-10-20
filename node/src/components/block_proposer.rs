@@ -14,7 +14,6 @@ use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
     sync::Arc,
-    time::Duration,
 };
 
 pub use config::Config;
@@ -54,10 +53,6 @@ pub(crate) struct BlockProposer {
     /// Metrics, present in all states.
     metrics: BlockProposerMetrics,
 }
-
-/// Interval after which a pruning of the internal sets is triggered.
-// TODO: Make configurable.
-const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Experimentally, deploys are in the range of 270-280 bytes, we use this to determine if we are
 /// within a threshold to break iteration of `pending` early.
@@ -177,13 +172,6 @@ where
                 }
 
                 self.state = BlockProposerState::Ready(new_ready_state);
-
-                // Start pruning deploys after delay.
-                effects.extend(
-                    effect_builder
-                        .set_timeout(PRUNE_INTERVAL)
-                        .event(|_| Event::Prune),
-                );
             }
             (
                 BlockProposerState::Initializing {
@@ -250,7 +238,7 @@ impl BlockProposerReady {
                         .or_default()
                         .push(request);
                     Effects::new()
-                } else {
+                } else if request.context.timestamp() >= self.last_finalized_timestamp {
                     info!(%request.next_finalized, "proposing a block payload");
                     request
                         .responder
@@ -261,18 +249,24 @@ impl BlockProposerReady {
                             request.random_bit,
                         ))
                         .ignore()
+                } else {
+                    Effects::new()
                 }
             }
             Event::BufferDeploy { hash, deploy_info } => {
                 self.add_deploy(Timestamp::now(), hash, *deploy_info);
                 Effects::new()
             }
-            Event::Prune => {
-                // Re-trigger timer after `PRUNE_INTERVAL`.
-                let mut effects = effect_builder
-                    .set_timeout(PRUNE_INTERVAL)
-                    .event(|_| Event::Prune);
-
+            Event::Loaded { .. } => {
+                // This should never happen, but we can just ignore the event and carry on.
+                error!("got loaded event for block proposer state during ready state");
+                Effects::new()
+            }
+            Event::FinalizedBlock(block) => {
+                let mut effects = Effects::new();
+                // We have received a finalized block, set the timestamp to
+                // allow for pruning.
+                self.last_finalized_timestamp = block.timestamp();
                 // Announce pruned hashes
                 let pruned_hashes = self.prune(self.last_finalized_timestamp);
                 let pruned_count = pruned_hashes.total_pruned;
@@ -282,17 +276,6 @@ impl BlockProposerReady {
                         .announce_expired_deploys(pruned_hashes.expired_hashes_to_be_announced)
                         .ignore(),
                 );
-                effects
-            }
-            Event::Loaded { .. } => {
-                // This should never happen, but we can just ignore the event and carry on.
-                error!("got loaded event for block proposer state during ready state");
-                Effects::new()
-            }
-            Event::FinalizedBlock(block) => {
-                // We have received a finalized block, set the timestamp to
-                // allow for pruning.
-                self.last_finalized_timestamp = block.timestamp();
                 let deploys = block
                     .deploy_hashes()
                     .iter()
@@ -319,7 +302,7 @@ impl BlockProposerReady {
                     Effects::new()
                 } else {
                     debug!(%height, "handling finalized block");
-                    let mut effects = self.handle_finalized_block(effect_builder, height, deploys);
+                    effects.extend(self.handle_finalized_block(effect_builder, height, deploys));
                     while let Some(deploys) = self.sets.finalization_queue.remove(&height) {
                         info!(%height, "removed finalization queue entry");
                         height += 1;
