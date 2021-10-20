@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "1.0.0" # when updating, also update 'html_root_url' in lib.rs
+version = "1.4.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
@@ -20,10 +20,10 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
-casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
-casper-node-macros = { version = "1.0.0", path = "../node_macros" }
-casper-hashing = { version = "1.0.0", path = "../hashing" }
-casper-types = { version = "1.0.0", path = "../types", features = ["datasize", "gens", "json-schema"] }
+casper-execution-engine = { version = "1.4.0", path = "../execution_engine" }
+casper-node-macros = { version = "1.4.0", path = "../node_macros" }
+casper-hashing = { version = "1.4.0", path = "../hashing" }
+casper-types = { version = "1.4.0", path = "../types", features = ["datasize", "gens", "json-schema"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
