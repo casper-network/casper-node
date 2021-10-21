@@ -92,7 +92,3 @@ pub use crate::{
     era_id::EraId,
     uint::{UIntParseError, U128, U256, U512},
 };
-#[cfg(not(any(feature = "std", feature = "no-std")))]
-compile_error!(
-    "casper-types requires one of 'std' (enabled by default) or 'no-std' features to be enabled"
-);
