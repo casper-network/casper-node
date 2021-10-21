@@ -1,5 +1,6 @@
 //! A library providing hashing functionality including Merkle Proof utilities.
 
+#![cfg_attr(not(any(feature = "json-schema", test)), no_std)]
 #![doc(html_root_url = "https://docs.rs/casper-hashing/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
@@ -8,9 +9,10 @@
 )]
 #![warn(missing_docs)]
 
-use std::{
+extern crate alloc;
+use alloc::vec::Vec;
+use core::{
     array::TryFromSliceError,
-    collections::BTreeMap,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter, LowerHex, UpperHex},
 };
@@ -22,16 +24,14 @@ use blake2::{
 use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use itertools::Itertools;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 /// The output of the hash function.
 #[derive(
     Copy,
     Clone,
-    DataSize,
     Ord,
     PartialOrd,
     Eq,
@@ -40,15 +40,24 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
     Serialize,
     Deserialize,
     Default,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Hex-encoded hash digest.")]
+#[cfg_attr(feature = "json-schema", schemars(with = "String", description = "Hex-encoded hash digest."))]
 pub struct Digest(
     #[serde(with = "HexForm::<[u8; Digest::LENGTH]>")]
-    #[schemars(skip, with = "String")]
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))]
     [u8; Digest::LENGTH],
 );
+
+impl DataSize for Digest {
+    const IS_DYNAMIC: bool = false;
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
+}
 
 impl Digest {
     /// The number of bytes in a `Digest`.
@@ -119,22 +128,6 @@ impl Digest {
         vec.into_iter()
             .tree_fold1(|x, y| Digest::hash_pair(&x, &y))
             .unwrap_or(Self::SENTINEL_MERKLE_TREE)
-    }
-
-    /// Hashes a `BTreeMap`.
-    pub fn hash_btree_map<K, V>(btree_map: &BTreeMap<K, V>) -> Result<Digest, bytesrepr::Error>
-    where
-        K: ToBytes,
-        V: ToBytes,
-    {
-        let mut kv_hashes: Vec<Digest> = Vec::with_capacity(btree_map.len());
-        for (key, value) in btree_map.iter() {
-            kv_hashes.push(Digest::hash_pair(
-                &Digest::hash(key.to_bytes()?),
-                &Digest::hash(value.to_bytes()?),
-            ))
-        }
-        Ok(Self::hash_vec_merkle_tree(kv_hashes))
     }
 
     /// Hashes a `&[Digest]` using a [right fold][1].
@@ -226,25 +219,6 @@ impl From<Digest> for [u8; Digest::LENGTH] {
     }
 }
 
-impl ToBytes for Digest {
-    #[inline(always)]
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    #[inline(always)]
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for Digest {
-    #[inline(always)]
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        FromBytes::from_bytes(bytes).map(|(arr, rem)| (Digest(arr), rem))
-    }
-}
-
 impl hex::FromHex for Digest {
     type Error = hex::FromHexError;
 
@@ -258,15 +232,8 @@ mod test {
     use std::iter;
 
     use hex::FromHex;
-    use proptest_attr_macro::proptest;
 
     use super::*;
-
-    #[proptest]
-    fn bytesrepr_roundtrip(data: [u8; Digest::LENGTH]) {
-        let hash = Digest(data);
-        bytesrepr::test_serialization_roundtrip(&hash);
-    }
 
     #[test]
     fn blake2b_hash_known() {
@@ -428,24 +395,6 @@ mod test {
         assert_eq!(
             hash_lower_hex,
             "0470ecc8abdcd6ecd3a4c574431b80bb8751c7a43337d5966dadf07899f8804b"
-        );
-    }
-
-    #[test]
-    fn test_hash_btreemap() {
-        let mut map = BTreeMap::new();
-        let _ = map.insert(Digest([1u8; 32]), Digest([2u8; 32]));
-        let _ = map.insert(Digest([3u8; 32]), Digest([4u8; 32]));
-        let _ = map.insert(Digest([5u8; 32]), Digest([6u8; 32]));
-        let _ = map.insert(Digest([7u8; 32]), Digest([8u8; 32]));
-        let _ = map.insert(Digest([9u8; 32]), Digest([10u8; 32]));
-
-        let hash = Digest::hash_btree_map(&map).unwrap();
-        let hash_lower_hex = format!("{:x}", hash);
-
-        assert_eq!(
-            hash_lower_hex,
-            "f3bc94beb2470d5c09f575b439d5f238bdc943233774c7aa59e597cc2579e148"
         );
     }
 }

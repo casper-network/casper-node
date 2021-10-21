@@ -9,6 +9,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use casper_hashing::Digest;
 #[cfg(debug_assertions)]
 use core::any;
 use core::{
@@ -482,6 +483,42 @@ impl_to_from_bytes_for_array! {
     30 31 32
     33
     64 128 256 512
+}
+
+impl ToBytes for Digest {
+    #[inline(always)]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        Into::<[u8; Digest::LENGTH]>::into(*self).to_bytes()
+    }
+
+    #[inline(always)]
+    fn serialized_length(&self) -> usize {
+        Digest::LENGTH
+    }
+}
+
+impl FromBytes for Digest {
+    #[inline(always)]
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        FromBytes::from_bytes(bytes)
+            .map(|(arr, rem): ([u8; Digest::LENGTH], &[u8])| (arr.into(), rem))
+    }
+}
+
+/// Hashes a `BTreeMap`.
+pub fn hash_btree_map<K, V>(btree_map: &BTreeMap<K, V>) -> Result<Digest, Error>
+where
+    K: ToBytes,
+    V: ToBytes,
+{
+    let mut kv_hashes: Vec<Digest> = Vec::with_capacity(btree_map.len());
+    for (key, value) in btree_map.iter() {
+        kv_hashes.push(Digest::hash_pair(
+            &Digest::hash(key.to_bytes()?),
+            &Digest::hash(value.to_bytes()?),
+        ))
+    }
+    Ok(Digest::hash_vec_merkle_tree(kv_hashes))
 }
 
 impl<V: ToBytes> ToBytes for BTreeSet<V> {
@@ -1185,14 +1222,17 @@ mod tests {
 
 #[cfg(test)]
 mod proptests {
+    use alloc::collections::BTreeMap;
     use std::collections::VecDeque;
 
     use proptest::{collection::vec, prelude::*};
 
     use crate::{
-        bytesrepr::{self, bytes::gens::bytes_arb, ToBytes},
+        bytesrepr::{self, bytes::gens::bytes_arb, test_serialization_roundtrip, ToBytes},
         gens::*,
     };
+
+    use super::{Digest, hash_btree_map};
 
     proptest! {
         #[test]
@@ -1400,5 +1440,29 @@ mod proptests {
         fn test_ratio_u64(t in (any::<u64>(), 1..u64::max_value())) {
             bytesrepr::test_serialization_roundtrip(&t);
         }
+
+        #[test]
+        fn digest_roundtrip(data: [u8; Digest::LENGTH]) {
+            let hash: Digest = data.into();
+            test_serialization_roundtrip(&hash);
+        }
+    }
+
+    #[test]
+    fn test_hash_btreemap() {
+        let mut map: BTreeMap<Digest, Digest> = BTreeMap::new();
+        let _ = map.insert([1u8; 32].into(), [2u8; 32].into());
+        let _ = map.insert([3u8; 32].into(), [4u8; 32].into());
+        let _ = map.insert([5u8; 32].into(), [6u8; 32].into());
+        let _ = map.insert([7u8; 32].into(), [8u8; 32].into());
+        let _ = map.insert([9u8; 32].into(), [10u8; 32].into());
+
+        let hash = hash_btree_map(&map).unwrap();
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "f3bc94beb2470d5c09f575b439d5f238bdc943233774c7aa59e597cc2579e148"
+        );
     }
 }

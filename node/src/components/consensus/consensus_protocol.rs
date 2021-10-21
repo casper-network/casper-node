@@ -10,7 +10,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_types::bytesrepr::ToBytes;
+use casper_types::bytesrepr::{ToBytes, hash_btree_map};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
@@ -154,7 +154,7 @@ impl<VID> EraReport<VID> {
 
         let hashed_equivocators = hash_slice_of_validators(equivocators);
         let hashed_inactive_validators = hash_slice_of_validators(inactive_validators);
-        let hashed_rewards = Digest::hash_btree_map(rewards).expect("Could not hash rewards");
+        let hashed_rewards = hash_btree_map(rewards).expect("Could not hash rewards");
 
         Digest::hash_slice_rfold(&[
             hashed_equivocators,

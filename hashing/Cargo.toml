@@ -10,15 +10,14 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/hashing"
 license-file = "../LICENSE"
 
 [dependencies]
-blake2 = "0.9.0"
-base16 = "0.2.1"
-casper-types = { version = "1.0.0", path = "../types", features = ["gens"] }
-datasize = "0.2.9"
+blake2 = { version = "0.9.0", default-features = false }
+base16 = { version = "0.2.1", default-features = false }
+datasize = { version = "0.2.9", default-features = false }
 hex = { version = "0.4.2", default-features = false, features = ["serde"] }
 hex-buffer-serde = "0.3.0"
-itertools = "0.10.1"
-schemars = "0.8.3"
-serde = "1.0.130"
+itertools = { version = "0.10.1", default-features = false }
+schemars = { version = "0.8.3", optional = true }
+serde = { version = "1.0.130", default-features = false }
 
 [dev-dependencies]
 assert_matches = "1.3.0"
@@ -26,3 +25,6 @@ criterion = "0.3.5"
 proptest = "1.0.0"
 proptest-attr-macro = "1.0.0"
 tempfile = "3.1.0"
+
+[features]
+json-schema = ["schemars"]

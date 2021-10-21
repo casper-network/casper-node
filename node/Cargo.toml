@@ -22,7 +22,7 @@ bincode = "1"
 bytes = "1.0.1"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node-macros = { version = "1.0.0", path = "../node_macros" }
-casper-hashing = { version = "1.0.0", path = "../hashing" }
+casper-hashing = { version = "1.0.0", path = "../hashing", features = ["json-schema"] }
 casper-types = { version = "1.0.0", path = "../types", features = ["datasize", "gens", "json-schema"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
