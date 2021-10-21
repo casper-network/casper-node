@@ -96,7 +96,7 @@
     "additionalProperties": false,
     "definitions": {
       "Digest": {
-        "description": "Hex-encoded hash digest.",
+        "description": "Checksummed hex-encoded hash digest.",
         "type": "string"
       },
       "PeersMap": {
@@ -178,7 +178,7 @@
         "minimum": 0.0
       },
       "PublicKey": {
-        "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+        "description": "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix.",
         "type": "string"
       },
       "TimeDiff": {
