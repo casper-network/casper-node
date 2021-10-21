@@ -214,7 +214,7 @@ impl RpcWithParamsExt for GetItem {
             let result = Self::ResponseResult {
                 api_version,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -329,7 +329,7 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
-            let merkle_proof = hex::encode(proof_bytes);
+            let merkle_proof = base16::encode_lower(&proof_bytes);
 
             // Return the result.
             let result = Self::ResponseResult {
@@ -591,7 +591,7 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -842,7 +842,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 api_version,
                 dictionary_key: dictionary_query_key.to_formatted_string(),
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -980,7 +980,7 @@ impl RpcWithParamsExt for QueryGlobalState {
                 api_version,
                 block_header: maybe_block_header,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
