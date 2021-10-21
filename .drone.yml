@@ -572,7 +572,7 @@ steps:
 - name:as-setup
 - image: casperlabs/node-build-u1804
   - commands:
-      "make setup-as"
+      - "make setup-as"
 
 - name: as-contract-publish
   image: plugins/npm
