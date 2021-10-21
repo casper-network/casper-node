@@ -36,11 +36,6 @@
     "prepublishOnly": "cp README.md ._README.md && npm run prepublish-docs",
     "postpublish": "rm -rf temp-apidoc && mv ._README.md README.md"
   },
-  "resolutions": {
-    "trim": "^0.0.3",
-    "underscore": "^1.12.1",
-    "marked": "^3.0.4"
-  },
   "author": "Michał Papierski <michal@papierski.net>",
   "license": "Apache-2.0",
   "ava": {
