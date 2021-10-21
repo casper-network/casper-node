@@ -820,9 +820,9 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         // Construct a CL public key from the uncompressed one's hex representation and ensure it's
         // compressed.
         let uncompressed_hex = {
-            let mut bytes = vec![0x02u8];
-            bytes.extend_from_slice(secp256k1_public_key.to_encoded_point(false).as_bytes());
-            checksummed_hex::encode(&bytes)
+            let tag_bytes = vec![0x02u8];
+            checksummed_hex::encode(&tag_bytes)
+                + &checksummed_hex::encode(&secp256k1_public_key.to_encoded_point(false).as_bytes())
         };
 
         format!(
