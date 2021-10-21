@@ -113,7 +113,7 @@ lint: lint-contracts-rs
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2020-0159
 
 .PHONY: audit-as
 audit-as: setup-as
