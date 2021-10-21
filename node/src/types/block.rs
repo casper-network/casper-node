@@ -712,7 +712,7 @@ impl BlockHeader {
         self.accumulated_seed
     }
 
-    /// Returns the [`EraEnd`] of a block if it is a switch block.
+    /// Returns the `EraEnd` of a block if it is a switch block.
     pub fn era_end(&self) -> Option<&EraEnd> {
         self.era_end.as_ref()
     }
