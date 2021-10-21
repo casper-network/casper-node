@@ -10,9 +10,7 @@
   },
   "main": "index.js",
   "ascMain": "assembly/index.ts",
-  "dependencies": {
-    "npm-force-resolutions": "0.0.10"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@assemblyscript/loader": "^0.9.4",
     "assemblyscript": "^0.10.0",
@@ -34,7 +32,6 @@
     "asbuild:test:runtime_args": "asc tests/assembly/runtime_args.spec.as.ts -b build/runtime_args.spec.as.wasm -t build/runtime_args.spec.as.wat --sourceMap  --optimize",
     "asbuild:test": "npm run asbuild:test:runtime_args && npm run asbuild:test:bytesrepr && npm run asbuild:test:bignum && npm run asbuild:test:utils",
     "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized",
-    "preinstall": "npx npm-force-resolutions",
     "prepublish-docs": "rm -rf apidoc && mkdir apidoc && node_modules/.bin/typedoc assembly/*.ts assembly/collections/*.ts --theme markdown --readme none --ignoreCompilerErrors --hideBreadcrumbs --skipSidebar --excludePrivate --excludeNotExported --out temp-apidoc/ && concat-md --decrease-title-levels --dir-name-as-title temp-apidoc >> README.md",
     "prepublishOnly": "cp README.md ._README.md && npm run prepublish-docs",
     "postpublish": "rm -rf temp-apidoc && mv ._README.md README.md"

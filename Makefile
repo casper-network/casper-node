@@ -117,7 +117,7 @@ audit-rs:
 
 .PHONY: audit-as
 audit-as: setup-as
-	cd smart_contracts/contract_as && $(NPM) audit
+	cd smart_contracts/contract_as && $(NPM) audit --production
 
 .PHONY: audit
 audit: audit-rs audit-as
