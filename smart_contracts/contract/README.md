@@ -34,6 +34,9 @@ following to your Cargo.toml:
 casper-contract = { version = "1", default-features = false }
 ```
 
+Note that this feature will effectively be disabled by enabling the deprecated `std` feature.  The `std` feature will be
+removed in an upcoming release.
+
 ### `test-support`
 
 Disabled by default.
