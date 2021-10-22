@@ -11,7 +11,7 @@ use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
@@ -442,8 +442,8 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                     GetBidsResult::RootNotFound => {
                         error!(block_hash=?block.hash(), ?state_root_hash, "failed to get bids");
                         return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::QueryFailed as i64,
-                            "get-auction-info failed to get bids".to_string(),
+                            ErrorCode::InternalError as i64,
+                            format!("get-auction-info failed to get bids at block={:?}", block.hash()),
                         ))?);
                     }
                     GetBidsResult::Success { bids } => bids,
@@ -451,8 +451,8 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 Err(err) => {
                     error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get bids");
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::QueryFailed as i64,
-                        "get-auction-info failed to get bids".to_string(),
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get bids at block={:?}", block.hash()),
                     ))?);
                 }
             };
@@ -473,8 +473,8 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 Err(err) => {
                     error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get era validators");
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::QueryFailed as i64,
-                        "get-auction-info failed to get era validators".to_string(),
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get validators at block={:?}", block.hash()),
                     ))?);
                 }
             };
