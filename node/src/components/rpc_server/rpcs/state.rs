@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult};
+use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -437,10 +437,24 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let maybe_bids = if let Ok(get_bids_result) = get_bids_result {
-                get_bids_result.into_success()
-            } else {
-                None
+            let bids = match get_bids_result {
+                Ok(get_bids_result) => match get_bids_result {
+                    GetBidsResult::RootNotFound => {
+                        error!(block_hash=?block.hash(), ?state_root_hash, "failed to get bids");
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::InternalError as i64,
+                            format!("get-auction-info failed to get bids at block={:?}", block.hash()),
+                        ))?);
+                    }
+                    GetBidsResult::Success { bids } => bids,
+                },
+                Err(err) => {
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get bids");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get bids at block={:?}", block.hash()),
+                    ))?);
+                }
             };
 
             let era_validators_result = effect_builder
@@ -454,10 +468,19 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let era_validators = era_validators_result.ok();
+            let era_validators = match era_validators_result {
+                Ok(validators) => validators,
+                Err(err) => {
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get era validators");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get validators at block={:?}", block.hash()),
+                    ))?);
+                }
+            };
 
             let auction_state =
-                AuctionState::new(state_root_hash, block_height, era_validators, maybe_bids);
+                AuctionState::new(state_root_hash, block_height, era_validators, bids);
 
             let result = Self::ResponseResult {
                 api_version,
