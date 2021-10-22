@@ -37,8 +37,16 @@ function main() {
     do_await_n_blocks '30'
     # 8. Walkback and verify transfers were included in blocks
     check_transfer_inclusion '1' '1000'
-    # 9. Check for equivocators
-    assert_no_equivocators_logs
+    # 10. Run Health Checks
+    # ... errors=ignore: ticket sre issue 71
+    # ... restarts=1: due to node being stopped and started
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='ignore' \
+            equivocators=0 \
+            doppels=0 \
+            crashes=0 \
+            restarts=1 \
+            ejections=0
 
     log "------------------------------------------------------------"
     log "Scenario itst06 complete"

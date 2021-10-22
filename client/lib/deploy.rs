@@ -422,13 +422,12 @@ mod tests {
         }
       ]
     }"#;
-    // This intentionally has awkward indentation. It was formatted with serde::to_string_pretty.
-    // It is used in serialization tests.
+
     const CHECKSUMMED_SAMPLE_DEPLOY: &str = r#"{
-  "hash": "4858bBD79Ab7B825244c4e6959Cbcd588A05608168eF36518BC6590937191d55",
+  "hash": "Fc216898B2d46710fb6637d5B1c61C1BCEE479d78D8136545EE10F7bce323b13",
   "header": {
-    "account": "01f60bcE2bb1059C41910eac1E7EE6c3eF4C8Fcc63a901Eb9603C1524cadfB0c18",
-    "timestamp": "2021-01-19T01:18:19.120Z",
+    "account": "01F60BCe2BB1059c41910eAC1E7Ee6C3eF4c8FCc63A901eb9603c1524cAdfb0C18",
+    "timestamp": "2021-10-20T20:14:01.604Z",
     "ttl": "10s",
     "gas_price": 1,
     "body_hash": "95f2F2358c4864F01F8B073ae6F5AE67bAeaF7747Fc0799D0078743C513BC1dE",
@@ -490,12 +489,12 @@ mod tests {
   },
   "approvals": [
     {
-      "signer": "01f60bcE2bb1059C41910eac1E7EE6c3eF4C8Fcc63a901Eb9603C1524cadfB0c18",
-      "signature": "010F538EF188770cdbf608Bc2d7AA9460108B419B2b629F5e0714204A7F29149809a1D52776B0C514e3320494fdf6F9e9747F06F2C14Ddf6F924cE218148E2840A"
+      "signer": "01F60BCe2BB1059c41910eAC1E7Ee6C3eF4c8FCc63A901eb9603c1524cAdfb0C18",
+      "signature": "015980998Ea0d488e0853B7a98Ce192323Ff92c45dD8df1fA8Ac90d29A09C5197fDAd534ef131d4BA963a9951D882C25c3aD76AF9bC95ad38C7f19D71CdbEDF40B"
     },
     {
-      "signer": "01e67d6e56Ae07EcA98b07ecec8cFBe826B4d5bc51f3A86590C0882cDAfbD72FcC",
-      "signature": "01c4f58d7F6145c1e4397Efce766149cDe5450cBE74991269161E5E1F30A397E6Bc4c484f3C72A645ceFD42C55CFDE0294bFd91dE55cA977798C3C8d2A7E43A40C"
+      "signer": "017488a5754723168d6866d7089Af95aAC98B62E80D6Ac3eC4De440cF32Ff8395A",
+      "signature": "0165782cE7E0ae2ae56805DC7e950d785CD9d4866de1Fa6b1Ff9bf70b9D2c76ff1973f1429aCD418cA9452A9c49dc0951901E566ABB00Bd65274055a0d801f440b"
     }
   ]
 }"#;
@@ -544,7 +543,7 @@ mod tests {
 
         // The test output can be used to generate data for SAMPLE_DEPLOY:
         // let secret_key = SecretKey::generate_ed25519().unwrap();
-        // deploy.sign(&secret_key, &mut casper_node::new_rng());
+        // deploy.sign(&secret_key);
         // println!("{}", serde_json::to_string_pretty(&deploy).unwrap());
 
         let result = String::from_utf8(output).unwrap();

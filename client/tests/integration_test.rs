@@ -9,18 +9,19 @@ use tower::builder::ServiceBuilder;
 use warp::{Filter, Rejection};
 use warp_json_rpc::Builder;
 
-use casper_node::crypto::Error as CryptoError;
-
 use casper_client::{
     DeployStrParams, DictionaryItemStrParams, Error, GlobalStateStrParams, PaymentStrParams,
     SessionStrParams,
 };
-use casper_node::rpcs::{
-    account::{PutDeploy, PutDeployParams},
-    chain::{GetStateRootHash, GetStateRootHashParams},
-    info::{GetDeploy, GetDeployParams},
-    state::{GetBalance, GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams},
-    RpcWithOptionalParams, RpcWithParams,
+use casper_node::{
+    crypto::Error as CryptoError,
+    rpcs::{
+        account::{PutDeploy, PutDeployParams},
+        chain::{GetStateRootHash, GetStateRootHashParams},
+        info::{GetDeploy, GetDeployParams},
+        state::{GetBalance, GetBalanceParams, GetDictionaryItem, GetDictionaryItemParams},
+        RpcWithOptionalParams, RpcWithParams,
+    },
 };
 
 const VALID_PURSE_UREF: &str =
@@ -408,8 +409,8 @@ mod get_balance {
             server_handle.get_balance("", "").await,
             Err(Error::InvalidArgument {
                 context: "state_root_hash",
-                error: _
-            })
+                error,
+            }) if error == "the hash provided had an invalid length of 0"
         ));
     }
 
@@ -420,8 +421,8 @@ mod get_balance {
             server_handle.get_balance("", VALID_PURSE_UREF).await,
             Err(Error::InvalidArgument {
                 context: "state_root_hash",
-                error: _
-            })
+                error
+            }) if error == "the hash provided had an invalid length of 0"
         ));
     }
 
@@ -446,8 +447,8 @@ mod get_balance {
                 .await,
             Err(Error::InvalidArgument {
                 context: "state_root_hash",
-                error: _
-            })
+                error
+            }) if error == "the hash provided had an invalid length of 8"
         ));
     }
 }
@@ -823,9 +824,8 @@ mod get_deploy {
             server_handle.get_deploy("012345",).await,
             Err(Error::InvalidArgument {
                 context: "deploy",
-                // error: "The deploy hash provided had an invalid length of 6."
-                error: _
-            })
+                error,
+            }) if error == "the hash provided had an invalid length of 6"
         ));
     }
 }

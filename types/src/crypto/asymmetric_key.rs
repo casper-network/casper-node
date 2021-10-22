@@ -10,7 +10,6 @@ use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
-    iter,
     marker::Copy,
 };
 
@@ -72,10 +71,7 @@ where
 {
     /// Converts `self` to hex, where the first byte represents the algorithm tag.
     fn to_hex(&'a self) -> String {
-        let bytes = iter::once(self.tag())
-            .chain(self.into())
-            .collect::<Vec<u8>>();
-        checksummed_hex::encode(&bytes)
+        checksummed_hex::encode(&vec![self.tag()]) + &checksummed_hex::encode(&self.into())
     }
 
     /// Tries to decode `Self` from its hex-representation.  The hex format should be as produced
@@ -85,8 +81,10 @@ where
             return Err(Error::AsymmetricKey("too short".to_string()));
         }
 
-        let bytes = checksummed_hex::decode(&input)?;
-        let (tag, key_bytes) = bytes.split_at(1);
+        let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
+
+        let tag = checksummed_hex::decode(&tag_bytes)?;
+        let key_bytes = checksummed_hex::decode(&key_bytes)?;
 
         match tag[0] {
             ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
@@ -281,7 +279,7 @@ impl Display for PublicKey {
             formatter,
             "PubKey::{}({:10})",
             self.variant_name(),
-            HexFmt(&Into::<Vec<u8>>::into(self))
+            HexFmt(Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -514,7 +512,7 @@ impl Display for Signature {
             formatter,
             "Sig::{}({:10})",
             self.variant_name(),
-            HexFmt(&Into::<Vec<u8>>::into(*self))
+            HexFmt(Into::<Vec<u8>>::into(*self))
         )
     }
 }

@@ -12,10 +12,8 @@ use casper_node::{
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr,
-    checksummed_hex::{ChecksummedHex, ChecksummedHexForm},
-    AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs, SecretKey,
-    UIntParseError, U512,
+    bytesrepr, AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs,
+    SecretKey, UIntParseError, U512,
 };
 
 use crate::{
@@ -141,14 +139,53 @@ mod arg_simple {
 /// Handles providing the arg for and retrieval of complex session and payment args. These are read
 /// in from a file.
 mod args_complex {
+    use std::{
+        fmt::{self, Formatter},
+        result::Result as StdResult,
+    };
+
+    use serde::de::{Deserializer, Error as SerdeError, Visitor};
+
+    use casper_types::checksummed_hex;
+
     use super::*;
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "snake_case")]
     enum DeployArgValue {
         /// Contains `CLValue` serialized into bytes in base16 form.
-        #[serde(with = "ChecksummedHexForm")]
+        #[serde(deserialize_with = "deserialize_raw_bytes")]
         RawBytes(Vec<u8>),
+    }
+
+    fn deserialize_raw_bytes<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> StdResult<Vec<u8>, D::Error> {
+        struct HexStrVisitor;
+
+        impl<'de> Visitor<'de> for HexStrVisitor {
+            type Value = Vec<u8>;
+
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                write!(formatter, "a hex encoded string")
+            }
+
+            fn visit_str<E: SerdeError>(
+                self,
+                hex_encoded_input: &str,
+            ) -> StdResult<Self::Value, E> {
+                checksummed_hex::decode(hex_encoded_input).map_err(SerdeError::custom)
+            }
+
+            fn visit_borrowed_str<E: SerdeError>(
+                self,
+                hex_encoded_input: &'de str,
+            ) -> StdResult<Self::Value, E> {
+                checksummed_hex::decode(hex_encoded_input).map_err(SerdeError::custom)
+            }
+        }
+
+        deserializer.deserialize_str(HexStrVisitor)
     }
 
     #[derive(Debug, Deserialize)]

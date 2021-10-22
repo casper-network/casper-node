@@ -136,8 +136,8 @@ function _step_06()
     local AUCTION_INFO_FOR_HEX
 
     NODE_PATH=$(get_path_to_node "$NODE_ID")
-    HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key == $node_hex)')
+    HEX=$(cat "$NODE_PATH"/keys/public_key_hex | tr '[:upper:]' '[:lower:]')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key | ascii_downcase == $node_hex)')
 
     log_step_upgrades 6 "Asserting node-$NODE_ID is a validator"
 
@@ -163,12 +163,12 @@ function _step_07()
     TIMEOUT_SEC='0'
 
     USER_PATH=$(get_path_to_user "$USER_ID")
-    HEX=$(cat "$USER_PATH"/public_key_hex)
+    HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
 
     log_step_upgrades 7 "Asserting user-$USER_ID is a delegatee"
 
     while [ "$TIMEOUT_SEC" -le "60" ]; do
-        AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
+        AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
         if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
             log "... user-$USER_ID found in auction info delegators!"
             log "... public_key_hex: $HEX"
@@ -325,8 +325,8 @@ function _step_14()
     local STAKED_AMOUNT
 
     NODE_PATH=$(get_path_to_node "$NODE_ID")
-    HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key == $node_hex)')
+    HEX=$(cat "$NODE_PATH"/keys/public_key_hex | tr '[:upper:]' '[:lower:]')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key | ascii_downcase == $node_hex)')
 
     INACTIVE_STATUS=$(echo "$AUCTION_INFO_FOR_HEX" | grep 'inactive' | grep 'true' | sed 's/^ *//g')
     STAKED_AMOUNT=$(echo "$AUCTION_INFO_FOR_HEX" | grep 'staked_amount' | awk '{print $2}' | tr -d '[:punct:]')
@@ -363,8 +363,8 @@ function _step_15()
     local AUCTION_INFO_FOR_HEX
 
     USER_PATH=$(get_path_to_user "$USER_ID")
-    HEX=$(cat "$USER_PATH"/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
+    HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
 
     log_step_upgrades 15 "Asserting user-$USER_ID is NOT a delegatee"
 

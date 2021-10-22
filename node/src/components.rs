@@ -21,7 +21,7 @@ pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod networking_metrics;
 pub(crate) mod small_network;
-pub(crate) mod storage;
+pub mod storage;
 
 use crate::{
     effect::{EffectBuilder, Effects},

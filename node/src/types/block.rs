@@ -89,10 +89,10 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     EraEnd::new(era_report, next_era_validator_weights)
 });
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
-    let deploy_hashes = vec![*Deploy::doc_example().id()];
+    let transfer_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let timestamp = *Timestamp::doc_example();
-    let block_payload = BlockPayload::new(deploy_hashes, vec![], vec![], random_bit);
+    let block_payload = BlockPayload::new(vec![], transfer_hashes, vec![], random_bit);
     let era_report = Some(EraReport::doc_example().clone());
     let era_id = EraId::from(1);
     let height = 10;
@@ -485,8 +485,8 @@ impl Display for FinalizedBlock {
             random bit {}, timestamp {}",
             self.era_id,
             self.height,
-            format!("[{}]", itertools::join(&self.deploy_hashes, ", ")),
-            format!("[{}]", itertools::join(&self.transfer_hashes, ", ")),
+            HexList(&self.deploy_hashes),
+            HexList(&self.transfer_hashes),
             self.random_bit,
             self.timestamp,
         )?;

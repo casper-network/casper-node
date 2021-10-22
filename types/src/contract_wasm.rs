@@ -130,6 +130,7 @@ impl Debug for ContractWasmHash {
         write!(f, "ContractWasmHash({})", checksummed_hex::encode(&self.0))
     }
 }
+
 impl CLTyped for ContractWasmHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
