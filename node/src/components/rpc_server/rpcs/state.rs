@@ -440,7 +440,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
             let bids = match get_bids_result {
                 Ok(get_bids_result) => match get_bids_result {
                     GetBidsResult::RootNotFound => {
-                        warn!(?state_root_hash, "failed to get bids at root hash");
+                        error!(block_hash=?block.hash(), ?state_root_hash, "failed to get bids");
                         return Ok(response_builder.error(warp_json_rpc::Error::custom(
                             ErrorCode::QueryFailed as i64,
                             "get-auction-info failed to get bids".to_string(),
@@ -449,7 +449,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                     GetBidsResult::Success { bids } => bids,
                 },
                 Err(err) => {
-                    warn!(?err, "failed to get bids");
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get bids");
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::QueryFailed as i64,
                         "get-auction-info failed to get bids".to_string(),
@@ -471,7 +471,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
             let era_validators = match era_validators_result {
                 Ok(validators) => validators,
                 Err(err) => {
-                    warn!(?err, "failed to get era validators");
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get era validators");
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::QueryFailed as i64,
                         "get-auction-info failed to get era validators".to_string(),
