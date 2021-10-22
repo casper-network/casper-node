@@ -1,0 +1,15 @@
+[package]
+name = "std-feature-regression"
+version = "0.1.0"
+authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "std_feature_regression"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract", features = ["std"] }

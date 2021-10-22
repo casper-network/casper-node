@@ -20,5 +20,6 @@ wee_alloc = { version = "0.4.5", optional = true }
 default = ["no-std-helpers"]
 no-std-helpers = ["wee_alloc"]
 test-support = []
-# DEPRECATED - enabling `std` has no effect.
+# DEPRECATED - will be removed in a future release.
+# Enabling `std` overrides the default `no-std-helpers` feature and causes casper-contract to import the Rust std lib.
 std = []
