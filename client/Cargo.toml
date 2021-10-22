@@ -1,6 +1,6 @@
 [package]
 name = "casper-client"
-version = "1.4.0"
+version = "1.4.1"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "A client for interacting with the Casper network"
@@ -23,10 +23,10 @@ doc = false
 [dependencies]
 async-trait = "0.1.50"
 base64 = "0.13.0"
-casper-execution-engine = { version = "1.4.0", path = "../execution_engine" }
-casper-node = { version = "1.4.0", path = "../node" }
-casper-hashing = { version = "1.4.0", path = "../hashing" }
-casper-types = { version = "1.4.0", path = "../types" }
+casper-execution-engine = { version = "1.4.1", path = "../execution_engine" }
+casper-node = { version = "1.4.1", path = "../node" }
+casper-hashing = { version = "1.4.1", path = "../hashing" }
+casper-types = { version = "1.4.1", path = "../types" }
 clap = "2"
 hex = { version = "0.4.2", features = ["serde"] }
 humantime = "2"
