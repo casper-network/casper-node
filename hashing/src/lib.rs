@@ -549,7 +549,8 @@ mod test {
         let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE_BYTES * 2];
         assert!(Digest::should_hash_with_chunks(data_bigger_than_chunk_size));
     }
-    
+
+    #[test]
     fn digest_deserialize_regression() {
         let input = Digest([0; 32]);
         let serialized = bincode::serialize(&input).expect("failed to serialize.");
