@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use once_cell::sync::Lazy;
 
 use crate::{
-    common::{self, PATCH_SECTION},
-    erc20, simple, ProjectKind, ARGS,
+    common::{self, CL_CONTRACT, CL_ENGINE_TEST_SUPPORT, CL_TYPES, PATCH_SECTION},
+    ARGS,
 };
 
 const PACKAGE_NAME: &str = "tests";
@@ -16,8 +16,15 @@ static CONTRACT_PACKAGE_ROOT: Lazy<PathBuf> = Lazy::new(|| ARGS.root_path().join
 static CARGO_TOML: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("Cargo.toml"));
 static INTEGRATION_TESTS_RS: Lazy<PathBuf> =
     Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("src/integration_tests.rs"));
-static TEST_FIXTURE_RS: Lazy<PathBuf> =
-    Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("src/test_fixture.rs"));
+
+pub static TEST_DEPENDENCIES: Lazy<String> = Lazy::new(|| {
+    format!(
+        "{}{}{}",
+        CL_CONTRACT.display_with_features(false, vec!["test-support"]),
+        CL_ENGINE_TEST_SUPPORT.display_with_features(true, vec!["test-support"]),
+        CL_TYPES.display_with_features(true, vec![]),
+    )
+});
 
 static CARGO_TOML_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(
@@ -35,33 +42,19 @@ bench = false
 doctest = false
 
 {}"#,
-        match ARGS.project_kind() {
-            ProjectKind::Simple => &*simple::TEST_DEPENDENCIES,
-            ProjectKind::Erc20 => &*erc20::TEST_DEPENDENCIES,
-        },
-        &*PATCH_SECTION
+        &*TEST_DEPENDENCIES, &*PATCH_SECTION
     )
 });
+
+const INTEGRATION_TESTS_RS_CONTENTS: &str = include_str!("../resources/integration_tests.rs.in");
 
 pub fn create() {
     // Create "tests/src" folder and write test files inside.
     let tests_folder = INTEGRATION_TESTS_RS.parent().expect("should have parent");
     common::create_dir_all(tests_folder);
-    match ARGS.project_kind() {
-        ProjectKind::Simple => {
-            common::write_file(
-                &*INTEGRATION_TESTS_RS,
-                &*simple::INTEGRATION_TESTS_RS_CONTENTS,
-            );
-        }
-        ProjectKind::Erc20 => {
-            common::write_file(
-                &*INTEGRATION_TESTS_RS,
-                &*erc20::INTEGRATION_TESTS_RS_CONTENTS,
-            );
-            common::write_file(&*TEST_FIXTURE_RS, &*erc20::TEST_FIXTURE_RS_CONTENTS);
-        }
-    }
+
+    // Write "tests/integration_tests.rs".
+    common::write_file(&*INTEGRATION_TESTS_RS, &*INTEGRATION_TESTS_RS_CONTENTS);
 
     // Write "tests/Cargo.toml".
     common::write_file(&*CARGO_TOML, &*CARGO_TOML_CONTENTS);

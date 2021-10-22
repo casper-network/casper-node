@@ -46,7 +46,7 @@ enum NodeIdAsString {
 impl Serialize for NodeId {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            NodeIdAsString::Tls(hex::encode(&self.0)).serialize(serializer)
+            NodeIdAsString::Tls(base16::encode_lower(&self.0)).serialize(serializer)
         } else {
             NodeIdAsBytes::Tls(self.0).serialize(serializer)
         }
@@ -58,7 +58,7 @@ impl<'de> Deserialize<'de> for NodeId {
         if deserializer.is_human_readable() {
             let NodeIdAsString::Tls(hex_value) = NodeIdAsString::deserialize(deserializer)?;
 
-            let bytes = hex::decode(hex_value).map_err(D::Error::custom)?;
+            let bytes = base16::decode(hex_value.as_bytes()).map_err(D::Error::custom)?;
             if bytes.len() != KeyFingerprint::LENGTH {
                 return Err(SerdeError::custom("wrong length"));
             }
@@ -84,7 +84,7 @@ impl DocExample for NodeId {
 
 impl Debug for NodeId {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "NodeId({})", HexFmt(&self.0))
+        write!(formatter, "NodeId({})", base16::encode_lower(&self.0))
     }
 }
 

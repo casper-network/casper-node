@@ -35,8 +35,7 @@ fs2 = "0.4.3"
 futures = "0.3.5"
 futures-io = "0.3.5"
 getrandom = "0.2.0"
-hex = "0.4.2"
-hex-buffer-serde = "0.2.1"
+hex-buffer-serde = "0.3.0"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
 http = "0.2.1"
@@ -67,7 +66,7 @@ rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
 rmp-serde = "0.14.4"
-schemars = { version = "0.8.0", features = ["preserve_order"] }
+schemars = { version = "0.8.0", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde-big-array = "0.3.0"
 serde_bytes = "0.11.5"

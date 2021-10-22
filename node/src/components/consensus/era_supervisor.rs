@@ -809,21 +809,37 @@ where
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
         }
-        if block_header.is_switch_block() && !self.should_upgrade_after(&era_id) {
-            // if the block is a switch block, we have to get the validators for the new era and
-            // create it, before we can say we handled the block
-            let new_era_id = era_id.successor();
-            let effect = get_booking_block_hash(
-                self.effect_builder,
-                new_era_id,
-                self.era_supervisor.protocol_config.auction_delay,
-                self.era_supervisor.protocol_config.last_activation_point,
-            )
-            .event(move |booking_block_hash| Event::CreateNewEra {
-                switch_block_header: Box::new(block_header),
-                booking_block_hash: Ok(booking_block_hash),
-            });
-            effects.extend(effect);
+        if block_header.is_switch_block() {
+            if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+                // This was the era's last block. Schedule deactivating this era.
+                let delay = Timestamp::now()
+                    .saturating_diff(block_header.timestamp())
+                    .into();
+                let faulty_num = era.consensus.validators_with_evidence().len();
+                let deactivate_era = move |_| Event::DeactivateEra {
+                    era_id,
+                    faulty_num,
+                    delay,
+                };
+                effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
+            } else {
+                error!(era = era_id.value(), %block_header, "executed block in uninitialized era");
+            }
+            // If it's not the last block before an upgrade, initialize the next era.
+            if !self.should_upgrade_after(&era_id) {
+                let new_era_id = era_id.successor();
+                let effect = get_booking_block_hash(
+                    self.effect_builder,
+                    new_era_id,
+                    self.era_supervisor.protocol_config.auction_delay,
+                    self.era_supervisor.protocol_config.last_activation_point,
+                )
+                .event(move |booking_block_hash| Event::CreateNewEra {
+                    switch_block_header: Box::new(block_header),
+                    booking_block_hash: Ok(booking_block_hash),
+                });
+                effects.extend(effect);
+            }
         }
         effects
     }
@@ -1129,17 +1145,6 @@ where
                     .era_supervisor
                     .next_block_height
                     .max(finalized_block.height() + 1);
-                if finalized_block.era_report().is_some() {
-                    // This was the era's last block. Schedule deactivating this era.
-                    let delay = Timestamp::now().saturating_diff(timestamp).into();
-                    let faulty_num = era.consensus.validators_with_evidence().len();
-                    let deactivate_era = move |_| Event::DeactivateEra {
-                        era_id,
-                        faulty_num,
-                        delay,
-                    };
-                    effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
-                }
                 // Request execution of the finalized block.
                 let effect_builder = self.effect_builder;
                 effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());

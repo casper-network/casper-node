@@ -90,5 +90,5 @@ fn main() {
         .expect_success()
         .commit()
         .get_post_state_hash();
-    println!("{}", base16::encode_lower(&post_state_hash));
+    println!("{:?}", post_state_hash);
 }

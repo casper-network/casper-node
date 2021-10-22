@@ -188,3 +188,55 @@ impl Finalize for RestServer {
         .boxed()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use assert_json_diff::assert_json_eq;
+    use schemars::{schema_for, JsonSchema};
+    use serde_json::Value;
+
+    use crate::{
+        rpcs::{docs::OpenRpcSchema, info::GetValidatorChangesResult},
+        types::GetStatusResult,
+    };
+
+    fn assert_schema<T: JsonSchema>(schema_path: String) {
+        let expected_schema = fs::read_to_string(schema_path).unwrap();
+        let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
+
+        let actual_schema = schema_for!(T);
+        let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
+        let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+
+        assert_json_eq!(actual_schema, expected_schema);
+    }
+
+    #[test]
+    fn schema_status() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_status.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema::<GetStatusResult>(schema_path);
+    }
+
+    #[test]
+    fn schema_validator_changes() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_validator_changes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema::<GetValidatorChangesResult>(schema_path);
+    }
+
+    #[test]
+    fn schema_rpc_schema() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_rpc_schema.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema::<OpenRpcSchema>(schema_path);
+    }
+}

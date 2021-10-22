@@ -17,11 +17,13 @@ use rand::{
     Rng,
 };
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex,
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -124,8 +126,8 @@ pub enum ExecutableDeployItem {
     /// [`RuntimeArgs`].
     StoredContractByHash {
         /// Contract hash.
-        #[serde(with = "HexForm")]
-        #[schemars(with = "String", description = "Hex-encoded hash.")]
+        #[serde(with = "contract_hash_as_digest")]
+        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractHash,
         /// Name of an entry point.
         entry_point: String,
@@ -146,8 +148,8 @@ pub enum ExecutableDeployItem {
     /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
         /// Contract package hash
-        #[serde(with = "HexForm")]
-        #[schemars(with = "String", description = "Hex-encoded hash.")]
+        #[serde(with = "contract_package_hash_as_digest")]
+        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
         hash: ContractPackageHash,
         /// An optional version of the contract to call. It will default to the highest enabled
         /// version if no value is specified.
@@ -175,6 +177,42 @@ pub enum ExecutableDeployItem {
         /// Runtime arguments.
         args: RuntimeArgs,
     },
+}
+
+mod contract_hash_as_digest {
+    use super::*;
+
+    pub(super) fn serialize<S: Serializer>(
+        contract_hash: &ContractHash,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        Digest::from(contract_hash.value()).serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<ContractHash, D::Error> {
+        let digest = Digest::deserialize(deserializer)?;
+        Ok(ContractHash::new(digest.value()))
+    }
+}
+
+mod contract_package_hash_as_digest {
+    use super::*;
+
+    pub(super) fn serialize<S: Serializer>(
+        contract_package_hash: &ContractPackageHash,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        Digest::from(contract_package_hash.value()).serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<ContractPackageHash, D::Error> {
+        let digest = Digest::deserialize(deserializer)?;
+        Ok(ContractPackageHash::new(digest.value()))
+    }
 }
 
 impl ExecutableDeployItem {
@@ -843,7 +881,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredContractByHash")
-                .field("hash", &HexFmt(hash))
+                .field("hash", &checksummed_hex::encode(hash))
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
@@ -864,7 +902,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredVersionedContractByHash")
-                .field("hash", &HexFmt(hash))
+                .field("hash", &checksummed_hex::encode(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
                 .field("args", args)

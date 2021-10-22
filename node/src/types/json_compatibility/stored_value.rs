@@ -6,6 +6,7 @@
 
 use std::convert::TryFrom;
 
+use base16;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -54,7 +55,7 @@ impl TryFrom<ExecutionEngineStoredValue> for StoredValue {
             ExecutionEngineStoredValue::CLValue(cl_value) => StoredValue::CLValue(cl_value),
             ExecutionEngineStoredValue::Account(account) => StoredValue::Account((&account).into()),
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
-                StoredValue::ContractWasm(hex::encode(contract_wasm.to_bytes()?))
+                StoredValue::ContractWasm(base16::encode_lower(&contract_wasm.to_bytes()?))
             }
             ExecutionEngineStoredValue::Contract(contract) => {
                 StoredValue::Contract((&contract).into())
