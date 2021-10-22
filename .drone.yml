@@ -569,6 +569,11 @@ steps:
     CARGO_TOKEN:
       from_secret: crates_io_token
 
+- name: as-setup
+  image: casperlabs/node-build-u1804
+  commands:
+    - "make setup-as"
+
 - name: as-contract-publish
   image: plugins/npm
   settings:
