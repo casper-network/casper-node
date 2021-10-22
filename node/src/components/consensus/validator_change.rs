@@ -144,6 +144,8 @@ mod tests {
         let added_validator = PublicKey::random(&mut rng);
         era1_metadata.validators.insert(&added_validator);
 
+        // False positive by clippy.
+        #[allow(clippy::redundant_clone)]
         let expected_change = vec![(added_validator.clone(), ValidatorChange::Added)];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
         assert_eq!(expected_change, actual_change.0);
@@ -165,6 +167,8 @@ mod tests {
         let removed_validator = PublicKey::random(&mut rng);
         era0_metadata.validators.insert(&removed_validator);
 
+        // False positive by clippy.
+        #[allow(clippy::redundant_clone)]
         let expected_change = vec![(removed_validator.clone(), ValidatorChange::Removed)];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
         assert_eq!(expected_change, actual_change.0)

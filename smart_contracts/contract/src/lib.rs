@@ -47,7 +47,7 @@
 
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(
-    all(not(test), feature = "no-std-helpers"),
+    all(not(test), not(feature = "std"), feature = "no-std-helpers"),
     feature(alloc_error_handler, core_intrinsics, lang_items)
 )]
 #![doc(html_root_url = "https://docs.rs/casper-contract/1.4.1")]
@@ -57,16 +57,19 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
+
 extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
 
 pub mod contract_api;
 pub mod ext_ffi;
-#[cfg(all(not(test), feature = "no-std-helpers"))]
+#[cfg(all(not(test), not(feature = "std"), feature = "no-std-helpers"))]
 mod no_std_handlers;
 pub mod unwrap_or_revert;
 
 /// An instance of [`WeeAlloc`](https://docs.rs/wee_alloc) which allows contracts built as `no_std`
 /// to avoid having to provide a global allocator themselves.
-#[cfg(all(not(test), feature = "no-std-helpers"))]
+#[cfg(all(not(test), not(feature = "std"), feature = "no-std-helpers"))]
 #[global_allocator]
 pub static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
