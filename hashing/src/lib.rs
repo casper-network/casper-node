@@ -72,15 +72,23 @@ impl Digest {
     /// 1. Creates a 32-byte BLAKE2b hash digest from a given a piece of data, or
     /// 2. Splits the data into chunks and creates hash digest of the Merkle tree
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
-        if Self::should_hash_with_chunks(&data) {
-            Self::hash_merkle_tree(
-                data.as_ref()
-                    .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-                    .map(Self::blake2b_hash),
-            )
-        } else {
-            Self::blake2b_hash(data)
-        }
+        // TODO:
+        // Temporarily, to avoid potential regression, we always use the original hashing method.
+        // After the `ChunkWithProof` is thoroughly tested we should replace
+        // the current implementation with the commented one.
+        // This change may require updating the hashes in the `test_hash_btreemap'
+        // and `hash_known` tests.
+        //
+        // if Self::should_hash_with_chunks(&data) {
+        //     Self::hash_merkle_tree(
+        //         data.as_ref()
+        //             .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+        //             .map(Self::blake2b_hash),
+        //     )
+        // } else {
+        //     Self::blake2b_hash(data)
+        // }
+        Self::blake2b_hash(data)
     }
 
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
@@ -93,6 +101,8 @@ impl Digest {
         Digest(ret)
     }
 
+    // Temporarily unused, see comments inside `Digest::hash()` for details.
+    #[allow(unused)]
     fn should_hash_with_chunks<T: AsRef<[u8]>>(data: T) -> bool {
         data.as_ref().len() > ChunkWithProof::CHUNK_SIZE_BYTES
     }
@@ -367,11 +377,11 @@ mod test {
             ),
             (
                 "01234567890",
-                "FdD6751337c5578E994128ba9C29fAA9bf924C4D8Fbb59Ae23a4205E37ac8509",
+                "3D199478C18B7fE3ca1F4F2a9B3E07f708FF66ED52Eb345dB258ABE8a812eD5C",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "04B7444d65231E095Ee47851398c6c3db6243fB1d06F99038ba9369a212CDD5f",
+                "01718CeC35Cd3D796Dd00020e0bFECB473Ad23457d063b75eFF29c0FFa2E58a9",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {
@@ -535,7 +545,7 @@ mod test {
 
         assert_eq!(
             hash_lower_hex,
-            "19c95ced6f7f0e6c18cdc440db5d447d6ac1410f134d09dfa0544ef0eedb4c6f"
+            "aae1660ca492ed9af6b2ead22f88b390aeb2ec0719654824d084aa6c6553ceeb"
         );
     }
 
