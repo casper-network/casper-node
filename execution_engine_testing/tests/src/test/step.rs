@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
-use casper_engine_test_support::internal::{
+use casper_engine_test_support::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{

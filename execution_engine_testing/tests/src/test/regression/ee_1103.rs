@@ -2,12 +2,9 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, SYSTEM_ADDR,
-        TIMESTAMP_MILLIS_INCREMENT,
-    },
-    MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{genesis::GenesisValidator, GenesisAccount};
 use casper_types::{

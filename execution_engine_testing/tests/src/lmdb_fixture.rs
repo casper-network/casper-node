@@ -8,7 +8,7 @@ use fs_extra::dir;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
-use casper_engine_test_support::internal::LmdbWasmTestBuilder;
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::core::engine_state::{
     run_genesis_request::RunGenesisRequest, EngineConfig,
 };

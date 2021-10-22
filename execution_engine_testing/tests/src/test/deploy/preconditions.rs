@@ -1,11 +1,8 @@
 use assert_matches::assert_matches;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::Error;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
@@ -37,13 +34,13 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let transfer_result = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = builder
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -68,13 +65,13 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let transfer_result = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = builder
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -106,13 +103,13 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let transfer_result = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = builder
         .get_exec_result(0)
         .expect("there should be a response");
 
