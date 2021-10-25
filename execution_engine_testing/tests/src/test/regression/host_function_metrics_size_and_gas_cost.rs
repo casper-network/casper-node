@@ -1,9 +1,6 @@
 use casper_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
@@ -18,18 +15,31 @@ use rand::prelude::{Rng, SeedableRng, StdRng};
 const CONTRACT_HOST_FUNCTION_METRICS: &str = "host_function_metrics.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT_U512: &str = "transfer_to_account_u512.wasm";
 
-const MAX_SIZE_HOST_FUNCTION_METRICS: usize = 95511;
-const MAX_GAS_COST_HOST_FUNCTION_METRICS: u64 = 148_167_077_151;
+const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 90_620;
+const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 141_111_502_050;
+
+const HOST_FUNCTION_METRICS_MIN_SIZE: usize = HOST_FUNCTION_METRICS_STANDARD_SIZE * 95 / 100;
+const HOST_FUNCTION_METRICS_MAX_SIZE: usize = HOST_FUNCTION_METRICS_STANDARD_SIZE * 105 / 100;
+const HOST_FUNCTION_METRICS_MIN_GAS_COST: u64 = HOST_FUNCTION_METRICS_STANDARD_GAS_COST * 95 / 100;
+const HOST_FUNCTION_METRICS_MAX_GAS_COST: u64 = HOST_FUNCTION_METRICS_STANDARD_GAS_COST * 105 / 100;
 
 const ACCOUNT0_ADDR: AccountHash = AccountHash::new([42; ACCOUNT_HASH_LENGTH]);
 const ACCOUNT1_ADDR: AccountHash = AccountHash::new([43; ACCOUNT_HASH_LENGTH]);
 
 #[test]
-fn host_function_metrics_is_small() {
+fn host_function_metrics_has_acceptable_size() {
     let size = utils::read_wasm_file_bytes(CONTRACT_HOST_FUNCTION_METRICS).len();
-    assert!(size <= MAX_SIZE_HOST_FUNCTION_METRICS,
-            "Contract host_function_metrics must be at most {} bytes long, but is {} bytes long instead.",
-            MAX_SIZE_HOST_FUNCTION_METRICS, size);
+    assert!(
+        size <= HOST_FUNCTION_METRICS_MAX_SIZE,
+        "Performance regression: contract host-function-metrics became {} bytes long; up to {} bytes long would be acceptable.",
+        size,
+        HOST_FUNCTION_METRICS_MAX_SIZE
+    );
+    assert!(
+        size >= HOST_FUNCTION_METRICS_MIN_SIZE,
+        "Performance improvement: contract host-function-metrics became only {} bytes long; please adjust this regression test.",
+        size
+    );
 }
 
 fn create_account_exec_request(address: AccountHash) -> ExecuteRequest {
@@ -45,7 +55,7 @@ fn create_account_exec_request(address: AccountHash) -> ExecuteRequest {
 }
 
 #[test]
-fn host_function_metrics_costs_little_gas() {
+fn host_function_metrics_has_acceptable_gas_cost() {
     let rng: &mut StdRng = &mut SeedableRng::seed_from_u64(0);
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -85,11 +95,16 @@ fn host_function_metrics_costs_little_gas() {
         .expect("should have an error message");
     assert!(error_message.contains(&format!("{:?}", ApiError::User(9))));
 
-    let gas_cost = builder.last_exec_gas_cost();
+    let gas_cost = builder.last_exec_gas_cost().value();
     assert!(
-        gas_cost.value() <= U512::from(MAX_GAS_COST_HOST_FUNCTION_METRICS),
-        "Running host_function_metrics cost {} gas, but shouldn't have cost more than {} gas.",
+        gas_cost <= U512::from(HOST_FUNCTION_METRICS_MAX_GAS_COST),
+        "Performance regression: contract host-function-metrics used {} gas; it should use no more than {} gas.",
         gas_cost,
-        MAX_GAS_COST_HOST_FUNCTION_METRICS
+        HOST_FUNCTION_METRICS_MAX_GAS_COST
+    );
+    assert!(
+        gas_cost >= U512::from(HOST_FUNCTION_METRICS_MIN_GAS_COST),
+        "Performance improvement: contract host-function-metrics used only {} gas; please adjust this regression test.",
+        gas_cost
     );
 }
