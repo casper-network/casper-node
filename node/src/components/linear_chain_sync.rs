@@ -361,7 +361,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 last_switch_block_height,
                 ..
             } => {
-                assert_eq!(highest_block_seen, block_height);
+                if highest_block_seen != block_height {
+                    error!(?highest_block_seen, downloaded_block_height=?block_height, "downloaded unexpected block");
+                    return fatal!(
+                        effect_builder,
+                        "downloaded unexpected block when syncing trusted hash"
+                    )
+                    .ignore();
+                }
                 match latest_block.as_ref() {
                     Some(expected) if expected != &block => {
                         error!(
@@ -646,12 +653,9 @@ where
                     BlockByHeightResult::FromStorage(block) => {
                         // We shouldn't get invalid data from the storage.
                         // If we do, it's a bug.
-                        assert_eq!(block.height(), block_height, "Block height mismatch.");
-                        assert_eq!(
-                            block.protocol_version(),
-                            self.protocol_version,
-                            "block protocol version mismatch"
-                        );
+                        if block.height() != block_height {
+                            return fatal!(effect_builder, "block height mismatch").ignore();
+                        }
                         trace!(%block_height, "Linear block found in the local storage.");
                         // When syncing descendants of a trusted hash, we might have some of
                         // them in our local storage. If that's the case, just continue.
@@ -741,7 +745,9 @@ where
                     BlockByHashResult::FromStorage(block) => {
                         // We shouldn't get invalid data from the storage.
                         // If we do, it's a bug.
-                        assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
+                        if *block.hash() != block_hash {
+                            return fatal!(effect_builder, "block hash mismatch").ignore();
+                        }
                         trace!(%block_hash, "Linear block found in the local storage.");
                         // We hit a block that we already had in the storage - which should mean
                         // that we also have all of its ancestors, so we switch to traversing the
