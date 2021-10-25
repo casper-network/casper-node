@@ -32,8 +32,8 @@ pub enum BlockCreationError {
 #[derive(Error, Debug)]
 pub enum BlockValidationError {
     /// Problem serializing some of a block's data into bytes
-    #[error(transparent)]
-    BytesReprError(#[from] bytesrepr::Error),
+    #[error("bytesrepr error: {0}")]
+    BytesReprError(bytesrepr::Error),
 
     /// The body hash in the header is not the same as the hash of the body of the block
     #[error(
@@ -60,4 +60,10 @@ pub enum BlockValidationError {
         /// The actual hash of the block's `BlockHeader`
         actual_block_header_hash: BlockHash,
     },
+}
+
+impl From<bytesrepr::Error> for BlockValidationError {
+    fn from(err: bytesrepr::Error) -> Self {
+        Self::BytesReprError(err)
+    }
 }

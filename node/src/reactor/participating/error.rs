@@ -34,6 +34,7 @@ pub(crate) enum Error {
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
+
     /// Block execution error.
     #[error(transparent)]
     BlockExecution(#[from] BlockExecutionError),
@@ -44,7 +45,7 @@ pub(crate) enum Error {
 
     /// [`bytesrepr`] error.
     #[error("bytesrepr error: {0}")]
-    BytesRepr(#[from] bytesrepr::Error),
+    BytesRepr(bytesrepr::Error),
 
     /// Cannot run genesis on a non v1.0.0 blockchain.
     #[error(
@@ -87,4 +88,10 @@ pub(crate) enum Error {
         /// A new block we made which should be a switch block but is not.
         new_bad_block: Box<Block>,
     },
+}
+
+impl From<bytesrepr::Error> for Error {
+    fn from(err: bytesrepr::Error) -> Self {
+        Self::BytesRepr(err)
+    }
 }
