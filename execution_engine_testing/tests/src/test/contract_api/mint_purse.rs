@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    internal::{ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST, SYSTEM_ADDR},
-    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_types::{runtime_args, RuntimeArgs, U512};
 

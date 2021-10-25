@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{

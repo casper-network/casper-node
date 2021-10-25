@@ -1,8 +1,8 @@
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
-    internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
 
@@ -147,8 +147,7 @@ fn should_add_all_gas_for_subcall() {
     builder
         .exec(add_some_gas_via_subcall_request)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let add_zero_gas_from_session_cost = builder.exec_costs(0)[0];
     let add_some_gas_from_session_cost = builder.exec_costs(1)[0];
@@ -201,8 +200,7 @@ fn expensive_subcall_should_cost_more() {
     builder
         .exec(store_calculation_request)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

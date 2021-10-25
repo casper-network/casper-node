@@ -19,9 +19,7 @@ use log::LevelFilter;
 use rand::{self, Rng};
 use serde_json::Value;
 
-use casper_engine_test_support::internal::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-};
+use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
 use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::logging::{self, Settings},

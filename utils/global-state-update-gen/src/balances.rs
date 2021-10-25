@@ -1,8 +1,6 @@
 use clap::ArgMatches;
 
-use casper_engine_test_support::internal::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-};
+use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
 use casper_execution_engine::shared::transform::Transform;
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AsymmetricType, Key, PublicKey, RuntimeArgs,

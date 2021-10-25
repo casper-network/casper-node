@@ -1,10 +1,7 @@
 use assert_matches::assert_matches;
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};

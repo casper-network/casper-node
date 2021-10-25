@@ -1,0 +1,221 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "GetStatusResult",
+    "description": "Result for \"info_get_status\" RPC response.",
+    "type": "object",
+    "required": [
+      "api_version",
+      "build_version",
+      "chainspec_name",
+      "peers",
+      "uptime"
+    ],
+    "properties": {
+      "api_version": {
+        "description": "The RPC API version.",
+        "type": "string"
+      },
+      "chainspec_name": {
+        "description": "The chainspec name.",
+        "type": "string"
+      },
+      "starting_state_root_hash": {
+        "description": "The state root hash used at the start of the current session.",
+        "anyOf": [
+          {
+            "$ref": "#/definitions/Digest"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "deprecated": true
+      },
+      "peers": {
+        "description": "The node ID and network address of each connected peer.",
+        "allOf": [
+          {
+            "$ref": "#/definitions/PeersMap"
+          }
+        ]
+      },
+      "last_added_block_info": {
+        "description": "The minimal info of the last block from the linear chain.",
+        "anyOf": [
+          {
+            "$ref": "#/definitions/MinimalBlockInfo"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "our_public_signing_key": {
+        "description": "Our public signing key.",
+        "anyOf": [
+          {
+            "$ref": "#/definitions/PublicKey"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "round_length": {
+        "description": "The next round length if this node is a validator.",
+        "anyOf": [
+          {
+            "$ref": "#/definitions/TimeDiff"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "next_upgrade": {
+        "description": "Information about the next scheduled upgrade.",
+        "anyOf": [
+          {
+            "$ref": "#/definitions/NextUpgrade"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "build_version": {
+        "description": "The compiled node version.",
+        "type": "string"
+      },
+      "uptime": {
+        "description": "Time that passed since the node has started.",
+        "allOf": [
+          {
+            "$ref": "#/definitions/TimeDiff"
+          }
+        ]
+      }
+    },
+    "additionalProperties": false,
+    "definitions": {
+      "Digest": {
+        "description": "Checksummed hex-encoded hash digest.",
+        "type": "string"
+      },
+      "PeersMap": {
+        "description": "Map of peer IDs to network addresses.",
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/PeerEntry"
+        }
+      },
+      "PeerEntry": {
+        "type": "object",
+        "required": [
+          "address",
+          "node_id"
+        ],
+        "properties": {
+          "node_id": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MinimalBlockInfo": {
+        "description": "Minimal info of a `Block`.",
+        "type": "object",
+        "required": [
+          "creator",
+          "era_id",
+          "hash",
+          "height",
+          "state_root_hash",
+          "timestamp"
+        ],
+        "properties": {
+          "hash": {
+            "$ref": "#/definitions/BlockHash"
+          },
+          "timestamp": {
+            "$ref": "#/definitions/Timestamp"
+          },
+          "era_id": {
+            "$ref": "#/definitions/EraId"
+          },
+          "height": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "state_root_hash": {
+            "$ref": "#/definitions/Digest"
+          },
+          "creator": {
+            "$ref": "#/definitions/PublicKey"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BlockHash": {
+        "description": "A cryptographic hash identifying a [`Block`](struct.Block.html).",
+        "allOf": [
+          {
+            "$ref": "#/definitions/Digest"
+          }
+        ]
+      },
+      "Timestamp": {
+        "description": "Timestamp formatted as per RFC 3339",
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0.0
+      },
+      "EraId": {
+        "description": "Era ID newtype.",
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0.0
+      },
+      "PublicKey": {
+        "description": "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix.",
+        "type": "string"
+      },
+      "TimeDiff": {
+        "description": "Human-readable duration.",
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0.0
+      },
+      "NextUpgrade": {
+        "description": "Information about the next protocol upgrade.",
+        "type": "object",
+        "required": [
+          "activation_point",
+          "protocol_version"
+        ],
+        "properties": {
+          "activation_point": {
+            "$ref": "#/definitions/ActivationPoint"
+          },
+          "protocol_version": {
+            "type": "string"
+          }
+        }
+      },
+      "ActivationPoint": {
+        "description": "The first era to which the associated protocol version applies.",
+        "anyOf": [
+          {
+            "$ref": "#/definitions/EraId"
+          },
+          {
+            "$ref": "#/definitions/Timestamp"
+          }
+        ]
+      }
+    }
+  }

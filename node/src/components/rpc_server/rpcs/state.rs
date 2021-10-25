@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult};
+use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -214,7 +214,7 @@ impl RpcWithParamsExt for GetItem {
             let result = Self::ResponseResult {
                 api_version,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -329,7 +329,7 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
-            let merkle_proof = hex::encode(proof_bytes);
+            let merkle_proof = base16::encode_lower(&proof_bytes);
 
             // Return the result.
             let result = Self::ResponseResult {
@@ -437,10 +437,24 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let maybe_bids = if let Ok(get_bids_result) = get_bids_result {
-                get_bids_result.into_success()
-            } else {
-                None
+            let bids = match get_bids_result {
+                Ok(get_bids_result) => match get_bids_result {
+                    GetBidsResult::RootNotFound => {
+                        error!(block_hash=?block.hash(), ?state_root_hash, "failed to get bids");
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::InternalError as i64,
+                            format!("get-auction-info failed to get bids at block={:?}", block.hash()),
+                        ))?);
+                    }
+                    GetBidsResult::Success { bids } => bids,
+                },
+                Err(err) => {
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get bids");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get bids at block={:?}", block.hash()),
+                    ))?);
+                }
             };
 
             let era_validators_result = effect_builder
@@ -454,10 +468,19 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let era_validators = era_validators_result.ok();
+            let era_validators = match era_validators_result {
+                Ok(validators) => validators,
+                Err(err) => {
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get era validators");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get validators at block={:?}", block.hash()),
+                    ))?);
+                }
+            };
 
             let auction_state =
-                AuctionState::new(state_root_hash, block_height, era_validators, maybe_bids);
+                AuctionState::new(state_root_hash, block_height, era_validators, bids);
 
             let result = Self::ResponseResult {
                 api_version,
@@ -591,7 +614,7 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -842,7 +865,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 api_version,
                 dictionary_key: dictionary_query_key.to_formatted_string(),
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -980,7 +1003,7 @@ impl RpcWithParamsExt for QueryGlobalState {
                 api_version,
                 block_header: maybe_block_header,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)

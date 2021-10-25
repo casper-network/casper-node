@@ -11,7 +11,7 @@ use std::{env, io, path::PathBuf};
 
 use clap::{crate_version, App, Arg};
 
-use casper_engine_test_support::internal::{
+use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::core::engine_state::EngineConfig;

@@ -8,7 +8,6 @@ mod era_summary;
 use std::{num::ParseIntError, str};
 
 use futures::{future::BoxFuture, FutureExt};
-use hex::FromHex;
 use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
@@ -109,7 +108,7 @@ pub enum ParseBlockIdentifierError {
     ParseIntError(ParseIntError),
     /// Couldn't parse a blake2bhash.
     #[error("Unable to parse digest from string. {0}")]
-    FromHexError(hex::FromHexError),
+    FromHexError(casper_hashing::Error),
 }
 
 /// Params for "chain_get_block" RPC request.
@@ -457,7 +456,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                     era_id,
                     stored_value,
                     state_root_hash,
-                    merkle_proof: hex::encode(proof_bytes),
+                    merkle_proof: base16::encode_lower(&proof_bytes),
                 }),
             };
 

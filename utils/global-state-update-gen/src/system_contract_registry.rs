@@ -3,7 +3,7 @@ use std::path::Path;
 use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
-use casper_engine_test_support::internal::LmdbWasmTestBuilder;
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::core::engine_state::genesis::SystemContractRegistry;
 use casper_types::{
     bytesrepr::FromBytes,
