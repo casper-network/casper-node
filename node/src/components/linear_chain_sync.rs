@@ -135,7 +135,36 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
             let state = match trusted_hash {
                 Some(hash) => {
-                    State::sync_trusted_hash(hash, highest_block.map(|block| block.take_header()))
+                    // Check if we already have the trusted block in storage.
+                    match storage.read_block(&hash) {
+                        Ok(Some(block)) => {
+                            if block.protocol_version() < protocol_version {
+                                error!(trusted_hash=?hash,
+                                    trusted_block_version=?block.protocol_version(),
+                                    current_protocol_version=?protocol_version,
+                                    "used trusted hash from before an upgrade. Use trusted hash from the new protocol version");
+                            }
+                            let switch_block_height = storage
+                                .transactional_get_switch_block_by_era_id(
+                                    block.header().era_id().value(),
+                                )
+                                .map(|b| b.height());
+                            // If we already have the trusted block in storage, we can start syncing
+                            // its descendants immediately.
+                            State::sync_descendants(hash, block, switch_block_height)
+                        }
+                        Ok(None) => State::sync_trusted_hash(
+                            hash,
+                            highest_block.map(|block| block.take_header()),
+                        ),
+                        Err(error) => {
+                            error!(?error, "error when reading block by hash from storage");
+                            State::sync_trusted_hash(
+                                hash,
+                                highest_block.map(|block| block.take_header()),
+                            )
+                        }
+                    }
                 }
                 None if after_upgrade => {
                     info!(
@@ -564,10 +593,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     fn should_upgrade(&self, era_id: EraId) -> bool {
-        match self.next_upgrade_activation_point {
-            None => false,
-            Some(activation_point) => activation_point.should_upgrade(&era_id),
-        }
+        should_upgrade(self.next_upgrade_activation_point, era_id)
     }
 
     fn set_last_block_if_syncing_trusted_hash(&mut self, block: &Block) {
@@ -910,6 +936,13 @@ where
                 }
             }
         }
+    }
+}
+
+fn should_upgrade(next_upgrade: Option<ActivationPoint>, block_era_id: EraId) -> bool {
+    match next_upgrade {
+        None => false,
+        Some(activation_point) => activation_point.should_upgrade(&era_id),
     }
 }
 
