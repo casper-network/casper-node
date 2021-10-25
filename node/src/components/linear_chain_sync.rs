@@ -942,7 +942,7 @@ where
 fn should_upgrade(next_upgrade: Option<ActivationPoint>, block_era_id: EraId) -> bool {
     match next_upgrade {
         None => false,
-        Some(activation_point) => activation_point.should_upgrade(&era_id),
+        Some(activation_point) => activation_point.should_upgrade(&block_era_id),
     }
 }
 
