@@ -639,7 +639,7 @@ async fn test_joiner_network() {
         .settle_on(
             &mut rng,
             has_passed_by_era(end_era),
-            Duration::from_secs(600),
+            Duration::from_secs(900),
         )
         .await;
 }
