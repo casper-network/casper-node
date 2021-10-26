@@ -1233,6 +1233,7 @@ impl reactor::Reactor for Reactor {
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
+
                 effects
             }
             ParticipatingEvent::BlockProposerAnnouncement(

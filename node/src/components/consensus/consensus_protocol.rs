@@ -163,6 +163,7 @@ impl<VID> EraReport<VID> {
         ])
     }
 }
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TerminalBlockData<C: Context> {
     /// The rewards for participating in consensus.

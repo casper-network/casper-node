@@ -121,6 +121,7 @@ impl TestChain {
     fn chainspec_mut(&mut self) -> &mut Chainspec {
         Arc::get_mut(&mut self.chainspec).unwrap()
     }
+
     /// Creates an initializer/validator configuration for the `idx`th validator.
     fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> participating::Config {
         // Set the network configuration.

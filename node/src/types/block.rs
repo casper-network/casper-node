@@ -685,6 +685,7 @@ impl BlockHeader {
     pub fn hashing_algorithm_version(&self) -> HashingAlgorithmVersion {
         HashingAlgorithmVersion::from_protocol_version(&self.protocol_version)
     }
+
     /// The parent block's hash.
     pub fn parent_hash(&self) -> &BlockHash {
         &self.parent_hash
@@ -768,6 +769,7 @@ impl BlockHeader {
         self.era_end
             .map(|era_end| era_end.next_era_validator_weights)
     }
+
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
         match HashingAlgorithmVersion::from_protocol_version(&self.protocol_version) {
@@ -831,6 +833,7 @@ impl BlockHeader {
         ])
         .into()
     }
+
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
@@ -1065,6 +1068,7 @@ impl<'a> MerkleBlockBody<'a> {
         ]
     }
 }
+
 /// The body portion of a block.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
@@ -1076,6 +1080,7 @@ pub struct BlockBody {
 impl BlockBody {
     /// The number of parts of a block body.
     pub const PARTS_COUNT: usize = 3;
+
     /// Creates a new body from deploy and transfer hashes.
     pub(crate) fn new(
         proposer: PublicKey,
@@ -1267,7 +1272,7 @@ pub struct Block {
     body: BlockBody,
 }
 
-/// The hashing algorithm used for the header and the block body of a block
+/// The hashing algorithm used for the header and the body of a block
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum HashingAlgorithmVersion {
     /// Version 1
@@ -1293,6 +1298,7 @@ impl HashingAlgorithmVersion {
         }
     }
 }
+
 impl Block {
     fn hash_block_body(protocol_version: &ProtocolVersion, block_body: &BlockBody) -> Digest {
         match HashingAlgorithmVersion::from_protocol_version(protocol_version) {
@@ -1300,6 +1306,7 @@ impl Block {
             HashingAlgorithmVersion::V2 => block_body.hash_v2(),
         }
     }
+
     pub(crate) fn new(
         parent_hash: BlockHash,
         parent_seed: Digest,
@@ -1313,6 +1320,7 @@ impl Block {
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
         );
+
         let body_hash = Self::hash_block_body(&protocol_version, &body);
 
         let era_end = match (finalized_block.era_report, next_era_validator_weights) {
@@ -1426,6 +1434,7 @@ impl Block {
                 actual_block_header_hash,
             });
         }
+
         let actual_block_body_hash =
             Self::hash_block_body(&self.header.protocol_version, &self.body);
         if self.header.body_hash != actual_block_body_hash {
@@ -1434,6 +1443,7 @@ impl Block {
                 actual_block_body_hash,
             });
         }
+
         Ok(())
     }
 
@@ -1932,11 +1942,13 @@ impl Display for FinalitySignature {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::bytesrepr;
     use std::rc::Rc;
 
-    use super::*;
+    use casper_types::bytesrepr;
+
     use crate::testing::TestRng;
+
+    use super::*;
 
     #[test]
     fn json_block_roundtrip() {
