@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::ToBytes;
+
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
     types::{TimeDiff, Timestamp},
