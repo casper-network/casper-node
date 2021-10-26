@@ -639,7 +639,9 @@ impl Debug for ApiError {
             }
             ApiError::InvalidDictionaryItemKey => write!(f, "ApiError::InvalidDictionaryItemKey")?,
             ApiError::MissingSystemContractHash => write!(f, "ApiError::MissingContractHash")?,
-            ApiError::NonRepresentableSerialization => write!(f, "ApiError::NonRepresentableSerialization")?,
+            ApiError::NonRepresentableSerialization => {
+                write!(f, "ApiError::NonRepresentableSerialization")?
+            }
             ApiError::AuctionError(value) => write!(
                 f,
                 "ApiError::AuctionError({:?})",

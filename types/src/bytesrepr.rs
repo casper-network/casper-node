@@ -131,7 +131,9 @@ impl Display for Error {
             Error::Formatting => formatter.write_str("Deserialization error: formatting"),
             Error::LeftOverBytes => formatter.write_str("Deserialization error: left-over bytes"),
             Error::OutOfMemory => formatter.write_str("Serialization error: out of memory"),
-            Error::NotRepresentable => formatter.write_str("Serialization error: value is not representable."),
+            Error::NotRepresentable => {
+                formatter.write_str("Serialization error: value is not representable.")
+            }
         }
     }
 }
@@ -1225,7 +1227,10 @@ where
 fn u8_slice_to_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let serialized_length = u8_slice_serialized_length(bytes);
     let mut vec = try_vec_with_capacity(serialized_length)?;
-    let length_prefix: u32 = bytes.len().try_into().map_err(|_| Error::NotRepresentable)?;
+    let length_prefix: u32 = bytes
+        .len()
+        .try_into()
+        .map_err(|_| Error::NotRepresentable)?;
     let length_prefix_bytes = length_prefix.to_le_bytes();
     vec.extend_from_slice(&length_prefix_bytes);
     vec.extend_from_slice(bytes);
