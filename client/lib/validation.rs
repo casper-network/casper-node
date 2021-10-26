@@ -13,8 +13,7 @@ use casper_node::{
         state::GlobalStateIdentifier,
     },
     types::{
-        error::BlockValidationError, json_compatibility, Block, BlockHeader, JsonBlock,
-        JsonBlockHeader,
+        json_compatibility, Block, BlockHeader, BlockValidationError, JsonBlock, JsonBlockHeader,
     },
 };
 use casper_types::{bytesrepr, Key, StoredValue, U512};
@@ -44,8 +43,8 @@ pub enum ValidateResponseError {
     ValidationError(#[from] ValidationError),
 
     /// Failed to validate a block.
-    #[error(transparent)]
-    BlockValidationError(#[from] BlockValidationError),
+    #[error("Block validation error {0}")]
+    BlockValidationError(BlockValidationError),
 
     /// Serialized value not contained in proof.
     #[error("serialized value not contained in proof")]
@@ -74,6 +73,11 @@ impl From<bytesrepr::Error> for ValidateResponseError {
     }
 }
 
+impl From<BlockValidationError> for ValidateResponseError {
+    fn from(e: BlockValidationError) -> Self {
+        ValidateResponseError::BlockValidationError(e)
+    }
+}
 pub(crate) fn validate_get_era_info_response(
     response: &JsonRpc,
 ) -> Result<(), ValidateResponseError> {
@@ -281,7 +285,8 @@ pub(crate) fn validate_get_block_response(
     } else {
         return Ok(());
     };
-    let block = Block::try_from(json_block)?;
+    let block = Block::from(json_block);
+    block.verify()?;
     match maybe_block_identifier {
         Some(BlockIdentifier::Hash(block_hash)) => {
             if block_hash != block.hash() {

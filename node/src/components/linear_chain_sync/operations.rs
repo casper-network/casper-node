@@ -18,9 +18,9 @@ use crate::{
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
-        Timestamp,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
+        BlockValidationError, BlockWithMetadata, Chainspec, Deploy, DeployHash, FinalizedBlock,
+        Item, NodeConfig, NodeId, TimeDiff, Timestamp,
     },
 };
 
@@ -261,6 +261,8 @@ trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
 
     fn finality_signatures(&self) -> &BlockSignatures;
 
+    fn verify(&self) -> Result<(), BlockValidationError>;
+
     async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>);
 }
 
@@ -272,6 +274,11 @@ impl BlockOrHeaderWithMetadata for BlockWithMetadata {
 
     fn finality_signatures(&self) -> &BlockSignatures {
         &self.finality_signatures
+    }
+
+    fn verify(&self) -> Result<(), BlockValidationError> {
+        self.block.verify()?;
+        Ok(())
     }
 
     async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
@@ -288,6 +295,10 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 
     fn finality_signatures(&self) -> &BlockSignatures {
         &self.block_signatures
+    }
+
+    fn verify(&self) -> Result<(), BlockValidationError> {
+        Ok(())
     }
 
     async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
@@ -336,6 +347,16 @@ where
                         fetched_header = ?item.header(),
                         ?parent_header,
                         "received block with wrong parent from peer",
+                    );
+                    effect_builder.announce_disconnect_from_peer(peer).await;
+                    continue;
+                }
+
+                if let Err(error) = item.verify() {
+                    warn!(
+                        ?error,
+                        ?peer,
+                        "Error validating block from peer; banning peer.",
                     );
                     effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;

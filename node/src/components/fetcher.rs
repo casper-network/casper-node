@@ -294,7 +294,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 }
 
 impl ItemFetcher<Block> for Fetcher<Block> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
     fn responders(
         &mut self,
