@@ -5,10 +5,11 @@ use std::{
 
 use serde::Serialize;
 
+use casper_execution_engine::core::engine_state::execution_effect::ExecutionEffect as ExecutionEngineExecutionEffect;
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
-    effect::announcements::LinearChainBlock,
+    effect::{announcements::LinearChainBlock, EffectBuilder},
     types::{Block, DeployHash, DeployHeader},
 };
 use std::collections::BTreeMap;
@@ -32,27 +33,6 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
-}
-
-impl ContractRuntimeAnnouncement {
-    /// Creates a `ContractRuntimeAnnouncement::LinearChainBlock` from its parts.
-    pub(crate) fn linear_chain_block(
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) -> Self {
-        Self::LinearChainBlock(Box::new(LinearChainBlock {
-            block,
-            execution_results,
-        }))
-    }
-
-    /// Create a ContractRuntimeAnnouncement::StepSuccess from an execution effect.
-    pub(crate) fn step_success(era_id: EraId, execution_effect: ExecutionEffect) -> Self {
-        Self::StepSuccess {
-            era_id,
-            execution_effect,
-        }
-    }
 }
 
 impl Display for ContractRuntimeAnnouncement {
@@ -79,4 +59,54 @@ impl Display for ContractRuntimeAnnouncement {
             }
         }
     }
+}
+
+/// Announces a committed Step success.
+pub(super) async fn step_success<REv>(
+    effect_builder: EffectBuilder<REv>,
+    era_id: EraId,
+    execution_effect: ExecutionEngineExecutionEffect,
+) where
+    REv: From<ContractRuntimeAnnouncement>,
+{
+    effect_builder
+        .schedule_regular(ContractRuntimeAnnouncement::StepSuccess {
+            era_id,
+            execution_effect: (&execution_effect).into(),
+        })
+        .await
+}
+
+/// Announce new block has been created.
+pub(crate) async fn linear_chain_block<REv>(
+    effect_builder: EffectBuilder<REv>,
+    block: Block,
+    execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+) where
+    REv: From<ContractRuntimeAnnouncement>,
+{
+    effect_builder
+        .schedule_regular(ContractRuntimeAnnouncement::LinearChainBlock(Box::new(
+            LinearChainBlock {
+                block,
+                execution_results,
+            },
+        )))
+        .await
+}
+
+/// Announce validators for upcoming era.
+pub(super) async fn upcoming_era_validators<REv>(
+    effect_builder: EffectBuilder<REv>,
+    era_that_is_ending: EraId,
+    upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+) where
+    REv: From<ContractRuntimeAnnouncement>,
+{
+    effect_builder
+        .schedule_regular(ContractRuntimeAnnouncement::UpcomingEraValidators {
+            era_that_is_ending,
+            upcoming_era_validators,
+        })
+        .await
 }

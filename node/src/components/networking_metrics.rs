@@ -32,7 +32,7 @@ pub(super) struct NetworkingMetrics {
     pub(super) out_count_deploy_transfer: IntCounter,
     /// Count of outgoing messages with block request/response payload.
     pub(super) out_count_block_transfer: IntCounter,
-    /// Count of outgoing messages with block request/response payload.
+    /// Count of outgoing messages with trie request/response payload.
     pub(super) out_count_trie_transfer: IntCounter,
     /// Count of outgoing messages with other payload.
     pub(super) out_count_other: IntCounter,

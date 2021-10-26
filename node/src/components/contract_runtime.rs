@@ -528,6 +528,7 @@ impl ContractRuntime {
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
         let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
+
         Ok(ContractRuntime {
             execution_pre_state,
             protocol_version,
@@ -629,21 +630,22 @@ impl ContractRuntime {
 
         let current_era_id = block.header().era_id();
 
-        effect_builder
-            .announce_linear_chain_block(block, execution_results)
-            .await;
+        announcements::linear_chain_block(effect_builder, block, execution_results).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_effect,
             upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
-            effect_builder
-                .announce_step_success(current_era_id, step_execution_effect)
+            announcements::step_success(effect_builder, current_era_id, step_execution_effect)
                 .await;
-            effect_builder
-                .announce_upcoming_era_validators(current_era_id, upcoming_era_validators)
-                .await;
+
+            announcements::upcoming_era_validators(
+                effect_builder,
+                current_era_id,
+                upcoming_era_validators,
+            )
+            .await;
         }
 
         // If the child is already finalized, start execution.
@@ -694,9 +696,9 @@ impl ContractRuntime {
 
         let current_era_id = block.header().era_id();
 
-        let mut effects = effect_builder
-            .announce_linear_chain_block(block.clone(), execution_results)
-            .ignore();
+        let mut effects =
+            announcements::linear_chain_block(effect_builder, block.clone(), execution_results)
+                .ignore();
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_effect,
@@ -704,14 +706,16 @@ impl ContractRuntime {
         }) = maybe_step_effect_and_upcoming_era_validators
         {
             effects.extend(
-                effect_builder
-                    .announce_step_success(current_era_id, step_execution_effect)
+                announcements::step_success(effect_builder, current_era_id, step_execution_effect)
                     .ignore(),
             );
             effects.extend(
-                effect_builder
-                    .announce_upcoming_era_validators(current_era_id, upcoming_era_validators)
-                    .ignore(),
+                announcements::upcoming_era_validators(
+                    effect_builder,
+                    current_era_id,
+                    upcoming_era_validators,
+                )
+                .ignore(),
             );
         }
 

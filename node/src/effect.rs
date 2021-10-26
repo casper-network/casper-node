@@ -80,8 +80,8 @@ use tracing::error;
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, era_validators::GetEraValidatorsError, execution_effect::ExecutionEffect,
-        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+        self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
+        GetBidsResult, QueryRequest, QueryResult,
     },
     storage::trie::Trie,
 };
@@ -112,9 +112,9 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    NetworkAnnouncement, RpcServerAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
 };
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -722,53 +722,6 @@ impl<REv> EffectBuilder<REv> {
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
             QueueKind::Regular,
         )
-    }
-
-    /// Announce new block has been created.
-    pub(crate) async fn announce_linear_chain_block(
-        self,
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce a committed Step success.
-    pub(crate) async fn announce_step_success(
-        self,
-        era_id: EraId,
-        execution_effect: ExecutionEffect,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce new validator set for an upcoming era.
-    pub(crate) async fn announce_upcoming_era_validators(
-        self,
-        era_that_is_ending: EraId,
-        upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.schedule_regular(ContractRuntimeAnnouncement::UpcomingEraValidators {
-            era_that_is_ending,
-            upcoming_era_validators,
-        })
-        .await
     }
 
     /// Announce upgrade activation point read.
