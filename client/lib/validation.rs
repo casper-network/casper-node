@@ -78,6 +78,7 @@ impl From<BlockValidationError> for ValidateResponseError {
         ValidateResponseError::BlockValidationError(e)
     }
 }
+
 pub(crate) fn validate_get_era_info_response(
     response: &JsonRpc,
 ) -> Result<(), ValidateResponseError> {
