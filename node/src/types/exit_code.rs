@@ -1,5 +1,4 @@
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 
 /// The offset Rust uses by default when generating an exit code after being interrupted by a
@@ -10,7 +9,7 @@ const SIGNAL_OFFSET: u8 = 128;
 /// reactor to the binary.
 ///
 /// Note that a panic will result in the Rust process producing an exit code of 101.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
 #[repr(u8)]
 pub enum ExitCode {
     /// The process should exit with success.  The launcher should proceed to run the next

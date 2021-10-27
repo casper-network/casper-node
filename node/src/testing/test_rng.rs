@@ -24,7 +24,6 @@ type Seed = <Pcg64Mcg as SeedableRng>::Seed; // [u8; 16]
 /// thread in which it is created panics.
 ///
 /// Only one `TestRng` is permitted per thread.
-#[derive(Clone)]
 pub struct TestRng {
     seed: Seed,
     rng: Pcg64Mcg,

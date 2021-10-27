@@ -75,7 +75,7 @@ pub(crate) enum JoinerEvent {
     FinishedJoining { block_header: Box<BlockHeader> },
 
     /// Shut down with the given exit code.
-    Shutdown(ExitCode),
+    Shutdown(#[serde(skip_serializing)] ExitCode),
 
     /// Small Network event.
     #[from]
