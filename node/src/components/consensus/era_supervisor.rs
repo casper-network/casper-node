@@ -257,7 +257,6 @@ where
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let result = Digest::hash_pair(booking_block_hash, key_block_seed).value();
-
         u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
     }
 
@@ -859,7 +858,6 @@ where
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                let effect_builder = effect_builder;
                 async move {
                     let peers = effect_builder.get_peers_in_random_order().await;
                     if let Some(to) = peers.into_iter().next() {
@@ -1168,6 +1166,7 @@ where
     }
     Some(deploys_or_transfer)
 }
+
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
     finalized_block: FinalizedBlock,
@@ -1209,6 +1208,7 @@ async fn execute_finalized_block<REv>(
             return;
         }
     };
+
     effect_builder
         .enqueue_block_for_execution(finalized_block, deploys, transfers)
         .await

@@ -629,10 +629,7 @@ impl Storage {
                 .respond(self.get_transfers(&mut self.env.begin_ro_txn()?, &block_hash)?)
                 .ignore(),
             StorageRequest::PutDeploy { deploy, responder } => {
-                let mut txn = self.env.begin_rw_txn()?;
-                let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
-                txn.commit()?;
-                responder.respond(outcome).ignore()
+                responder.respond(self.put_deploy(&*deploy)?).ignore()
             }
             StorageRequest::GetDeploys {
                 deploy_hashes,
@@ -733,10 +730,13 @@ impl Storage {
                     };
                 // Check that the hash of the block retrieved is correct.
                 if block_hash != *block.hash() {
-                    error!(queried_block_hash = ?block_hash,
-                           actual_block_hash = ?block.hash(),
-                           "block not stored under hash");
+                    error!(
+                        queried_block_hash = ?block_hash,
+                        actual_block_hash = ?block.hash(),
+                        "block not stored under hash"
+                    );
                     debug_assert_eq!(&block_hash, block.hash());
+                    return Ok(responder.respond(None).ignore());
                 }
                 let finality_signatures =
                     match self.get_finality_signatures(&mut txn, &block_hash)? {
@@ -746,6 +746,7 @@ impl Storage {
                 if finality_signatures.verify().is_err() {
                     error!(?block, "invalid finality signatures for block");
                     debug_assert!(finality_signatures.verify().is_ok());
+                    return Ok(responder.respond(None).ignore());
                 }
                 responder
                     .respond(Some(BlockWithMetadata {
