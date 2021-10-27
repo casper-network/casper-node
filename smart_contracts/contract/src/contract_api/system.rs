@@ -71,7 +71,6 @@ pub fn get_auction() -> ContractHash {
 }
 
 /// Creates a new empty purse and returns its [`URef`].
-#[doc(hidden)]
 pub fn create_purse() -> URef {
     let purse_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
     unsafe {
@@ -151,7 +150,6 @@ pub fn transfer_to_public_key(target: PublicKey, amount: U512, id: Option<u64>) 
 
 /// Transfers `amount` of motes from `source` purse to `target` account.  If `target` does not exist
 /// it will be created.
-#[doc(hidden)]
 pub fn transfer_from_purse_to_account(
     source: URef,
     target: AccountHash,
@@ -200,7 +198,6 @@ pub fn transfer_from_purse_to_public_key(
 
 /// Transfers `amount` of motes from `source` purse to `target` purse.  If `target` does not exist
 /// the transfer fails.
-#[doc(hidden)]
 pub fn transfer_from_purse_to_purse(
     source: URef,
     target: URef,
