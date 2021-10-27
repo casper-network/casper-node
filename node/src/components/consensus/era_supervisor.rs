@@ -72,7 +72,7 @@ const PAST_EVIDENCE_ERAS: u64 = 1;
 /// The total number of past eras that are kept in memory in addition to the current one.
 /// The more recent half of these is active: it contains units and can still accept further units.
 /// The older half is in evidence-only state, and only used to validate cited evidence.
-const PAST_OPEN_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
+pub(super) const PAST_OPEN_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
 
 type ConsensusConstructor<I> = dyn Fn(
         Digest,                    // the era's unique instance ID

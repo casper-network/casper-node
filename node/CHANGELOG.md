@@ -58,8 +58,8 @@ All notable changes to this project will be documented in this file.  The format
 * Experimental support for libp2p has been removed.
 * The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
-* Remove dead code revealed by making modules `pub(crate)`.
-* Remove legacy synchronization from genesis in favor of fast sync.
+* Dead code revealed by making modules `pub(crate)` has been removed.
+* Legacy synchronization from genesis in favor of fast sync has been removed.
 
 ### Fixed
 * Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.

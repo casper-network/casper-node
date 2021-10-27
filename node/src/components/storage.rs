@@ -68,8 +68,12 @@ use casper_types::{
     EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
 };
 
-pub(crate) use crate::effect::requests::StorageRequest; /* Needed by reactor! macro in
-                                                         * fetcher tests... */
+// The reactor! macro needs this in the fetcher tests
+#[cfg(test)]
+pub(crate) use crate::effect::requests::StorageRequest;
+
+#[cfg(not(test))]
+use crate::effect::requests::StorageRequest;
 use crate::{
     components::{consensus, consensus::error::FinalitySignatureError, Component},
     crypto,
@@ -167,7 +171,6 @@ pub enum Error {
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
-
     /// Filesystem error while trying to move file.
     #[error("unable to move file {source_path} to {dest_path}: {original_error}")]
     UnableToMoveFile {
