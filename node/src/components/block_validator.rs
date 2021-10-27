@@ -427,6 +427,15 @@ where
                 return Event::DeployMissing(dt_hash);
             }
         };
+        if deploy.deploy_or_transfer_hash() != dt_hash {
+            warn!(
+                deploy = ?deploy,
+                expected_deploy_or_transfer_hash = ?dt_hash,
+                actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
+                "Deploy has incorrect transfer hash"
+            );
+            return Event::CannotConvertDeploy(dt_hash);
+        }
         match deploy.deploy_info() {
             Ok(deploy_info) => Event::DeployFound {
                 dt_hash,
