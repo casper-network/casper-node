@@ -462,7 +462,7 @@ impl Storage {
                     && block_header.protocol_version() < protocol_version
                 {
                     if block_header.hashing_algorithm_version() == HashingAlgorithmVersion::V1 {
-                            let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
+                        let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                     }
                     let _ = deleted_block_hashes.insert(block_header.hash());
                     cursor.del(WriteFlags::empty())?;
