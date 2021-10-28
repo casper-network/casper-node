@@ -89,7 +89,6 @@ pub fn create_purse() -> URef {
 }
 
 /// Returns the balance in motes of the given purse.
-#[doc(hidden)]
 pub fn get_purse_balance(purse: URef) -> Option<U512> {
     let (purse_ptr, purse_size, _bytes) = contract_api::to_ptr(purse);
 
