@@ -989,14 +989,15 @@ where
     ) -> Self {
         // Preconditions that would render the system inconsistent if violated. Those are strictly
         // programming errors.
-        debug_assert!(
-            !call_stack.is_empty(),
-            "Call stack should not be empty while creating a new Runtime instance"
-        );
-        debug_assert!(
-            call_stack.first().unwrap().contract_hash().is_none(),
-            "First element should always represent a Session call"
-        );
+        if call_stack.is_empty() {
+            error!("Call stack should not be empty while creating a new Runtime instance");
+            debug_assert!(false);
+        }
+
+        if call_stack.first().unwrap().contract_hash().is_some() {
+            error!("First element of the call stack should always represent a Session call");
+            debug_assert!(false);
+        }
 
         Runtime {
             config,
@@ -1039,6 +1040,10 @@ where
     }
 
     /// Charge for a system contract call.
+    ///
+    /// This method does not charge for system contract calls if the immediate caller is a system
+    /// contract. This avoids misleading gas charges if one system contract calls other system
+    /// contract (i.e. auction contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
         T: Into<Gas>,

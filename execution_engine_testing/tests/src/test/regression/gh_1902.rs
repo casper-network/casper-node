@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
@@ -18,7 +20,6 @@ use casper_types::{
     },
     Gas, PublicKey, RuntimeArgs, SecretKey, U512,
 };
-use once_cell::sync::Lazy;
 
 const BOND_AMOUNT: u64 = 42;
 const DELEGATE_AMOUNT: u64 = 100;
@@ -70,7 +71,11 @@ fn exec_and_assert_costs(
         balance_after,
         expected,
         "before and after should match; off by: {}",
-        expected - balance_after
+        if expected > balance_after {
+            expected - balance_after
+        } else {
+            balance_after - expected
+        }
     );
     assert_eq!(builder.last_exec_gas_cost(), expected_gas_cost,);
 }
