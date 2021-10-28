@@ -438,9 +438,8 @@ where
                 continue;
             }
             debug!(?path, "removing unit file");
-            match fs::remove_file(path) {
-                Ok(_) => {}
-                Err(err) => warn!(?err, "could not delete unit hash file"),
+            if let Err(err) = fs::remove_file(path) {
+                warn!(?err, "could not delete unit hash file");
             }
         }
 
