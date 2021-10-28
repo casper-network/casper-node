@@ -240,6 +240,7 @@ impl SwitchBlocks {
         &self.headers[era_number as usize]
             .era_end()
             .expect("era end")
+            .era_report()
             .equivocators
     }
 
@@ -248,6 +249,7 @@ impl SwitchBlocks {
         &self.headers[era_number as usize]
             .era_end()
             .expect("era end")
+            .era_report()
             .inactive_validators
     }
 

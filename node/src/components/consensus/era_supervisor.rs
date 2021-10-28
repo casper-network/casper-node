@@ -492,6 +492,7 @@ where
                     new_faulty = key_block
                         .era_end()
                         .expect("key block must be a switch block")
+                        .era_report()
                         .equivocators
                         .clone();
                     validators = key_block
@@ -504,7 +505,7 @@ where
             let faulty = self
                 .iter_past(era_id, self.banning_period())
                 .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
-                .flat_map(|era_end| era_end.equivocators.clone())
+                .flat_map(|era_end| era_end.era_report().equivocators.clone())
                 .collect();
 
             let results = self.new_era(
@@ -517,7 +518,7 @@ where
                     .get(&era_id)
                     .and_then(|bhdr| bhdr.era_end())
                     .into_iter()
-                    .flat_map(|era_end| &era_end.inactive_validators)
+                    .flat_map(|era_end| &era_end.era_report().inactive_validators)
                     .cloned()
                     .collect(),
                 seed,
@@ -778,12 +779,12 @@ where
         switch_block_header: BlockHeader,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
-        let (era_end, next_era_validators_weights) = match (
+        let (era_report, next_era_validators_weights) = match (
             switch_block_header.era_end(),
             switch_block_header.next_era_validator_weights(),
         ) {
             (Some(era_end), Some(next_era_validator_weights)) => {
-                (era_end, next_era_validator_weights)
+                (era_end.era_report(), next_era_validator_weights)
             }
             _ => {
                 return fatal!(
@@ -794,7 +795,7 @@ where
                 .ignore()
             }
         };
-        let new_faulty = era_end.equivocators.clone();
+        let new_faulty = era_report.equivocators.clone();
         let era_id = switch_block_header.era_id().successor();
         info!(era = era_id.value(), "era created");
         let seed = EraSupervisor::<I>::era_seed(
@@ -816,7 +817,7 @@ where
             next_era_validators_weights.clone(),
             new_faulty,
             faulty,
-            era_end.inactive_validators.iter().cloned().collect(),
+            era_report.inactive_validators.iter().cloned().collect(),
             seed,
             switch_block_header.timestamp(),
             switch_block_header.height() + 1,
