@@ -7,18 +7,19 @@ use crate::{error::MerkleConstructionError, indexed_merkle_proof::IndexedMerkleP
 
 /// Represents a chunk of data with attached proof.
 #[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
-#[schemars(with = "String", description = "Hex-encoded hash digest.")]
+#[schemars(with = "String", description = "Chunk of data with attached proof.")]
 #[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
-    chunk: Vec<u8>,
+    #[schemars(with = "String", description = "Hex-encoded bytes.")]
+    chunk: Bytes,
 }
 
 impl ToBytes for ChunkWithProof {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = casper_types::allocate_buffer(self)?;
         result.append(&mut self.proof.to_bytes()?);
-        result.append(&mut Bytes::from(self.chunk.as_slice()).to_bytes()?);
+        result.append(&mut self.chunk.to_bytes()?);
         Ok(result)
     }
 
@@ -29,14 +30,10 @@ impl ToBytes for ChunkWithProof {
 
 impl FromBytes for ChunkWithProof {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let ((proof, chunk), remainder) = <(IndexedMerkleProof, Bytes)>::from_bytes(bytes)?;
-        Ok((
-            ChunkWithProof {
-                proof,
-                chunk: chunk.into(),
-            },
-            remainder,
-        ))
+        let (proof, remainder) = FromBytes::from_bytes(bytes)?;
+        let (chunk, remainder) = FromBytes::from_bytes(remainder)?;
+
+        Ok((ChunkWithProof { proof, chunk }, remainder))
     }
 }
 
@@ -54,18 +51,22 @@ impl ChunkWithProof {
     /// Empty data is always represented as single, empty chunk and not as zero chunks.
     pub fn new(data: &[u8], index: u64) -> Result<Self, MerkleConstructionError> {
         let (proof, chunk) = if data.is_empty() {
-            (IndexedMerkleProof::new([Digest::hash(&[])], index)?, vec![])
+            (
+                IndexedMerkleProof::new([Digest::hash(&[])], index)?,
+                Bytes::new(),
+            )
         } else {
             (
                 IndexedMerkleProof::new(
                     data.chunks(Self::CHUNK_SIZE_BYTES).map(Digest::hash),
                     index,
                 )?,
-                data[Self::CHUNK_SIZE_BYTES * (index as usize)
-                    ..data
-                        .len()
-                        .min(Self::CHUNK_SIZE_BYTES * ((index as usize) + 1))]
-                    .to_vec(),
+                Bytes::from(
+                    &data[Self::CHUNK_SIZE_BYTES * (index as usize)
+                        ..data
+                            .len()
+                            .min(Self::CHUNK_SIZE_BYTES * ((index as usize) + 1))],
+                ),
             )
         };
 
