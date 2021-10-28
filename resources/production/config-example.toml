@@ -202,7 +202,8 @@ max_concurrent_subscribers = 100
 [storage]
 
 # Path (absolute, or relative to this config.toml) to the folder where any files created
-# or read by the storage component will exist.
+# or read by the storage component will exist. A subfolder named with the network name will be
+# automatically created and used for the storage component files.
 #
 # If the folder doesn't exist, it and any required parents will be created.
 #
