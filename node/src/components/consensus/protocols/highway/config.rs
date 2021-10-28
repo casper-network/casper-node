@@ -9,6 +9,7 @@ use super::round_success_meter::config::Config as RSMConfig;
 /// Highway-specific configuration.
 /// NOTE: This is *NOT* protocol configuration that has to be the same on all nodes.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pub pending_vertex_timeout: TimeDiff,

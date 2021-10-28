@@ -414,7 +414,7 @@ where
         let dir_iterator = match fs::read_dir(&self.unit_files_folder) {
             Ok(iter) => iter,
             Err(err) => {
-                warn!(?err, "could not read the unit files folder");
+                warn!(?err, path=?self.unit_files_folder, "could not read the unit files folder");
                 // if we couldn't clean up the unit files, we just return
                 return outcomes;
             }
@@ -424,7 +424,11 @@ where
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(err) => {
-                    warn!(?err, "error while reading the unit files folder");
+                    warn!(
+                        ?err,
+                        path=?self.unit_files_folder,
+                        "error while reading the unit files folder",
+                    );
                     continue;
                 }
             };
@@ -438,8 +442,8 @@ where
                 continue;
             }
             debug!(?path, "removing unit file");
-            if let Err(err) = fs::remove_file(path) {
-                warn!(?err, "could not delete unit hash file");
+            if let Err(err) = fs::remove_file(&path) {
+                warn!(?err, ?path, "could not delete unit file");
             }
         }
 
