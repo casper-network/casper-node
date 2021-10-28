@@ -60,7 +60,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    reactor::{
+        self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, Reactor as _, ReactorExit,
+    },
     types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag},
     utils::{Source, WithDir},
     NodeRng,
@@ -442,6 +444,125 @@ impl Reactor {
     }
 }
 
+impl Reactor {
+    /// Handles a request to get an item by id.
+    fn handle_get_request(
+        &mut self,
+        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        tag: Tag,
+        serialized_id: &[u8],
+    ) -> Effects<<Self as reactor::Reactor>::Event> {
+        match tag {
+            Tag::Deploy => {
+                let deploy_hash = match bincode::deserialize(serialized_id) {
+                    Ok(hash) => hash,
+                    Err(error) => {
+                        error!(
+                            "failed to decode {:?} from {}: {}",
+                            serialized_id, sender, error
+                        );
+                        return Effects::new();
+                    }
+                };
+
+                match self
+                    .storage
+                    .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
+                {
+                    Some(serialized_item) => {
+                        let message =
+                            Message::new_get_response_raw_unchecked::<Deploy>(serialized_item);
+                        return effect_builder.send_message(sender, message).ignore();
+                    }
+                    None => debug!(%sender, %deploy_hash, "failed to get deploy (not found)"),
+                }
+            }
+            Tag::Block => match bincode::deserialize(serialized_id) {
+                Ok(block_hash) => {
+                    let req = LinearChainRequest::BlockRequest(block_hash, sender);
+                    let event = ParticipatingEvent::LinearChain(linear_chain::Event::Request(req));
+                    return self.dispatch_event(effect_builder, rng, event);
+                }
+                Err(error) => error!(
+                    "failed to decode {:?} from {}: {}",
+                    serialized_id, sender, error
+                ),
+            },
+            Tag::BlockByHeight => match bincode::deserialize(serialized_id) {
+                Ok(height) => {
+                    let req = LinearChainRequest::BlockAtHeight(height, sender);
+                    let event = ParticipatingEvent::LinearChain(linear_chain::Event::Request(req));
+                    return self.dispatch_event(effect_builder, rng, event);
+                }
+                Err(error) => error!(
+                    "failed to decode {:?} from {}: {}",
+                    serialized_id, sender, error
+                ),
+            },
+            Tag::GossipedAddress => {
+                warn!("received get request for gossiped-address from {}", sender)
+            }
+            Tag::BlockHeaderByHash => {
+                let block_hash: BlockHash = match bincode::deserialize(serialized_id) {
+                    Ok(block_hash) => block_hash,
+                    Err(error) => {
+                        error!(
+                            "failed to decode {:?} from {}: {}",
+                            serialized_id, sender, error
+                        );
+                        return Effects::new();
+                    }
+                };
+
+                match self.storage.get_block_header_by_hash(&block_hash) {
+                    Ok(Some(block_header)) => {
+                        match Message::new_get_response(&block_header) {
+                            Err(error) => error!("failed to create get-response: {}", error),
+                            Ok(message) => {
+                                return effect_builder.send_message(sender, message).ignore();
+                            }
+                        };
+                    }
+                    Ok(None) => debug!("failed to get {} for {}", block_hash, sender),
+                    Err(error) => error!("failed to get {} for {}: {}", block_hash, sender, error),
+                }
+            }
+            Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                let block_height = match bincode::deserialize(serialized_id) {
+                    Ok(block_height) => block_height,
+                    Err(error) => {
+                        error!(
+                            "failed to decode {:?} from {}: {}",
+                            serialized_id, sender, error
+                        );
+                        return Effects::new();
+                    }
+                };
+                match self
+                    .storage
+                    .read_block_header_and_finality_signatures_by_height(block_height)
+                {
+                    Ok(Some(block_header)) => {
+                        match Message::new_get_response(&block_header) {
+                            Ok(message) => {
+                                return effect_builder.send_message(sender, message).ignore();
+                            }
+                            Err(error) => error!("failed to create get-response: {}", error),
+                        };
+                    }
+                    Ok(None) => debug!("failed to get {} for {}", block_height, sender),
+                    Err(error) => {
+                        error!("failed to get {} for {}: {}", block_height, sender, error)
+                    }
+                }
+            }
+        }
+        Effects::new()
+    }
+}
+
 impl reactor::Reactor for Reactor {
     type Event = ParticipatingEvent;
 
@@ -754,151 +875,15 @@ impl reactor::Reactor for Reactor {
                             message,
                         })
                     }
-                    Message::GetRequest { tag, serialized_id } => match tag {
-                        Tag::Deploy => {
-                            let deploy_hash = match bincode::deserialize(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-
-                            match self
-                                .storage
-                                .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
-                            {
-                                Some(serialized_item) => {
-                                    let message = Message::new_get_response_raw_unchecked::<Deploy>(
-                                        serialized_item,
-                                    );
-                                    return effect_builder.send_message(sender, message).ignore();
-                                }
-
-                                None => {
-                                    debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
-                                    return Effects::new();
-                                }
-                            }
-                        }
-                        Tag::Block => {
-                            let block_hash = match bincode::deserialize(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            ParticipatingEvent::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockRequest(block_hash, sender),
-                            ))
-                        }
-                        Tag::BlockByHeight => {
-                            let height = match bincode::deserialize(&serialized_id) {
-                                Ok(block_by_height) => block_by_height,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            ParticipatingEvent::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockAtHeight(height, sender),
-                            ))
-                        }
-                        Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
-                            return Effects::new();
-                        }
-                        Tag::BlockHeaderByHash => {
-                            let block_hash: BlockHash = match bincode::deserialize(&serialized_id) {
-                                Ok(block_hash) => block_hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-
-                            match self.storage.get_block_header_by_hash(&block_hash) {
-                                Ok(Some(block_header)) => {
-                                    match Message::new_get_response(&block_header) {
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                    };
-                                }
-                                Ok(None) => {
-                                    debug!("failed to get {} for {}", block_hash, sender);
-                                    return Effects::new();
-                                }
-                                Err(error) => {
-                                    error!(
-                                        "failed to get {} for {}: {}",
-                                        block_hash, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            }
-                        }
-                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                            let block_height = match bincode::deserialize(&serialized_id) {
-                                Ok(block_height) => block_height,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            match self
-                                .storage
-                                .read_block_header_and_finality_signatures_by_height(block_height)
-                            {
-                                Ok(Some(block_header)) => {
-                                    match Message::new_get_response(&block_header) {
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                    };
-                                }
-                                Ok(None) => {
-                                    debug!("failed to get {} for {}", block_height, sender);
-                                    return Effects::new();
-                                }
-                                Err(error) => {
-                                    error!(
-                                        "failed to get {} for {}: {}",
-                                        block_height, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            }
-                        }
-                    },
+                    Message::GetRequest { tag, serialized_id } => {
+                        return self.handle_get_request(
+                            effect_builder,
+                            rng,
+                            sender,
+                            tag,
+                            &serialized_id,
+                        )
+                    }
                     Message::GetResponse {
                         tag,
                         serialized_item,
@@ -1138,7 +1123,7 @@ impl reactor::Reactor for Reactor {
                 GossiperAnnouncement::FinishedGossiping(_gossiped_deploy_id),
             ) => {
                 // let reactor_event =
-                //     Event::BlockProposer(block_proposer::Event::
+                //     ParticipatingEvent::BlockProposer(block_proposer::Event::
                 // BufferDeploy(gossiped_deploy_id));
                 // self.dispatch_event(effect_builder, rng, reactor_event)
                 Effects::new()
