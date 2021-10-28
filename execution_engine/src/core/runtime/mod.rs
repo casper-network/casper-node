@@ -1049,6 +1049,8 @@ where
         T: Into<Gas>,
     {
         if self.is_system_immediate_caller()? {
+            // This avoids charging the user in situation where a system contract calls other system
+            // contract.
             return Ok(());
         }
         self.context.charge_system_contract_call(amount)
