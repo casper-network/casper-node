@@ -1,14 +1,13 @@
-use crate::Digest;
-use casper_types::{
-    allocate_buffer,
-    bytesrepr::{FromBytes, ToBytes},
-};
+use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use itertools::Itertools;
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use crate::error;
+use crate::{
+    error::{MerkleConstructionError, MerkleVerificationError},
+    Digest,
+};
 
 #[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -19,8 +18,8 @@ pub(crate) struct IndexedMerkleProof {
 }
 
 impl ToBytes for IndexedMerkleProof {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
-        let mut result = allocate_buffer(self)?;
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = casper_types::allocate_buffer(self)?;
         result.append(&mut self.index.to_bytes()?);
         result.append(&mut self.count.to_bytes()?);
         result.append(&mut self.merkle_proof.to_bytes()?);
@@ -35,7 +34,7 @@ impl ToBytes for IndexedMerkleProof {
 }
 
 impl FromBytes for IndexedMerkleProof {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let ((index, count, merkle_proof), remainder) =
             <(u64, u64, Vec<Digest>)>::from_bytes(bytes)?;
 
@@ -54,7 +53,7 @@ impl IndexedMerkleProof {
     pub(crate) fn new<I>(
         leaves: I,
         index: u64,
-    ) -> Result<IndexedMerkleProof, error::MerkleConstructionError>
+    ) -> Result<IndexedMerkleProof, MerkleConstructionError>
     where
         I: IntoIterator<Item = Digest>,
         I::IntoIter: ExactSizeIterator,
@@ -68,7 +67,7 @@ impl IndexedMerkleProof {
 
         let leaves = leaves.into_iter();
         let count: u64 = std::convert::TryInto::try_into(leaves.len()).map_err(|_| {
-            error::MerkleConstructionError::TooManyLeaves {
+            MerkleConstructionError::TooManyLeaves {
                 count: leaves.len().to_string(),
             }
         })?;
@@ -92,9 +91,7 @@ impl IndexedMerkleProof {
             });
 
         match maybe_proof {
-            None | Some(Hash(_)) => {
-                Err(error::MerkleConstructionError::IndexOutOfBounds { count, index })
-            }
+            None | Some(Hash(_)) => Err(MerkleConstructionError::IndexOutOfBounds { count, index }),
             Some(Proof(merkle_proof)) => Ok(IndexedMerkleProof {
                 index,
                 count,
@@ -179,16 +176,16 @@ impl IndexedMerkleProof {
         l
     }
 
-    pub(crate) fn verify(&self) -> Result<(), error::MerkleVerificationError> {
+    pub(crate) fn verify(&self) -> Result<(), MerkleVerificationError> {
         if !((self.count == 0 && self.index == 0) || self.index < self.count) {
-            return Err(error::MerkleVerificationError::IndexOutOfBounds {
+            return Err(MerkleVerificationError::IndexOutOfBounds {
                 count: self.count,
                 index: self.index,
             });
         }
         let expected_proof_length = self.compute_expected_proof_length();
         if self.merkle_proof.len() != expected_proof_length as usize {
-            return Err(error::MerkleVerificationError::UnexpectedProofLength {
+            return Err(MerkleVerificationError::UnexpectedProofLength {
                 count: self.count,
                 index: self.index,
                 expected_proof_length,
@@ -206,10 +203,11 @@ impl IndexedMerkleProof {
 
 #[cfg(test)]
 mod test {
-    use casper_types::bytesrepr::{FromBytes, ToBytes};
     use proptest::prelude::{prop_assert, prop_assert_eq};
     use proptest_attr_macro::proptest;
     use rand::{distributions::Standard, Rng};
+
+    use casper_types::bytesrepr::{FromBytes, ToBytes};
 
     use crate::{error, indexed_merkle_proof::IndexedMerkleProof, Digest};
 

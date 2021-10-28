@@ -1,14 +1,12 @@
-use crate::indexed_merkle_proof::IndexedMerkleProof;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    allocate_buffer,
-    bytesrepr::{Bytes, FromBytes, ToBytes},
-};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
-use crate::{error, Digest};
+use crate::{error::MerkleConstructionError, indexed_merkle_proof::IndexedMerkleProof, Digest};
 
 /// Represents a chunk of data with attached proof.
-#[derive(PartialEq, Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 #[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
@@ -17,8 +15,8 @@ pub struct ChunkWithProof {
 }
 
 impl ToBytes for ChunkWithProof {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
-        let mut result = allocate_buffer(self)?;
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = casper_types::allocate_buffer(self)?;
         result.append(&mut self.proof.to_bytes()?);
         result.append(&mut Bytes::from(self.chunk.as_slice()).to_bytes()?);
         Ok(result)
@@ -30,7 +28,7 @@ impl ToBytes for ChunkWithProof {
 }
 
 impl FromBytes for ChunkWithProof {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let ((proof, chunk), remainder) = <(IndexedMerkleProof, Bytes)>::from_bytes(bytes)?;
         Ok((
             ChunkWithProof {
@@ -54,7 +52,7 @@ impl ChunkWithProof {
     /// Constructs the [ChunkWithProof] that contains the chunk of data with the appropriate index
     /// and the cryptographic proof.
     /// Empty data is always represented as single, empty chunk and not as zero chunks.
-    pub fn new(data: &[u8], index: u64) -> Result<Self, error::MerkleConstructionError> {
+    pub fn new(data: &[u8], index: u64) -> Result<Self, MerkleConstructionError> {
         let (proof, chunk) = if data.is_empty() {
             (IndexedMerkleProof::new([Digest::hash(&[])], index)?, vec![])
         } else {
@@ -94,17 +92,18 @@ impl ChunkWithProof {
 
 #[cfg(test)]
 mod test {
-    use crate::{error, Digest};
-    use casper_types::bytesrepr::{FromBytes, ToBytes};
+    use std::convert::TryInto;
+
     use proptest::{
         arbitrary::Arbitrary,
         strategy::{BoxedStrategy, Strategy},
     };
     use proptest_attr_macro::proptest;
     use rand::Rng;
-    use std::convert::TryInto;
 
-    use crate::chunk_with_proof::ChunkWithProof;
+    use casper_types::bytesrepr::{FromBytes, ToBytes};
+
+    use crate::{chunk_with_proof::ChunkWithProof, error::MerkleConstructionError, Digest};
 
     fn prepare_bytes(length: usize) -> Vec<u8> {
         let mut rng = rand::thread_rng();
@@ -260,8 +259,7 @@ mod test {
 
         let chunk_with_proof =
             ChunkWithProof::new(&[], 1).expect_err("should error with empty data and index > 0");
-        if let error::MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof
-        {
+        if let MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof {
             assert_eq!(count, 1);
             assert_eq!(index, 1);
         } else {
@@ -273,8 +271,7 @@ mod test {
 
         let chunk_with_proof =
             ChunkWithProof::new(data_larger_than_single_chunk.as_slice(), 10).unwrap_err();
-        if let error::MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof
-        {
+        if let MerkleConstructionError::IndexOutOfBounds { count, index } = chunk_with_proof {
             assert_eq!(count, 10);
             assert_eq!(index, 10);
         } else {

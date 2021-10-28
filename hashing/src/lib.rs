@@ -22,19 +22,18 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-pub use chunk_with_proof::ChunkWithProof;
 use datasize::DataSize;
 use itertools::Itertools;
-use schemars::JsonSchema;
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-
 #[cfg(test)]
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+use schemars::JsonSchema;
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
 };
+pub use chunk_with_proof::ChunkWithProof;
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]
@@ -339,11 +338,13 @@ impl<'de> Deserialize<'de> for Digest {
 
 #[cfg(test)]
 mod test {
-    use std::iter;
+    use std::{collections::BTreeMap, iter};
 
     use proptest_attr_macro::proptest;
 
-    use super::*;
+    use casper_types::bytesrepr;
+
+    use crate::{ChunkWithProof, Digest};
 
     #[proptest]
     fn bytesrepr_roundtrip(data: [u8; Digest::LENGTH]) {
