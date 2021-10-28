@@ -3390,7 +3390,7 @@
                     }
                   ],
                   "round_length": "1m 5s 536ms",
-                  "starting_state_root_hash": null,
+                  "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                   "uptime": "13s"
                 }
               }
@@ -3465,14 +3465,7 @@
                   "description": "The next round length if this node is a validator."
                 },
                 "starting_state_root_hash": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/Digest"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
+                  "$ref": "#/components/schemas/Digest",
                   "deprecated": true,
                   "description": "The state root hash used at the start of the current session."
                 },
@@ -3486,6 +3479,7 @@
                 "build_version",
                 "chainspec_name",
                 "peers",
+                "starting_state_root_hash",
                 "uptime"
               ],
               "type": "object"
