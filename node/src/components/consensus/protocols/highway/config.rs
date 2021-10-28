@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
 
 use datasize::DataSize;
@@ -12,8 +10,6 @@ use super::round_success_meter::config::Config as RSMConfig;
 /// NOTE: This is *NOT* protocol configuration that has to be the same on all nodes.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Path to the folder where unit hash files will be stored.
-    pub unit_hashes_folder: PathBuf,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pub pending_vertex_timeout: TimeDiff,
     /// If the initial era's protocol state has not progressed for this long, restart.
@@ -41,7 +37,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            unit_hashes_folder: Default::default(),
             pending_vertex_timeout: "10sec".parse().unwrap(),
             standstill_timeout: None,
             request_state_interval: Some("10sec".parse().unwrap()),
