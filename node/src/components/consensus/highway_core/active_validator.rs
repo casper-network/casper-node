@@ -1014,8 +1014,8 @@ mod tests {
 
         let unit_file = {
             let tmp_dir = tempdir().unwrap();
-            let unit_hashes_folder = tmp_dir.path().to_path_buf();
-            Some(unit_hashes_folder.join(format!("unit_hash_{:?}.dat", instance_id)))
+            let unit_files_folder = tmp_dir.path().to_path_buf();
+            Some(unit_files_folder.join(format!("unit_{:?}.dat", instance_id)))
         };
 
         // Store `a2` unit as the Alice's last unit.

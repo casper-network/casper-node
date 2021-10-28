@@ -42,13 +42,14 @@ All notable changes to this project will be documented in this file.  The format
   * `[gossip][gossip_request_timeout]`
   * `[gossip][get_remainder_timeout]`
   * `[fetcher][get_from_peer_timeout]`
-  
+
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 * Experimental support for libp2p has been removed.
 * The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
+* The config option `consensus.highway.unit_hashes_folder` has been removed.
 
 ### Fixed
 * Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
