@@ -132,22 +132,10 @@ impl Digest {
     /// constructing a [Merkle tree][1]. Reduces pairs of elements in the collection by repeatedly
     /// calling [Digest::hash_pair].
     ///
-    /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
+    /// The pattern of hashing is akin to [graph reduction][2] and is described
+    /// in the documentation of [tree_fold1].
     ///
-    /// ```text
-    /// a b c d e f
-    /// |/  |/  |/
-    /// g   h   i
-    /// | /   /
-    /// |/   /
-    /// j   k
-    /// | /
-    /// |/
-    /// l
-    /// ```
-    ///
-    /// Finally hashes the number of elements resulting hash. In the example above the final output
-    /// would be `hash_pair(u64_as_slice(6), l)`.
+    /// The final hash is hashed with the number of elements..
     ///
     /// Returns [`Digest::SENTINEL_MERKLE_TREE`] when the input is empty.
     ///
