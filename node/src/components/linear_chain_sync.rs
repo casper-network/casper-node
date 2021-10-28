@@ -319,7 +319,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         &mut self,
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
-        block: Block,
+        block: &Block,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
@@ -356,7 +356,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ..
             } if highest_block_seen != block_height => {
                 match latest_block.as_ref() {
-                    Some(expected) if expected != &block => {
+                    Some(expected) if expected != block => {
                         error!(
                             ?expected, got=?block,
                             "block execution result doesn't match received block"
@@ -391,7 +391,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     .ignore();
                 }
                 match latest_block.as_ref() {
-                    Some(expected) if expected != &block => {
+                    Some(expected) if expected != block => {
                         error!(
                             ?expected, got=?block,
                             "block execution result doesn't match received block"
@@ -409,7 +409,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block, last_switch_block_height);
+                self.state =
+                    State::sync_descendants(trusted_hash, block.clone(), last_switch_block_height);
                 blocks::fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
@@ -417,7 +418,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 last_switch_block_height,
                 ..
             } => {
-                if latest_block.as_ref() != &block {
+                if latest_block.as_ref() != block {
                     error!(
                         expected=?*latest_block, got=?block,
                         "block execution result doesn't match received block"
@@ -435,7 +436,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     return Effects::new();
                 }
                 self.state = curr_state;
-                self.fetch_next_block(effect_builder, rng, &block)
+                self.fetch_next_block(effect_builder, rng, block)
             }
         }
     }
@@ -675,9 +676,14 @@ where
                             return fatal!(effect_builder, "block height mismatch").ignore();
                         }
                         trace!(%block_height, "Linear block found in the local storage.");
-                        // When syncing descendants of a trusted hash, we might have some of
-                        // them in our local storage. If that's the case, just continue.
-                        self.block_downloaded(rng, effect_builder, &block)
+                        // We need to update internal state of the `LinearChainSync` component
+                        // but we ignore the usual effects. If that block is already in storage,
+                        // it means we must have "acted" on it and processed these effects in the
+                        // past. Now, we can continue downloading the next
+                        // block in the chain - one with height + 1.
+                        let _ = self.block_downloaded(rng, effect_builder, &block);
+                        let _ = self.block_handled(rng, effect_builder, &block);
+                        self.fetch_next_block(effect_builder, rng, &block)
                     }
                     BlockByHeightResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_height();
@@ -773,7 +779,7 @@ where
                         // We don't want to download and execute a block we already have, so
                         // instead of calling self.block_downloaded(), we take a shortcut:
                         self.set_last_block_if_syncing_trusted_hash(&block);
-                        self.block_handled(rng, effect_builder, *block)
+                        self.block_handled(rng, effect_builder, &block)
                     }
                     BlockByHashResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_hash();
@@ -900,7 +906,7 @@ where
             Event::BlockHandled(block) => {
                 let block_height = block.height();
                 let block_hash = *block.hash();
-                let effects = self.block_handled(rng, effect_builder, *block);
+                let effects = self.block_handled(rng, effect_builder, &block);
                 trace!(%block_height, %block_hash, "block handled");
                 effects
             }
