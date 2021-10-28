@@ -4,16 +4,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use casper_engine_test_support::internal::LmdbWasmTestBuilder;
-use casper_types::ProtocolVersion;
 use fs_extra::dir;
 use serde::{Deserialize, Serialize};
+use tempfile::TempDir;
 
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::core::engine_state::{
     run_genesis_request::RunGenesisRequest, EngineConfig,
 };
 use casper_hashing::Digest;
-use tempfile::TempDir;
+use casper_types::ProtocolVersion;
 
 pub const RELEASE_1_2_0: &str = "release_1_2_0";
 pub const RELEASE_1_3_1: &str = "release_1_3_1";
@@ -31,10 +31,6 @@ pub struct LmdbFixtureState {
     /// Serializes as unstructured JSON value because [`RunGenesisRequest`] might change over time
     /// and likely old fixture might not deserialize cleanly in the future.
     pub genesis_request: serde_json::Value,
-    #[serde(
-        serialize_with = "hex::serialize",
-        deserialize_with = "hex::deserialize"
-    )]
     pub post_state_hash: Digest,
 }
 

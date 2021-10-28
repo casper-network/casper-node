@@ -13,7 +13,6 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use hex_fmt::HexFmt;
 use openssl::ssl::SslRef;
 use pin_project::pin_project;
 #[cfg(test)]
@@ -21,6 +20,8 @@ use rand::RngCore;
 use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
+
+use casper_types::checksummed_hex;
 
 use casper_hashing::Digest;
 
@@ -37,7 +38,7 @@ struct TraceId([u8; 8]);
 
 impl Display for TraceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!("{:x}", HexFmt(&self.0)))
+        f.write_str(&checksummed_hex::encode(&self.0))
     }
 }
 

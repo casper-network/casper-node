@@ -171,7 +171,6 @@ export function removeAssociatedKey(accountHash: AccountHash): RemoveKeyFailure 
  * Gets the [[URef]] representing the main purse of the account.
  *
  * @returns The [[URef]] that can be used to access the main purse.
- * @hidden
  */
 export function getMainPurse(): URef {
     let data = new Uint8Array(UREF_SERIALIZED_LENGTH);

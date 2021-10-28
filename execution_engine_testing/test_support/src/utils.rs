@@ -1,3 +1,5 @@
+//! Utility types and funcitons for working with execution engine tests.
+
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -18,7 +20,7 @@ use casper_execution_engine::{
 use casper_types::{account::Account, Gas, Key, StoredValue};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
-use crate::internal::{
+use crate::{
     DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
@@ -129,6 +131,7 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
     panic!("{}\n", error_msg);
 }
 
+/// Returns an [`ExecConfig`].
 pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let system_config = *DEFAULT_SYSTEM_CONFIG;
@@ -151,6 +154,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     )
 }
 
+/// Returns a [`GenesisConfig`].
 pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let name = DEFAULT_CHAIN_NAME.to_string();
     let timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
@@ -160,6 +164,7 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     GenesisConfig::new(name, timestamp, protocol_version, exec_config)
 }
 
+/// Returns a [`RunGenesisRequest`].
 pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> RunGenesisRequest {
     let exec_config = create_exec_config(accounts);
     RunGenesisRequest::new(
@@ -169,6 +174,7 @@ pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> RunGenesisRe
     )
 }
 
+/// Returns a `Vec<Gas>` representing gas consts for an [`ExecutionResult`].
 pub fn get_exec_costs<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
     exec_response: I,
 ) -> Vec<Gas> {
@@ -178,10 +184,18 @@ pub fn get_exec_costs<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
         .collect()
 }
 
+/// Returns the success result of the `ExecutionResult`.
+/// # Panics
+/// Panics if `response` is `None`.
 pub fn get_success_result(response: &[Rc<ExecutionResult>]) -> &ExecutionResult {
     &*response.get(0).expect("should have a result")
 }
 
+/// Returns an error if the `ExecutionResult` has an error.
+/// # Panics
+/// Panics if the result is `None`.
+/// Panics if the result does not have a precondition failure.
+/// Panics if result.as_error() is `None`.
 pub fn get_precondition_failure(response: &[Rc<ExecutionResult>]) -> &Error {
     let result = response.get(0).expect("should have a result");
     assert!(
@@ -191,6 +205,7 @@ pub fn get_precondition_failure(response: &[Rc<ExecutionResult>]) -> &Error {
     result.as_error().expect("should have an error")
 }
 
+/// Returns a `String` concatenated from all of the error messages from the `ExecutionResult`.
 pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
     execution_result: I,
 ) -> String {
@@ -208,6 +223,7 @@ pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
     errors.join("\n")
 }
 
+/// Returns `Option<Account>`.
 #[allow(clippy::implicit_hasher)]
 pub fn get_account(transforms: &AdditiveMap<Key, Transform>, account: &Key) -> Option<Account> {
     transforms.get(account).and_then(|transform| {

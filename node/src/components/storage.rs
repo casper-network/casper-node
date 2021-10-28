@@ -2059,30 +2059,33 @@ fn initialize_deploy_metadata_db(
     deleted_block_hashes: &HashSet<BlockHash>,
 ) -> Result<(), LmdbExtError> {
     info!("initializing deploy metadata database");
-    let mut txn = env.begin_rw_txn()?;
-    let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
-        let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
-        let len_before = deploy_metadata.execution_results.len();
+    if !deleted_block_hashes.is_empty() {
+        let mut txn = env.begin_rw_txn()?;
+        let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-        deploy_metadata.execution_results = deploy_metadata
-            .execution_results
-            .drain()
-            .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
-            .collect();
+        for (raw_key, raw_val) in cursor.iter() {
+            let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
+            let len_before = deploy_metadata.execution_results.len();
 
-        // If the deploy's execution results are now empty, we just remove them entirely.
-        if deploy_metadata.execution_results.is_empty() {
-            cursor.del(WriteFlags::empty())?;
-        } else if len_before != deploy_metadata.execution_results.len() {
-            let buffer = lmdb_ext::serialize(&deploy_metadata)?;
-            cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            deploy_metadata.execution_results = deploy_metadata
+                .execution_results
+                .drain()
+                .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
+                .collect();
+
+            // If the deploy's execution results are now empty, we just remove them entirely.
+            if deploy_metadata.execution_results.is_empty() {
+                cursor.del(WriteFlags::empty())?;
+            } else if len_before != deploy_metadata.execution_results.len() {
+                let buffer = lmdb_ext::serialize(&deploy_metadata)?;
+                cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            }
         }
-    }
 
-    drop(cursor);
-    txn.commit()?;
+        drop(cursor);
+        txn.commit()?;
+    }
 
     info!("deploy metadata database initialized");
     Ok(())

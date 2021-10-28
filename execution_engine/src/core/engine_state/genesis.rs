@@ -1284,7 +1284,6 @@ where
                 self.correlation_id,
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
-                Default::default(),
                 call_stack,
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
