@@ -11,7 +11,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
-    fs, io,
+    fs,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -400,15 +400,47 @@ where
         // units that refer to evidence from any era that was bonded when it was the current one.
         let oldest_evidence_era_id = oldest_bonded_era(&self.protocol_config, oldest_bonded_era_id);
         if let Some(obsolete_era_id) = oldest_evidence_era_id.checked_sub(1) {
-            if let Some(era) = self.active_eras.remove(&obsolete_era_id) {
+            if let Some(_era) = self.active_eras.remove(&obsolete_era_id) {
                 trace!(era = obsolete_era_id.value(), "removing obsolete era");
-                match fs::remove_file(self.unit_file(era.consensus.instance_id())) {
-                    Ok(_) => {}
-                    Err(err) => match err.kind() {
-                        io::ErrorKind::NotFound => {}
-                        err => warn!(?err, "could not delete unit hash file"),
-                    },
+            }
+        }
+
+        let valid_unit_files: HashSet<_> = self
+            .active_eras
+            .iter()
+            .map(|(_, era)| self.unit_file(era.consensus.instance_id()))
+            .collect();
+
+        let dir_iterator = match fs::read_dir(&self.unit_files_folder) {
+            Ok(iter) => iter,
+            Err(err) => {
+                warn!(?err, "could not read the unit files folder");
+                // if we couldn't clean up the unit files, we just return
+                return outcomes;
+            }
+        };
+
+        for entry in dir_iterator {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    warn!(?err, "error while reading the unit files folder");
+                    continue;
                 }
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                // unit files should be stored directly in the folder, not in subdirectories
+                continue;
+            }
+            if valid_unit_files.contains(&path) {
+                // don't remove files corresponding to active eras
+                continue;
+            }
+            debug!(?path, "removing unit file");
+            match fs::remove_file(path) {
+                Ok(_) => {}
+                Err(err) => warn!(?err, "could not delete unit hash file"),
             }
         }
 
