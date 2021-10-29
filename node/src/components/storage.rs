@@ -1370,6 +1370,18 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
     }
+
+    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
+    fn get_switch_block_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<Block>, Error> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
+    }
 }
 
 /// Inserts the relevant entries to the two indices.
@@ -1633,6 +1645,31 @@ impl Storage {
             }
         }
     }
+
+    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn transactional_get_switch_block_by_era_id(
+        &self,
+        switch_block_era_num: u64,
+    ) -> Option<Block> {
+        let mut read_only_lmdb_transaction = self
+            .env
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let switch_block = self
+            .get_switch_block_by_era_id(
+                &mut read_only_lmdb_transaction,
+                EraId::from(switch_block_era_num),
+            )
+            .expect("LMDB panicked trying to get switch block");
+        read_only_lmdb_transaction
+            .commit()
+            .expect("Could not commit transaction");
+        switch_block
+    }
 }
 
 // Testing code. The functions below allow direct inspection of the storage component and should
@@ -1674,43 +1711,6 @@ impl Storage {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
             .collect()
-    }
-
-    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        era_id: EraId,
-    ) -> Result<Option<Block>, Error> {
-        self.switch_block_era_id_index
-            .get(&era_id)
-            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
-            .transpose()
-    }
-
-    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics on any IO or db corruption error.
-    pub(crate) fn transactional_get_switch_block_by_era_id(
-        &self,
-        switch_block_era_num: u64,
-    ) -> Option<Block> {
-        let mut read_only_lmdb_transaction = self
-            .env
-            .begin_ro_txn()
-            .expect("Could not start read only transaction for lmdb");
-        let switch_block = self
-            .get_switch_block_by_era_id(
-                &mut read_only_lmdb_transaction,
-                EraId::from(switch_block_era_num),
-            )
-            .expect("LMDB panicked trying to get switch block");
-        read_only_lmdb_transaction
-            .commit()
-            .expect("Could not commit transaction");
-        switch_block
     }
 }
 
