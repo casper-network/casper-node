@@ -810,22 +810,21 @@ where
     }
 
     /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(&self) -> Result<bool, Error> {
-        if let Some(hash) = self.base_key().into_hash() {
-            let contract_hash = ContractHash::new(hash);
-            return Ok(self
-                .system_contract_registry()?
-                .values()
-                .any(|&system_hash| system_hash == contract_hash));
-        }
-        Ok(false)
+    pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
+        Ok(self
+            .system_contract_registry()?
+            .values()
+            .any(|system_hash| system_hash == contract_hash))
     }
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if self.is_system_contract()? {
-            // Don't charge storage used while executing a system contract.
-            return Ok(());
+        if let Some(base_key) = self.base_key().into_hash() {
+            let contract_hash = ContractHash::new(base_key);
+            if self.is_system_contract(&contract_hash)? {
+                // Don't charge storage used while executing a system contract.
+                return Ok(());
+            }
         }
 
         let storage_costs = self.engine_config().wasm_config().storage_costs();
