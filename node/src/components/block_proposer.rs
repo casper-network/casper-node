@@ -3,6 +3,7 @@
 //! The block proposer stores deploy hashes in memory, tracking their suitability for inclusion into
 //! a new block. Upon request, it returns a list of candidates that can be included.
 
+mod cached_state;
 mod config;
 mod deploy_sets;
 mod event;
@@ -17,8 +18,8 @@ use std::{
     time::Duration,
 };
 
-pub use config::Config;
 use datasize::DataSize;
+use futures::join;
 use prometheus::{self, Registry};
 use tracing::{debug, error, info, trace, warn};
 
@@ -31,7 +32,7 @@ use crate::{
     },
     effect::{
         announcements::BlockProposerAnnouncement,
-        requests::{BlockPayloadRequest, BlockProposerRequest, StorageRequest},
+        requests::{BlockPayloadRequest, BlockProposerRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{
@@ -41,6 +42,8 @@ use crate::{
     },
     NodeRng,
 };
+use cached_state::CachedState;
+pub use config::Config;
 use deploy_sets::{BlockProposerDeploySets, PruneResult};
 pub(crate) use event::{DeployInfo, Event};
 use metrics::BlockProposerMetrics;
@@ -54,6 +57,8 @@ pub(crate) struct BlockProposer {
     /// Metrics, present in all states.
     metrics: BlockProposerMetrics,
 }
+
+const STATE_KEY: &[u8] = b"block proposer";
 
 /// Interval after which a pruning of the internal sets is triggered.
 // TODO: Make configurable.
@@ -103,15 +108,23 @@ impl BlockProposer {
         local_config: Config,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
-        REv: From<Event> + From<StorageRequest> + Send + 'static,
+        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
     {
         debug!(%next_finalized_block, "creating block proposer");
-        let effects = effect_builder
-            .get_finalized_deploys(chainspec.deploy_config.max_ttl)
-            .event(move |finalized_deploys| Event::Loaded {
+        let max_ttl = chainspec.deploy_config.max_ttl;
+        let effects = async move {
+            join!(
+                effect_builder.get_finalized_deploys(max_ttl),
+                effect_builder.load_state::<CachedState>(STATE_KEY.into())
+            )
+        }
+        .event(
+            move |(finalized_deploys, maybe_cached_state)| Event::Loaded {
                 finalized_deploys,
                 next_finalized_block,
-            });
+                cached_state: maybe_cached_state.unwrap_or_default(),
+            },
+        );
 
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
@@ -128,7 +141,12 @@ impl BlockProposer {
 
 impl<REv> Component<REv> for BlockProposer
 where
-    REv: From<Event> + From<StorageRequest> + From<BlockProposerAnnouncement> + Send + 'static,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<StateStoreRequest>
+        + From<BlockProposerAnnouncement>
+        + Send
+        + 'static,
 {
     type Event = Event;
     type ConstructionError = Infallible;
@@ -154,12 +172,14 @@ where
                 Event::Loaded {
                     finalized_deploys,
                     next_finalized_block,
+                    cached_state,
                 },
             ) => {
                 let mut new_ready_state = BlockProposerReady {
-                    sets: BlockProposerDeploySets::from_finalized(
+                    sets: BlockProposerDeploySets::new(
                         finalized_deploys,
                         next_finalized_block,
+                        cached_state,
                     ),
                     unhandled_finalized: Default::default(),
                     deploy_config: *deploy_config,
@@ -174,12 +194,8 @@ where
 
                 self.state = BlockProposerState::Ready(new_ready_state);
 
-                // Start pruning deploys after delay.
-                effects.extend(
-                    effect_builder
-                        .set_timeout(PRUNE_INTERVAL)
-                        .event(|_| Event::Prune),
-                );
+                // Start pruning deploys.
+                effects.extend(effect_builder.immediately().event(|_| Event::Prune));
             }
             (
                 BlockProposerState::Initializing {
@@ -213,8 +229,8 @@ struct BlockProposerReady {
     /// Set of deploys currently stored in the block proposer.
     sets: BlockProposerDeploySets,
     /// `unhandled_finalized` is a set of hashes for deploys that the `BlockProposer` has not yet
-    /// seen but were reported as reported to `finalized_deploys()`. They are used to
-    /// filter deploys for proposal, similar to `self.sets.finalized_deploys`.
+    /// seen but were reported via `finalized_deploys()`. They are used to filter deploys for
+    /// proposal, similar to `self.sets.finalized_deploys`.
     unhandled_finalized: HashSet<DeployHash>,
     /// We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
@@ -231,7 +247,7 @@ impl BlockProposerReady {
         event: Event,
     ) -> Effects<Event>
     where
-        REv: Send + From<BlockProposerAnnouncement>,
+        REv: Send + From<StateStoreRequest> + From<BlockProposerAnnouncement>,
     {
         match event {
             Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
@@ -268,7 +284,7 @@ impl BlockProposerReady {
                     .set_timeout(PRUNE_INTERVAL)
                     .event(|_| Event::Prune);
 
-                // Announce pruned hashes
+                // Announce pruned hashes.
                 let pruned_hashes = self.prune(Timestamp::now());
                 let pruned_count = pruned_hashes.total_pruned;
                 debug!(%pruned_count, "pruned deploys from buffer");
@@ -277,6 +293,14 @@ impl BlockProposerReady {
                         .announce_expired_deploys(pruned_hashes.expired_hashes_to_be_announced)
                         .ignore(),
                 );
+
+                // After pruning, we store a state snapshot.
+                effects.extend(
+                    effect_builder
+                        .save_state(STATE_KEY.into(), CachedState::from(&self.sets))
+                        .ignore(),
+                );
+
                 effects
             }
             Event::Loaded { .. } => {
