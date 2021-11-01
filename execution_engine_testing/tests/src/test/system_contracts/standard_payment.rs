@@ -1,11 +1,9 @@
 use assert_matches::assert_matches;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
@@ -41,14 +39,13 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let _response = builder
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
         .commit()
         .get_exec_result(0)
-        .expect("there should be a response")
-        .to_owned();
+        .expect("there should be a response");
 
     let account_1_request =
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, REVERT_WASM, RuntimeArgs::default())
@@ -106,7 +103,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit().finish();
+    builder.exec(exec_request).commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -175,7 +172,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit().finish();
+    builder.exec(exec_request).commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -245,14 +242,12 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let transfer_result = builder
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
+    let response = builder
         .get_exec_result(0)
         .expect("there should be a response");
 
@@ -290,8 +285,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -359,7 +353,7 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit().finish();
+    builder.exec(exec_request).commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -409,11 +403,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder
-        .exec(exec_request)
-        .expect_success()
-        .commit()
-        .finish();
+    builder.exec(exec_request).expect_success().commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

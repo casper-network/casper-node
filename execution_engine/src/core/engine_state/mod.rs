@@ -14,7 +14,6 @@ pub mod op;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
-pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
 
@@ -65,7 +64,6 @@ pub use self::{
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
-    system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
@@ -111,7 +109,6 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 #[derive(Debug)]
 pub struct EngineState<S> {
     config: EngineConfig,
-    system_contract_cache: SystemContractCache,
     state: S,
 }
 
@@ -132,12 +129,7 @@ where
 {
     /// Creates new engine state.
     pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
-        let system_contract_cache = Default::default();
-        EngineState {
-            config,
-            system_contract_cache,
-            state,
-        }
+        EngineState { config, state }
     }
 
     /// Returns engine config.
@@ -784,7 +776,6 @@ where
                             correlation_id,
                             Rc::clone(&tracking_copy),
                             Phase::Session,
-                            SystemContractCache::clone(&self.system_contract_cache),
                             create_purse_call_stack,
                         );
                     match maybe_uref {
@@ -884,7 +875,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    SystemContractCache::clone(&self.system_contract_cache),
                     get_payment_purse_call_stack,
                 );
 
@@ -937,7 +927,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    SystemContractCache::clone(&self.system_contract_cache),
                     transfer_to_payment_purse_call_stack,
                 );
 
@@ -1032,7 +1021,6 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                SystemContractCache::clone(&self.system_contract_cache),
                 transfer_call_stack,
             );
 
@@ -1105,7 +1093,6 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    SystemContractCache::clone(&self.system_contract_cache),
                     finalize_payment_call_stack,
                 );
 
@@ -1335,7 +1322,6 @@ where
             let payment_entry_point = payment_metadata.entry_point;
 
             let payment_args = payment.args().clone();
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             if is_standard_payment {
                 executor.exec_standard_payment(
@@ -1352,7 +1338,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    system_contract_cache,
                     payment_call_stack,
                 )
             } else {
@@ -1371,7 +1356,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    system_contract_cache,
                     &payment_package,
                     payment_call_stack,
                 )
@@ -1537,7 +1521,6 @@ where
                         ))
                     }
                 };
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
                 session_module,
@@ -1554,7 +1537,6 @@ where
                 correlation_id,
                 Rc::clone(&session_tracking_copy),
                 Phase::Session,
-                system_contract_cache,
                 &session_package,
                 session_call_stack,
             )
@@ -1673,7 +1655,6 @@ where
             let mut handle_payment_keys = handle_payment_contract.named_keys().to_owned();
 
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             let handle_payment_call_stack = {
                 let deploy_account = CallStackElement::session(deploy_item.address);
@@ -1705,7 +1686,6 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    system_contract_cache,
                     handle_payment_call_stack,
                 );
 
@@ -1877,7 +1857,6 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                SystemContractCache::clone(&self.system_contract_cache),
                 get_era_validators_call_stack,
             );
 
@@ -2030,7 +2009,6 @@ where
             correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
-            SystemContractCache::clone(&self.system_contract_cache),
             distribute_rewards_call_stack,
         );
 
@@ -2081,7 +2059,6 @@ where
             correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
-            SystemContractCache::clone(&self.system_contract_cache),
             slash_call_stack,
         );
 
@@ -2131,7 +2108,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Session,
-                    SystemContractCache::clone(&self.system_contract_cache),
                     run_auction_call_stack,
                 );
 

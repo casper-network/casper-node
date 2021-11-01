@@ -16,8 +16,7 @@ use casper_types::{
 use crate::{
     core::{
         engine_state::{
-            execution_result::ExecutionResult, system_contract_cache::SystemContractCache,
-            EngineConfig,
+ execution_result::ExecutionResult, EngineConfig,
         },
         execution::{address_generator::AddressGenerator, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
@@ -109,7 +108,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         contract_package: &ContractPackage,
         call_stack: Vec<CallStackElement>,
     ) -> ExecutionResult
@@ -170,14 +168,7 @@ impl Executor {
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            system_contract_cache,
-            memory,
-            module,
-            context,
-            call_stack,
-        );
+        let mut runtime = Runtime::new(self.config, memory, module, context, call_stack);
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
@@ -298,7 +289,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> ExecutionResult
     where
@@ -338,7 +328,6 @@ impl Executor {
             correlation_id,
             Rc::clone(&tracking_copy),
             phase,
-            system_contract_cache,
             call_stack,
         ) {
             Ok((_instance, runtime)) => runtime,
@@ -390,7 +379,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> (Option<T>, ExecutionResult)
     where
@@ -500,7 +488,6 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            system_contract_cache,
             call_stack,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
@@ -546,7 +533,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> Result<T, Error>
     where
@@ -576,7 +562,6 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            system_contract_cache,
             call_stack,
         )?;
 
@@ -639,7 +624,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
@@ -681,14 +665,7 @@ impl Executor {
         let (instance, memory) =
             instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
 
-        let runtime = Runtime::new(
-            self.config,
-            system_contract_cache,
-            memory,
-            module,
-            runtime_context,
-            call_stack,
-        );
+        let runtime = Runtime::new(self.config, memory, module, runtime_context, call_stack);
 
         Ok((instance, runtime))
     }

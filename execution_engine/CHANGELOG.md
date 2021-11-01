@@ -34,7 +34,8 @@ All notable changes to this project will be documented in this file.  The format
 ### Fixed
 * Fix a case where user could potentially supply a refund purse as a payment purse.
 
-
+### Removed
+* Removed `SystemContractCache` as it was not being used anymore
 
 ## [1.3.0] - 2021-07-19
 

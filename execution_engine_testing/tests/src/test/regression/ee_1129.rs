@@ -3,11 +3,9 @@ use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -17,7 +15,11 @@ use casper_execution_engine::{
         },
         execution,
     },
-    shared::{wasm::do_nothing_bytes, wasm_prep::PreprocessingError},
+    shared::{
+        system_config::auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST},
+        wasm::do_nothing_bytes,
+        wasm_prep::PreprocessingError,
+    },
 };
 use casper_types::{
     account::AccountHash,
@@ -40,12 +42,16 @@ static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
 });
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
-static UNDERFUNDED_PAYMENT_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(10_001));
+static UNDERFUNDED_DELEGATE_AMOUNT: Lazy<U512> =
+    Lazy::new(|| U512::from(DEFAULT_DELEGATE_COST - 1));
+static UNDERFUNDED_ADD_BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(DEFAULT_ADD_BID_COST - 1));
 static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_001));
 
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_delegate_call() {
+    assert!(U512::from(DEFAULT_DELEGATE_COST) > *UNDERFUNDED_DELEGATE_AMOUNT);
+
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -82,7 +88,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_DELEGATE, args)
         .with_empty_payment_bytes(runtime_args! {
-            ARG_AMOUNT => *UNDERFUNDED_PAYMENT_AMOUNT, // underfunded deploy
+            ARG_AMOUNT => *UNDERFUNDED_DELEGATE_AMOUNT, // underfunded deploy
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash(deploy_hash)
@@ -111,6 +117,8 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_add_bid_call() {
+    assert!(U512::from(DEFAULT_ADD_BID_COST) > *UNDERFUNDED_ADD_BID_AMOUNT);
+
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -130,15 +138,13 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 
     let auction = builder.get_auction_contract_hash();
 
-    let amount = U512::one();
-
     let deploy_hash = [42; 32];
 
     let delegation_rate: DelegationRate = 10;
 
     let args = runtime_args! {
             auction::ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
-            auction::ARG_AMOUNT => amount,
+            auction::ARG_AMOUNT => *UNDERFUNDED_ADD_BID_AMOUNT,
             auction::ARG_DELEGATION_RATE => delegation_rate,
     };
 
@@ -146,7 +152,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         .with_address(*VALIDATOR_1_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_ADD_BID, args)
         .with_empty_payment_bytes(runtime_args! {
-            ARG_AMOUNT => *UNDERFUNDED_PAYMENT_AMOUNT,
+            ARG_AMOUNT => *UNDERFUNDED_DELEGATE_AMOUNT,
         })
         .with_authorization_keys(&[*VALIDATOR_1_ADDR])
         .with_deploy_hash(deploy_hash)

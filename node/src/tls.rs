@@ -55,6 +55,8 @@ use rand::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
+use casper_types::checksummed_hex;
+
 use crate::utils::read_file;
 
 // This is inside a private module so that the generated `BigArray` does not form part of this
@@ -738,7 +740,7 @@ impl PartialOrd for Sha512 {
 
 impl Debug for Sha512 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", HexFmt(&self.0[..]))
+        write!(f, "{}", checksummed_hex::encode(&self.0[..]))
     }
 }
 

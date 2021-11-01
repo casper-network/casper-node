@@ -1,6 +1,6 @@
 use clap::ArgMatches;
 
-use casper_engine_test_support::internal::LmdbWasmTestBuilder;
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{CLValue, StoredValue};
 
 use crate::{

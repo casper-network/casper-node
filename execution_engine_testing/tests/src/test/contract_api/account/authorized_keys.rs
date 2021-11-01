@@ -1,9 +1,6 @@
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
-        DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state::{self, Error},
@@ -70,14 +67,13 @@ fn should_raise_auth_failure_with_invalid_key() {
     };
 
     // Basic deploy with single key
-    let result = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let deploy_result = result
-        .builder()
+    let deploy_result = builder
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
@@ -120,14 +116,13 @@ fn should_raise_auth_failure_with_invalid_keys() {
     };
 
     // Basic deploy with single key
-    let result = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let deploy_result = result
-        .builder()
+    let deploy_result = builder
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
@@ -180,7 +175,8 @@ fn should_raise_deploy_authorization_failure() {
     )
     .build();
     // Basic deploy with single key
-    let result1 = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
@@ -196,8 +192,7 @@ fn should_raise_deploy_authorization_failure() {
         // thresholds.
         .exec(exec_request_4)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let exec_request_5 = {
         let deploy = DeployItemBuilder::new()
@@ -219,14 +214,10 @@ fn should_raise_deploy_authorization_failure() {
 
     // With deploy threshold == 3 using single secondary key
     // with weight == 2 should raise deploy authorization failure.
-    let result2 = InMemoryWasmTestBuilder::from_result(result1)
-        .exec(exec_request_5)
-        .commit()
-        .finish();
+    builder.clear_results().exec(exec_request_5).commit();
 
     {
-        let deploy_result = result2
-            .builder()
+        let deploy_result = builder
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
@@ -257,11 +248,11 @@ fn should_raise_deploy_authorization_failure() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
     // identity key (w: 1) and KEY_1 (w: 2) passes threshold of 3
-    let result3 = InMemoryWasmTestBuilder::from_result(result2)
+    builder
+        .clear_results()
         .exec(exec_request_6)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let exec_request_7 = {
         let deploy = DeployItemBuilder::new()
@@ -283,14 +274,11 @@ fn should_raise_deploy_authorization_failure() {
 
     // deployment threshold is now 4
     // failure: KEY_2 weight + KEY_1 weight < deployment threshold
-    let result4 = InMemoryWasmTestBuilder::from_result(result3)
-        .exec(exec_request_7)
-        .commit()
-        .finish();
+    // let result4 = builder.clear_results()
+    builder.clear_results().exec(exec_request_7).commit();
 
     {
-        let deploy_result = result4
-            .builder()
+        let deploy_result = builder
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
@@ -324,11 +312,11 @@ fn should_raise_deploy_authorization_failure() {
 
     // success: identity key weight + KEY_1 weight + KEY_2 weight >= deployment
     // threshold
-    InMemoryWasmTestBuilder::from_result(result4)
+    builder
+        .clear_results()
         .exec(exec_request_8)
         .commit()
-        .expect_success()
-        .finish();
+        .expect_success();
 }
 
 #[ignore]
@@ -352,7 +340,8 @@ fn should_authorize_deploy_with_multiple_keys() {
     )
     .build();
     // Basic deploy with single key
-    let result1 = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
@@ -360,8 +349,7 @@ fn should_authorize_deploy_with_multiple_keys() {
         .commit()
         .exec(exec_request_2)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     // KEY_1 (w: 2) KEY_2 (w: 2) each passes default threshold of 1
 
@@ -382,10 +370,7 @@ fn should_authorize_deploy_with_multiple_keys() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    InMemoryWasmTestBuilder::from_result(result1)
-        .exec(exec_request_3)
-        .expect_success()
-        .commit();
+    builder.exec(exec_request_3).expect_success().commit();
 }
 
 #[ignore]
@@ -413,7 +398,8 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     )
     .build();
     // Basic deploy with single key
-    let result1 = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
@@ -421,8 +407,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
         .commit()
         .exec(exec_request_2)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
     let exec_request_3 = {
         let deploy = DeployItemBuilder::new()
@@ -444,12 +429,8 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
-    let final_result = InMemoryWasmTestBuilder::from_result(result1)
-        .exec(exec_request_3)
-        .commit()
-        .finish();
-    let deploy_result = final_result
-        .builder()
+    builder.clear_results().exec(exec_request_3).commit();
+    let deploy_result = builder
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)

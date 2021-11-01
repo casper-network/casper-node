@@ -31,7 +31,7 @@ use casper_types::{
             self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        standard_payment, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Gas, Key,
@@ -1259,7 +1259,9 @@ where
 
         let mut named_keys = mint.named_keys().clone();
 
-        let call_stack = Vec::new();
+        let call_stack = vec![CallStackElement::session(
+            PublicKey::System.to_account_hash(),
+        )];
 
         let (_instance, mut runtime) = self
             .executor
@@ -1282,7 +1284,6 @@ where
                 self.correlation_id,
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
-                Default::default(),
                 call_stack,
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;

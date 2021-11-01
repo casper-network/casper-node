@@ -24,14 +24,12 @@ mod validation;
 
 use std::{convert::TryInto, fs, io::Cursor};
 
-use hex::FromHex;
 use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_hashing::Digest;
 use casper_node::{
-    crypto,
     rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
     types::{BlockHash, Deploy},
 };
@@ -42,6 +40,7 @@ pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
+pub use rpc::map_hashing_error;
 use rpc::RpcCall;
 pub use validation::ValidateResponseError;
 
@@ -1184,10 +1183,8 @@ impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<GlobalStateIdentifier> {
-        let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
-            context: "global_state_identifier",
-            error: crypto::Error::FromHex(error),
-        })?;
+        let hash = Digest::from_hex(self.hash_value)
+            .map_err(|error| map_hashing_error(error)("global_state_identifier"))?;
 
         if self.is_block_hash {
             Ok(GlobalStateIdentifier::BlockHash(BlockHash::new(hash)))
@@ -1514,7 +1511,7 @@ mod param_tests {
                 result,
                 Err(Error::CryptoError {
                     context: "dependencies",
-                    error: CryptoError::FromHex(hex::FromHexError::OddLength)
+                    error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: 11 })
                 })
             ));
         }

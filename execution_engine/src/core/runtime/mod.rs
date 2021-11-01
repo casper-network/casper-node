@@ -42,7 +42,7 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
+        engine_state::EngineConfig,
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
         runtime::scoped_instrumenter::ScopedInstrumenter,
@@ -58,7 +58,6 @@ use crate::{
 
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
-    system_contract_cache: SystemContractCache,
     config: EngineConfig,
     memory: MemoryRef,
     module: Module,
@@ -981,15 +980,25 @@ where
     /// Creates a new runtime instance.
     pub fn new(
         config: EngineConfig,
-        system_contract_cache: SystemContractCache,
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
         call_stack: Vec<CallStackElement>,
     ) -> Self {
+        // Preconditions that would render the system inconsistent if violated. Those are strictly
+        // programming errors.
+        if call_stack.is_empty() {
+            error!("Call stack should not be empty while creating a new Runtime instance");
+            debug_assert!(false);
+        }
+
+        if call_stack.first().unwrap().contract_hash().is_some() {
+            error!("First element of the call stack should always represent a Session call");
+            debug_assert!(false);
+        }
+
         Runtime {
             config,
-            system_contract_cache,
             memory,
             module,
             host_buffer: None,
@@ -1028,10 +1037,19 @@ where
     }
 
     /// Charge for a system contract call.
+    ///
+    /// This method does not charge for system contract calls if the immediate caller is a system
+    /// contract. This avoids misleading gas charges if one system contract calls other system
+    /// contract (i.e. auction contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
         T: Into<Gas>,
     {
+        if self.is_system_immediate_caller()? {
+            // This avoids charging the user in situation where a system contract calls other system
+            // contract.
+            return Ok(());
+        }
         self.context.charge_system_contract_call(amount)
     }
 
@@ -1212,10 +1230,7 @@ where
 
     /// Gets the immediate caller of the current execution
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        let call_stack = self.call_stack();
-        let mut call_stack_iter = call_stack.iter().rev();
-        call_stack_iter.next()?;
-        call_stack_iter.next()
+        self.call_stack().iter().rev().nth(1)
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account
@@ -1460,7 +1475,6 @@ where
 
         let mut mint_runtime = Runtime::new(
             self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
             self.memory.clone(),
             self.module.clone(),
             mint_context,
@@ -1607,7 +1621,6 @@ where
 
         let mut runtime = Runtime::new(
             self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
@@ -1738,7 +1751,6 @@ where
 
         let mut runtime = Runtime::new(
             self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
@@ -2171,10 +2183,7 @@ where
             extra_keys
         };
 
-        let module = {
-            let maybe_module = key
-                .into_hash()
-                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr.into()));
+        let module: Module = {
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
@@ -2182,10 +2191,8 @@ where
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
                 None => return Err(Error::KeyNotFound(key)),
             };
-            match maybe_module {
-                Some(module) => module,
-                None => parity_wasm::deserialize_buffer(contract_wasm.bytes())?,
-            }
+
+            parity_wasm::deserialize_buffer(contract_wasm.bytes())?
         };
 
         let entry_point_name = entry_point.name();
@@ -2200,8 +2207,6 @@ where
             keys.push(self.get_handle_payment_contract()?.into());
             extract_access_rights_from_keys(keys)
         };
-
-        let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
         let config = self.config;
 
@@ -2246,7 +2251,6 @@ where
         call_stack.push(call_stack_element);
 
         let mut runtime = Runtime {
-            system_contract_cache,
             config,
             memory,
             module,
@@ -2891,6 +2895,22 @@ where
     /// Returned URef is already attenuated depending on the calling account.
     fn get_mint_contract(&self) -> Result<ContractHash, Error> {
         self.context.get_system_contract(MINT)
+    }
+
+    fn get_system_contract_stack_frame(&mut self, name: &str) -> Result<CallStackElement, Error> {
+        let contract_hash = self.context.get_system_contract(name)?;
+        let key = Key::from(contract_hash);
+        let contract = match self.context.read_gs(&key)? {
+            Some(StoredValue::Contract(contract)) => contract,
+            Some(_) => {
+                return Err(Error::InvalidContract(contract_hash));
+            }
+            None => return Err(Error::KeyNotFound(key)),
+        };
+        Ok(CallStackElement::StoredContract {
+            contract_package_hash: contract.contract_package_hash(),
+            contract_hash,
+        })
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
@@ -3638,6 +3658,31 @@ where
             return Err(Trap::from(e));
         }
         Ok(Ok(()))
+    }
+
+    /// Checks if immediate caller is a system contract or account.
+    ///
+    /// For cases where call stack is only the session code, then this method returns `true` if the
+    /// caller is system, or `false` otherwise.
+    fn is_system_immediate_caller(&self) -> Result<bool, Error> {
+        let immediate_caller = match self.get_immediate_caller() {
+            Some(call_stack_element) => call_stack_element,
+            None => {
+                // Immediate caller is assumed to exist at a time this check is run.
+                return Ok(false);
+            }
+        };
+
+        match immediate_caller {
+            CallStackElement::Session { account_hash } => {
+                // This case can happen during genesis where we're setting up purses for accounts.
+                Ok(account_hash == &PublicKey::System.to_account_hash())
+            }
+            CallStackElement::StoredSession { contract_hash, .. }
+            | CallStackElement::StoredContract { contract_hash, .. } => {
+                Ok(self.context.is_system_contract(contract_hash)?)
+            }
+        }
     }
 }
 

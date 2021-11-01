@@ -96,7 +96,7 @@ pub(crate) fn validate_get_era_info_response(
             stored_value,
             ..
         }) => {
-            let proof_bytes = hex::decode(merkle_proof)
+            let proof_bytes = base16::decode(&merkle_proof)
                 .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
             let proofs: Vec<TrieMerkleProof<Key, StoredValue>> =
                 bytesrepr::deserialize(proof_bytes)?;
@@ -144,7 +144,7 @@ pub(crate) fn validate_query_response(
         let proof_str = proof
             .as_str()
             .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
-        let proof_bytes = hex::decode(proof_str)
+        let proof_bytes = base16::decode(proof_str)
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
         bytesrepr::deserialize(proof_bytes)?
     };
@@ -198,7 +198,7 @@ pub(crate) fn validate_query_global_state(
         let proof_str = proof
             .as_str()
             .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
-        let proof_bytes = hex::decode(proof_str)
+        let proof_bytes = base16::decode(proof_str)
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
         bytesrepr::deserialize(proof_bytes)?
     };
@@ -252,7 +252,7 @@ pub(crate) fn validate_get_balance_response(
         let proof_str = proof
             .as_str()
             .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
-        let proof_bytes = hex::decode(proof_str)
+        let proof_bytes = base16::decode(proof_str)
             .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
         bytesrepr::deserialize(proof_bytes)?
     };
