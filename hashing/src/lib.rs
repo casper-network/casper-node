@@ -147,7 +147,7 @@ impl Digest {
         I::IntoIter: ExactSizeIterator,
     {
         let leaves = leaves.into_iter();
-        let leaf_count_bytes = leaves.len().to_le_bytes();
+        let leaf_count_bytes = (leaves.len() as u64).to_le_bytes();
 
         let raw_root = leaves
             .tree_fold1(Digest::hash_pair)
