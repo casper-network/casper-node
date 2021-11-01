@@ -133,9 +133,9 @@ impl Digest {
     /// calling [Digest::hash_pair].
     ///
     /// The pattern of hashing is akin to [graph reduction][2] and is described
-    /// in the documentation of [tree_fold1].
+    /// in the documentation of [`.tree_fold1()`](Itertools::tree_fold1).
     ///
-    /// The final hash is hashed with the number of elements..
+    /// The final hash is hashed with the number of elements.
     ///
     /// Returns [`Digest::SENTINEL_MERKLE_TREE`] when the input is empty.
     ///
