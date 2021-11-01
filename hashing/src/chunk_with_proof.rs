@@ -46,8 +46,9 @@ impl ChunkWithProof {
     /// 1 MiB
     pub const CHUNK_SIZE_BYTES: usize = 1 << 20;
 
-    /// Constructs the [ChunkWithProof] that contains the chunk of data with the appropriate index
+    /// Constructs the [`ChunkWithProof`] that contains the chunk of data with the appropriate index
     /// and the cryptographic proof.
+    ///
     /// Empty data is always represented as single, empty chunk and not as zero chunks.
     pub fn new(data: &[u8], index: u64) -> Result<Self, MerkleConstructionError> {
         let (proof, chunk) = if data.is_empty() {
@@ -73,7 +74,7 @@ impl ChunkWithProof {
         Ok(ChunkWithProof { proof, chunk })
     }
 
-    /// Get a reference to the chunk with proof's chunk.
+    /// Get a reference to the `ChunkWithProof`'s chunk.
     fn chunk(&self) -> &[u8] {
         self.chunk.as_slice()
     }
