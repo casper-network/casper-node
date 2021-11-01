@@ -19,7 +19,7 @@ pub(crate) struct IndexedMerkleProof {
 
 impl ToBytes for IndexedMerkleProof {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = casper_types::allocate_buffer(self)?;
+        let mut result = bytesrepr::allocate_buffer(self)?;
         result.append(&mut self.index.to_bytes()?);
         result.append(&mut self.count.to_bytes()?);
         result.append(&mut self.merkle_proof.to_bytes()?);
