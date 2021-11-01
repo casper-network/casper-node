@@ -2737,6 +2737,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "named-dictionary-test"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "named-keys"
 version = "0.1.0"
 dependencies = [

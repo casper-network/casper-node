@@ -1,0 +1,16 @@
+[package]
+name = "named-dictionary-test"
+version = "0.1.0"
+authors = ["Luís Fernando Schultz Xavier da Silveira <luis@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "named-dictionary-test"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }
