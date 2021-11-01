@@ -15,18 +15,18 @@ use alloc::{
     vec::Vec,
 };
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 use rand::{
     distributions::{Distribution, Standard},
     seq::SliceRandom,
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
@@ -65,7 +65,7 @@ const TRANSFORM_ADD_UINT512_TAG: u8 = 15;
 const TRANSFORM_ADD_KEYS_TAG: u8 = 16;
 const TRANSFORM_FAILURE_TAG: u8 = 17;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
     let operations = vec![
         Operation {
@@ -112,7 +112,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
 
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum ExecutionResult {
     /// The result of a failed execution.
@@ -140,7 +140,7 @@ pub enum ExecutionResult {
 impl ExecutionResult {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
-    #[cfg(feature = "std")]
+    #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &*EXECUTION_RESULT
     }
@@ -289,7 +289,7 @@ impl FromBytes for ExecutionResult {
 
 /// The effect of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionEffect {
     /// The resulting operations.
@@ -325,7 +325,7 @@ impl FromBytes for ExecutionEffect {
 
 /// An operation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Operation {
     /// The formatted string of the `Key`.
@@ -358,7 +358,7 @@ impl FromBytes for Operation {
 
 /// The type of operation performed while executing a deploy.
 #[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum OpKind {
     /// A read operation.
@@ -401,7 +401,7 @@ impl FromBytes for OpKind {
 
 /// A transformation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TransformEntry {
     /// The formatted string of the `Key`.
@@ -434,7 +434,7 @@ impl FromBytes for TransformEntry {
 
 /// The actual transformation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum Transform {
     /// A transform having no effect.
@@ -559,7 +559,12 @@ impl ToBytes for Transform {
             Transform::AddUInt512(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddKeys(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::Failure(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            _ => U8_SERIALIZED_LENGTH,
+            Transform::Identity
+            | Transform::WriteContractWasm
+            | Transform::WriteContract
+            | Transform::WriteContractPackage => U8_SERIALIZED_LENGTH,
+            Transform::WriteBid(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::WriteWithdraw(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
         }
     }
 }

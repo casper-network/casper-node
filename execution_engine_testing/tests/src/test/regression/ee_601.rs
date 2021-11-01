@@ -1,12 +1,9 @@
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::{stored_value::StoredValue, transform::Transform};
-use casper_types::{runtime_args, CLValue, Key, RuntimeArgs};
+use casper_execution_engine::shared::transform::Transform;
+use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, StoredValue};
 
 const ARG_AMOUNT: &str = "amount";
 

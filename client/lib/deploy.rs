@@ -12,7 +12,8 @@ use casper_node::{
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, UIntParseError, URef, U512,
+    account::AccountHash, AsymmetricType, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    UIntParseError, URef, U512,
 };
 
 use crate::{
@@ -263,8 +264,6 @@ impl DeployExt for Deploy {
             context: TRANSFER_ARG_AMOUNT,
             error: UIntParseError::FromDecStr(err),
         })?;
-        let target_account = parsing::parse_public_key(target_account)?;
-        let transfer_id = parsing::transfer_id(transfer_id)?;
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
@@ -273,9 +272,23 @@ impl DeployExt for Deploy {
             transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
         }
 
-        let target_account_hash = target_account.to_account_hash().value();
-        transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
+        if let Ok(public_key) = PublicKey::from_hex(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, public_key)?;
+        } else if let Ok(account_hash) = AccountHash::from_formatted_str(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, account_hash)?;
+        } else if let Ok(uref) = URef::from_formatted_str(target_account) {
+            transfer_args.insert(TRANSFER_ARG_TARGET, uref)?;
+        } else {
+            return Err(Error::InvalidArgument {
+                context: "target_account",
+                error: format!(
+                    "Allowed types: PublicKey, AccountHash or URef, got {}",
+                    target_account
+                ),
+            });
+        }
 
+        let transfer_id = parsing::transfer_id(transfer_id)?;
         let maybe_transfer_id = Some(transfer_id);
         transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
 
@@ -410,6 +423,82 @@ mod tests {
       ]
     }"#;
 
+    const CHECKSUMMED_SAMPLE_DEPLOY: &str = r#"{
+  "hash": "Fc216898B2d46710fb6637d5B1c61C1BCEE479d78D8136545EE10F7bce323b13",
+  "header": {
+    "account": "01F60BCe2BB1059c41910eAC1E7Ee6C3eF4c8FCc63A901eb9603c1524cAdfb0C18",
+    "timestamp": "2021-10-20T20:14:01.604Z",
+    "ttl": "10s",
+    "gas_price": 1,
+    "body_hash": "95f2F2358c4864F01F8B073ae6F5AE67bAeaF7747Fc0799D0078743C513BC1dE",
+    "dependencies": [
+      "bE5FDEea0240e999E376F8eCBCE1BD4Fd9336f58DAE4a5842558a4dA6aD35Aa8",
+      "168D7EA9C88E76B3Eef72759F2a7AF24663CC871a469C7ba1387cA479E82FB41"
+    ],
+    "chain_name": "casper-test-chain-name-1"
+  },
+  "payment": {
+    "StoredVersionedContractByHash": {
+      "hash": "09DCEE4B212cFD53642Ab323fbEF07dafaFc6F945A80A00147F62910a915c4e6",
+      "version": null,
+      "entry_point": "entrypoint",
+      "args": [
+        [
+          "name_01",
+          {
+            "cl_type": "Bool",
+            "bytes": "00",
+            "parsed": false
+          }
+        ],
+        [
+          "name_02",
+          {
+            "cl_type": "I32",
+            "bytes": "2a000000",
+            "parsed": 42
+          }
+        ]
+      ]
+    }
+  },
+  "session": {
+    "StoredVersionedContractByHash": {
+      "hash": "09DCEE4B212cFD53642Ab323fbEF07dafaFc6F945A80A00147F62910a915c4e6",
+      "version": null,
+      "entry_point": "entrypoint",
+      "args": [
+        [
+          "name_01",
+          {
+            "cl_type": "Bool",
+            "bytes": "00",
+            "parsed": false
+          }
+        ],
+        [
+          "name_02",
+          {
+            "cl_type": "I32",
+            "bytes": "2a000000",
+            "parsed": 42
+          }
+        ]
+      ]
+    }
+  },
+  "approvals": [
+    {
+      "signer": "01F60BCe2BB1059c41910eAC1E7Ee6C3eF4c8FCc63A901eb9603c1524cAdfb0C18",
+      "signature": "015980998Ea0d488e0853B7a98Ce192323Ff92c45dD8df1fA8Ac90d29A09C5197fDAd534ef131d4BA963a9951D882C25c3aD76AF9bC95ad38C7f19D71CdbEDF40B"
+    },
+    {
+      "signer": "017488a5754723168d6866d7089Af95aAC98B62E80D6Ac3eC4De440cF32Ff8395A",
+      "signature": "0165782cE7E0ae2ae56805DC7e950d785CD9d4866de1Fa6b1Ff9bf70b9D2c76ff1973f1429aCD418cA9452A9c49dc0951901E566ABB00Bd65274055a0d801f440b"
+    }
+  ]
+}"#;
+
     pub fn deploy_params() -> DeployStrParams<'static> {
         DeployStrParams {
             secret_key: "../resources/local/secret_keys/node-1.pem",
@@ -454,7 +543,7 @@ mod tests {
 
         // The test output can be used to generate data for SAMPLE_DEPLOY:
         // let secret_key = SecretKey::generate_ed25519().unwrap();
-        // deploy.sign(&secret_key, &mut casper_node::new_rng());
+        // deploy.sign(&secret_key);
         // println!("{}", serde_json::to_string_pretty(&deploy).unwrap());
 
         let result = String::from_utf8(output).unwrap();
@@ -511,6 +600,14 @@ mod tests {
     }
 
     #[test]
+    fn should_round_trip_checksummed_sample_deploy_json() {
+        let deploy: Deploy = serde_json::from_str(CHECKSUMMED_SAMPLE_DEPLOY).unwrap();
+        let casper_case_json_string = serde_json::to_string_pretty(&deploy).unwrap();
+
+        assert_eq!(CHECKSUMMED_SAMPLE_DEPLOY, casper_case_json_string);
+    }
+
+    #[test]
     fn should_sign_deploy() {
         let bytes = SAMPLE_DEPLOY.as_bytes();
         let mut deploy = Deploy::read_deploy(bytes).unwrap();
@@ -540,12 +637,46 @@ mod tests {
     fn should_create_transfer() {
         use casper_types::{AsymmetricType, PublicKey};
 
+        // with public key.
         let secret_key = SecretKey::generate_ed25519().unwrap();
         let public_key = PublicKey::from(&secret_key).to_hex();
         let transfer_deploy = Deploy::new_transfer(
             "10000",
             None,
             &public_key,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
+
+        // with account hash
+        let account_hash =
+            "account-hash-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            account_hash,
+            "1",
+            deploy_params().try_into().unwrap(),
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::default(),
+            },
+        );
+
+        assert!(transfer_deploy.is_ok());
+        assert!(transfer_deploy.unwrap().session().is_transfer());
+
+        // with uref.
+        let uref = "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
+        let transfer_deploy = Deploy::new_transfer(
+            "10000",
+            None,
+            uref,
             "1",
             deploy_params().try_into().unwrap(),
             ExecutableDeployItem::Transfer {

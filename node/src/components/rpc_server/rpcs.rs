@@ -48,6 +48,9 @@ enum ErrorCode {
     InvalidDeploy = -32008,
     NoSuchAccount = -32009,
     FailedToGetDictionaryURef = -32010,
+    FailedToGetTrie = -32011,
+    // Same error code as warp_json INTERNAL_ERROR.
+    InternalError = -32063,
 }
 
 #[derive(Debug)]
@@ -308,7 +311,7 @@ mod common {
             }
         };
 
-        let value_compat = match StoredValue::try_from(&*value) {
+        let value_compat = match StoredValue::try_from(*value) {
             Ok(value_compat) => value_compat,
             Err(error) => {
                 let error_msg = format!("failed to encode stored value: {:?}", error);

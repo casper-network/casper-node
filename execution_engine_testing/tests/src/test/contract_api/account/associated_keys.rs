@@ -1,11 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
     account::{AccountHash, Weight},
@@ -56,9 +53,8 @@ fn should_manage_associated_key() {
 
     let gen_weight = account_1
         .associated_keys()
-        .find(|(&h, _)| h == genesis_key)
-        .expect("weight")
-        .1;
+        .get(&genesis_key)
+        .expect("weight");
 
     let expected_weight = Weight::new(2);
     assert_eq!(*gen_weight, expected_weight, "unexpected weight");
@@ -76,7 +72,7 @@ fn should_manage_associated_key() {
         .get_account(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let new_weight = account_1.associated_keys().find(|(&h, _)| h == genesis_key);
+    let new_weight = account_1.associated_keys().get(&genesis_key);
 
     assert_eq!(new_weight, None, "key should be removed");
 

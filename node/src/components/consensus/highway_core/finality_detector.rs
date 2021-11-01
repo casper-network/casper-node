@@ -147,7 +147,7 @@ impl<C: Context> FinalityDetector<C> {
     /// has not been finalized yet.
     fn next_candidate<'a>(&self, state: &'a State<C>) -> Option<&'a C::Hash> {
         let fork_choice = state.fork_choice(state.panorama())?;
-        state.find_ancestor(fork_choice, self.next_height(state))
+        state.find_ancestor_proposal(fork_choice, self.next_height(state))
     }
 
     /// Returns the height of the next block that will be finalized.
@@ -187,7 +187,7 @@ impl<C: Context> FinalityDetector<C> {
         // Report inactive validators, but only if they had sufficient time to create a unit, i.e.
         // if at least one maximum-length round passed between the first and last block.
         // Safe to unwrap: Ancestor at height 0 always exists.
-        let first_bhash = state.find_ancestor(bhash, 0).unwrap();
+        let first_bhash = state.find_ancestor_proposal(bhash, 0).unwrap();
         let sufficient_time_for_activity =
             unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();
         let inactive_validators = if sufficient_time_for_activity {

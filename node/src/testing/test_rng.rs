@@ -7,9 +7,10 @@ use std::{
     thread,
 };
 
-use hex_fmt::HexFmt;
 use rand::{self, CryptoRng, Error, Rng, RngCore, SeedableRng};
 use rand_pcg::Pcg64Mcg;
+
+use casper_types::checksummed_hex;
 
 thread_local! {
     static THIS_THREAD_HAS_RNG: RefCell<bool> = RefCell::new(false);
@@ -23,7 +24,6 @@ type Seed = <Pcg64Mcg as SeedableRng>::Seed; // [u8; 16]
 /// thread in which it is created panics.
 ///
 /// Only one `TestRng` is permitted per thread.
-#[derive(Clone)]
 pub struct TestRng {
     seed: Seed,
     rng: Pcg64Mcg,
@@ -47,7 +47,7 @@ impl TestRng {
         let mut seed = Seed::default();
         match env::var(CL_TEST_SEED) {
             Ok(seed_as_hex) => {
-                hex::decode_to_slice(&seed_as_hex, &mut seed).unwrap_or_else(|error| {
+                base16::decode_slice(&seed_as_hex, &mut seed).unwrap_or_else(|error| {
                     THIS_THREAD_HAS_RNG.with(|flag| {
                         *flag.borrow_mut() = false;
                     });
@@ -96,7 +96,11 @@ impl Default for TestRng {
 
 impl Display for TestRng {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "TestRng seed: {}", HexFmt(&self.seed))
+        write!(
+            formatter,
+            "TestRng seed: {}",
+            checksummed_hex::encode(&self.seed)
+        )
     }
 }
 
@@ -111,7 +115,7 @@ impl Drop for TestRng {
         if thread::panicking() {
             let line_1 = format!("Thread: {}", thread::current().name().unwrap_or("unnamed"));
             let line_2 = "To reproduce failure, try running with env var:";
-            let line_3 = format!("{}={}", CL_TEST_SEED, HexFmt(&self.seed));
+            let line_3 = format!("{}={}", CL_TEST_SEED, checksummed_hex::encode(&self.seed));
             let max_length = cmp::max(line_1.len(), line_2.len());
             let border = "=".repeat(max_length);
             println!(

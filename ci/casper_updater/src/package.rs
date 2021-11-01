@@ -77,7 +77,9 @@ impl Package {
         relative_path: P,
         dependent_files: &'static Vec<DependentFile>,
     ) -> Self {
-        Self::new::<_, AssemblyScriptPackage>(relative_path, dependent_files)
+        let mut package = Self::new::<_, AssemblyScriptPackage>(relative_path, dependent_files);
+        package.name = format!("{} (AssemblyScript)", package.name);
+        package
     }
 
     fn new<P: AsRef<Path>, T: PackageConsts>(

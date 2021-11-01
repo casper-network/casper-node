@@ -8,12 +8,13 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_hashing::Digest;
 use casper_types::{
     system::auction::{Bid, Bids, DelegationRate, Delegator, EraValidators},
     AccessRights, EraId, PublicKey, SecretKey, URef, U512,
 };
 
-use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
+use crate::rpcs::docs::DocExample;
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
@@ -63,8 +64,8 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
 static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
     let state_root_hash = Digest::from([11; Digest::LENGTH]);
     let height: u64 = 10;
-    let era_validators = Some(EraValidators::doc_example().clone());
-    let bids = Some(Bids::doc_example().clone());
+    let era_validators = EraValidators::doc_example().clone();
+    let bids = Bids::doc_example().clone();
     AuctionState::new(state_root_hash, height, era_validators, bids)
 });
 
@@ -158,11 +159,11 @@ impl AuctionState {
     pub fn new(
         state_root_hash: Digest,
         block_height: u64,
-        era_validators: Option<EraValidators>,
-        bids: Option<Bids>,
+        era_validators: EraValidators,
+        bids: Bids,
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
-        for (era_id, validator_weights) in era_validators.unwrap().iter() {
+        for (era_id, validator_weights) in era_validators.iter() {
             let mut json_validator_weights: Vec<JsonValidatorWeights> = Vec::new();
             for (public_key, weight) in validator_weights.iter() {
                 json_validator_weights.push(JsonValidatorWeights {
@@ -177,7 +178,7 @@ impl AuctionState {
         }
 
         let mut json_bids: Vec<JsonBids> = Vec::new();
-        for (public_key, bid) in bids.unwrap().iter() {
+        for (public_key, bid) in bids.iter() {
             let json_bid = JsonBid::from(bid.clone());
             json_bids.push(JsonBids {
                 public_key: public_key.clone(),

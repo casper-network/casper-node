@@ -9,6 +9,13 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
+
+    # TODO: re-enable once we figure out publishing
+    # - name: markdown-link-check
+    #   image: casperlabs/node-build-u1804
+    #   commands:
+    #     - "./ci/markdown_link_check.sh"
+
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
@@ -27,12 +34,12 @@ steps:
       - make setup-rs
       - make doc
 
-#  - name: cargo-audit
-#    image: casperlabs/node-build-u1804
-#    commands:
-#      - make setup-audit
-#      - cargo generate-lockfile
-#      - make audit
+  - name: cargo-audit
+    image: casperlabs/node-build-u1804
+    commands:
+      - make setup-audit
+      - cargo generate-lockfile
+      - make audit
 
 trigger:
   branch:
@@ -135,6 +142,32 @@ type: docker
 name: package
 
 steps:
+- name: build-rpm
+  image: casperlabs/rpm-package
+  commands:
+    - make rpm
+
+- name: put-drone-s3-cache-rpm
+  image: plugins/s3-sync:latest
+  settings:
+    bucket:
+      from_secret: put-drone-s3-bucket
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: target/release/rpmbuild/RPMS/x86_64/
+    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/rpm/"
+  when:
+    branch:
+      - master
+      - dev
+      - "release-*"
+      - "feat-*"
+    event:
+      - push
+
 - name: build-deb-update-revision
   image: casperlabs/node-build-u1804
   commands:
@@ -143,8 +176,7 @@ steps:
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
-    - make setup-rs
-    - "make deb"
+    - make deb
 
 - name: test-deb
   image: ubuntu:bionic
@@ -152,7 +184,7 @@ steps:
     - "apt update"
     - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
 
-- name: put-drone-s3-cache
+- name: put-drone-s3-cache-deb
   image: plugins/s3-sync:latest
   settings:
     bucket:
@@ -178,10 +210,10 @@ steps:
   commands:
     - "./build_wasm_package.sh"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
   when:
     branch:
     - master
@@ -221,24 +253,6 @@ steps:
       - "feat-*"
     event:
       - push
-
-- name: s3-genesis-rel-pr
-  image: plugins/s3
-  settings:
-    bucket: 'genesis.casperlabs.io'
-    region: 'us-east-2'
-    access_key:
-      from_secret: drone_genesis_key_id
-    secret_key:
-      from_secret: drone_genesis_secret
-    source: "target/upgrade_build/**/*"
-    strip_prefix: 'target/upgrade_build/'
-    target: "/drone/${DRONE_COMMIT}/"
-  when:
-    branch:
-      - "release-*"
-    event:
-      - pull_request
 
 - name: nctl-upgrade-assets-stage-rc
   image: casperlabs/node-build-u1804
@@ -490,10 +504,15 @@ type: docker
 name: release-by-tag
 
 steps:
+- name: build-rpm
+  image: casperlabs/rpm-package
+  commands:
+    - make rpm
+
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
-    - "make deb"
+    - make deb
 
 - name: publish-repo-prod
   image: casperlabs/aptly:latest
@@ -534,6 +553,7 @@ steps:
     - md5
     files:
     - "./target/debian/*.deb"
+    - "./target/release/rpmbuild/RPMS/x86_64/*.rpm"
     - "./target/upgrade_build/*.gz"
     prerelease:
     - true

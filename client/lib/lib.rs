@@ -28,8 +28,8 @@ use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::hash::Digest,
     rpcs::state::{DictionaryIdentifier, GlobalStateIdentifier},
     types::{BlockHash, Deploy},
 };
@@ -40,6 +40,7 @@ pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams, OutputKind};
 pub use error::Error;
 use error::Result;
+pub use rpc::map_hashing_error;
 use rpc::RpcCall;
 pub use validation::ValidateResponseError;
 
@@ -190,8 +191,9 @@ pub async fn send_deploy_file(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
@@ -229,8 +231,9 @@ pub async fn transfer(
 ///
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`.
 /// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
-/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `target_account` is the `AccountHash`, `URef` or `PublicKey` of the account to which the funds
+///   will be transferred, formatted as a hex-encoded string. The account's main purse will receive
+///   the funds.
 /// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
 ///   will be permanently associated with the transfer.
 /// * `deploy_params` contains deploy-related options for this `Deploy`. See
@@ -588,7 +591,7 @@ pub async fn list_rpcs(
         .await
 }
 
-/// Retrieves a stored value from the network.
+/// Retrieves a stored value from a dictionary.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
 ///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
@@ -602,7 +605,7 @@ pub async fn list_rpcs(
 ///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
 /// * `dictionary_str_params` contains options to query a dictionary item.
-pub async fn get_dictionary(
+pub async fn get_dictionary_item(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
@@ -611,6 +614,28 @@ pub async fn get_dictionary(
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
         .get_dictionary_item(state_root_hash, dictionary_str_params)
+        .await
+}
+
+/// Retrieves status changes of active validators.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+pub async fn get_validator_changes(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_validator_changes()
         .await
 }
 
@@ -1158,10 +1183,8 @@ impl<'a> TryInto<GlobalStateIdentifier> for GlobalStateStrParams<'a> {
     type Error = Error;
 
     fn try_into(self) -> Result<GlobalStateIdentifier> {
-        let hash = Digest::from_hex(self.hash_value).map_err(|error| Error::CryptoError {
-            context: "global_state_identifier",
-            error,
-        })?;
+        let hash = Digest::from_hex(self.hash_value)
+            .map_err(|error| map_hashing_error(error)("global_state_identifier"))?;
 
         if self.is_block_hash {
             Ok(GlobalStateIdentifier::BlockHash(BlockHash::new(hash)))
@@ -1488,7 +1511,7 @@ mod param_tests {
                 result,
                 Err(Error::CryptoError {
                     context: "dependencies",
-                    error: CryptoError::FromHex(hex::FromHexError::OddLength)
+                    error: CryptoError::FromHex(base16::DecodeError::InvalidLength { length: 11 })
                 })
             ));
         }

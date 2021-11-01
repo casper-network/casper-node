@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
-use casper_execution_engine::shared::gas::Gas;
-use casper_types::PublicKey;
+use casper_types::{Gas, PublicKey};
 use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;

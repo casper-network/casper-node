@@ -3,9 +3,10 @@
 mod memory_metrics;
 
 use std::{
-    env,
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -15,9 +16,6 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
-
-use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
-use casper_types::Key;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -32,7 +30,6 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain_sync::{self, LinearChainSyncError, LinearChainSyncState},
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::Storage,
@@ -66,6 +63,8 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+use casper_execution_engine::storage::trie::Trie;
+use casper_types::{Key, StoredValue};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -76,11 +75,7 @@ pub(crate) enum JoinerEvent {
     FinishedJoining { block_header: Box<BlockHeader> },
 
     /// Shut down with the given exit code.
-    Shutdown(ExitCode),
-
-    /// Network event.
-    #[from]
-    Network(network::Event<Message>),
+    Shutdown(#[serde(skip_serializing)] ExitCode),
 
     /// Small Network event.
     #[from]
@@ -225,15 +220,51 @@ impl ReactorEvent for JoinerEvent {
             None
         }
     }
+    fn description(&self) -> &'static str {
+        match self {
+            JoinerEvent::SmallNetwork(_) => "SmallNetwork",
+            JoinerEvent::Storage(_) => "Storage",
+            JoinerEvent::RestServer(_) => "RestServer",
+            JoinerEvent::EventStreamServer(_) => "EventStreamServer",
+            JoinerEvent::MetricsRequest(_) => "MetricsRequest",
+            JoinerEvent::ChainspecLoader(_) => "ChainspecLoader",
+            JoinerEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            JoinerEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
+            JoinerEvent::BlockFetcher(_) => "BlockFetcher",
+            JoinerEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
+            JoinerEvent::DeployFetcher(_) => "DeployFetcher",
+            JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
+            JoinerEvent::ContractRuntime(_) => "ContractRuntime",
+            JoinerEvent::AddressGossiper(_) => "AddressGossiper",
+            JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
+            JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
+            JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
+            JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
+            JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
+            JoinerEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
+            JoinerEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            JoinerEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
+            JoinerEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            JoinerEvent::ConsensusRequest(_) => "ConsensusRequest",
+            JoinerEvent::TrieFetcher(_) => "TrieFetcher",
+            JoinerEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
+            JoinerEvent::BlockHeaderByHeightFetcher(_) => "BlockHeaderByHeightFetcher",
+            JoinerEvent::TrieFetcherRequest(_) => "TrieFetcherRequest",
+            JoinerEvent::BlockHeaderFetcherRequest(_) => "BlockHeaderFetcherRequest",
+            JoinerEvent::BlockHeaderByHeightFetcherRequest(_) => {
+                "BlockHeaderByHeightFetcherRequest"
+            }
+            JoinerEvent::FinishedJoining { .. } => "FinishedJoining",
+            JoinerEvent::Shutdown(_) => "Shutdown",
+            JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+        }
+    }
 }
 
 impl From<NetworkRequest<NodeId, Message>> for JoinerEvent {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-            JoinerEvent::Network(network::Event::from(request))
-        } else {
-            JoinerEvent::SmallNetwork(small_network::Event::from(request))
-        }
+        JoinerEvent::SmallNetwork(small_network::Event::from(request))
     }
 }
 
@@ -254,7 +285,6 @@ impl From<RestRequest<NodeId>> for JoinerEvent {
 impl Display for JoinerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            JoinerEvent::Network(event) => write!(f, "network: {}", event),
             JoinerEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             JoinerEvent::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             JoinerEvent::BlocklistAnnouncement(event) => {
@@ -340,7 +370,6 @@ impl Display for JoinerEvent {
 pub(crate) struct Reactor {
     root: PathBuf,
     metrics: Metrics,
-    network: Network<JoinerEvent, Message>,
     small_network: SmallNetwork<JoinerEvent, Message>,
     address_gossiper: Gossiper<GossipedAddress, JoinerEvent>,
     config: participating::Config,
@@ -369,6 +398,7 @@ pub(crate) struct Reactor {
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
+    node_startup_instant: Instant,
 }
 
 impl reactor::Reactor for Reactor {
@@ -393,9 +423,11 @@ impl reactor::Reactor for Reactor {
             storage,
             contract_runtime,
             small_network_identity,
-            network_identity,
         } = initializer;
 
+        // We don't need to be super precise about the startup time, i.e.
+        // we can skip the time spent in `initializer` for the sake of code simplicity.
+        let node_startup_instant = Instant::now();
         // TODO: Remove wrapper around Reactor::Config instead.
         let (_, config) = with_dir_config.into_parts();
 
@@ -405,14 +437,6 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
-        let network_config = network::Config::from(&config.network);
-        let (network, network_effects) = Network::new(
-            event_queue,
-            network_config,
-            registry,
-            network_identity,
-            chainspec_loader.chainspec(),
-        )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
@@ -420,14 +444,9 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            None,
         )?;
 
-        let mut effects = reactor::wrap_effects(JoinerEvent::Network, network_effects);
-        effects.extend(reactor::wrap_effects(
-            JoinerEvent::SmallNetwork,
-            small_network_effects,
-        ));
+        let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -453,12 +472,10 @@ impl reactor::Reactor for Reactor {
                     let era_duration = chainspec.core_config.era_duration;
                     if Timestamp::now() > start_time + era_duration {
                         error!(
-                            "Node started with no trusted hash after the expected end of \
-                             the genesis era! Please specify a trusted hash and restart. \
-                             Time: {}, End of genesis era: {}",
-                            Timestamp::now(),
-                            start_time + era_duration
-                        );
+                            now=?Timestamp::now(),
+                            genesis_era_end=?start_time + era_duration,
+                            "node started with no trusted hash after the expected end of \
+                             the genesis era! Please specify a trusted hash and restart.");
                         panic!("should have trusted hash after genesis era")
                     }
                 }
@@ -514,6 +531,7 @@ impl reactor::Reactor for Reactor {
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
+            node_startup_instant,
         )?;
 
         let event_stream_server = EventStreamServer::new(
@@ -524,16 +542,22 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
+
         let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
+
         let block_by_hash_fetcher = Fetcher::new("block", config.fetcher, registry)?;
         let trie_fetcher = Fetcher::new("trie", config.fetcher, registry)?;
         let block_header_and_finality_signatures_by_height_fetcher =
             Fetcher::new("block_header_by_height", config.fetcher, registry)?;
+
         let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
             Fetcher::new("block_header", config.fetcher, registry)?;
 
-        let deploy_acceptor =
-            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            &*chainspec_loader.chainspec(),
+            registry,
+        )?;
 
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,
@@ -544,7 +568,6 @@ impl reactor::Reactor for Reactor {
             Self {
                 root,
                 metrics,
-                network,
                 small_network,
                 address_gossiper,
                 config,
@@ -564,6 +587,7 @@ impl reactor::Reactor for Reactor {
                 rest_server,
                 event_stream_server,
                 memory_metrics,
+                node_startup_instant,
             },
             effects,
         ))
@@ -576,10 +600,6 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            JoinerEvent::Network(event) => reactor::wrap_effects(
-                JoinerEvent::Network,
-                self.network.handle_event(effect_builder, rng, event),
-            ),
             JoinerEvent::SmallNetwork(event) => reactor::wrap_effects(
                 JoinerEvent::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -831,20 +851,14 @@ impl reactor::Reactor for Reactor {
             }
 
             JoinerEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let mut effects = reactor::wrap_effects(
+                reactor::wrap_effects(
                     JoinerEvent::EventStreamServer,
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::BlockAdded(block.clone()),
+                        event_stream_server::Event::BlockAdded(block),
                     ),
-                );
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
-                ));
-                effects
+                )
             }
             JoinerEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
@@ -878,11 +892,7 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::ChainspecLoader(req.into()),
             ),
             JoinerEvent::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-                    JoinerEvent::Network(network::Event::from(req))
-                } else {
-                    JoinerEvent::SmallNetwork(small_network::Event::from(req))
-                };
+                let event = JoinerEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             JoinerEvent::ChainspecLoaderAnnouncement(
@@ -897,6 +907,10 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 // no consensus, respond with None
                 responder.respond(None).ignore()
+            }
+            JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                // no consensus, respond with empty map
+                responder.respond(BTreeMap::new()).ignore()
             }
             JoinerEvent::BlockHeaderByHeightFetcher(event) => reactor::wrap_effects(
                 JoinerEvent::BlockHeaderByHeightFetcher,
@@ -951,9 +965,8 @@ impl Reactor {
             maybe_latest_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
-            network_identity: NetworkIdentity::from(&self.network),
+            node_startup_instant: self.node_startup_instant,
         };
-        self.network.finalize().await;
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
         Ok(config)
@@ -964,11 +977,7 @@ impl Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
-            self.small_network.node_id()
-        } else {
-            self.network.node_id()
-        }
+        self.small_network.node_id()
     }
 }
 

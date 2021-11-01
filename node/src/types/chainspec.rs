@@ -24,6 +24,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -39,17 +40,14 @@ pub(crate) use self::{
 };
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{
-    crypto::hash::{self, Digest},
-    utils::Loadable,
-};
+use crate::utils::Loadable;
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(DataSize, PartialEq, Eq, Serialize, Debug, Clone)]
+#[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
 pub struct Chainspec {
     #[serde(rename = "protocol")]
     pub(crate) protocol_config: ProtocolConfig,
@@ -89,7 +87,7 @@ impl Chainspec {
             error!(%error, "failed to serialize chainspec");
             vec![]
         });
-        hash::hash(&serialized_chainspec)
+        Digest::hash(&serialized_chainspec)
     }
 
     /// Returns the protocol version of the chainspec.
@@ -205,13 +203,11 @@ mod tests {
 
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        stored_value::StoredValue,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, ProtocolVersion, U512};
+    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, U512};
 
     use super::*;
     use crate::{

@@ -1,25 +1,25 @@
 //! Contains serialization and deserialization code for types used throughout the system.
 mod bytes;
 
-// Can be removed once https://github.com/rust-lang/rustfmt/issues/3362 is resolved.
-#[rustfmt::skip]
-use alloc::vec;
 use alloc::{
     alloc::{alloc, Layout},
     collections::{BTreeMap, BTreeSet, VecDeque},
     str,
     string::String,
+    vec,
     vec::Vec,
 };
 #[cfg(debug_assertions)]
 use core::any;
-use core::{mem, ptr::NonNull};
+use core::{
+    fmt::{self, Display, Formatter},
+    mem,
+    ptr::NonNull,
+};
 
 use num_integer::Integer;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 pub use bytes::Bytes;
 
@@ -100,21 +100,30 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 
 /// Serialization and deserialization errors.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(Error))]
+#[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[repr(u8)]
 pub enum Error {
     /// Early end of stream while deserializing.
-    #[cfg_attr(feature = "std", error("Deserialization error: early end of stream"))]
     EarlyEndOfStream = 0,
     /// Formatting error while deserializing.
-    #[cfg_attr(feature = "std", error("Deserialization error: formatting"))]
     Formatting,
     /// Not all input bytes were consumed in [`deserialize`].
-    #[cfg_attr(feature = "std", error("Deserialization error: left-over bytes"))]
     LeftOverBytes,
     /// Out of memory error.
-    #[cfg_attr(feature = "std", error("Serialization error: out of memory"))]
     OutOfMemory,
+}
+
+impl Display for Error {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            Error::EarlyEndOfStream => {
+                formatter.write_str("Deserialization error: early end of stream")
+            }
+            Error::Formatting => formatter.write_str("Deserialization error: formatting"),
+            Error::LeftOverBytes => formatter.write_str("Deserialization error: left-over bytes"),
+            Error::OutOfMemory => formatter.write_str("Serialization error: out of memory"),
+        }
+    }
 }
 
 /// Deserializes `bytes` into an instance of `T`.

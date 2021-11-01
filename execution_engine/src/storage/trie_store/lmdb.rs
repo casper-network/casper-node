@@ -8,7 +8,7 @@
 //! use casper_execution_engine::storage::transaction_source::lmdb::LmdbEnvironment;
 //! use casper_execution_engine::storage::trie::{Pointer, PointerBlock, Trie};
 //! use casper_execution_engine::storage::trie_store::lmdb::LmdbTrieStore;
-//! use casper_execution_engine::shared::newtypes::Blake2bHash;
+//! use casper_hashing::Digest;
 //! use casper_types::bytesrepr::{ToBytes, Bytes};
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;
@@ -18,8 +18,8 @@
 //! let leaf_2 = Trie::Leaf { key: Bytes::from(vec![1u8, 0, 0]), value: Bytes::from(b"val_2".to_vec()) };
 //!
 //! // Get their hashes
-//! let leaf_1_hash = Blake2bHash::new(&leaf_1.to_bytes().unwrap());
-//! let leaf_2_hash = Blake2bHash::new(&leaf_2.to_bytes().unwrap());
+//! let leaf_1_hash = Digest::hash(&leaf_1.to_bytes().unwrap());
+//! let leaf_2_hash = Digest::hash(&leaf_2.to_bytes().unwrap());
 //!
 //! // Create a node
 //! let node: Trie<Bytes, Bytes> = {
@@ -31,7 +31,7 @@
 //! };
 //!
 //! // Get its hash
-//! let node_hash = Blake2bHash::new(&node.to_bytes().unwrap());
+//! let node_hash = Digest::hash(&node.to_bytes().unwrap());
 //!
 //! // Create the environment and the store. For both the in-memory and
 //! // LMDB-backed implementations, the environment is the source of
@@ -39,7 +39,7 @@
 //! let tmp_dir = tempdir().unwrap();
 //! let map_size = 4096 * 2560;  // map size should be a multiple of OS page size
 //! let max_readers = 512;
-//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers).unwrap();
+//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers, true).unwrap();
 //! let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 //!
 //! // First let's create a read-write transaction, persist the values, but
@@ -106,7 +106,7 @@
 
 use lmdb::{Database, DatabaseFlags};
 
-use crate::shared::newtypes::Blake2bHash;
+use casper_hashing::Digest;
 
 use crate::storage::{
     error,
@@ -150,7 +150,7 @@ impl LmdbTrieStore {
     }
 }
 
-impl<K, V> Store<Blake2bHash, Trie<K, V>> for LmdbTrieStore {
+impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
     type Error = error::Error;
 
     type Handle = Database;

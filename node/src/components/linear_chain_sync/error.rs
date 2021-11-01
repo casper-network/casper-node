@@ -4,10 +4,9 @@ use thiserror::Error;
 
 use casper_execution_engine::{
     core::{engine_state, engine_state::GetEraValidatorsError},
-    shared::stored_value::StoredValue,
     storage::trie::Trie,
 };
-use casper_types::{EraId, Key, ProtocolVersion};
+use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{

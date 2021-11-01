@@ -441,12 +441,25 @@ function setup_asset_global_state_toml() {
 
     for IDX in $(seq 1 "$COUNT_NODES")
     do
-        if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/data.lmdb" ]; then
-            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
+        # if the combined integers from the PROTOCOL_VERISON >= 140 ( 1_4_0 )
+        if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "140" ]; then
+            # Check new data.lmdb path under ..storage/<chain_name>/
+            if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)/data.lmdb" ]; then
+                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }')")
+            else
+                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }')")
+            fi
         else
-            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage)
+
+            if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/data.lmdb" ]; then
+                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
+            else
+                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage)
+            fi
         fi
 
         echo "$GLOBAL_STATE_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$PROTOCOL_VERSION/global_state.toml"

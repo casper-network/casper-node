@@ -9,10 +9,9 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, Key, ProtocolVersion,
+    EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use super::{ActivationPoint, GlobalStateUpdate};

@@ -1,26 +1,35 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
+use either::Either;
 use log::info;
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
+use tokio::time;
 
-use casper_execution_engine::{core::engine_state::query::GetBidsRequest, shared::motes::Motes};
+use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
-    EraId, PublicKey, SecretKey, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 use crate::{
-    components::{gossiper, small_network, storage},
+    components::{chainspec_loader::NextUpgrade, consensus, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    reactor::{initializer, joiner, participating, ReactorExit, Runner},
-    testing::{self, network::Network, TestRng},
+    effect::{requests::ContractRuntimeRequest, EffectExt},
+    reactor::{
+        initializer, joiner,
+        participating::{self, ParticipatingEvent},
+        Reactor, ReactorExit, Runner,
+    },
+    testing::{
+        self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor, TestRng,
+    },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ExitCode, Timestamp,
     },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
@@ -33,7 +42,13 @@ struct TestChain {
     chainspec: Arc<Chainspec>,
 }
 
-type Nodes = crate::testing::network::Nodes<participating::Reactor>;
+type Nodes = crate::testing::network::Nodes<FilterReactor<participating::Reactor>>;
+
+impl Runner<ConditionCheckReactor<FilterReactor<participating::Reactor>>> {
+    fn participating(&self) -> &participating::Reactor {
+        self.reactor().inner().inner()
+    }
+}
 
 impl TestChain {
     /// Instantiates a new test chain configuration.
@@ -83,8 +98,12 @@ impl TestChain {
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        chainspec.protocol_config.activation_point =
-            ActivationPoint::Genesis(Timestamp::now() + 45000.into());
+        let genesis_time = Timestamp::now() + 45000.into();
+        info!(
+            "creating test chain configuration, genesis: {}",
+            genesis_time
+        );
+        chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
 
         chainspec.core_config.minimum_era_height = 1;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
@@ -97,6 +116,10 @@ impl TestChain {
             chainspec: Arc::new(chainspec),
             storages: Vec::new(),
         }
+    }
+
+    fn chainspec_mut(&mut self) -> &mut Chainspec {
+        Arc::get_mut(&mut self.chainspec).unwrap()
     }
 
     /// Creates an initializer/validator configuration for the `idx`th validator.
@@ -132,13 +155,14 @@ impl TestChain {
     async fn create_initialized_network(
         &mut self,
         rng: &mut NodeRng,
-    ) -> anyhow::Result<Network<participating::Reactor>> {
+    ) -> anyhow::Result<Network<FilterReactor<participating::Reactor>>> {
         let root = RESOURCES_PATH.join("local");
 
-        let mut network: Network<participating::Reactor> = Network::new();
+        let mut network: Network<FilterReactor<participating::Reactor>> = Network::new();
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
+            info!("creating node {}", idx);
             let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
@@ -164,6 +188,7 @@ impl TestChain {
                 .await
                 .into_participating_config()
                 .await?;
+            info!("node {} finished joining", idx);
 
             network
                 .add_node_with_config(config, rng)
@@ -180,21 +205,73 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
         nodes
             .values()
-            .all(|runner| runner.reactor().inner().consensus().current_era() == era_id)
+            .all(|runner| runner.participating().consensus().current_era() == era_id)
     }
 }
 
-/// Returns the bids at the given block.
-fn get_bids(nodes: &Nodes, header: &BlockHeader) -> Bids {
-    let correlation_id = Default::default();
-    let request = GetBidsRequest::new((*header.state_root_hash()).into());
+/// A set of consecutive switch blocks.
+struct SwitchBlocks {
+    headers: Vec<BlockHeader>,
+}
 
-    let runner = nodes.values().next().expect("missing nodes");
-    let engine_state = runner.reactor().inner().contract_runtime().engine_state();
-    let bids_result = engine_state
-        .get_bids(correlation_id, request)
-        .expect("get_bids failed");
-    bids_result.bids().expect("no bids returned").clone()
+impl SwitchBlocks {
+    /// Collects all switch blocks of the first `era_count` eras, and asserts that they are equal
+    /// in all nodes.
+    fn collect(nodes: &Nodes, era_count: u64) -> SwitchBlocks {
+        let mut headers = Vec::new();
+        for era_number in 0..era_count {
+            let mut header_iter = nodes.values().map(|runner| {
+                let storage = runner.participating().storage();
+                let maybe_block = storage.transactional_get_switch_block_by_era_id(era_number);
+                maybe_block.expect("missing switch block").take_header()
+            });
+            let header = header_iter.next().unwrap();
+            assert_eq!(era_number, header.era_id().value());
+            for other_header in header_iter {
+                assert_eq!(header, other_header);
+            }
+            headers.push(header);
+        }
+        SwitchBlocks { headers }
+    }
+
+    /// Returns the list of equivocators in the given era.
+    fn equivocators(&self, era_number: u64) -> &[PublicKey] {
+        &self.headers[era_number as usize]
+            .era_end()
+            .expect("era end")
+            .era_report()
+            .equivocators
+    }
+
+    /// Returns the list of inactive validators in the given era.
+    fn inactive_validators(&self, era_number: u64) -> &[PublicKey] {
+        &self.headers[era_number as usize]
+            .era_end()
+            .expect("era end")
+            .era_report()
+            .inactive_validators
+    }
+
+    /// Returns the list of validators in the successor era.
+    fn next_era_validators(&self, era_number: u64) -> &BTreeMap<PublicKey, U512> {
+        self.headers[era_number as usize]
+            .next_era_validator_weights()
+            .expect("validators")
+    }
+
+    /// Returns the set of bids in the auction contract at the end of the given era.
+    fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
+        let correlation_id = Default::default();
+        let state_root_hash = *self.headers[era_number as usize].state_root_hash();
+        let request = GetBidsRequest::new(state_root_hash);
+        let runner = nodes.values().next().expect("missing node");
+        let engine_state = runner.participating().contract_runtime().engine_state();
+        let bids_result = engine_state
+            .get_bids(correlation_id, request)
+            .expect("get_bids failed");
+        bids_result.into_success().expect("no bids returned")
+    }
 }
 
 #[tokio::test]
@@ -240,114 +317,185 @@ async fn run_equivocator_network() {
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
+    // We configure the era to take five rounds, and delay all messages to and from one of Alice's
+    // nodes until three rounds after the first message. That should guarantee that the two nodes
+    // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 10;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+    let min_round_len = chain.chainspec.highway_config.min_round_length();
+    let mut maybe_first_message_time = None;
+    net.reactors_mut()
+        .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
+        .unwrap()
+        .set_filter(move |event| {
+            let now = Timestamp::now();
+            let first_message_time = match (&event, maybe_first_message_time) {
+                (
+                    ParticipatingEvent::NetworkRequest(_)
+                    | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
+                    Some(first_message_time),
+                ) => first_message_time,
+                (ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }), None) => {
+                    maybe_first_message_time = Some(now);
+                    now
+                }
+                _ => return Either::Right(event),
+            };
+            if now < first_message_time + min_round_len * 3 {
+                return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
+            }
+            Either::Right(event)
+        });
+
+    let era_count = 4;
+    let timeout = Duration::from_secs(90 * era_count);
+
+    for era_num in 1..era_count {
+        let era_id = EraId::from(era_num);
+        info!("Waiting for {} to end.", era_id);
+        net.settle_on(&mut rng, is_in_era(era_id.successor()), timeout)
+            .await;
+        // The only era with direct evidence is era 1. After that Alice was banned or evicted.
+        for runner in net.nodes().values() {
+            let consensus = runner.participating().consensus();
+            let expected = if era_num == 1 {
+                vec![&alice_pk]
+            } else {
+                vec![]
+            };
+            assert_eq!(consensus.validators_with_evidence(era_id), expected);
+        }
+    }
+
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
+    let bids: Vec<Bids> = (0..era_count)
+        .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
+        .collect();
+
+    // Era 0 consists only of the genesis block.
+    // In era 1, Alice equivocates. Since eviction takes place with a delay of one
+    // (`auction_delay`) era, she is still included in the next era's validator set.
+    assert_eq!(switch_blocks.equivocators(1), [alice_pk.clone()]);
+    assert_eq!(switch_blocks.inactive_validators(1), []);
+    assert!(bids[1][&alice_pk].inactive());
+    assert!(switch_blocks.next_era_validators(1).contains_key(&alice_pk));
+
+    // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
+    // though they cannot participate. In the next era, she will be evicted.
+    assert_eq!(switch_blocks.equivocators(2), []);
+    assert_eq!(switch_blocks.inactive_validators(2), []);
+    assert!(bids[2][&alice_pk].inactive());
+    assert!(!switch_blocks.next_era_validators(2).contains_key(&alice_pk));
+
+    // In era 3 she is not a validator anymore and her bid remains deactivated.
+    assert_eq!(switch_blocks.equivocators(3), []);
+    assert_eq!(switch_blocks.inactive_validators(3), []);
+    assert!(bids[3][&alice_pk].inactive());
+    assert!(!switch_blocks.next_era_validators(3).contains_key(&alice_pk));
+
+    // We don't slash, so the stakes are never reduced.
+    for (pk, stake) in &stakes {
+        assert!(bids[0][pk].staked_amount() >= stake);
+        assert!(bids[1][pk].staked_amount() >= stake);
+        assert!(bids[2][pk].staked_amount() >= stake);
+        assert!(bids[3][pk].staked_amount() >= stake);
+    }
+}
+
+#[tokio::test]
+async fn dont_upgrade_without_switch_block() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Set up a network with only a single validator.
+    let alice_sk = Arc::new(SecretKey::random(&mut rng));
+    let alice_pk = PublicKey::from(&*alice_sk);
+    let keys: Vec<Arc<SecretKey>> = vec![alice_sk];
+    let stakes: BTreeMap<PublicKey, U512> = iter::once((alice_pk, U512::from(100))).collect();
+
+    // Eras have exactly two blocks each, and there is one block per second.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
 
-    let timeout = Duration::from_secs(90);
-
-    let mut switch_blocks = Vec::new();
-    for era_number in 1..20 {
-        let era_id = EraId::from(era_number);
-        info!("Waiting for Era {} to begin", era_number);
-        net.settle_on(&mut rng, is_in_era(era_id), timeout).await;
-
-        // Collect new switch block headers.
-        for runner in net.nodes().values() {
-            let storage = runner.reactor().inner().storage();
-            let header = storage
-                .read_switch_block_header_by_era_id(EraId::from(era_number - 1))
-                .expect("lmdb error")
-                .expect("missing switch block");
-            assert_eq!(era_number - 1, header.era_id().value());
-            if let Some(other_header) = switch_blocks.get(era_number as usize - 1) {
-                assert_eq!(other_header, &header);
-            } else {
-                switch_blocks.push(header);
-            }
-        }
-
-        let expected = [alice_pk.clone()];
-        // Returns true if Alice is listed as an equivocator in that block.
-        let alice_is_equivocator = |header: &BlockHeader| {
-            let report = header.era_end().expect("missing era report").era_report();
-            report.equivocators == expected
-        };
-
-        // Verify that nobody gets slashed, and Alice's bid becomes inactive, but only after she
-        // equivocated.
-        let bids = get_bids(net.nodes(), switch_blocks.last().unwrap());
-        for (pk, stake) in &stakes {
-            assert!(bids[pk].staked_amount() >= stake);
-            assert!(*pk == alice_pk || !bids[pk].inactive());
-        }
-        assert_eq!(
-            bids[&alice_pk].inactive(),
-            switch_blocks.iter().any(alice_is_equivocator)
-        );
-
-        // Make sure we waited long enough for this test to include unbonding and dropping eras.
-        if era_number < 4 {
-            continue;
-        }
-
-        // Wait at least two more eras after the equivocation has been detected.
-        if switch_blocks[..(era_number as usize - 2)]
-            .iter()
-            .any(alice_is_equivocator)
-        {
-            break;
-        }
-    }
-
-    assert!(
-        !switch_blocks
-            .last()
-            .expect("missing switch block")
-            .next_era_validator_weights()
-            .expect("missing validator weights")
-            .contains_key(&alice_pk),
-        "Alice should have been evicted."
-    );
-
-    // The first era should have been removed from memory.
-    for runner in net.nodes().values() {
-        let consensus = runner.reactor().inner().consensus();
-        assert!(consensus.open_era_ids().all(|era_id| era_id.value() != 1));
-    }
-
-    // The auction delay is 1, so if Alice's equivocation was detected before the switch block in
-    // era N, the switch block of era N should list her as faulty. Starting with the switch block
-    // in era N + 1, she should be removed from the validator set, because she gets evicted in era
-    // N + 2.
-    // No era after N should have direct evidence against her: she got marked as faulty when era
-    // N + 1 was initialized, so no other validator will cite her or process her units.
-    loop {
-        let header = switch_blocks.pop().expect("missing switch block");
-        // TODO: Use era end!
-        let validators = header
-            .next_era_validator_weights()
-            .expect("missing validator weights");
-        if validators.contains_key(&alice_pk) {
-            // We've found era N: This is the last switch block that still lists Alice as a
-            // validator.
-            let report = header.era_end().expect("missing era report").era_report();
-            assert_eq!(*report.inactive_validators, []);
-            assert_eq!(*report.equivocators, [alice_pk.clone()]);
-            return;
-        } else {
-            // We are in era N + 1 or later. There should be no direct evidence; that would mean
-            // Alice equivocated twice.
-            for runner in net.nodes().values() {
-                let consensus = runner.reactor().inner().consensus();
-                assert_eq!(
-                    consensus.validators_with_evidence(header.era_id()),
-                    Vec::<&PublicKey>::new()
+    // An upgrade is scheduled for era 2, after the switch block in era 1 (height 2).
+    // We artificially delay the execution of that block.
+    for runner in net.runners_mut() {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let upgrade = NextUpgrade::new(
+                    ActivationPoint::EraId(2.into()),
+                    ProtocolVersion::from_parts(999, 0, 0),
                 );
+                effect_builder
+                    .announce_upgrade_activation_point_read(upgrade)
+                    .ignore()
+            })
+            .await;
+        let mut exec_request_received = false;
+        runner.reactor_mut().inner_mut().set_filter(move |event| {
+            if let ParticipatingEvent::ContractRuntime(request) = &event {
+                if let ContractRuntimeRequest::EnqueueBlockForExecution {
+                    finalized_block, ..
+                } = request.as_ref()
+                {
+                    if finalized_block.era_report().is_some()
+                        && finalized_block.era_id() == EraId::from(1)
+                        && !exec_request_received
+                    {
+                        info!("delaying {}", finalized_block);
+                        exec_request_received = true;
+                        return Either::Left(
+                            time::sleep(Duration::from_secs(10)).event(move |_| event),
+                        );
+                    }
+                    info!("not delaying {}", finalized_block);
+                }
             }
-        }
+            Either::Right(event)
+        });
+    }
+
+    // Run until the node shuts down for the upgrade.
+    let timeout = Duration::from_secs(120);
+    net.settle_on(
+        &mut rng,
+        |nodes| {
+            nodes
+                .values()
+                .all(|runner| runner.participating().maybe_exit().is_some())
+        },
+        timeout,
+    )
+    .await;
+
+    // Verify that the switch block has been stored: Even though it was delayed the node didn't
+    // restart before executing and storing it.
+    for runner in net.nodes().values() {
+        let header = runner
+            .participating()
+            .storage()
+            .read_block_header_and_sufficient_finality_signatures_by_height(2)
+            .expect("failed to read from storage")
+            .expect("missing switch block")
+            .block_header;
+        assert_eq!(EraId::from(1), header.era_id());
+        assert!(header.is_switch_block());
+        assert_eq!(
+            Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
+            runner.participating().maybe_exit()
+        );
     }
 }

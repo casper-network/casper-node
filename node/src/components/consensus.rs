@@ -15,6 +15,7 @@ mod protocols;
 mod tests;
 mod traits;
 mod utils;
+mod validator_change;
 
 use std::{
     convert::Infallible,
@@ -36,9 +37,9 @@ use crate::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
         },
-        EffectBuilder, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
     reactor::ReactorEvent,
@@ -52,7 +53,9 @@ pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+
 pub(crate) use utils::check_sufficient_finality_signatures;
+pub(crate) use validator_change::ValidatorChange;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) enum ConsensusMessage {
@@ -228,6 +231,7 @@ pub(crate) trait ReactorEventT<I>:
     + From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
+    + From<NetworkInfoRequest<I>>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockValidationRequest<I>>
@@ -243,6 +247,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
+        + From<NetworkInfoRequest<I>>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockValidationRequest<I>>
@@ -300,6 +305,10 @@ where
                 self.got_upgrade_activation_point(activation_point)
             }
             Event::ConsensusRequest(ConsensusRequest::Status(responder)) => self.status(responder),
+            Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                let validator_changes = self.get_validator_changes();
+                responder.respond(validator_changes).ignore()
+            }
         }
     }
 }

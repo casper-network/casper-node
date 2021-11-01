@@ -1,9 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    components::{
-        contract_runtime, contract_runtime::BlockExecutionError, network, small_network, storage,
-    },
+    components::{contract_runtime, contract_runtime::BlockExecutionError, small_network, storage},
     types::{Block, BlockHeader},
     utils::ListeningError,
 };
@@ -16,10 +14,6 @@ pub(crate) enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
-
-    /// `Network` component error.
-    #[error("network error: {0}")]
-    Network(#[from] network::Error),
 
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]
@@ -51,7 +45,7 @@ pub(crate) enum Error {
 
     /// [`bytesrepr`] error.
     #[error("bytesrepr error: {0}")]
-    BytesRepr(#[from] bytesrepr::Error),
+    BytesRepr(bytesrepr::Error),
 
     /// Cannot run genesis on a non v1.0.0 blockchain.
     #[error(
@@ -94,4 +88,10 @@ pub(crate) enum Error {
         /// A new block we made which should be a switch block but is not.
         new_bad_block: Box<Block>,
     },
+}
+
+impl From<bytesrepr::Error> for Error {
+    fn from(err: bytesrepr::Error) -> Self {
+        Self::BytesRepr(err)
+    }
 }

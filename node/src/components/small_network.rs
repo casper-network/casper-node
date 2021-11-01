@@ -84,14 +84,14 @@ use self::{
 pub(crate) use self::{
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{Message, MessageKind, Payload},
+    message::{Message, MessageKind, Payload, PayloadWeights},
 };
-use super::consensus;
+use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, LinearChainAnnouncement, NetworkAnnouncement},
-        requests::{ChainspecLoaderRequest, NetworkInfoRequest, NetworkRequest},
+        announcements::{BlocklistAnnouncement, NetworkAnnouncement},
+        requests::{NetworkInfoRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
@@ -168,12 +168,6 @@ where
     #[data_size(skip)]
     net_metrics: Arc<NetworkingMetrics>,
 
-    /// The highest era seen so far.
-    ///
-    /// The era supervisor currently does not allow for easy access to the concept of the "current"
-    /// era, so we treat the highest era we have seen as the active era.
-    highest_era_seen: EraId,
-
     /// The outgoing bandwidth limiter.
     #[data_size(skip)]
     outgoing_limiter: Box<dyn Limiter>,
@@ -183,15 +177,16 @@ where
     /// This is not incoming bandwidth but an independent resource estimate.
     #[data_size(skip)]
     incoming_limiter: Box<dyn Limiter>,
+
+    /// The era that is considered the active era by the small network component.
+    active_era: EraId,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv: ReactorEvent
-        + From<Event<P>>
-        + From<NetworkAnnouncement<NodeId, P>>
-        + From<ChainspecLoaderRequest>,
+    REv:
+        ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + From<StorageRequest>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -202,7 +197,6 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
-        maybe_initial_validators: Option<HashSet<PublicKey>>,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -288,6 +282,7 @@ where
             chain_info: chain_info_source.into(),
             public_addr,
             consensus_keys,
+            payload_weights: cfg.estimator_weights.clone(),
         });
 
         // Run the server task.
@@ -315,19 +310,11 @@ where
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
             net_metrics,
-            highest_era_seen: EraId::new(0),
             outgoing_limiter,
             incoming_limiter,
+            // We start with an empty set of validators for era 0 and expect to be updated.
+            active_era: EraId::new(0),
         };
-
-        if let Some(initial_validators) = maybe_initial_validators {
-            component
-                .outgoing_limiter
-                .update_validators(Default::default(), initial_validators.clone());
-            component
-                .incoming_limiter
-                .update_validators(Default::default(), initial_validators);
-        }
 
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -797,10 +784,8 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: ReactorEvent
-        + From<Event<P>>
-        + From<NetworkAnnouncement<NodeId, P>>
-        + From<ChainspecLoaderRequest>,
+    REv:
+        ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + From<StorageRequest>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -900,6 +885,53 @@ where
                     Effects::new()
                 }
             }
+            Event::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::LinearChainBlock(_)
+                | ContractRuntimeAnnouncement::StepSuccess { .. },
+            ) => Effects::new(),
+            Event::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators {
+                    era_that_is_ending,
+                    mut upcoming_era_validators,
+                },
+            ) => {
+                if era_that_is_ending < self.active_era {
+                    debug!("ignoring past era end announcement");
+                } else {
+                    // We have a new `active_era`, even if we may have skipped some, as this one
+                    // is the highest seen.
+                    self.active_era = era_that_is_ending + 1;
+
+                    let active_validators: HashSet<PublicKey> = upcoming_era_validators
+                        .remove(&self.active_era)
+                        .unwrap_or_default()
+                        .into_keys()
+                        .collect();
+
+                    if active_validators.is_empty() {
+                        error!("received an empty set of active era validators");
+                    }
+
+                    let upcoming_validators: HashSet<PublicKey> = upcoming_era_validators
+                        .remove(&(self.active_era + 1))
+                        .unwrap_or_default()
+                        .into_keys()
+                        .collect();
+
+                    debug!(
+                        %era_that_is_ending,
+                        active = active_validators.len(),
+                        upcoming = upcoming_validators.len(),
+                        "updating active and upcoming validators"
+                    );
+                    self.incoming_limiter
+                        .update_validators(active_validators.clone(), upcoming_validators.clone());
+                    self.outgoing_limiter
+                        .update_validators(active_validators, upcoming_validators);
+                }
+
+                Effects::new()
+            }
 
             Event::GossipOurAddress => {
                 let mut effects = self.gossip_our_address(effect_builder);
@@ -922,22 +954,6 @@ where
                 );
 
                 effects
-            }
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                if let Some(next_era_validators) =
-                    block.take_header().maybe_take_next_era_validator_weights()
-                {
-                    let upcoming_validators: HashSet<PublicKey> =
-                        next_era_validators.into_keys().collect();
-                    self.outgoing_limiter
-                        .update_validators(Default::default(), upcoming_validators.clone());
-                    self.incoming_limiter
-                        .update_validators(Default::default(), upcoming_validators);
-                };
-                Effects::new()
-            }
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(_)) => {
-                Effects::new()
             }
         }
     }

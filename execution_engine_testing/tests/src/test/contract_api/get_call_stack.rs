@@ -1,18 +1,13 @@
 use num_traits::One;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    shared::stored_value::StoredValue, storage::global_state::in_memory::InMemoryGlobalState,
-};
+use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
     account::Account, runtime_args, system::CallStackElement, CLValue, ContractHash,
-    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs,
+    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -326,7 +321,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 }
 
 mod session {
-    use casper_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
+    use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
     use casper_types::{runtime_args, RuntimeArgs};
 
     use super::{
@@ -2509,8 +2504,7 @@ mod payment {
     use rand::Rng;
 
     use casper_engine_test_support::{
-        internal::{DeployItemBuilder, ExecuteRequestBuilder},
-        DEFAULT_ACCOUNT_ADDR,
+        DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
     use casper_execution_engine::shared::wasm;
     use casper_types::{runtime_args, RuntimeArgs};

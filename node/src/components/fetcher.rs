@@ -10,11 +10,9 @@ use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
-use casper_execution_engine::{
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::trie::Trie,
-};
-use casper_types::Key;
+use casper_execution_engine::storage::trie::Trie;
+use casper_hashing::Digest;
+use casper_types::{Key, StoredValue};
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -76,6 +74,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
     /// require validation. These are not infallible, and only the responders corresponding to the
     /// node queried may be responded to.
     const SAFE_TO_RESPOND_TO_ALL: bool;
+
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
     fn metrics(&mut self) -> &FetcherMetrics;
@@ -295,7 +294,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 }
 
 impl ItemFetcher<Block> for Fetcher<Block> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
     fn responders(
         &mut self,
@@ -400,7 +399,7 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
+    ) -> &mut HashMap<Digest, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
         &mut self.responders
     }
 
@@ -415,16 +414,24 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
     fn get_from_storage<REv: ReactorEventT<GlobalStorageTrie>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        id: Blake2bHash,
+        id: Digest,
         peer: NodeId,
     ) -> Effects<Event<GlobalStorageTrie>> {
-        effect_builder
-            .read_trie(id)
-            .event(move |maybe_trie| Event::GetFromStorageResult {
+        async move {
+            let maybe_trie = match effect_builder.get_trie(id).await {
+                Ok(maybe_trie) => maybe_trie,
+                Err(error) => {
+                    error!(?error, "get_trie_request");
+                    None
+                }
+            };
+            Event::GetFromStorageResult {
                 id,
                 peer,
                 maybe_item: Box::new(maybe_trie),
-            })
+            }
+        }
+        .event(std::convert::identity)
     }
 }
 

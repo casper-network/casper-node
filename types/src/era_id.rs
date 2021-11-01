@@ -9,12 +9,13 @@ use core::{
     str::FromStr,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,20 +26,10 @@ use crate::{
 
 /// Era ID newtype.
 #[derive(
-    DataSize,
-    Debug,
-    Default,
-    Clone,
-    Copy,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
+    Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct EraId(u64);
 

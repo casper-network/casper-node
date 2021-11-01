@@ -6,8 +6,9 @@ use std::{convert::TryInto, fs, io, path::PathBuf, str::FromStr};
 use serde::{self, Deserialize};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_hashing::Digest;
 use casper_node::{
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
@@ -19,7 +20,7 @@ use crate::{
     cl_type,
     deploy::DeployParams,
     error::{Error, Result},
-    help, PaymentStrParams, SessionStrParams,
+    help, map_hashing_error, PaymentStrParams, SessionStrParams,
 };
 
 pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
@@ -58,10 +59,8 @@ fn gas_price(value: &str) -> Result<u64> {
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
     let mut hashes = Vec::with_capacity(values.len());
     for value in values {
-        let digest = Digest::from_hex(value).map_err(|error| Error::CryptoError {
-            context: "dependencies",
-            error,
-        })?;
+        let digest =
+            Digest::from_hex(value).map_err(|error| map_hashing_error(error)("dependencies"))?;
         hashes.push(DeployHash::new(digest))
     }
     Ok(hashes)
@@ -140,14 +139,53 @@ mod arg_simple {
 /// Handles providing the arg for and retrieval of complex session and payment args. These are read
 /// in from a file.
 mod args_complex {
+    use std::{
+        fmt::{self, Formatter},
+        result::Result as StdResult,
+    };
+
+    use serde::de::{Deserializer, Error as SerdeError, Visitor};
+
+    use casper_types::checksummed_hex;
+
     use super::*;
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "snake_case")]
     enum DeployArgValue {
         /// Contains `CLValue` serialized into bytes in base16 form.
-        #[serde(deserialize_with = "hex::deserialize")]
+        #[serde(deserialize_with = "deserialize_raw_bytes")]
         RawBytes(Vec<u8>),
+    }
+
+    fn deserialize_raw_bytes<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> StdResult<Vec<u8>, D::Error> {
+        struct HexStrVisitor;
+
+        impl<'de> Visitor<'de> for HexStrVisitor {
+            type Value = Vec<u8>;
+
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                write!(formatter, "a hex encoded string")
+            }
+
+            fn visit_str<E: SerdeError>(
+                self,
+                hex_encoded_input: &str,
+            ) -> StdResult<Self::Value, E> {
+                checksummed_hex::decode(hex_encoded_input).map_err(SerdeError::custom)
+            }
+
+            fn visit_borrowed_str<E: SerdeError>(
+                self,
+                hex_encoded_input: &'de str,
+            ) -> StdResult<Self::Value, E> {
+                checksummed_hex::decode(hex_encoded_input).map_err(SerdeError::custom)
+            }
+        }
+
+        deserializer.deserialize_str(HexStrVisitor)
     }
 
     #[derive(Debug, Deserialize)]
@@ -180,34 +218,30 @@ mod args_complex {
     pub mod session {
         use super::*;
 
-        pub fn parse(path: &str) -> Result<RuntimeArgs> {
+        pub fn parse(path: &str) -> Result<Option<RuntimeArgs>> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument {
-                    context: "session_path",
-                    error: path.to_string(),
-                });
+                return Ok(None);
             }
-            get(path).map_err(|error| Error::IoError {
+            let runtime_args = get(path).map_err(|error| Error::IoError {
                 context: format!("error reading session file at '{}'", path),
                 error,
-            })
+            })?;
+            Ok(Some(runtime_args))
         }
     }
 
     pub mod payment {
         use super::*;
 
-        pub fn parse(path: &str) -> Result<RuntimeArgs> {
+        pub fn parse(path: &str) -> Result<Option<RuntimeArgs>> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument {
-                    context: "payment_path",
-                    error: path.to_string(),
-                });
+                return Ok(None);
             }
-            get(path).map_err(|error| Error::IoError {
+            let runtime_args = get(path).map_err(|error| Error::IoError {
                 context: format!("error reading payment file at '{}'", path),
                 error,
-            })
+            })?;
+            Ok(Some(runtime_args))
         }
     }
 
@@ -423,7 +457,7 @@ pub(super) fn parse_session_info(params: SessionStrParams) -> Result<ExecutableD
 
     let session_args = args_from_simple_or_complex(
         arg_simple::session::parse(session_args_simple)?,
-        args_complex::session::parse(session_args_complex).ok(),
+        args_complex::session::parse(session_args_complex)?,
     );
     if session_transfer {
         if session_args.is_empty() {
@@ -534,7 +568,7 @@ pub(super) fn parse_payment_info(params: PaymentStrParams) -> Result<ExecutableD
 
     let payment_args = args_from_simple_or_complex(
         arg_simple::payment::parse(payment_args_simple)?,
-        args_complex::payment::parse(payment_args_complex).ok(),
+        args_complex::payment::parse(payment_args_complex)?,
     );
 
     if let Some(payment_name) = name(payment_name) {
@@ -582,21 +616,12 @@ pub(super) fn parse_payment_info(params: PaymentStrParams) -> Result<ExecutableD
     })
 }
 
-pub(crate) fn parse_public_key(target_account: &str) -> Result<PublicKey> {
-    let account = PublicKey::from_hex(target_account).map_err(|error| Error::InvalidArgument {
-        context: "target_account",
-        error: format!("failed to parse as a public key: {}", error),
-    })?;
-
-    Ok(account)
-}
-
 fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
     if value.is_empty() {
         return Ok(None);
     }
     if let Ok(digest) = Digest::from_hex(value) {
-        return Ok(Some(digest.to_array()));
+        return Ok(Some(digest.value()));
     }
     if let Ok(Key::Hash(hash)) = Key::from_formatted_str(value) {
         return Ok(Some(hash));
@@ -966,6 +991,52 @@ mod tests {
                 context: "parse_payment_info",
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn should_fail_to_parse_bad_session_args_complex() {
+        let missing_file = "missing/file";
+        assert!(matches!(
+            parse_session_info(SessionStrParams {
+                session_hash: happy::HASH,
+                session_name: "",
+                session_package_hash: "",
+                session_package_name: "",
+                session_path: "",
+                session_args_simple: vec![],
+                session_args_complex: missing_file,
+                session_version: "",
+                session_entry_point: "entrypoint",
+                is_session_transfer: false,
+            }),
+            Err(Error::IoError {
+                context,
+                ..
+            }) if context == format!("error reading session file at '{}'", missing_file)
+        ));
+    }
+
+    #[test]
+    fn should_fail_to_parse_bad_payment_args_complex() {
+        let missing_file = "missing/file";
+        assert!(matches!(
+            parse_payment_info(PaymentStrParams {
+                payment_amount: "",
+                payment_hash: happy::HASH,
+                payment_name: "",
+                payment_package_hash: "",
+                payment_package_name: "",
+                payment_path: "",
+                payment_args_simple: vec![],
+                payment_args_complex: missing_file,
+                payment_version: "",
+                payment_entry_point: "entrypoint",
+            }),
+            Err(Error::IoError {
+                context,
+                ..
+            }) if context == format!("error reading payment file at '{}'", missing_file)
         ));
     }
 

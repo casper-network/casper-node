@@ -10,10 +10,10 @@ use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
-    iter,
     marker::Copy,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use ed25519_dalek::{
     ed25519::signature::Signature as _Signature, PUBLIC_KEY_LENGTH as ED25519_PUBLIC_KEY_LENGTH,
@@ -24,7 +24,7 @@ use k256::ecdsa::{
     Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
     VerifyingKey as Secp256k1PublicKey,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -32,6 +32,7 @@ use crate::{
     account::AccountHash,
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex,
     crypto::Error,
     CLType, CLTyped, Tagged,
 };
@@ -70,10 +71,7 @@ where
 {
     /// Converts `self` to hex, where the first byte represents the algorithm tag.
     fn to_hex(&'a self) -> String {
-        let bytes = iter::once(self.tag())
-            .chain(self.into())
-            .collect::<Vec<u8>>();
-        hex::encode(bytes)
+        checksummed_hex::encode(&vec![self.tag()]) + &checksummed_hex::encode(&self.into())
     }
 
     /// Tries to decode `Self` from its hex-representation.  The hex format should be as produced
@@ -84,18 +82,13 @@ where
         }
 
         let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
-        let mut tag = [0u8; 1];
-        hex::decode_to_slice(tag_bytes, tag.as_mut())?;
+
+        let tag = checksummed_hex::decode(&tag_bytes)?;
+        let key_bytes = checksummed_hex::decode(&key_bytes)?;
 
         match tag[0] {
-            ED25519_TAG => {
-                let bytes = hex::decode(key_bytes)?;
-                Self::ed25519_from_bytes(&bytes)
-            }
-            SECP256K1_TAG => {
-                let bytes = hex::decode(key_bytes)?;
-                Self::secp256k1_from_bytes(&bytes)
-            }
+            ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
+            SECP256K1_TAG => Self::secp256k1_from_bytes(&key_bytes),
             _ => Err(Error::AsymmetricKey(format!(
                 "invalid tag.  Expected {} or {}, got {}",
                 ED25519_TAG, SECP256K1_TAG, tag[0]
@@ -114,15 +107,16 @@ where
 }
 
 /// A secret or private asymmetric key.
-#[derive(DataSize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum SecretKey {
     /// System secret key.
     System,
     /// Ed25519 secret key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
+    // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::SecretKey),
     /// secp256k1 secret key.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1SecretKey),
 }
 
@@ -187,15 +181,16 @@ impl Tagged<u8> for SecretKey {
 }
 
 /// A public asymmetric key.
-#[derive(Clone, DataSize, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum PublicKey {
     /// System public key.
     System,
     /// Ed25519 public key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Ed25519(ed25519_dalek::PublicKey),
     /// secp256k1 public key.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1PublicKey),
 }
 
@@ -273,7 +268,7 @@ impl Debug for PublicKey {
             formatter,
             "PublicKey::{}({})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -394,7 +389,7 @@ impl<'de> Deserialize<'de> for PublicKey {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for PublicKey {
     fn schema_name() -> String {
         String::from("PublicKey")
@@ -404,7 +399,8 @@ impl JsonSchema for PublicKey {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
+            "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix."
+                .to_string(),
         );
         schema_object.into()
     }
@@ -417,15 +413,16 @@ impl CLTyped for PublicKey {
 }
 
 /// A signature of given data.
-#[derive(Clone, Copy, DataSize)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum Signature {
     /// System signature.  Cannot be verified.
     System,
     /// Ed25519 signature.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Ed25519(ed25519_dalek::Signature),
     /// Secp256k1 signature.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1Signature),
 }
 
@@ -504,7 +501,7 @@ impl Debug for Signature {
             formatter,
             "Signature::{}({})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(*self))
+            checksummed_hex::encode(&Into::<Vec<u8>>::into(*self))
         )
     }
 }
@@ -646,7 +643,7 @@ impl From<Signature> for Vec<u8> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for Signature {
     fn schema_name() -> String {
         String::from("Signature")
@@ -656,7 +653,8 @@ impl JsonSchema for Signature {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Hex-encoded cryptographic signature, including the algorithm tag prefix.".to_string(),
+            "Checksummed hex-encoded cryptographic signature, including the algorithm tag prefix."
+                .to_string(),
         );
         schema_object.into()
     }

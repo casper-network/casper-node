@@ -6,7 +6,9 @@ use serde::Deserialize;
 use casper_types::{PublicKey, SecretKey};
 
 use crate::{
-    components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
+    components::consensus::{
+        era_supervisor::PAST_OPEN_ERAS, protocols::highway::config::Config as HighwayConfig, EraId,
+    },
     types::Chainspec,
     utils::{External, LoadError, Loadable},
 };
@@ -67,7 +69,7 @@ impl ChainspecConsensusExt for Chainspec {
     fn earliest_open_era(&self, current_era: EraId) -> EraId {
         self.activation_era()
             .successor()
-            .max(current_era.saturating_sub(2))
+            .max(current_era.saturating_sub(PAST_OPEN_ERAS))
     }
 
     fn earliest_switch_block_needed(&self, era_id: EraId) -> EraId {

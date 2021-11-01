@@ -39,8 +39,15 @@ function main() {
     check_network_sync
     do_await_era_change
     check_network_sync
-    # 9. Check for Equivocators
-    assert_no_equivocators_logs
+    # 9. Run Closing Health Checks
+    # ... restarts=1: due to node being stopped and started
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors=0 \
+            equivocators=0 \
+            doppels=0 \
+            crashes=0 \
+            restarts=1 \
+            ejections=0
 
     log "------------------------------------------------------------"
     log "Scenario itst01 complete"

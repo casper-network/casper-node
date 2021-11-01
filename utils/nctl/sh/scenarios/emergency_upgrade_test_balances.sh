@@ -67,6 +67,17 @@ function main() {
         exit 1
     fi
 
+    # 7. Run Closing Health Checks
+    # ... restarts=10: due to nodes being stopped and started
+    # ... crashes=5: expected in an emergency restart scenario?
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors=0 \
+            equivocators=0 \
+            doppels=0 \
+            crashes=5 \
+            restarts=10 \
+            ejections=0
+
     log "------------------------------------------------------------"
     log "Emergency upgrade test ends"
     log "------------------------------------------------------------"

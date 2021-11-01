@@ -12,7 +12,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::shared::newtypes::Blake2bHash;
+use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(test)]
@@ -33,14 +33,14 @@ pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Pointer {
     /// Leaf pointer.
-    LeafPointer(Blake2bHash),
+    LeafPointer(Digest),
     /// Node pointer.
-    NodePointer(Blake2bHash),
+    NodePointer(Digest),
 }
 
 impl Pointer {
     /// Borrows the inner hash from a `Pointer`.
-    pub fn hash(&self) -> &Blake2bHash {
+    pub fn hash(&self) -> &Digest {
         match self {
             Pointer::LeafPointer(hash) => hash,
             Pointer::NodePointer(hash) => hash,
@@ -48,15 +48,15 @@ impl Pointer {
     }
 
     /// Takes ownership of the hash, consuming this `Pointer`.
-    pub fn into_hash(self) -> Blake2bHash {
+    pub fn into_hash(self) -> Digest {
         match self {
             Pointer::LeafPointer(hash) => hash,
             Pointer::NodePointer(hash) => hash,
         }
     }
 
-    /// Creates a new owned `Pointer` with a new `Blake2bHash`.
-    pub fn update(&self, hash: Blake2bHash) -> Self {
+    /// Creates a new owned `Pointer` with a new `Digest`.
+    pub fn update(&self, hash: Digest) -> Self {
         match self {
             Pointer::LeafPointer(_) => Pointer::LeafPointer(hash),
             Pointer::NodePointer(_) => Pointer::NodePointer(hash),
@@ -82,7 +82,7 @@ impl ToBytes for Pointer {
 
     #[inline(always)]
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH + Blake2bHash::LENGTH
+        U8_SERIALIZED_LENGTH + Digest::LENGTH
     }
 }
 
@@ -91,11 +91,11 @@ impl FromBytes for Pointer {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
             0 => {
-                let (hash, rem) = Blake2bHash::from_bytes(rem)?;
+                let (hash, rem) = Digest::from_bytes(rem)?;
                 Ok((Pointer::LeafPointer(hash), rem))
             }
             1 => {
-                let (hash, rem) = Blake2bHash::from_bytes(rem)?;
+                let (hash, rem) = Digest::from_bytes(rem)?;
                 Ok((Pointer::NodePointer(hash), rem))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -473,16 +473,17 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
 pub(crate) mod operations {
     use casper_types::bytesrepr::{self, ToBytes};
 
-    use crate::{shared::newtypes::Blake2bHash, storage::trie::Trie};
+    use crate::storage::trie::Trie;
+    use casper_hashing::Digest;
 
     /// Creates a tuple containing an empty root hash and an empty root (a node
     /// with an empty pointer block)
     pub fn create_hashed_empty_trie<K: ToBytes, V: ToBytes>(
-    ) -> Result<(Blake2bHash, Trie<K, V>), bytesrepr::Error> {
+    ) -> Result<(Digest, Trie<K, V>), bytesrepr::Error> {
         let root: Trie<K, V> = Trie::Node {
             pointer_block: Default::default(),
         };
         let root_bytes: Vec<u8> = root.to_bytes()?;
-        Ok((Blake2bHash::new(&root_bytes), root))
+        Ok((Digest::hash(&root_bytes), root))
     }
 }

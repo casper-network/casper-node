@@ -37,22 +37,24 @@
 //! The following chart illustrates the lifecycle of an outgoing connection.
 //!
 //! ```text
-//!                            learn
-//!                          ┌──────────────  unknown/forgotten
-//!                          │ ┌───────────►  (implicit state)
-//!                          │ │
-//!                          │ │ exceed fail  │
-//!                          │ │ limit        │ block
-//!                          │ │              │
-//!                          │ │              │
-//!                          │ │              ▼
-//!     ┌─────────┐ fail,    │ │        ┌─────────┐
-//!     │         │ sweep    │ │  block │         │
-//!     │ Waiting │◄───────┐ │ │ ┌─────►│ Blocked │◄──────────┐
-//! ┌───┤         │        │ │ │ │      │         │           │
-//! │   └────┬────┘        │ │ │ │      └────┬────┘           │
-//! │ block  │             │ │ │ │           │                │
-//! │        │ timeout     │ ▼ │ │           │ redeem,        │
+//!                   forget (after n tries)
+//!          ┌────────────────────────────────────┐
+//!          │                 learn              ▼
+//!          │               ┌──────────────  unknown/forgotten
+//!          │               │                (implicit state)
+//!          │               │
+//!          │               │                │
+//!          │               │                │ block
+//!          │               │                │
+//!          │               │                │
+//!          │               │                ▼
+//!     ┌────┴────┐          │          ┌─────────┐
+//!     │         │  fail    │    block │         │
+//!     │ Waiting │◄───────┐ │   ┌─────►│ Blocked │◄──────────┐
+//! ┌───┤         │        │ │   │      │         │           │
+//! │   └────┬────┘        │ │   │      └────┬────┘           │
+//! │ block  │             │ │   │           │                │
+//! │        │ timeout     │ ▼   │           │ redeem,        │
 //! │        │        ┌────┴─────┴───┐       │ block timeout  │
 //! │        │        │              │       │                │
 //! │        └───────►│  Connecting  │◄──────┘                │
@@ -699,10 +701,18 @@ where
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
 
-                let failures_so_far: Option<_> = if let Some(outgoing) = self.outgoing.get(&addr) {
+                if let Some(outgoing) = self.outgoing.get(&addr) {
                     match outgoing.state {
                         OutgoingState::Connecting { failures_so_far,.. } => {
-                            Some(failures_so_far + 1)
+                            self.change_outgoing_state(
+                                addr,
+                                OutgoingState::Waiting {
+                                    failures_so_far: failures_so_far + 1,
+                                    error: Some(error),
+                                    last_failure: when,
+                                },
+                            );
+                            None
                         }
                         OutgoingState::Blocked { .. } => {
                             debug!("failed dial outcome after block ignored");
@@ -718,7 +728,6 @@ where
                                 "processing dial outcome on a connection that was not marked as connecting or blocked"
                             );
 
-                            // Ensure we do not override the existing state, return early.
                             None
                         }
                     }
@@ -727,21 +736,7 @@ where
 
                     // If the connection does not exist, do not introduce it!
                     None
-                };
-
-                // If we had actual failure we are going to honor, set the waiting state.
-                if let Some(failures_so_far) = failures_so_far {
-                    self.change_outgoing_state(
-                        addr,
-                        OutgoingState::Waiting {
-                            failures_so_far,
-                            error: Some(error),
-                            last_failure: when,
-                        },
-                    );
                 }
-
-                None
             }
             DialOutcome::Loopback { addr } => {
                 info!("found loopback address");
@@ -869,7 +864,7 @@ mod tests {
         let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
-        let id_a = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1079,9 +1074,9 @@ mod tests {
         // We use `addr_b` as an unforgettable address, which does not mean it cannot be blocked!
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
         let addr_c: SocketAddr = "9.0.1.2:9012".parse().unwrap();
-        let id_a = NodeId::random_tls(&mut rng);
-        let id_b = NodeId::random_tls(&mut rng);
-        let id_c = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
+        let id_b = NodeId::random(&mut rng);
+        let id_c = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1219,8 +1214,8 @@ mod tests {
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
 
-        let id_a = NodeId::random_tls(&mut rng);
-        let id_b = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
+        let id_b = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
@@ -1256,7 +1251,7 @@ mod tests {
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
 
-        let id_a = NodeId::random_tls(&mut rng);
+        let id_a = NodeId::random(&mut rng);
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 

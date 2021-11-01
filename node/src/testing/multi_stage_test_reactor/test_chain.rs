@@ -6,8 +6,7 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, U512};
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
@@ -250,7 +249,7 @@ fn all_have_genesis_state(nodes: &Nodes<MultiStageTestReactor>) -> bool {
             .contract_runtime()
             .map_or(false, move |contract_runtime| {
                 contract_runtime
-                    .trie_store_check(vec![genesis_state_root.into()])
+                    .trie_store_check(vec![genesis_state_root])
                     .expect("Could not read DB")
                     .is_empty()
             })
@@ -513,7 +512,7 @@ async fn test_archival_sync() {
             let missing_tries = reactor
                 .contract_runtime()
                 .expect("must have contract runtime")
-                .trie_store_check(vec![(*block.state_root_hash()).into()])
+                .trie_store_check(vec![*block.state_root_hash()])
                 .expect("must read tries");
             assert_eq!(missing_tries, vec![], "should be no missing tries");
             if let Some(parent_hash) = block.parent() {
@@ -640,7 +639,7 @@ async fn test_joiner_network() {
         .settle_on(
             &mut rng,
             has_passed_by_era(end_era),
-            Duration::from_secs(600),
+            Duration::from_secs(900),
         )
         .await;
 }

@@ -78,35 +78,24 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::error;
 
-use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    NetworkAnnouncement, RpcServerAnnouncement,
-};
 use casper_execution_engine::{
     core::engine_state::{
-        self, era_validators::GetEraValidatorsError, execution_effect::ExecutionEffect,
-        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
-        MAX_PAYMENT,
+        self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
+        GetBidsResult, QueryRequest, QueryResult,
     },
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
 };
+use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    Transfer, U512,
-};
-use requests::{
-    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
+    account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
 };
 
 use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
@@ -114,7 +103,6 @@ use crate::{
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
-    crypto::hash::Digest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
@@ -123,8 +111,18 @@ use crate::{
     },
     utils::Source,
 };
+use announcements::{
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
+};
+use requests::{
+    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest,
+};
 
-use self::announcements::BlocklistAnnouncement;
+use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -166,19 +164,24 @@ impl<T: 'static + Send> Responder<T> {
     }
 }
 
-impl<T> Responder<T> {
+impl<T> Responder<T>
+where
+    T: Debug,
+{
     /// Send `data` to the origin of the request.
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.0.take() {
-            if sender.send(data).is_err() {
-                let backtrace = backtrace::Backtrace::new();
+            if let Err(data) = sender.send(data) {
                 error!(
-                    ?backtrace,
+                    ?data,
                     "could not send response to request down oneshot channel"
                 );
             }
         } else {
-            error!("tried to send a value down a responder channel, but it was already used");
+            error!(
+                ?data,
+                "tried to send a value down a responder channel, but it was already used"
+            );
         }
     }
 }
@@ -200,9 +203,9 @@ impl<T> Drop for Responder<T> {
         if self.0.is_some() {
             // This is usually a very serious error, as another component will now be stuck.
             error!(
-                "{} dropped without being responded to --- \
-                 this is always a bug and will likely cause another component to be stuck!",
-                self
+                responder=?self,
+                "dropped without being responded to --- \
+                 this is always a bug and will likely cause another component to be stuck!"
             );
         }
     }
@@ -393,6 +396,14 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder(event_queue_handle)
     }
 
+    /// Schedules a regular event.
+    pub(crate) async fn schedule_regular<E>(self, event: E)
+    where
+        REv: From<E>,
+    {
+        self.0.schedule(event, QueueKind::Regular).await
+    }
+
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
@@ -430,8 +441,8 @@ impl<REv> EffectBuilder<REv> {
             Err(err) => {
                 // The channel should never be closed, ever. If it is, we pretend nothing happened
                 // though, instead of crashing.
-                error!(%err, ?queue_kind, "request for {} channel closed, this may be a bug? \
-                       check if a component is stuck from now on ", type_name::<T>());
+                error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
+                       check if a component is stuck from now on ");
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
@@ -583,6 +594,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Announces which deploys have expired.
+    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
+    where
+        REv: From<BlockProposerAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
     /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
@@ -698,38 +722,6 @@ impl<REv> EffectBuilder<REv> {
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
             QueueKind::Regular,
         )
-    }
-
-    /// Announce new block has been created.
-    pub(crate) async fn announce_linear_chain_block(
-        self,
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce a committed Step success.
-    pub(crate) async fn announce_step_success(
-        self,
-        era_id: EraId,
-        execution_effect: ExecutionEffect,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
-                QueueKind::Regular,
-            )
-            .await
     }
 
     /// Announce upgrade activation point read.
@@ -915,13 +907,16 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Read a trie by its hash key
-    pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> Option<Trie<Key, StoredValue>>
+    /// Get a trie by its hash key.
+    pub(crate) async fn get_trie(
+        self,
+        trie_key: Digest,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::ReadTrie {
+            |responder| ContractRuntimeRequest::GetTrie {
                 trie_key,
                 responder,
             },
@@ -934,7 +929,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
         trie: Box<Trie<Key, StoredValue>>,
-    ) -> Result<Vec<Blake2bHash>, engine_state::Error>
+    ) -> Result<Vec<Digest>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -948,8 +943,8 @@ impl<REv> EffectBuilder<REv> {
     /// Asynchronously returns any missing descendant trie keys given an ancestor.
     pub(crate) async fn find_missing_descendant_trie_keys(
         self,
-        trie_key: Blake2bHash,
-    ) -> Result<Vec<Blake2bHash>, engine_state::Error>
+        trie_key: Digest,
+    ) -> Result<Vec<Digest>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1049,7 +1044,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a block and sufficient finality signatures from storage.
+    /// Gets a block and sufficient finality signatures from storage.
     pub(crate) async fn get_block_and_sufficient_finality_signatures_by_height_from_storage(
         self,
         block_height: u64,
@@ -1103,7 +1098,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get the highest block with its associated metadata.
+    /// Gets the highest block with its associated metadata.
     pub(crate) async fn get_highest_block_with_metadata_from_storage(
         self,
     ) -> Option<BlockWithMetadata>
@@ -1117,7 +1112,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Fetch an item from a fetcher.
+    /// Fetches an item from a fetcher.
     pub(crate) async fn fetch<T, I>(self, id: T::Id, peer: I) -> FetchResult<T, I>
     where
         REv: From<FetcherRequest<I, T>>,
@@ -1374,29 +1369,75 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_verified_account(self, account_key: Key) -> Option<bool>
+    /// Retrieves an `Account` from global state if present.
+    pub(crate) async fn get_account_from_global_state(
+        self,
+        prestate_hash: Digest,
+        account_key: Key,
+    ) -> Option<Account>
     where
         REv: From<ContractRuntimeRequest>,
-        REv: From<StorageRequest>,
     {
-        if let Some(block) = self.get_highest_block_from_storage().await {
-            let state_hash = (*block.state_root_hash()).into();
-            let query_request = QueryRequest::new(state_hash, account_key, vec![]);
-            if let Ok(QueryResult::Success { value, .. }) =
-                self.query_global_state(query_request).await
-            {
-                if let StoredValue::Account(account) = *value {
-                    let purse_uref = account.main_purse();
-                    let balance_request = BalanceRequest::new(state_hash, purse_uref);
-                    if let Ok(balance_result) = self.get_balance(balance_request).await {
-                        if let Some(motes) = balance_result.motes() {
-                            return Some(motes >= &*MAX_PAYMENT);
-                        }
-                    }
-                }
-            }
+        let query_request = QueryRequest::new(prestate_hash, account_key, vec![]);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
+            Ok(_) | Err(_) => None,
         }
-        None
+    }
+
+    /// Retrieves the balance of a purse, returns `None` if no purse is present.
+    pub(crate) async fn check_purse_balance(
+        self,
+        prestate_hash: Digest,
+        main_purse: URef,
+    ) -> Option<U512>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let balance_request = BalanceRequest::new(prestate_hash, main_purse);
+        match self.get_balance(balance_request).await {
+            Ok(balance_result) => {
+                if let Some(motes) = balance_result.motes() {
+                    return Some(*motes);
+                }
+                None
+            }
+            Err(_) => None,
+        }
+    }
+
+    /// Retrieves an `Contract` from global state if present.
+    pub(crate) async fn get_contract_for_validation(
+        self,
+        prestate_hash: Digest,
+        query_key: Key,
+        path: Vec<String>,
+    ) -> Option<Contract>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => value.as_contract().cloned(),
+            Ok(_) | Err(_) => None,
+        }
+    }
+
+    /// Retrieves an `ContractPackage` from global state if present.
+    pub(crate) async fn get_contract_package_for_validation(
+        self,
+        prestate_hash: Digest,
+        query_key: Key,
+        path: Vec<String>,
+    ) -> Option<ContractPackage>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        match self.query_global_state(query_request).await {
+            Ok(QueryResult::Success { value, .. }) => value.as_contract_package().cloned(),
+            Ok(_) | Err(_) => None,
+        }
     }
 
     /// Requests a query be executed on the Contract Runtime component.
@@ -1467,7 +1508,6 @@ impl<REv> EffectBuilder<REv> {
             // we don't support getting the validators from before the last emergency restart
             return None;
         }
-
         self.get_key_block_header_for_era_id_from_storage(era_id)
             .await
             .and_then(BlockHeader::maybe_take_next_era_validator_weights)
@@ -1528,6 +1568,17 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ConsensusRequest>,
     {
         self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+            .await
+    }
+
+    /// Returns a list of validator status changes, by public key.
+    pub(crate) async fn get_consensus_validator_changes(
+        self,
+    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
             .await
     }
 }

@@ -73,11 +73,20 @@ reactor!(Reactor {
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
-            chainspec_loader.chainspec().clone(),
             chainspec_loader.hard_reset_to_start_of_era(),
+            chainspec_loader.chainspec().protocol_config.version,
             false,
+            &chainspec_loader.chainspec().network_config.name,
+            chainspec_loader
+                .chainspec()
+                .highway_config
+                .finality_threshold_fraction,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .last_emergency_restart,
         );
-        deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
+        deploy_acceptor = DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec(), registry);
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
     }
 
@@ -131,7 +140,7 @@ impl Reactor {
 
                     let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash) {
                         Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
-                        _ => FetchedOrNotFound::NotFound(deploy_hash),
+                        Ok(None) | Err(_) => FetchedOrNotFound::NotFound(deploy_hash),
                     };
 
                     match Message::new_get_response(&fetched_or_not_found_deploy) {
@@ -176,7 +185,7 @@ impl Reactor {
                         ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
-                            responder: None,
+                            maybe_responder: None,
                         }),
                     )
                 }
@@ -302,7 +311,8 @@ async fn assert_settled(
             ExpectedFetchedDeployResult::FromStorage { expected_deploy },
             Some(Ok(FetchedData::FromStorage { item })),
             Some(stored_deploy),
-        ) if expected_deploy == item && stored_deploy == *item => {}
+        ) if expected_deploy.equals_ignoring_is_valid(&*item)
+            && stored_deploy.equals_ignoring_is_valid(&*item) => {}
         // FromPeer case: deploys should correspond, storage should be present and correspond, and
         // peers should correspond.
         (
@@ -312,7 +322,9 @@ async fn assert_settled(
             },
             Some(Ok(FetchedData::FromPeer { item, peer })),
             Some(stored_deploy),
-        ) if expected_deploy == item && stored_deploy == *item && expected_peer == peer => {}
+        ) if expected_deploy.equals_ignoring_is_valid(&*item)
+            && stored_deploy.equals_ignoring_is_valid(&*item)
+            && expected_peer == peer => {}
         // Sad path case
         (expected_result, actual_fetcher_result, maybe_stored_deploy) => {
             panic!(
@@ -336,7 +348,7 @@ async fn should_fetch_from_local() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_to_store_on = &node_ids[0];
@@ -356,7 +368,6 @@ async fn should_fetch_from_local() {
     let expected_result = ExpectedFetchedDeployResult::FromStorage {
         expected_deploy: Box::new(deploy),
     };
-
     assert_settled(
         &node_id,
         deploy_hash,
@@ -384,7 +395,7 @@ async fn should_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
 
     // Store deploy on a node.
     let node_with_deploy = node_ids[0];
@@ -406,7 +417,6 @@ async fn should_fetch_from_peer() {
         expected_deploy: Box::new(deploy),
         expected_peer: node_with_deploy,
     };
-
     assert_settled(
         &node_without_deploy,
         deploy_hash,
@@ -434,7 +444,7 @@ async fn should_timeout_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut rng);
     let deploy_hash = *deploy.id();
 
     let holding_node = node_ids[0];
