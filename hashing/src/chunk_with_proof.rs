@@ -51,24 +51,31 @@ impl ChunkWithProof {
     ///
     /// Empty data is always represented as single, empty chunk and not as zero chunks.
     pub fn new(data: &[u8], index: u64) -> Result<Self, MerkleConstructionError> {
-        let (proof, chunk) = if data.is_empty() {
-            (
+        let (proof, chunk) = match data.is_empty() {
+            true if index > 0 => {
+                return Err(MerkleConstructionError::IndexOutOfBounds { count: 1, index });
+            }
+            false if index >= data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64 => {
+                return Err(MerkleConstructionError::IndexOutOfBounds {
+                    count: data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64,
+                    index,
+                })
+            }
+            true => (
                 IndexedMerkleProof::new([Digest::hash(&[])], index)?,
                 Bytes::new(),
-            )
-        } else {
-            (
+            ),
+            false => (
                 IndexedMerkleProof::new(
                     data.chunks(Self::CHUNK_SIZE_BYTES).map(Digest::hash),
                     index,
                 )?,
                 Bytes::from(
-                    &data[Self::CHUNK_SIZE_BYTES * (index as usize)
-                        ..data
-                            .len()
-                            .min(Self::CHUNK_SIZE_BYTES * ((index as usize) + 1))],
+                    data.chunks(Self::CHUNK_SIZE_BYTES)
+                        .nth(index as usize)
+                        .unwrap(), // We're safe to unwrap() because index is validated above
                 ),
-            )
+            ),
         };
 
         Ok(ChunkWithProof { proof, chunk })
