@@ -145,7 +145,7 @@ pub fn serialize(t: impl ToBytes) -> Result<Vec<u8>, Error> {
 }
 
 /// Safely splits the slice at the given point.
-pub fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
+pub(crate) fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
     if n > bytes.len() {
         Err(Error::EarlyEndOfStream)
     } else {
