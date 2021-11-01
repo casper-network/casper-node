@@ -15,9 +15,7 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{
- execution_result::ExecutionResult, EngineConfig,
-        },
+        engine_state::{execution_result::ExecutionResult, EngineConfig},
         execution::{address_generator::AddressGenerator, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
         runtime_context::{self, RuntimeContext},
