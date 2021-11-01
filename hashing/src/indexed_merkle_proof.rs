@@ -207,11 +207,11 @@ mod test {
     use proptest_attr_macro::proptest;
     use rand::{distributions::Standard, Rng};
 
-    use casper_types::bytesrepr::{FromBytes, ToBytes};
+    use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
     use crate::{error, indexed_merkle_proof::IndexedMerkleProof, Digest};
 
-    fn dummy_indexed_merkle_proof() -> IndexedMerkleProof {
+    fn random_indexed_merkle_proof() -> IndexedMerkleProof {
         let mut rng = rand::thread_rng();
         let leaf_count: u64 = rng.gen_range(1..100);
         let index = rng.gen_range(0..leaf_count);
@@ -468,39 +468,7 @@ mod test {
 
     #[test]
     fn bytesrepr_serialization() {
-        let original_indexed_merkle_proof = dummy_indexed_merkle_proof();
-
-        let bytes = original_indexed_merkle_proof
-            .to_bytes()
-            .expect("should serialize correctly");
-
-        let (deserialized_indexed_merkle_proof, remainder) =
-            IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
-
-        assert_eq!(
-            original_indexed_merkle_proof,
-            deserialized_indexed_merkle_proof
-        );
-        assert!(remainder.is_empty());
-    }
-
-    #[test]
-    fn bytesrepr_serialization_with_remainder() {
-        let original_indexed_merkle_proof = dummy_indexed_merkle_proof();
-
-        let mut bytes = original_indexed_merkle_proof
-            .to_bytes()
-            .expect("should serialize correctly");
-        bytes.push(0xFF);
-
-        let (deserialized_indexed_merkle_proof, remainder) =
-            IndexedMerkleProof::from_bytes(&bytes).expect("should deserialize correctly");
-
-        assert_eq!(
-            original_indexed_merkle_proof,
-            deserialized_indexed_merkle_proof
-        );
-        assert_eq!(remainder.first().unwrap(), &0xFF);
-        assert_eq!(remainder.len(), 1);
+        let indexed_merkle_proof = random_indexed_merkle_proof();
+        bytesrepr::test_serialization_roundtrip(&indexed_merkle_proof);
     }
 }
