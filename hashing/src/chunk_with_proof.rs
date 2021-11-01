@@ -110,7 +110,7 @@ mod test {
     use proptest_attr_macro::proptest;
     use rand::Rng;
 
-    use casper_types::bytesrepr::{FromBytes, ToBytes};
+    use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
     use crate::{chunk_with_proof::ChunkWithProof, error::MerkleConstructionError, Digest};
 
@@ -118,6 +118,14 @@ mod test {
         let mut rng = rand::thread_rng();
 
         (0..length).into_iter().map(|_| rng.gen()).collect()
+    }
+
+    fn random_chunk_with_proof() -> ChunkWithProof {
+        let mut rng = rand::thread_rng();
+        let data: Vec<u8> = prepare_bytes(rng.gen_range(1..1024));
+        let index = rng.gen_range(0..data.chunks(ChunkWithProof::CHUNK_SIZE_BYTES).len() as u64);
+
+        ChunkWithProof::new(&data, index).unwrap()
     }
 
     impl ChunkWithProof {
@@ -290,34 +298,8 @@ mod test {
 
     #[test]
     fn bytesrepr_serialization() {
-        let original_chunk_with_proof = ChunkWithProof::new(b"ABCDEF123456", 1).unwrap();
-
-        let bytes = original_chunk_with_proof
-            .to_bytes()
-            .expect("should serialize correctly");
-
-        let (deserialized_chunk_with_proof, remainder) =
-            ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly");
-
-        assert_eq!(original_chunk_with_proof, deserialized_chunk_with_proof);
-        assert!(remainder.is_empty());
-    }
-
-    #[test]
-    fn bytesrepr_serialization_with_remainder() {
-        let original_chunk_with_proof = ChunkWithProof::new(b"ABCDEF123456", 1).unwrap();
-
-        let mut bytes = original_chunk_with_proof
-            .to_bytes()
-            .expect("should serialize correctly");
-        bytes.push(0xFF);
-
-        let (deserialized_chunk_with_proof, remainder) =
-            ChunkWithProof::from_bytes(&bytes).expect("should deserialize correctly");
-
-        assert_eq!(original_chunk_with_proof, deserialized_chunk_with_proof);
-        assert_eq!(remainder.first().unwrap(), &0xFF);
-        assert_eq!(remainder.len(), 1);
+        let chunk_with_proof = random_chunk_with_proof();
+        bytesrepr::test_serialization_roundtrip(&chunk_with_proof);
     }
 
     #[test]
