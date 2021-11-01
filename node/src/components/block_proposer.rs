@@ -175,17 +175,35 @@ where
                     cached_state,
                 },
             ) => {
+                let (sets, pruned_hashes) = BlockProposerDeploySets::new(
+                    finalized_deploys,
+                    next_finalized_block,
+                    cached_state,
+                );
+
                 let mut new_ready_state = BlockProposerReady {
-                    sets: BlockProposerDeploySets::new(
-                        finalized_deploys,
-                        next_finalized_block,
-                        cached_state,
-                    ),
+                    sets,
                     unhandled_finalized: Default::default(),
                     deploy_config: *deploy_config,
                     request_queue: Default::default(),
                     local_config: local_config.clone(),
                 };
+
+                // Announce pruned hashes.
+                let pruned_count = pruned_hashes.total_pruned;
+                debug!(%pruned_count, "pruned deploys from buffer on loading");
+                effects.extend(
+                    effect_builder
+                        .announce_expired_deploys(pruned_hashes.expired_hashes_to_be_announced)
+                        .ignore(),
+                );
+
+                // After pruning, we store a state snapshot.
+                effects.extend(
+                    effect_builder
+                        .save_state(STATE_KEY.into(), CachedState::from(&new_ready_state.sets))
+                        .ignore(),
+                );
 
                 // Replay postponed events onto new state.
                 for ev in pending.drain(..) {
@@ -194,8 +212,12 @@ where
 
                 self.state = BlockProposerState::Ready(new_ready_state);
 
-                // Start pruning deploys.
-                effects.extend(effect_builder.immediately().event(|_| Event::Prune));
+                // Start pruning deploys after a delay.
+                effects.extend(
+                    effect_builder
+                        .set_timeout(PRUNE_INTERVAL)
+                        .event(|_| Event::Prune),
+                );
             }
             (
                 BlockProposerState::Initializing {

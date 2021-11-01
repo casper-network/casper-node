@@ -52,7 +52,7 @@ impl BlockProposerDeploySets {
         finalized_deploys: Vec<(DeployHash, DeployHeader)>,
         next_finalized_height: u64,
         cached_state: CachedState,
-    ) -> BlockProposerDeploySets {
+    ) -> (BlockProposerDeploySets, PruneResult) {
         let finalized_deploys: HashMap<_, _> = finalized_deploys.into_iter().collect();
 
         let CachedState {
@@ -62,13 +62,15 @@ impl BlockProposerDeploySets {
         pending_deploys.retain(|hash, _| !finalized_deploys.contains_key(hash));
         pending_transfers.retain(|hash, _| !finalized_deploys.contains_key(hash));
 
-        BlockProposerDeploySets {
+        let mut sets = BlockProposerDeploySets {
             pending_deploys,
             pending_transfers,
             finalized_deploys,
             next_finalized: next_finalized_height,
             ..Default::default()
-        }
+        };
+        let prune_result = sets.prune(Timestamp::now());
+        (sets, prune_result)
     }
 
     /// Prunes expired deploy information from the BlockProposerState, returns the
