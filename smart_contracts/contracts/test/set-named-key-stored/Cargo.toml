@@ -1,0 +1,16 @@
+[package]
+name = "set-named-key-stored"
+version = "0.1.0"
+authors = ["Austin Buddington <austin@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "set_named_key_stored"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }
