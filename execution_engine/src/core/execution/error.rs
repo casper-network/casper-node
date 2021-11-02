@@ -156,6 +156,9 @@ pub enum Error {
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
+    /// Host function reached depth limit.
+    #[error("Host function depth limit")]
+    HostFunctionDepthLimit,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

@@ -8,12 +8,10 @@ mod scoped_instrumenter;
 mod standard_payment_internal;
 
 use std::{
-    cell::RefCell,
     cmp,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryFrom,
     iter::IntoIterator,
-    rc::Rc,
 };
 
 use itertools::Itertools;
@@ -53,7 +51,7 @@ use crate::{
     },
     shared::{
         host_function_costs::{Cost, HostFunction},
-        scoped_guard::ScopedCountingGuard,
+        scoped_guard::{ScopedCounter, ScopedCountingGuard},
         wasm_config::WasmConfig,
     },
     storage::global_state::StateReader,
@@ -69,7 +67,7 @@ pub struct Runtime<'a, R> {
     call_stack: Vec<CallStackElement>,
     /// Value larger than 0 indicates executing under host function context, so we don't need to
     /// charge for system contracts.
-    host_function_counter: Rc<RefCell<i32>>,
+    host_function_call_depth: ScopedCounter<u64>,
 }
 
 /// Creates an WASM module instance and a memory instance.
@@ -990,7 +988,7 @@ where
         module: Module,
         context: RuntimeContext<'a, R>,
         call_stack: Vec<CallStackElement>,
-        host_function_counter: Rc<RefCell<i32>>,
+        host_function_call_depth: ScopedCounter<u64>,
     ) -> Self {
         // Preconditions that would render the system inconsistent if violated. Those are strictly
         // programming errors.
@@ -1011,7 +1009,7 @@ where
             host_buffer: None,
             context,
             call_stack,
-            host_function_counter,
+            host_function_call_depth,
         }
     }
 
@@ -1053,7 +1051,7 @@ where
     where
         T: Into<Gas>,
     {
-        if *self.host_function_counter.borrow() > 0 || self.is_system_immediate_caller()? {
+        if self.host_function_call_depth.is_set() || self.is_system_immediate_caller()? {
             // This avoids charging the user in situation when the runtime is in the middle of
             // handling a host function call or a system contract calls other system contract.
             return Ok(());
@@ -1487,7 +1485,7 @@ where
             self.module.clone(),
             mint_context,
             call_stack,
-            Rc::clone(&self.host_function_counter),
+            self.host_function_call_depth.clone(),
         );
 
         let system_config = self.config.system_config();
@@ -1634,7 +1632,7 @@ where
             self.module.clone(),
             runtime_context,
             call_stack,
-            Rc::clone(&self.host_function_counter),
+            self.host_function_call_depth.clone(),
         );
 
         let system_config = self.config.system_config();
@@ -1765,7 +1763,7 @@ where
             self.module.clone(),
             runtime_context,
             call_stack,
-            Rc::clone(&self.host_function_counter),
+            self.host_function_call_depth.clone(),
         );
 
         let system_config = self.config.system_config();
@@ -2270,7 +2268,7 @@ where
             call_stack,
             // When creating a new runtime we don't pass current host function counter to make sure
             // stored contract does not inherit the value.
-            host_function_counter: Default::default(),
+            host_function_call_depth: Default::default(),
         };
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
@@ -3016,7 +3014,7 @@ where
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
-        let _scoped_host_function_guard = self.enter_host_function_scope();
+        let _scoped_host_function_guard = self.enter_host_function_scope()?;
 
         self.mint_create(self.get_mint_contract()?)
     }
@@ -3122,7 +3120,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
-        let _scoped_host_function_guard = self.enter_host_function_scope();
+        let _scoped_host_function_guard = self.enter_host_function_scope()?;
 
         let source = self.context.get_main_purse()?;
         self.transfer_from_purse_to_account(source, target, amount, id)
@@ -3703,9 +3701,9 @@ where
     /// Enters into a host function processing mode.
     ///
     /// This increases internal counter and returns a scoped the counter will be decrased.
-    #[must_use]
-    fn enter_host_function_scope(&self) -> ScopedCountingGuard {
-        ScopedCountingGuard::new(&self.host_function_counter)
+    fn enter_host_function_scope(&self) -> Result<ScopedCountingGuard<u64>, Error> {
+        ScopedCountingGuard::enter(&self.host_function_call_depth)
+            .ok_or(Error::HostFunctionDepthLimit)
     }
 }
 

@@ -1,23 +1,75 @@
 //! Implementation of scoped guards for various tasks.
 use std::{cell::RefCell, rc::Rc};
 
-/// When created it increases a counter, and decreases it when dropped.
-pub(crate) struct ScopedCountingGuard {
-    shared_value: Rc<RefCell<i32>>,
-}
+use num::{CheckedAdd, CheckedSub, One, Zero};
 
-impl ScopedCountingGuard {
-    #[must_use]
-    pub(crate) fn new(shared_value: &Rc<RefCell<i32>>) -> Self {
-        shared_value.replace_with(|&mut value| value + 1);
-        let shared_value = Rc::clone(shared_value);
-        Self { shared_value }
+/// A generic counting flag used by the [`ScopedCountingGuard`].
+#[derive(Default, Clone)]
+pub struct ScopedCounter<T>(Rc<RefCell<T>>);
+
+impl<T: PartialOrd + Copy + Zero> ScopedCounter<T> {
+    pub(crate) fn count(&self) -> T {
+        *self.0.borrow()
+    }
+
+    pub(crate) fn is_set(&self) -> bool {
+        self.count() > T::zero()
     }
 }
 
-impl Drop for ScopedCountingGuard {
+impl<T: CheckedSub<Output = T> + CheckedAdd<Output = T> + One + Copy> ScopedCounter<T> {
+    /// Increments counter and returns previous value.
+    ///
+    /// Returns None in case of overflow.
+    fn increase(&self) -> Option<T> {
+        let mut value = self.0.borrow_mut();
+        let old_value = *value;
+        *value = value.checked_add(&T::one())?;
+        Some(old_value)
+    }
+
+    /// Decreases internal counter and returns previous value.
+    fn decrease(&self) -> Option<T> {
+        let mut value = self.0.borrow_mut();
+        let old_value = *value;
+        *value = value.checked_sub(&T::one())?;
+        Some(old_value)
+    }
+}
+
+/// When created it increases a counter, and decreases it when dropped.
+/// Counter should never be manipulated manually
+pub(crate) struct ScopedCountingGuard<T>
+where
+    T: CheckedAdd<Output = T> + CheckedSub<Output = T> + One + Copy,
+{
+    shared_value: ScopedCounter<T>,
+}
+
+impl<T> ScopedCountingGuard<T>
+where
+    T: CheckedAdd<Output = T> + CheckedSub<Output = T> + One + Copy,
+{
+    #[must_use]
+    pub(crate) fn enter(shared_value: &ScopedCounter<T>) -> Option<Self> {
+        let shared_value = shared_value.clone();
+        shared_value.increase()?;
+        Some(Self { shared_value })
+    }
+
+    fn exit(&mut self) {
+        // SAFETY: Types are constrained and call to `exit` occurs only when Drop is called which
+        // implies counter was increased before.
+        self.shared_value.decrease().expect("assumed to never fail");
+    }
+}
+
+impl<T> Drop for ScopedCountingGuard<T>
+where
+    T: CheckedAdd<Output = T> + CheckedSub<Output = T> + One + Copy,
+{
     fn drop(&mut self) {
-        *self.shared_value.borrow_mut() -= 1;
+        self.exit();
     }
 }
 
@@ -27,23 +79,36 @@ mod tests {
 
     #[test]
     fn scoping_test() {
-        let value = Rc::new(RefCell::new(0i32));
-        {
-            assert_eq!(*value.borrow(), 0);
+        let counter = ScopedCounter::<i64>::default();
 
-            let _guard = ScopedCountingGuard::new(&value);
+        {
+            assert_eq!(counter.count(), 0);
+
+            let _guard = ScopedCountingGuard::enter(&counter).expect("should enter");
 
             {
-                assert_eq!(*value.borrow(), 1);
+                assert_eq!(counter.count(), 1);
 
-                let _guard = ScopedCountingGuard::new(&value);
+                let _guard = ScopedCountingGuard::enter(&counter).expect("should enter");
 
-                assert_eq!(*value.borrow(), 2);
+                assert_eq!(counter.count(), 2);
             }
 
-            assert_eq!(*value.borrow(), 1);
+            {
+                let passed_counter = counter.clone();
+
+                assert_eq!(passed_counter.count(), 1);
+
+                let guard = ScopedCountingGuard::enter(&passed_counter).expect("should enter");
+
+                let _moved_guard = guard;
+
+                assert_eq!(passed_counter.count(), 2);
+            }
+
+            assert_eq!(counter.count(), 1);
         }
 
-        assert_eq!(*value.borrow(), 0);
+        assert_eq!(counter.count(), 0);
     }
 }
