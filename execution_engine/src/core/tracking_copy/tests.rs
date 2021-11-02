@@ -16,12 +16,8 @@ use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
 use crate::{
-    core::{
-        engine_state::{op::Op, EngineConfig},
-        runtime_context::dictionary,
-        ValidationError,
-    },
-    shared::{newtypes::CorrelationId, transform::Transform},
+    core::{engine_state::EngineConfig, runtime_context::dictionary, ValidationError},
+    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId, transform::Transform},
     storage::{
         global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
         trie::merkle_proof::TrieMerkleProof,
@@ -88,7 +84,7 @@ fn tracking_copy_new() {
     let db = CountingDb::new(counter);
     let tc = TrackingCopy::new(db);
 
-    assert!(tc.ops.is_empty());
+    assert!(tc.journal.is_empty());
 }
 
 #[test]
@@ -124,13 +120,10 @@ fn tracking_copy_read() {
     let value = tc.read(correlation_id, &k).unwrap().unwrap();
     // value read correctly
     assert_eq!(value, zero);
-    // read does produce an op
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Read));
     // Reading does produce an identity transform.
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal),
-        &[(k, Transform::Identity)]
+        tc.journal,
+        ExecutionJournal::new(vec![(k, Transform::Identity)])
     );
 }
 
@@ -149,24 +142,19 @@ fn tracking_copy_write() {
     // write does not need to query the DB
     let db_value = counter.get();
     assert_eq!(db_value, 0);
-    // write creates an Op
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Write));
     // Writing creates a write transform.
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal.clone()),
-        &[(k, Transform::Write(one.clone()))]
+        tc.journal,
+        ExecutionJournal::new(vec![(k, Transform::Write(one.clone()))])
     );
 
     // writing again should update the values
     tc.write(k, two.clone());
     let db_value = counter.get();
     assert_eq!(db_value, 0);
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Write));
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal),
-        &[(k, Transform::Write(one)), (k, Transform::Write(two))]
+        tc.journal,
+        ExecutionJournal::new(vec![(k, Transform::Write(one)), (k, Transform::Write(two))])
     );
 }
 
@@ -184,24 +172,18 @@ fn tracking_copy_add_i32() {
     let add = tc.add(correlation_id, k, three.clone());
     assert_matches!(add, Ok(_));
 
-    // add creates an Op
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Add));
-
     // Adding creates an add transform.
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal.clone()),
-        &[(k, Transform::AddInt32(3))]
+        tc.journal,
+        ExecutionJournal::new(vec![(k, Transform::AddInt32(3))])
     );
 
     // adding again should update the values
     let add = tc.add(correlation_id, k, three);
     assert_matches!(add, Ok(_));
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Add));
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal),
-        &[(k, Transform::AddInt32(3)), (k, Transform::AddInt32(3))]
+        tc.journal,
+        ExecutionJournal::new(vec![(k, Transform::AddInt32(3)); 2])
     );
 }
 
@@ -238,35 +220,29 @@ fn tracking_copy_add_named_key() {
         StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
     );
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
-    assert!(tc.ops.is_empty());
     assert!(tc.journal.is_empty());
 
     // adding correct type works
     let add = tc.add(correlation_id, k, named_key);
     assert_matches!(add, Ok(_));
-    // add creates an Op
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Add));
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal.clone()),
-        &[(
+        tc.journal,
+        ExecutionJournal::new(vec![(
             k,
             Transform::AddKeys(iter::once((name1.clone(), u1)).collect())
-        )]
+        )])
     );
 
     // adding again updates the values
     map.insert(name2.clone(), u2);
     let add = tc.add(correlation_id, k, other_named_key);
     assert_matches!(add, Ok(_));
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Add));
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal),
-        &[
+        tc.journal,
+        ExecutionJournal::new(vec![
             (k, Transform::AddKeys(iter::once((name1, u1)).collect())),
             (k, Transform::AddKeys(iter::once((name2, u2)).collect()))
-        ]
+        ])
     );
 }
 
@@ -282,11 +258,9 @@ fn tracking_copy_rw() {
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let _ = tc.read(correlation_id, &k);
     tc.write(k, value.clone());
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Write));
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal),
-        &[(k, Transform::Identity), (k, Transform::Write(value))]
+        tc.journal,
+        ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::Write(value))])
     );
 }
 
@@ -302,12 +276,9 @@ fn tracking_copy_ra() {
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let _ = tc.read(correlation_id, &k);
     let _ = tc.add(correlation_id, k, value);
-    assert_eq!(tc.ops.len(), 1);
-    // this Op is correct because Read+Add = Write
-    assert_eq!(tc.ops.get(&k), Some(&Op::Write));
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal),
-        &[(k, Transform::Identity), (k, Transform::AddInt32(3))]
+        tc.journal,
+        ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::AddInt32(3))])
     );
 }
 
@@ -324,14 +295,12 @@ fn tracking_copy_aw() {
     let write_value = StoredValue::CLValue(CLValue::from_t(7_i32).unwrap());
     let _ = tc.add(correlation_id, k, value);
     tc.write(k, write_value.clone());
-    assert_eq!(tc.ops.len(), 1);
-    assert_eq!(tc.ops.get(&k), Some(&Op::Write));
     assert_eq!(
-        Into::<Vec<_>>::into(tc.journal),
-        &[
+        tc.journal,
+        ExecutionJournal::new(vec![
             (k, Transform::AddInt32(3)),
             (k, Transform::Write(write_value))
-        ]
+        ])
     );
 }
 

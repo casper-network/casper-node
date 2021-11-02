@@ -1117,8 +1117,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result =
-                session_result.with_journal(tracking_copy.borrow_mut().execution_journal())
+            session_result = session_result.with_journal(tracking_copy.borrow().execution_journal())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();

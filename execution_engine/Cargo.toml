@@ -17,7 +17,6 @@ casper-hashing = { version = "1.0.0", path = "../hashing" }
 casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema"] }
 chrono = "0.4.10"
 datasize = "0.2.4"
-derive_more = "0.99"
 hex-buffer-serde = "0.2.1"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"

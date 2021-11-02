@@ -1,18 +1,17 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
 };
 
 use serde::Serialize;
 
+use casper_execution_engine::shared::execution_journal::ExecutionJournal;
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
     effect::{announcements::LinearChainBlock, EffectBuilder},
     types::{Block, DeployHash, DeployHeader},
 };
-use casper_execution_engine::shared::execution_journal::ExecutionJournal;
-use std::collections::BTreeMap;
 
 /// A ContractRuntime announcement.
 #[derive(Debug, Serialize)]
@@ -85,7 +84,7 @@ pub(super) async fn step_success<REv>(
     effect_builder
         .schedule_regular(ContractRuntimeAnnouncement::StepSuccess {
             era_id,
-            execution_effect: execution_journal.into(),
+            execution_effect: (&execution_journal).into(),
         })
         .await
 }

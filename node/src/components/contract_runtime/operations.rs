@@ -172,7 +172,7 @@ fn commit_execution_effects(
         .into_iter()
         .exactly_one()
         .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-    let json_execution_result = ExecutionResult::from(ee_execution_result.clone());
+    let json_execution_result = ExecutionResult::from(&ee_execution_result);
 
     let execution_effect: AdditiveMap<Key, Transform> = match ee_execution_result {
         EngineExecutionResult::Success {

@@ -23,12 +23,8 @@ pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
 use super::engine_state::EngineConfig;
 use crate::{
-    core::{
-        engine_state::{execution_effect::ExecutionEffect, op::Op},
-        runtime_context::dictionary,
-    },
+    core::{engine_state::execution_effect::ExecutionEffect, runtime_context::dictionary},
     shared::{
-        additive_map::AdditiveMap,
         execution_journal::ExecutionJournal,
         newtypes::CorrelationId,
         transform::{self, Transform},
@@ -214,7 +210,6 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
-    ops: AdditiveMap<Key, Op>,
     journal: ExecutionJournal,
 }
 
@@ -247,7 +242,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             /* TODO: Should `max_cache_size`
              * be fraction of wasm memory
              * limit? */
-            ops: AdditiveMap::new(),
             journal: Default::default(),
         }
     }
@@ -318,7 +312,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     ) -> Result<Option<StoredValue>, R::Error> {
         let normalized_key = key.normalize();
         if let Some(value) = self.get(correlation_id, &normalized_key)? {
-            self.ops.insert_add(normalized_key, Op::Read);
             self.journal.push((normalized_key, Transform::Identity));
             Ok(Some(value))
         } else {
@@ -329,9 +322,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub fn write(&mut self, key: Key, value: StoredValue) {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
-        self.ops.insert_add(normalized_key, Op::Write);
-        let transform = Transform::Write(value);
-        self.journal.push((normalized_key, transform));
+        self.journal.push((normalized_key, Transform::Write(value)));
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.
@@ -400,7 +391,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         match transform.clone().apply(current_value) {
             Ok(new_value) => {
                 self.cache.insert_write(normalized_key, new_value);
-                self.ops.insert_add(normalized_key, Op::Add);
                 self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
             }

@@ -576,12 +576,12 @@ where
 
     /// Returns current effects of a tracking copy.
     pub fn effect(&self) -> ExecutionEffect {
-        self.tracking_copy.borrow_mut().effect()
+        self.tracking_copy.borrow().effect()
     }
 
     /// Returns an `ExecutionJournal`.
     pub fn execution_journal(&self) -> ExecutionJournal {
-        self.tracking_copy.borrow_mut().execution_journal()
+        self.tracking_copy.borrow().execution_journal()
     }
 
     /// Returns list of transfers.
