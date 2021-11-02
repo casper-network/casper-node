@@ -13,6 +13,7 @@ use std::{
     borrow::Borrow,
     collections::HashMap,
     hash::Hash,
+    mem,
     sync::{Arc, Weak},
 };
 
@@ -21,10 +22,15 @@ use datasize::DataSize;
 /// A pool of items/objects.
 ///
 /// Maintains a pool of weak references and automatically purges them in configurable intervals.
-#[derive(DataSize, Debug)]
+///
+/// # DataSize
+///
+/// Typically shared references like `Arc`s are not counted when using `DataSize`, however
+/// `ObjectPool` counts its items in "regular" manner, as it is assumed to be the virtual owner.
+
+#[derive(Debug)]
 pub(super) struct ObjectPool<I> {
     /// The actual object pool.
-    #[data_size(skip)]
     items: HashMap<I, Weak<[u8]>>,
     /// Interval for garbage collection, will remove dead references on every n-th `put()`.
     garbage_collect_interval: u16,
@@ -40,6 +46,36 @@ impl<I> ObjectPool<I> {
             garbage_collect_interval,
             put_count: 0,
         }
+    }
+}
+
+// Note: There is currently a design issue in the `datasize` crate where it does not gracefully
+//       handle unsized types like slices, thus the derivation for any implementation of `DataSize
+//       for Box<[T]>` based on `DataSize for Box<T>` and `DataSize for [T]` is bound to be
+//       incorrect.
+//
+//       Since we currently only use very few different `T`s for `ObjectPool<T>`, we opt to
+//       implement it manually here and gain a chance to optimize as well.
+impl DataSize for ObjectPool<Box<[u8]>> {
+    const IS_DYNAMIC: bool = true;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        // See https://docs.rs/datasize/0.2.9/src/datasize/std.rs.html#213-224 for details.
+        let base = self.items.capacity()
+            * (mem::size_of::<Box<[u8]>>()
+                + mem::size_of::<Weak<[u8]>>()
+                + mem::size_of::<usize>());
+
+        self.items
+            .iter()
+            .map(|(key, value)| {
+                // Unfortunately we have to check every instance by upgrading.
+                let value_size = value.upgrade().map(|v| v.len()).unwrap_or_default();
+                key.len() + value_size
+            })
+            .sum()
     }
 }
 
