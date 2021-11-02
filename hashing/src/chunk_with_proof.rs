@@ -51,34 +51,33 @@ impl ChunkWithProof {
     ///
     /// Empty data is always represented as single, empty chunk and not as zero chunks.
     pub fn new(data: &[u8], index: u64) -> Result<Self, MerkleConstructionError> {
-        let (proof, chunk) = match data.is_empty() {
-            true if index > 0 => {
+        Ok(if data.is_empty() {
+            if index > 0 {
                 return Err(MerkleConstructionError::IndexOutOfBounds { count: 1, index });
             }
-            false if index >= data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64 => {
+            ChunkWithProof {
+                proof: IndexedMerkleProof::new([Digest::hash(&[])], index)?,
+                chunk: Bytes::new(),
+            }
+        } else {
+            if index >= data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64 {
                 return Err(MerkleConstructionError::IndexOutOfBounds {
                     count: data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64,
                     index,
-                })
+                });
             }
-            true => (
-                IndexedMerkleProof::new([Digest::hash(&[])], index)?,
-                Bytes::new(),
-            ),
-            false => (
-                IndexedMerkleProof::new(
+            ChunkWithProof {
+                proof: IndexedMerkleProof::new(
                     data.chunks(Self::CHUNK_SIZE_BYTES).map(Digest::hash),
                     index,
                 )?,
-                Bytes::from(
+                chunk: Bytes::from(
                     data.chunks(Self::CHUNK_SIZE_BYTES)
                         .nth(index as usize)
                         .unwrap(), // We're safe to unwrap() because index is validated above
                 ),
-            ),
-        };
-
-        Ok(ChunkWithProof { proof, chunk })
+            }
+        })
     }
 
     /// Get a reference to the `ChunkWithProof`'s chunk.
