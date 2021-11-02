@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
+    core::engine_state::{EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH},
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
@@ -117,13 +117,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     assert_eq!(gas_cost_1, gas_cost_2);
 
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .build()
-    };
+    let mut upgrade_request = make_upgrade_request();
 
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
@@ -140,13 +134,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
-        OpcodeCosts::default(),
-        StorageCosts::default(),
-        new_host_function_costs,
-    );
+    let new_wasm_config = make_wasm_config(new_host_function_costs);
 
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
@@ -155,20 +143,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         ..Default::default()
     };
 
-    let new_system_config = SystemConfig::new(
-        DEFAULT_WASMLESS_TRANSFER_COST,
-        AuctionCosts::default(),
-        new_mint_costs,
-        HandlePaymentCosts::default(),
-        StandardPaymentCosts::default(),
-    );
-
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        new_wasm_config,
-        new_system_config,
-    );
+    let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
@@ -260,13 +235,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
 
     assert_eq!(gas_cost_1, gas_cost_2);
 
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .build()
-    };
+    let mut upgrade_request = make_upgrade_request();
 
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
@@ -283,13 +252,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
-        OpcodeCosts::default(),
-        StorageCosts::default(),
-        new_host_function_costs,
-    );
+    let new_wasm_config = make_wasm_config(new_host_function_costs);
 
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
@@ -298,20 +261,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         ..Default::default()
     };
 
-    let new_system_config = SystemConfig::new(
-        DEFAULT_WASMLESS_TRANSFER_COST,
-        AuctionCosts::default(),
-        new_mint_costs,
-        HandlePaymentCosts::default(),
-        StandardPaymentCosts::default(),
-    );
-
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        new_wasm_config,
-        new_system_config,
-    );
+    let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
@@ -356,4 +306,38 @@ fn setup() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
     builder
+}
+
+fn make_engine_config(new_mint_costs: MintCosts, new_wasm_config: WasmConfig) -> EngineConfig {
+    let new_system_config = SystemConfig::new(
+        DEFAULT_WASMLESS_TRANSFER_COST,
+        AuctionCosts::default(),
+        new_mint_costs,
+        HandlePaymentCosts::default(),
+        StandardPaymentCosts::default(),
+    );
+    EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
+        new_wasm_config,
+        new_system_config,
+    )
+}
+
+fn make_wasm_config(new_host_function_costs: HostFunctionCosts) -> WasmConfig {
+    WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::default(),
+        StorageCosts::default(),
+        new_host_function_costs,
+    )
+}
+
+fn make_upgrade_request() -> UpgradeConfig {
+    UpgradeRequestBuilder::new()
+        .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
+        .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+        .with_activation_point(DEFAULT_ACTIVATION_POINT)
+        .build()
 }
