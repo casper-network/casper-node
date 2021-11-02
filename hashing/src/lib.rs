@@ -144,7 +144,7 @@ impl Digest {
     ///        └───11
     /// ```
     ///
-    /// Finally hashes the number of elements with the  resulting hash. In the example above the
+    /// Finally hashes the number of elements with the resulting hash. In the example above the
     /// final output would be `hash_pair(6_u64.to_le_bytes(), l)`.
     ///
     /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
