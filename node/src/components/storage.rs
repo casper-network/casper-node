@@ -603,14 +603,8 @@ impl Storage {
                 txn.commit()?;
                 Ok(responder.respond(()).ignore())
             }
-            #[cfg(test)]
             StateStoreRequest::Load { key, responder } => {
-                let txn = self.env.begin_ro_txn()?;
-                let bytes = match txn.get(self.state_store_db, &key) {
-                    Ok(slice) => Some(slice.to_owned()),
-                    Err(lmdb::Error::NotFound) => None,
-                    Err(err) => return Err(err.into()),
-                };
+                let bytes = self.read_state_store(&key)?;
                 Ok(responder.respond(bytes).ignore())
             }
         }

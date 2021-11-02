@@ -74,7 +74,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::error;
@@ -1415,13 +1415,38 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Loads potentially previously stored state from storage.
+    ///
+    /// Key must be a unique key across the the application, as all keys share a common namespace.
+    ///
+    /// If an error occurs during state loading or no data is found, returns `None`.
+    pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
+    where
+        REv: From<StateStoreRequest>,
+        for<'de> T: Deserialize<'de>,
+    {
+        // Due to object safety issues, we cannot ship the actual values around, but only the
+        // serialized bytes. Hence we retrieve raw bytes from storage and then deserialize here.
+        self.make_request(
+            move |responder| StateStoreRequest::Load { key, responder },
+            QueueKind::Regular,
+        )
+        .await
+        .map(|data| bincode::deserialize(&data))
+        .transpose()
+        .unwrap_or_else(|err| {
+            let type_name = type_name::<T>();
+            error!(%type_name, %err, "could not deserialize state from storage");
+            None
+        })
+    }
+
     /// Save state to storage.
     ///
     /// Key must be a unique key across the the application, as all keys share a common namespace.
     ///
     /// Returns whether or not storing the state was successful. A component that requires state to
     /// be successfully stored should check the return value and act accordingly.
-    #[cfg(not(feature = "fast-sync"))]
     pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
     where
         REv: From<StateStoreRequest>,
@@ -1442,7 +1467,7 @@ impl<REv> EffectBuilder<REv> {
             }
             Err(err) => {
                 let type_name = type_name::<T>();
-                warn!(%type_name, %err, "Error serializing state");
+                warn!(%type_name, %err, "error serializing state");
                 false
             }
         }
