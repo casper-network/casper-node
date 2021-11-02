@@ -1,9 +1,6 @@
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_GAS_PRICE,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    AccountHash, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_GAS_PRICE, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -13,6 +10,7 @@ use casper_execution_engine::{
     shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
     ApiError, Gas, Motes, RuntimeArgs, U512,

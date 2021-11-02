@@ -387,6 +387,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base16",
  "base64",
  "casper-execution-engine",
  "casper-hashing",
@@ -395,7 +396,6 @@ dependencies = [
  "cbindgen",
  "clap 2.33.3",
  "futures",
- "hex",
  "humantime",
  "hyper",
  "jsonrpc-lite",
@@ -461,7 +461,6 @@ dependencies = [
  "get-call-stack-recursive-subcall",
  "gh-1470-regression",
  "gh-1470-regression-call",
- "hex",
  "log",
  "num-rational 0.4.0",
  "num-traits",
@@ -479,14 +478,12 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
- "base16",
  "bincode",
  "casper-hashing",
  "casper-types",
  "chrono",
  "criterion",
  "datasize",
- "hex",
  "hex-buffer-serde 0.2.2",
  "hex_fmt",
  "hostname",
@@ -523,6 +520,7 @@ version = "1.0.0"
 dependencies = [
  "assert_matches",
  "base16",
+ "bincode",
  "blake2",
  "casper-types",
  "criterion",
@@ -535,6 +533,7 @@ dependencies = [
  "schemars",
  "serde",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -566,8 +565,7 @@ dependencies = [
  "futures",
  "futures-io",
  "getrandom 0.2.3",
- "hex",
- "hex-buffer-serde 0.2.2",
+ "hex-buffer-serde 0.3.0",
  "hex_fmt",
  "hostname",
  "http",
@@ -670,6 +668,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "proptest",
+ "proptest-attr-macro",
  "rand 0.8.4",
  "schemars",
  "serde",

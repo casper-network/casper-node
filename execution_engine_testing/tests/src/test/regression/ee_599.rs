@@ -1,11 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
@@ -38,17 +35,16 @@ fn setup() -> InMemoryWasmTestBuilder {
             .build()
     };
 
-    let result = InMemoryWasmTestBuilder::default()
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    let mut ctx = InMemoryWasmTestBuilder::default();
+    ctx.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
         .commit()
         .exec(exec_request_2)
         .expect_success()
         .commit()
-        .finish();
-
-    InMemoryWasmTestBuilder::from_result(result)
+        .clear_results();
+    ctx
 }
 
 #[ignore]
@@ -87,33 +83,25 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    let result_2 = builder.exec(exec_request_3).commit().finish();
+    builder.exec(exec_request_3).commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = result_2
-        .builder()
-        .exec_error_message(0)
-        .expect("should have error");
+    let error_msg = builder.exec_error_message(0).expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
         error_msg
     );
 
-    let victim_balance_after = result_2
-        .builder()
-        .get_purse_balance(victim_account.main_purse());
+    let victim_balance_after = builder.get_purse_balance(victim_account.main_purse());
 
     assert_eq!(
         *VICTIM_INITIAL_FUNDS - transaction_fee,
         victim_balance_after
     );
 
-    assert_eq!(
-        result_2.builder().get_purse_balance(donation_purse_copy),
-        U512::zero(),
-    );
+    assert_eq!(builder.get_purse_balance(donation_purse_copy), U512::zero(),);
 }
 
 #[ignore]
@@ -223,23 +211,18 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    let result_2 = builder.exec(exec_request_3).commit().finish();
+    builder.exec(exec_request_3).commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = result_2
-        .builder()
-        .exec_error_message(0)
-        .expect("should have error");
+    let error_msg = builder.exec_error_message(0).expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
         error_msg
     );
 
-    let victim_balance_after = result_2
-        .builder()
-        .get_purse_balance(victim_account.main_purse());
+    let victim_balance_after = builder.get_purse_balance(victim_account.main_purse());
 
     assert_eq!(
         *VICTIM_INITIAL_FUNDS - transaction_fee,
@@ -247,15 +230,10 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
     );
 
     // In this variant of test `donation_purse` is left unchanged i.e. zero balance
-    assert_eq!(
-        result_2.builder().get_purse_balance(donation_purse_copy),
-        U512::zero(),
-    );
+    assert_eq!(builder.get_purse_balance(donation_purse_copy), U512::zero(),);
 
     // Verify that default account's balance didn't change
-    let updated_default_account_balance = result_2
-        .builder()
-        .get_purse_balance(default_account.main_purse());
+    let updated_default_account_balance = builder.get_purse_balance(default_account.main_purse());
 
     assert_eq!(
         updated_default_account_balance - default_account_balance,
@@ -265,7 +243,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
 
 #[ignore]
 #[test]
-fn should_not_be_able_to_get_main_purse_in_invalid_context() {
+fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
     let mut builder = setup();
 
     let victim_account = builder
@@ -295,23 +273,18 @@ fn should_not_be_able_to_get_main_purse_in_invalid_context() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    let result_2 = builder.exec(exec_request_3).commit().finish();
+    builder.exec(exec_request_3).commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = result_2
-        .builder()
-        .exec_error_message(0)
-        .expect("should have error");
+    let error_msg = builder.exec_error_message(0).expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
         error_msg
     );
 
-    let victim_balance_after = result_2
-        .builder()
-        .get_purse_balance(victim_account.main_purse());
+    let victim_balance_after = builder.get_purse_balance(victim_account.main_purse());
 
     assert_eq!(
         victim_balance_before - transaction_fee,

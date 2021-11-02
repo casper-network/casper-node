@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use casper_engine_test_support::internal::LmdbWasmTestBuilder;
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     system::auction::{
         Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot,

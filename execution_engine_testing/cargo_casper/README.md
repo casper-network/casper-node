@@ -79,17 +79,6 @@ and run the test:
 make test
 ```
 
-## ERC20 example
-
-The tool can similarly be used to create an example ERC20 contract and tests by adding the `--erc20` flag:
-
-```
-cargo casper --erc20 my_erc20_project
-cd my_erc20_project
-make prepare
-make test
-```
-
 ## License
 
 Licensed under the [Apache License Version 2.0](https://github.com/casper-network/casper-node/blob/master/LICENSE).

@@ -12,7 +12,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use serde::Serialize;
 use static_assertions::const_assert;
 
@@ -30,8 +29,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, URef,
+    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, StoredValue, Transfer, URef,
 };
 
 use crate::{
@@ -440,7 +439,6 @@ pub(crate) enum StateStoreRequest {
         /// Notification when storing is complete.
         responder: Responder<()>,
     },
-    #[cfg(test)]
     /// Loads a piece of state from storage.
     Load {
         /// Key to load from.
@@ -454,11 +452,15 @@ impl Display for StateStoreRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StateStoreRequest::Save { key, data, .. } => {
-                write!(f, "save data under {} ({} bytes)", HexFmt(key), data.len())
+                write!(
+                    f,
+                    "save data under {} ({} bytes)",
+                    checksummed_hex::encode(key),
+                    data.len()
+                )
             }
-            #[cfg(test)]
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", HexFmt(key))
+                write!(f, "load data from key {}", checksummed_hex::encode(key))
             }
         }
     }
