@@ -68,14 +68,15 @@ impl DataSize for ObjectPool<Box<[u8]>> {
                 + mem::size_of::<Weak<[u8]>>()
                 + mem::size_of::<usize>());
 
-        self.items
+        base + self
+            .items
             .iter()
             .map(|(key, value)| {
                 // Unfortunately we have to check every instance by upgrading.
                 let value_size = value.upgrade().map(|v| v.len()).unwrap_or_default();
                 key.len() + value_size
             })
-            .sum()
+            .sum::<usize>()
     }
 }
 
