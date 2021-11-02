@@ -56,7 +56,7 @@ impl ChunkWithProof {
                 return Err(MerkleConstructionError::IndexOutOfBounds { count: 1, index });
             }
             ChunkWithProof {
-                proof: IndexedMerkleProof::new([Digest::hash(&[])], index)?,
+                proof: IndexedMerkleProof::new([Digest::blake2b_hash(&[])], index)?,
                 chunk: Bytes::new(),
             }
         } else {
@@ -68,7 +68,8 @@ impl ChunkWithProof {
             }
             ChunkWithProof {
                 proof: IndexedMerkleProof::new(
-                    data.chunks(Self::CHUNK_SIZE_BYTES).map(Digest::hash),
+                    data.chunks(Self::CHUNK_SIZE_BYTES)
+                        .map(Digest::blake2b_hash),
                     index,
                 )?,
                 chunk: Bytes::from(
