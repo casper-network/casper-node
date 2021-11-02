@@ -2,11 +2,9 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
@@ -52,7 +50,7 @@ fn should_transfer_to_account() {
     // Run genesis
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -105,7 +103,7 @@ fn should_transfer_to_public_key() {
     // Run genesis
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -158,7 +156,7 @@ fn should_transfer_from_purse_to_public_key() {
     // Run genesis
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -422,7 +420,8 @@ fn should_fail_when_insufficient_funds() {
     )
     .build();
 
-    let result = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Exec transfer contract
         .exec(exec_request_1)
@@ -434,11 +433,9 @@ fn should_fail_when_insufficient_funds() {
         .commit()
         // Exec transfer contract
         .exec(exec_request_3)
-        .commit()
-        .finish();
+        .commit();
 
-    let exec_results = result
-        .builder()
+    let exec_results = builder
         .get_exec_result(2)
         .expect("should have exec response");
     assert_eq!(exec_results.len(), 1);
@@ -472,6 +469,5 @@ fn should_transfer_total_amount() {
         .commit()
         .exec(exec_request_2)
         .commit()
-        .expect_success()
-        .finish();
+        .expect_success();
 }
