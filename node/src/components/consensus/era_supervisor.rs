@@ -405,6 +405,10 @@ where
             }
         }
 
+        outcomes
+    }
+
+    fn prune_unit_files(&self) {
         let valid_unit_files: HashSet<_> = self
             .active_eras
             .iter()
@@ -416,7 +420,7 @@ where
             Err(err) => {
                 warn!(?err, path=?self.unit_files_folder, "could not read the unit files folder");
                 // if we couldn't clean up the unit files, we just return
-                return outcomes;
+                return;
             }
         };
 
@@ -446,8 +450,6 @@ where
                 warn!(?err, ?path, "could not delete unit file");
             }
         }
-
-        outcomes
     }
 
     /// Returns `true` if the specified era is active and bonded.
@@ -573,6 +575,9 @@ where
             );
             result_map.insert(era_id, results);
         }
+
+        self.prune_unit_files();
+
         let active_era_outcomes = self.active_eras[&self.current_era]
             .consensus
             .handle_is_current(now);
@@ -983,6 +988,7 @@ where
             switch_block_header.timestamp(),
             switch_block_header.height() + 1,
         );
+        self.era_supervisor.prune_unit_files();
         outcomes.extend(
             self.era_supervisor.active_eras[&era_id]
                 .consensus
