@@ -128,7 +128,7 @@ impl Digest {
         self.0.to_vec()
     }
 
-    /// Hashes a `impl IntoIterator` of [`Digest`]s into a single [`Digest`] by
+    /// Hashes an `impl IntoIterator` of [`Digest`]s into a single [`Digest`] by
     /// constructing a [Merkle tree][1]. Reduces pairs of elements in the collection by repeatedly
     /// calling [Digest::hash_pair].
     ///
