@@ -326,17 +326,17 @@ mod test {
     #[test]
     fn empty_proof() {
         let empty_merkle_root = Digest::hash_merkle_tree(vec![]);
-        assert_eq!(
-            empty_merkle_root,
-            Digest::hash_pair(0u64.to_le_bytes(), Digest::SENTINEL_MERKLE_TREE)
-        );
+        assert_eq!(empty_merkle_root, Digest::SENTINEL_MERKLE_TREE);
         let indexed_merkle_proof = IndexedMerkleProof {
             index: 0,
             count: 0,
             merkle_proof: vec![],
         };
         assert_eq!(indexed_merkle_proof.verify(), Ok(()));
-        assert_eq!(indexed_merkle_proof.root_hash(), empty_merkle_root);
+        assert_eq!(
+            indexed_merkle_proof.root_hash(),
+            Digest::hash_pair(0u64.to_le_bytes(), Digest::SENTINEL_MERKLE_TREE)
+        );
     }
 
     #[proptest]

@@ -143,6 +143,8 @@ impl Digest {
     /// Finally hashes the number of elements with the resulting hash. In the example above the
     /// final output would be `hash_pair(6_u64.to_le_bytes(), l)`.
     ///
+    /// Returns [`Digest::SENTINEL_MERKLE_TREE`] when the input is empty.
+    ///
     /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
     /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
     pub fn hash_merkle_tree<I>(leaves: I) -> Digest
@@ -153,11 +155,10 @@ impl Digest {
         let leaves = leaves.into_iter();
         let leaf_count_bytes = (leaves.len() as u64).to_le_bytes();
 
-        let raw_root = leaves
-            .tree_fold1(Digest::hash_pair)
-            .unwrap_or(Digest::SENTINEL_MERKLE_TREE);
-
-        Digest::hash_pair(leaf_count_bytes, raw_root)
+        leaves.tree_fold1(Digest::hash_pair).map_or_else(
+            || Digest::SENTINEL_MERKLE_TREE,
+            |raw_root| Digest::hash_pair(leaf_count_bytes, raw_root),
+        )
     }
 
     /// Hashes a `BTreeMap`.
@@ -483,6 +484,16 @@ mod test {
         let hash_proof = Digest::hash_slice_with_proof(&hashes[..2], proof);
 
         assert_eq!(hash, hash_proof);
+    }
+
+    #[test]
+    fn test_hash_merkle_empty() {
+        let hashes = vec![];
+
+        let hash = Digest::hash_merkle_tree(hashes);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(hash_lower_hex, Digest::SENTINEL_MERKLE_TREE.to_string());
     }
 
     #[test]
