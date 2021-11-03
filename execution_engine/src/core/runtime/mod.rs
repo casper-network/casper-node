@@ -3120,8 +3120,6 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
-        let _scoped_host_function_guard = self.enter_host_function_scope()?;
-
         let source = self.context.get_main_purse()?;
         self.transfer_from_purse_to_account(source, target, amount, id)
     }
@@ -3135,6 +3133,8 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
+        let _scoped_host_function_guard = self.enter_host_function_scope()?;
+
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
         match self.context.read_account(&target_key)? {
