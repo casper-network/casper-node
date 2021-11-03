@@ -343,6 +343,21 @@ mod test {
         bytesrepr::test_serialization_roundtrip(&hash);
     }
 
+    #[proptest]
+    fn serde_roundtrip(data: [u8; Digest::LENGTH]) {
+        let original_hash = Digest(data);
+        let serialized = serde_json::to_string(&original_hash).unwrap();
+        let deserialized_hash: Digest = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(original_hash, deserialized_hash);
+    }
+
+    #[test]
+    fn serde_custom_serialization() {
+        let serialized = serde_json::to_string(&Digest::SENTINEL_RFOLD).unwrap();
+        let expected = format!("\"{}\"", Digest::SENTINEL_RFOLD);
+        assert_eq!(expected, serialized);
+    }
+
     #[test]
     fn hash_known() {
         // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE_BYTES]
