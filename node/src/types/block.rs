@@ -44,6 +44,9 @@ use crate::{
 use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
 
 use super::{Item, Tag, Timestamp};
+use crate::types::error::{
+    BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
+};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -163,7 +166,7 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     JsonBlockHeader::from(block_header)
 });
 
-/// Error returned from constructing or validating a `Block`.
+/// Error returned from constructing a `Block`.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error while encoding to JSON.
@@ -936,6 +939,18 @@ impl Display for BlockHeaderWithMetadata {
     }
 }
 
+impl Item for BlockHeaderWithMetadata {
+    type Id = u64;
+    type ValidationError = BlockHeaderWithMetadataValidationError;
+    const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
+        validate_block_header_and_finality_signatures(&self.block_header, &self.block_signatures)?;
+        Ok(self.block_header.height())
+    }
+}
+
 /// A node in a Merkle linked-list used for hashing data structures.
 #[derive(Debug, Clone)]
 pub struct MerkleLinkedListNode<T> {
@@ -1558,12 +1573,14 @@ impl FromBytes for Block {
 
 impl Item for Block {
     type Id = BlockHash;
+    type ValidationError = BlockValidationError;
 
     const TAG: Tag = Tag::Block;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
-        *self.hash()
+    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
+        self.verify()?;
+        Ok(*self.hash())
     }
 }
 
@@ -1586,14 +1603,44 @@ impl Display for BlockWithMetadata {
     }
 }
 
+fn validate_block_header_and_finality_signatures(
+    block_header: &BlockHeader,
+    finality_signatures: &BlockSignatures,
+) -> Result<(), BlockHeaderWithMetadataValidationError> {
+    if block_header.hash() != finality_signatures.block_hash {
+        return Err(
+            BlockHeaderWithMetadataValidationError::FinalitySignaturesHaveUnexpectedBlockHash {
+                expected_block_hash: block_header.hash(),
+                finality_signatures_block_hash: finality_signatures.block_hash,
+            },
+        );
+    }
+    if block_header.era_id != finality_signatures.era_id {
+        return Err(
+            BlockHeaderWithMetadataValidationError::FinalitySignaturesHaveUnexpectedEraId {
+                expected_era_id: block_header.era_id,
+                finality_signatures_era_id: finality_signatures.era_id,
+            },
+        );
+    }
+    finality_signatures.verify()?;
+    Ok(())
+}
+
 impl Item for BlockWithMetadata {
     type Id = u64;
+    type ValidationError = BlockWithMetadataValidationError;
 
     const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
-        self.block.height()
+    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
+        self.block.verify()?;
+        validate_block_header_and_finality_signatures(
+            self.block.header(),
+            &self.finality_signatures,
+        )?;
+        Ok(self.block.height())
     }
 }
 

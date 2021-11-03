@@ -9,47 +9,11 @@ use casper_execution_engine::{
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 use crate::{
-    components::{
-        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError, linear_chain_sync::operations::KeyBlockInfo,
-    },
-    crypto,
+    components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Deploy, NodeId,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, NodeId,
     },
 };
-
-#[derive(Error, Debug)]
-pub(crate) enum SignatureValidationError {
-    #[error(
-        "Block signatures do not correspond to block header. \
-         block header: {block_header:?} \
-         block hash: {block_hash:?} \
-         block signatures: {block_signatures:?}"
-    )]
-    SignaturesDoNotCorrespondToBlockHeader {
-        block_header: Box<BlockHeader>,
-        block_hash: Box<BlockHash>,
-        block_signatures: Box<BlockSignatures>,
-    },
-
-    #[error(
-        "Block header is in wrong era. \
-         block header: {block_header:?} \
-         trusted key block info: {trusted_key_block_info:?}"
-    )]
-    HeaderIsInWrongEra {
-        block_header: Box<BlockHeader>,
-        trusted_key_block_info: Box<KeyBlockInfo>,
-    },
-
-    #[error(transparent)]
-    CryptoError(#[from] crypto::Error),
-
-    #[error(transparent)]
-    FinalitySignatureError(#[from] FinalitySignatureError),
-}
 
 #[derive(Error, Debug)]
 pub(crate) enum LinearChainSyncError {

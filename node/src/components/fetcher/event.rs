@@ -59,10 +59,7 @@ pub(crate) enum Event<T: Item> {
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
-    RejectedRemotely {
-        item: Box<T>,
-        source: Source<NodeId>,
-    },
+    RejectedRemotely { id: T::Id, source: Source<NodeId> },
     /// An item was not available on the remote peer.
     AbsentRemotely { id: T::Id, peer: NodeId },
     /// The timeout has elapsed and we should clean up state.
@@ -107,7 +104,7 @@ impl From<DeployAcceptorAnnouncement<NodeId>> for Event<Deploy> {
             }
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
                 Event::RejectedRemotely {
-                    item: deploy,
+                    id: *Deploy::id(&deploy),
                     source,
                 }
             }
@@ -128,15 +125,21 @@ impl<T: Item> Display for Event<T> {
                     write!(formatter, "failed to fetch {} from storage", id)
                 }
             }
-            Event::GotRemotely { item, source } => {
-                write!(formatter, "got {} from {}", item.id(), source)
+            Event::GotRemotely { item, source } => match item.id() {
+                Ok(id) => {
+                    write!(formatter, "got {} from {}", id, source)
+                }
+                Err(err) => {
+                    write!(
+                        formatter,
+                        "peer {} gave us invalid item; validation error: {:?}",
+                        source, err
+                    )
+                }
+            },
+            Event::RejectedRemotely { id, source } => {
+                write!(formatter, "other component rejected {} from {}", id, source)
             }
-            Event::RejectedRemotely { item, source } => write!(
-                formatter,
-                "other component rejected {} from {}",
-                item.id(),
-                source
-            ),
             Event::TimeoutPeer { id, peer } => write!(
                 formatter,
                 "check get from peer timeout for {} with {}",

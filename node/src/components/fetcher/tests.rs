@@ -112,6 +112,7 @@ reactor!(Reactor {
         // from a client.
         RpcServerAnnouncement -> [deploy_acceptor];
         ChainspecLoaderAnnouncement -> [!];
+        BlocklistAnnouncement<NodeId> -> [!];
     }
 });
 

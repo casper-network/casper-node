@@ -1272,12 +1272,14 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
 
 impl Item for Deploy {
     type Id = DeployHash;
+    type ValidationError = DeployConfigurationFailure;
 
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
-        *self.id()
+    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
+        validate_deploy(self)?;
+        Ok(*self.id())
     }
 }
 

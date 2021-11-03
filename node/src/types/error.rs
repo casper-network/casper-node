@@ -5,8 +5,9 @@ use std::collections::BTreeMap;
 use thiserror::Error;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, PublicKey, U512};
+use casper_types::{bytesrepr, EraId, PublicKey, U512};
 
+use crate::crypto;
 use crate::types::{block::EraReport, Block, BlockHash};
 
 /// An error that can arise when creating a block from a finalized block and other components
@@ -66,4 +67,36 @@ impl From<bytesrepr::Error> for BlockValidationError {
     fn from(error: bytesrepr::Error) -> Self {
         BlockValidationError::BytesReprError(error)
     }
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum BlockHeaderWithMetadataValidationError {
+    #[error(transparent)]
+    CryptoError(#[from] crypto::Error),
+    #[error(
+        "Finality signatures have unexpected block hash. \
+         Expected block hash: {expected_block_hash}, \
+         Finality signature block hash: {finality_signatures_block_hash}"
+    )]
+    FinalitySignaturesHaveUnexpectedBlockHash {
+        expected_block_hash: BlockHash,
+        finality_signatures_block_hash: BlockHash,
+    },
+    #[error(
+        "Finality signatures have unexpected era id. \
+         Expected block hash: {expected_era_id}, \
+         Finality signature block hash: {finality_signatures_era_id}"
+    )]
+    FinalitySignaturesHaveUnexpectedEraId {
+        expected_era_id: EraId,
+        finality_signatures_era_id: EraId,
+    },
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum BlockWithMetadataValidationError {
+    #[error(transparent)]
+    BlockValidationError(#[from] BlockValidationError),
+    #[error(transparent)]
+    BlockHeaderWithMetadataValidationError(#[from] BlockHeaderWithMetadataValidationError),
 }

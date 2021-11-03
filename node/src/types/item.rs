@@ -11,7 +11,7 @@ use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
-use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
+use crate::types::{BlockHash, BlockHeader};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -46,48 +46,48 @@ pub enum Tag {
     Trie,
 }
 
+/// A void type to be used as a validation error when getting an [Item::id] that is always for an
+/// item that is always valid.
+#[derive(thiserror::Error, Debug)]
+pub(crate) enum NeverFailToValidate {}
+
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
 /// furthermore allows generic network messages to include this type due to the provision of the
 /// type-identifying `TAG`.
-pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq {
+pub(crate) trait Item:
+    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
+{
     /// The type of ID of the item.
     type Id: Copy + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
+    /// The error type returned when validating to get the ID of the item.
+    type ValidationError: std::error::Error + Debug;
     /// The tag representing the type of the item.
     const TAG: Tag;
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
-
-    /// The ID of the specific item.
-    fn id(&self) -> Self::Id;
+    /// The ID of the specific item.  Returns an [`ItemValidationError`] if the item is not valid.
+    fn id(&self) -> Result<Self::Id, Self::ValidationError>;
 }
 
 impl Item for Trie<Key, StoredValue> {
     type Id = Digest;
+    type ValidationError = NeverFailToValidate;
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
+    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
         let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
-        Digest::hash(&node_bytes)
+        Ok(Digest::hash(&node_bytes))
     }
 }
 
 impl Item for BlockHeader {
     type Id = BlockHash;
+    type ValidationError = NeverFailToValidate;
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
-        self.hash()
-    }
-}
-
-impl Item for BlockHeaderWithMetadata {
-    type Id = u64;
-    const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    fn id(&self) -> Self::Id {
-        self.block_header.height()
+    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
+        Ok(self.hash())
     }
 }
