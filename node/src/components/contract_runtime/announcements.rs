@@ -84,7 +84,7 @@ pub(super) async fn step_success<REv>(
     effect_builder
         .schedule_regular(ContractRuntimeAnnouncement::StepSuccess {
             era_id,
-            execution_effect: (&execution_journal).into(),
+            execution_effect: casper_types::ExecutionEffect::from(&execution_journal),
         })
         .await
 }
