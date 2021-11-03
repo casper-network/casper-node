@@ -59,6 +59,10 @@ use tracing_futures::Instrument;
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
+use crate::components::fetcher;
+use crate::effect::announcements::BlocklistAnnouncement;
+use crate::effect::EffectExt;
+use crate::types::{Item, NodeId};
 use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
@@ -876,4 +880,33 @@ where
         .into_iter()
         .map(move |effect| wrap_effect(wrap.clone(), effect))
         .collect()
+}
+
+pub(crate) fn handle_fetch_response<R, T>(
+    reactor: &mut R,
+    effect_builder: EffectBuilder<<R as Reactor>::Event>,
+    rng: &mut NodeRng,
+    sender: NodeId,
+    serialized_item: Vec<u8>,
+) -> Effects<<R as Reactor>::Event>
+where
+    T: Item,
+    R: Reactor,
+    <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement<NodeId>>,
+{
+    match fetcher::Event::<T>::from_get_response_serialized_item(sender, &serialized_item) {
+        Some(fetcher_event) => {
+            Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
+        }
+        None => {
+            info!(
+                "{} sent us a {:?} item we couldn't parse! Banning",
+                sender,
+                T::TAG
+            );
+            effect_builder
+                .announce_disconnect_from_peer(sender)
+                .ignore()
+        }
+    }
 }

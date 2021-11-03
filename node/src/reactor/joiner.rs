@@ -607,9 +607,7 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_id)) => {
-                Effects::new()
-            }
+            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_id)) => Effects::new(),
             JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
                 gossiped_address,
             )) => {
@@ -627,107 +625,9 @@ impl reactor::Reactor for Reactor {
                 payload,
             }) => match payload {
                 Message::GetResponse {
-                    tag: Tag::Block,
+                    tag,
                     serialized_item,
-                } => {
-                    match fetcher::Event::<Block>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockAndMetadataByHeight,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockWithMetadata>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockByHeightFetcher(fetcher_event))
-                        }
-                        None => {
-                            info!("{} sent us a block with metadata we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::Trie,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<Trie<Key, StoredValue>>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::TrieFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a trie we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockHeaderByHash,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockHeader>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block header we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockHeaderAndFinalitySignaturesByHeight,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockHeaderWithMetadata>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderByHeightFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block header with finality signatures we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::Deploy,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<Deploy>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::DeployFetcher(fetcher_event))
-                        },
-                        None => {
-                            info!("{} sent us a deploy we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
+                } => self.handle_get_reponse(effect_builder, rng, sender, tag, serialized_item),
                 Message::AddressGossiper(message) => {
                     let event = JoinerEvent::AddressGossiper(gossiper::Event::MessageReceived {
                         sender,
@@ -775,9 +675,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::BlockFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(request.into()))
-            }
+            JoinerEvent::BlockFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockFetcher(request.into()),
+            ),
             JoinerEvent::DeployAcceptor(event) => reactor::wrap_effects(
                 JoinerEvent::DeployAcceptor,
                 self.deploy_acceptor
@@ -806,17 +708,21 @@ impl reactor::Reactor for Reactor {
                 self.block_header_by_hash_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::DeployFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::DeployFetcher(request.into()))
-            }
+            JoinerEvent::DeployFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::DeployFetcher(request.into()),
+            ),
             JoinerEvent::BlockByHeightFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
                 JoinerEvent::BlockByHeightFetcher(request.into()),
             ),
-            JoinerEvent::TrieFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::TrieFetcher(request.into()))
-            }
+            JoinerEvent::TrieFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::TrieFetcher(request.into()),
+            ),
             JoinerEvent::BlockHeaderFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
@@ -827,9 +733,7 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::ContractRuntimeAnnouncement(_) => {
-                Effects::new()
-            }
+            JoinerEvent::ContractRuntimeAnnouncement(_) => Effects::new(),
             JoinerEvent::AddressGossiper(event) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -951,6 +855,72 @@ impl reactor::Reactor for Reactor {
 }
 
 impl Reactor {
+    fn handle_get_reponse(
+        &mut self,
+        effect_builder: EffectBuilder<JoinerEvent>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        tag: Tag,
+        serialized_item: Vec<u8>,
+    ) -> Effects<JoinerEvent> {
+        match tag {
+            Tag::Deploy => reactor::handle_fetch_response::<Self, Deploy>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            ),
+            Tag::Block => reactor::handle_fetch_response::<Self, Block>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            ),
+            Tag::GossipedAddress => {
+                // The item trait is used for both fetchers and gossiped things, but this kind of
+                // item is never fetched, only gossiped.
+                warn!(
+                    "Gossiped addresses are never fetched, banning peer: {}",
+                    sender
+                );
+                effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore()
+            }
+            Tag::BlockAndMetadataByHeight => reactor::handle_fetch_response::<
+                Self,
+                BlockWithMetadata,
+            >(
+                self, effect_builder, rng, sender, serialized_item
+            ),
+            Tag::BlockHeaderByHash => reactor::handle_fetch_response::<Self, BlockHeader>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            ),
+            Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                reactor::handle_fetch_response::<Self, BlockHeaderWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            Tag::Trie => reactor::handle_fetch_response::<Self, Trie<Key, StoredValue>>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            ),
+        }
+    }
+
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.

@@ -25,6 +25,7 @@ use tracing::{debug, error, info, trace, warn};
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 
+use crate::components::small_network::GossipedAddress;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -40,7 +41,7 @@ use crate::{
         metrics::Metrics,
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
-        small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
+        small_network::{self, SmallNetwork, SmallNetworkIdentity},
         storage::Storage,
         Component,
     },
