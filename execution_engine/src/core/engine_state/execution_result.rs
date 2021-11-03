@@ -1,4 +1,5 @@
 //! Outcome of an `ExecutionRequest`.
+
 use std::collections::VecDeque;
 
 use casper_types::{
@@ -20,10 +21,9 @@ fn make_payment_error_effects(
     let new_balance = account_main_purse_balance
         .checked_sub(max_payment_cost)
         .ok_or(error::Error::InsufficientPayment)?;
-    // from_t for U512 is assumed to never panic
     let new_balance_value =
         StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
-    Ok(vec![
+    Ok(ExecutionJournal::new(vec![
         (
             account_main_purse_balance_key.normalize(),
             Transform::Write(new_balance_value),
@@ -32,8 +32,7 @@ fn make_payment_error_effects(
             proposer_main_purse_balance_key.normalize(),
             Transform::AddUInt512(max_payment_cost.value()),
         ),
-    ]
-    .into())
+    ]))
 }
 
 /// Represents the result of an execution specified by
@@ -343,8 +342,8 @@ impl ExecutionResult {
     }
 }
 
-impl From<ExecutionResult> for casper_types::ExecutionResult {
-    fn from(ee_execution_result: ExecutionResult) -> Self {
+impl From<&ExecutionResult> for casper_types::ExecutionResult {
+    fn from(ee_execution_result: &ExecutionResult) -> Self {
         match ee_execution_result {
             ExecutionResult::Success {
                 transfers,
@@ -352,7 +351,7 @@ impl From<ExecutionResult> for casper_types::ExecutionResult {
                 execution_journal,
             } => casper_types::ExecutionResult::Success {
                 effect: execution_journal.into(),
-                transfers,
+                transfers: transfers.clone(),
                 cost: cost.value(),
             },
             ExecutionResult::Failure {
@@ -362,7 +361,7 @@ impl From<ExecutionResult> for casper_types::ExecutionResult {
                 execution_journal,
             } => casper_types::ExecutionResult::Failure {
                 effect: execution_journal.into(),
-                transfers,
+                transfers: transfers.clone(),
                 cost: cost.value(),
                 error_message: error.to_string(),
             },
@@ -468,13 +467,12 @@ impl ExecutionResultBuilder {
         let mut error: Option<error::Error> = None;
         let mut transfers = self.transfers();
         let cost = self.total_cost();
-        let mut journal = vec![];
 
-        match self.payment_execution_result {
+        let mut journal = match self.payment_execution_result {
             Some(result @ ExecutionResult::Failure { .. }) => return Ok(result),
             Some(ExecutionResult::Success {
                 execution_journal, ..
-            }) => journal.extend(Into::<Vec<_>>::into(execution_journal)),
+            }) => execution_journal,
             None => return Err(ExecutionResultBuilderError::MissingPaymentExecutionResult),
         };
 
@@ -492,7 +490,7 @@ impl ExecutionResultBuilder {
             }
             Some(ExecutionResult::Success {
                 execution_journal, ..
-            }) => journal.extend(Into::<Vec<_>>::into(execution_journal)),
+            }) => journal.extend(execution_journal.into_iter()),
             None => return Err(ExecutionResultBuilderError::MissingSessionExecutionResult),
         };
 
@@ -505,7 +503,7 @@ impl ExecutionResultBuilder {
             }
             Some(ExecutionResult::Success {
                 execution_journal, ..
-            }) => journal.extend(Into::<Vec<_>>::into(execution_journal)),
+            }) => journal.extend(execution_journal.into_iter()),
             None => return Err(ExecutionResultBuilderError::MissingFinalizeExecutionResult),
         }
 
@@ -513,13 +511,13 @@ impl ExecutionResultBuilder {
             None => Ok(ExecutionResult::Success {
                 transfers,
                 cost,
-                execution_journal: journal.into(),
+                execution_journal: journal,
             }),
             Some(error) => Ok(ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
-                execution_journal: journal.into(),
+                execution_journal: journal,
             }),
         }
     }

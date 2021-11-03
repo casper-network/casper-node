@@ -1,5 +1,7 @@
 //! Execution transformation logs.
 
+use std::{iter::IntoIterator, vec::IntoIter};
+
 use casper_types::{
     ExecutionEffect as JsonExecutionEffect, Key, TransformEntry as JsonTransformEntry,
 };
@@ -7,10 +9,15 @@ use casper_types::{
 use crate::shared::transform::Transform;
 
 /// A log of all transforms produced during execution.
-#[derive(Debug, Default, Clone, derive_more::From, derive_more::Into)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct ExecutionJournal(Vec<(Key, Transform)>);
 
 impl ExecutionJournal {
+    /// Constructs a new `ExecutionJournal`.
+    pub fn new(inner: Vec<(Key, Transform)>) -> Self {
+        ExecutionJournal(inner)
+    }
+
     /// Whether the journal is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -27,10 +34,11 @@ impl ExecutionJournal {
     }
 }
 
-impl From<ExecutionJournal> for JsonExecutionEffect {
-    fn from(execution_journal: ExecutionJournal) -> Self {
+impl From<&ExecutionJournal> for JsonExecutionEffect {
+    fn from(execution_journal: &ExecutionJournal) -> Self {
         Self::new(
-            <Vec<(Key, Transform)>>::from(execution_journal)
+            execution_journal
+                .0
                 .iter()
                 .map(|(key, transform)| JsonTransformEntry {
                     key: key.to_formatted_string(),
@@ -38,5 +46,20 @@ impl From<ExecutionJournal> for JsonExecutionEffect {
                 })
                 .collect(),
         )
+    }
+}
+
+impl IntoIterator for ExecutionJournal {
+    type Item = (Key, Transform);
+    type IntoIter = IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl Extend<(Key, Transform)> for ExecutionJournal {
+    fn extend<I: IntoIterator<Item = (Key, Transform)>>(&mut self, iter: I) {
+        self.0.extend(iter)
     }
 }

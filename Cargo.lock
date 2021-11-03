@@ -484,7 +484,6 @@ dependencies = [
  "chrono",
  "criterion",
  "datasize",
- "derive_more",
  "hex-buffer-serde 0.2.2",
  "hex_fmt",
  "hostname",

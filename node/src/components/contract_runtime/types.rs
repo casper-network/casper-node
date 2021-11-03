@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 
-use casper_execution_engine::core::engine_state::GetEraValidatorsRequest;
+use casper_execution_engine::{
+    core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
+};
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::types::{Block, DeployHash, DeployHeader};
-use casper_execution_engine::shared::execution_journal::ExecutionJournal;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]

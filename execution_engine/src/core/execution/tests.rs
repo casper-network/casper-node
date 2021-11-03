@@ -46,7 +46,7 @@ fn on_fail_charge_with_action() {
     let f = || {
         let input: Result<(), Error> = Err(Error::GasLimit);
         let transfers = Vec::default();
-        let journal: ExecutionJournal = vec![(Key::Hash([42u8; 32]), Transform::Identity)].into();
+        let journal = ExecutionJournal::new(vec![(Key::Hash([42u8; 32]), Transform::Identity)]);
 
         on_fail_charge!(input, Gas::new(U512::from(456)), journal, transfers);
         ExecutionResult::Success {
