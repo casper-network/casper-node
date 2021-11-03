@@ -21,7 +21,7 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::newtypes::CorrelationId,
+    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
 };
 
@@ -143,6 +143,10 @@ impl Executor {
         let gas_counter: Gas = Gas::default();
         let transfers = Vec::default();
 
+        // Snapshot of the journal before execution, so in case of error
+        // only nonce update can be returned.
+        let execution_journal = tracking_copy.borrow().execution_journal();
+
         let context = RuntimeContext::new(
             tracking_copy,
             entry_point_type,
@@ -200,7 +204,7 @@ impl Executor {
                 Err(error) => {
                     return ExecutionResult::Failure {
                         error: error.into(),
-                        execution_journal: runtime.context().execution_journal(),
+                        execution_journal,
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     };
@@ -226,7 +230,7 @@ impl Executor {
                     return ExecutionResult::Failure {
                         error: error.into(),
                         transfers: runtime.context().transfers().to_owned(),
-                        execution_journal: runtime.context().execution_journal(),
+                        execution_journal,
                         cost: runtime.context().gas_counter(),
                     };
                 }
@@ -249,7 +253,7 @@ impl Executor {
                 }
                 Err(error) => {
                     return ExecutionResult::Failure {
-                        execution_journal: runtime.context().execution_journal(),
+                        execution_journal,
                         error: error.into(),
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
@@ -260,7 +264,7 @@ impl Executor {
         on_fail_charge!(
             instance.invoke_export(entry_point_name, &[], &mut runtime),
             runtime.context().gas_counter(),
-            runtime.context().execution_journal(),
+            execution_journal,
             runtime.context().transfers().to_owned()
         );
 
@@ -339,6 +343,8 @@ impl Executor {
             }
         };
 
+        let execution_journal = tracking_copy.borrow().execution_journal();
+
         match runtime.call_host_standard_payment() {
             Ok(()) => ExecutionResult::Success {
                 execution_journal: runtime.context().execution_journal(),
@@ -346,7 +352,7 @@ impl Executor {
                 cost: runtime.context().gas_counter(),
             },
             Err(error) => ExecutionResult::Failure {
-                execution_journal: runtime.context().execution_journal(),
+                execution_journal,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
@@ -507,6 +513,7 @@ impl Executor {
             &mut inner_named_keys,
             &runtime_args,
             extra_keys,
+            execution_journal,
         );
         *named_keys = inner_named_keys;
         ret
@@ -710,6 +717,7 @@ impl DirectSystemContractCall {
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
+        execution_journal: ExecutionJournal,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -776,7 +784,7 @@ impl DirectSystemContractCall {
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
-                    execution_journal: runtime.context().execution_journal(),
+                    execution_journal,
                     error: Error::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
@@ -784,7 +792,7 @@ impl DirectSystemContractCall {
                 .take_without_ret(),
             },
             Err(error) => ExecutionResult::Failure {
-                execution_journal: runtime.context().execution_journal(),
+                execution_journal,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
