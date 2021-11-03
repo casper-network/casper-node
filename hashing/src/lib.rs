@@ -50,11 +50,7 @@ pub enum Error {
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
-pub struct Digest(
-    #[serde(with = "ChecksummedHexForm::<[u8; Digest::LENGTH]>")]
-    #[schemars(skip, with = "String")]
-    pub(crate) [u8; Digest::LENGTH],
-);
+pub struct Digest(#[schemars(skip, with = "String")] pub(crate) [u8; Digest::LENGTH]);
 
 impl Digest {
     /// The number of bytes in a `Digest`.
