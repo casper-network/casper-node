@@ -1051,7 +1051,7 @@ where
     where
         T: Into<Gas>,
     {
-        if self.host_function_call_depth.is_set() || self.is_system_immediate_caller()? {
+        if !self.host_function_call_depth.is_zero() || self.is_system_immediate_caller()? {
             // This avoids charging the user in situation when the runtime is in the middle of
             // handling a host function call or a system contract calls other system contract.
             return Ok(());
@@ -3014,7 +3014,7 @@ where
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
-        let _scoped_host_function_guard = self.enter_host_function_scope()?;
+        let _scoped_host_function_guard = self.enter_host_function_scope();
 
         self.mint_create(self.get_mint_contract()?)
     }
@@ -3133,7 +3133,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
-        let _scoped_host_function_guard = self.enter_host_function_scope()?;
+        let _scoped_host_function_guard = self.enter_host_function_scope();
 
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
@@ -3701,9 +3701,13 @@ where
     /// Enters into a host function processing mode.
     ///
     /// This increases internal counter and returns a scoped the counter will be decrased.
-    fn enter_host_function_scope(&self) -> Result<ScopedCountingGuard<u64>, Error> {
+    #[must_use]
+    fn enter_host_function_scope(&self) -> ScopedCountingGuard<u64> {
+        // SAFETY: With u64 counter we are looking at 2^64-1 depth limit before overflowing. Due to
+        // how host functions are calling system contracts we're looking at programming error if
+        // we're approaching u64::MAX here.
         ScopedCountingGuard::enter(&self.host_function_call_depth)
-            .ok_or(Error::HostFunctionDepthLimit)
+            .expect("overflowing a host function depth counter is a programming error")
     }
 }
 

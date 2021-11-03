@@ -12,8 +12,8 @@ impl<T: PartialOrd + Copy + Zero> ScopedCounter<T> {
         *self.0.borrow()
     }
 
-    pub(crate) fn is_set(&self) -> bool {
-        self.count() > T::zero()
+    pub(crate) fn is_zero(&self) -> bool {
+        self.count() == T::zero()
     }
 }
 
@@ -80,6 +80,7 @@ mod tests {
     #[test]
     fn scoping_test() {
         let counter = ScopedCounter::<i64>::default();
+        assert!(counter.is_zero());
 
         {
             assert_eq!(counter.count(), 0);
@@ -88,6 +89,7 @@ mod tests {
 
             {
                 assert_eq!(counter.count(), 1);
+                assert!(!counter.is_zero());
 
                 let _guard = ScopedCountingGuard::enter(&counter).expect("should enter");
 
@@ -110,5 +112,6 @@ mod tests {
         }
 
         assert_eq!(counter.count(), 0);
+        assert!(counter.is_zero());
     }
 }
