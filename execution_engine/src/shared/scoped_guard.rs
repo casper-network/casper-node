@@ -5,7 +5,7 @@ use num::{CheckedAdd, CheckedSub, One, Zero};
 
 /// A generic counting flag used by the [`ScopedCountingGuard`].
 #[derive(Default, Clone)]
-pub struct ScopedCounter<T>(Rc<RefCell<T>>);
+pub(crate) struct ScopedCounter<T>(Rc<RefCell<T>>);
 
 impl<T: PartialOrd + Copy + Zero> ScopedCounter<T> {
     pub(crate) fn count(&self) -> T {

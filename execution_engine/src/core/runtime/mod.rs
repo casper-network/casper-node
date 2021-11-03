@@ -982,7 +982,7 @@ where
     R::Error: Into<Error>,
 {
     /// Creates a new runtime instance.
-    pub fn new(
+    pub(crate) fn new(
         config: EngineConfig,
         memory: MemoryRef,
         module: Module,
