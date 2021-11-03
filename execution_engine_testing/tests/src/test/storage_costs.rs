@@ -2,13 +2,10 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
-use casper_engine_test_support::internal::DEFAULT_ACCOUNT_PUBLIC_KEY;
+use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;

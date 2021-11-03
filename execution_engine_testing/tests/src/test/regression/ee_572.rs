@@ -1,9 +1,6 @@
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue, U512};
 

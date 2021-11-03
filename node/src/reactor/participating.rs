@@ -539,6 +539,7 @@ impl reactor::Reactor for Reactor {
             .map(|next_upgrade| next_upgrade.activation_point());
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             initial_era,
+            storage.root_path(),
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),

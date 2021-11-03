@@ -20,6 +20,7 @@ pub mod account;
 pub mod api_error;
 mod block_time;
 pub mod bytesrepr;
+pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
 mod contract_wasm;

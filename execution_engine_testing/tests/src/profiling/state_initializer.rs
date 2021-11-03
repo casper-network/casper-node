@@ -6,7 +6,7 @@ use std::{env, path::PathBuf};
 
 use clap::{crate_version, App};
 
-use casper_engine_test_support::internal::{
+use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
@@ -90,5 +90,5 @@ fn main() {
         .expect_success()
         .commit()
         .get_post_state_hash();
-    println!("{}", base16::encode_lower(&post_state_hash));
+    println!("{:?}", post_state_hash);
 }

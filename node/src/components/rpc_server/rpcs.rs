@@ -49,6 +49,8 @@ enum ErrorCode {
     NoSuchAccount = -32009,
     FailedToGetDictionaryURef = -32010,
     FailedToGetTrie = -32011,
+    // Same error code as warp_json INTERNAL_ERROR.
+    InternalError = -32063,
 }
 
 #[derive(Debug)]

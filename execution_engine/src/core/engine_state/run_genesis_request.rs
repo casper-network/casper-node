@@ -14,10 +14,6 @@ use super::genesis::ExecConfig;
 /// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {
-    #[serde(
-        serialize_with = "hex::serialize",
-        deserialize_with = "hex::deserialize"
-    )]
     genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,
