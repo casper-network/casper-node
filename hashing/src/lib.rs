@@ -63,9 +63,7 @@ impl Digest {
     /// Sentinel hash to be used by `hash_merkle_tree` in the case of an empty list.
     pub const SENTINEL_MERKLE_TREE: Digest = Digest([2u8; Digest::LENGTH]);
 
-    /// Depending on the size of the data it either:
-    /// 1. Creates a 32-byte BLAKE2b hash digest from a given a piece of data, or
-    /// 2. Splits the data into chunks and creates hash digest of the Merkle tree
+    /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data.
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
         // TODO:
         // Temporarily, to avoid potential regression, we always use the original hashing method.
