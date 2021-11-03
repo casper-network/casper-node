@@ -52,20 +52,11 @@ impl ChunkWithProof {
     /// Empty data is always represented as single, empty chunk and not as zero chunks.
     pub fn new(data: &[u8], index: u64) -> Result<Self, MerkleConstructionError> {
         Ok(if data.is_empty() {
-            if index > 0 {
-                return Err(MerkleConstructionError::IndexOutOfBounds { count: 1, index });
-            }
             ChunkWithProof {
                 proof: IndexedMerkleProof::new([Digest::blake2b_hash(&[])], index)?,
                 chunk: Bytes::new(),
             }
         } else {
-            if index >= data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64 {
-                return Err(MerkleConstructionError::IndexOutOfBounds {
-                    count: data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64,
-                    index,
-                });
-            }
             ChunkWithProof {
                 proof: IndexedMerkleProof::new(
                     data.chunks(Self::CHUNK_SIZE_BYTES)
@@ -75,7 +66,10 @@ impl ChunkWithProof {
                 chunk: Bytes::from(
                     data.chunks(Self::CHUNK_SIZE_BYTES)
                         .nth(index as usize)
-                        .unwrap(), // We're safe to unwrap() because index is validated above
+                        .ok_or_else(|| MerkleConstructionError::IndexOutOfBounds {
+                            count: data.chunks(Self::CHUNK_SIZE_BYTES).len() as u64,
+                            index,
+                        })?,
                 ),
             }
         })
