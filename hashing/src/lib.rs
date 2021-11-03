@@ -487,16 +487,6 @@ mod test {
     }
 
     #[test]
-    fn test_hash_merkle_empty() {
-        let hashes = vec![];
-
-        let hash = Digest::hash_merkle_tree(hashes);
-        let hash_lower_hex = format!("{:x}", hash);
-
-        assert_eq!(hash_lower_hex, Digest::SENTINEL_MERKLE_TREE.to_string());
-    }
-
-    #[test]
     fn test_hash_merkle_odd() {
         let hashes = vec![
             Digest([1u8; 32]),
