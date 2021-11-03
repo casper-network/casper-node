@@ -49,7 +49,7 @@
         "additionalProperties": false
       },
       "PublicKey": {
-        "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+        "description": "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix.",
         "type": "string"
       },
       "JsonValidatorStatusChange": {
