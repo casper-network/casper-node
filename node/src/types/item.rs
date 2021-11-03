@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::{
     fmt::{Debug, Display},
     hash::Hash,
@@ -46,11 +47,6 @@ pub enum Tag {
     Trie,
 }
 
-/// A void type to be used as a validation error when getting an [Item::id] that is always for an
-/// item that is always valid.
-#[derive(thiserror::Error, Debug)]
-pub(crate) enum NeverFailToValidate {}
-
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
 /// furthermore allows generic network messages to include this type due to the provision of the
 /// type-identifying `TAG`.
@@ -71,7 +67,7 @@ pub(crate) trait Item:
 
 impl Item for Trie<Key, StoredValue> {
     type Id = Digest;
-    type ValidationError = NeverFailToValidate;
+    type ValidationError = Infallible;
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
@@ -83,7 +79,7 @@ impl Item for Trie<Key, StoredValue> {
 
 impl Item for BlockHeader {
     type Id = BlockHash;
-    type ValidationError = NeverFailToValidate;
+    type ValidationError = Infallible;
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
 

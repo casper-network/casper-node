@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::{
     fmt::{self, Display, Formatter},
     net::SocketAddr,
@@ -6,7 +7,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Item, NeverFailToValidate, Tag};
+use crate::types::{Item, Tag};
 
 /// Used to gossip our public listening address to peers.
 #[derive(
@@ -28,7 +29,7 @@ impl Display for GossipedAddress {
 
 impl Item for GossipedAddress {
     type Id = GossipedAddress;
-    type ValidationError = NeverFailToValidate;
+    type ValidationError = Infallible;
     const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
 
