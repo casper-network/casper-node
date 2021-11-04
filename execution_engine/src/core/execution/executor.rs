@@ -143,8 +143,8 @@ impl Executor {
         let gas_counter: Gas = Gas::default();
         let transfers = Vec::default();
 
-        // Snapshot of the journal before execution, so in case of error
-        // only nonce update can be returned.
+        // Snapshot of the journal before execution, so in case of an error
+        // we don't apply the execution changes but keep the payment code effects.
         let execution_journal = tracking_copy.borrow().execution_journal();
 
         let context = RuntimeContext::new(
