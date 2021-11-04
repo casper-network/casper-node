@@ -55,6 +55,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Fixed
 * Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
 * Resolve issue of duplicated config option `max_associated_keys`.
+* The block proposer component now retains pending deploys and transfers across a restart.
 
 
 
