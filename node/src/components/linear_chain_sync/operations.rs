@@ -529,18 +529,16 @@ async fn fast_sync_to_most_recent(
                     trusted_key_block_info = key_block_info;
                 }
             }
-            // If we could not fetch, we can stop when the most recent header is in the current
-            // era.
-            None if is_current_era(
-                &most_recent_block_header,
-                &trusted_key_block_info,
-                chainspec,
-            ) =>
-            {
-                break
-            }
-            // Otherwise keep trying to fetch until we get a block with our version
-            None => tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await,
+            // If we timed out, consider syncing done.
+            None => break,
+        }
+        // If we synced up to the current era, we can also consider syncing done.
+        if is_current_era(
+            &most_recent_block_header,
+            &trusted_key_block_info,
+            chainspec,
+        ) {
+            break;
         }
     }
 
@@ -768,22 +766,13 @@ pub(crate) async fn run_fast_sync_task(
         .await?
         {
             None => {
-                if is_current_era(
-                    &most_recent_block_header,
-                    &trusted_key_block_info,
-                    &chainspec,
-                ) {
-                    info!(
-                        era = most_recent_block_header.era_id().value(),
-                        height = most_recent_block_header.height(),
-                        timestamp = %most_recent_block_header.timestamp(),
-                        "Finished executing blocks; synchronized to current era",
-                    );
-                    break;
-                } else {
-                    tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await;
-                    continue;
-                }
+                info!(
+                    era = most_recent_block_header.era_id().value(),
+                    height = most_recent_block_header.height(),
+                    timestamp = %most_recent_block_header.timestamp(),
+                    "Couldn't download a more recent block; finishing syncing",
+                );
+                break;
             }
             Some(block_with_metadata) => block_with_metadata.block,
         };
@@ -830,6 +819,22 @@ pub(crate) async fn run_fast_sync_task(
             KeyBlockInfo::maybe_from_block_header(&most_recent_block_header)
         {
             trusted_key_block_info = key_block_info;
+        }
+
+        // If we managed to sync up to the current era, stop - we'll have to sync the consensus
+        // protocol state, anyway.
+        if is_current_era(
+            &most_recent_block_header,
+            &trusted_key_block_info,
+            &chainspec,
+        ) {
+            info!(
+                era = most_recent_block_header.era_id().value(),
+                height = most_recent_block_header.height(),
+                timestamp = %most_recent_block_header.timestamp(),
+                "Synchronized up to the current era; finishing syncing",
+            );
+            break;
         }
     }
 
