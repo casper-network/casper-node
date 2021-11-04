@@ -250,10 +250,9 @@ impl DeployAcceptor {
                     verification_start_timestamp,
                 })
         } else {
-            self.verify_payment_logic(
+            self.validate_deploy_cryptography(
                 effect_builder,
                 event_metadata,
-                prestate_hash,
                 verification_start_timestamp,
             )
         }
