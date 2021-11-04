@@ -3,9 +3,8 @@ members = [
     "ci/casper_updater",
     "client",
     "execution_engine",
+    "execution_engine_testing",
     "execution_engine_testing/cargo_casper",
-    "execution_engine_testing/test_support",
-    "execution_engine_testing/tests",
     "hashing",
     "node",
     "smart_contracts/contract",
@@ -21,9 +20,8 @@ default-members = [
     "ci/casper_updater",
     "client",
     "execution_engine",
+    "execution_engine_testing",
     "execution_engine_testing/cargo_casper",
-    "execution_engine_testing/test_support",
-    "execution_engine_testing/tests",
     "hashing",
     "node",
     "types",
@@ -45,3 +43,11 @@ lto = true
 [profile.bench]
 codegen-units = 1
 lto = true
+
+# This section is required by any of the crates in this workspace which depend upon `casper-engine-test-support`.  It
+# causes `casper-engine-test-support` to depend upon these local copies of the three `casper-` crates rather than the
+# published ones, and hence avoids a compiler error where two versions of the same crate are consumed in a single crate.
+[patch.crates-io]
+casper-execution-engine = { path = "execution_engine" }
+casper-hashing = { path = "hashing" }
+casper-types = { path = "types" }

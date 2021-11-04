@@ -265,12 +265,6 @@ fn main() {
     );
     smart_contracts_contract_as.update();
 
-    let execution_engine_testing_test_support = Package::cargo(
-        "execution_engine_testing/test_support",
-        &*regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
-    );
-    execution_engine_testing_test_support.update();
-
     let execution_engine_testing_cargo_casper = Package::cargo(
         "execution_engine_testing/cargo_casper",
         &*regex_data::execution_engine_testing_cargo_casper::DEPENDENT_FILES,

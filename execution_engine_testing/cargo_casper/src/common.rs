@@ -9,12 +9,11 @@ pub static CL_CONTRACT: Lazy<Dependency> =
     Lazy::new(|| Dependency::new("casper-contract", "1.0.0"));
 pub static CL_TYPES: Lazy<Dependency> = Lazy::new(|| Dependency::new("casper-types", "1.0.0"));
 pub static CL_ENGINE_TEST_SUPPORT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-engine-test-support", "1.0.0"));
+    Lazy::new(|| Dependency::new("casper-engine-test-support", "1.4.1"));
 pub static PATCH_SECTION: Lazy<String> = Lazy::new(|| match ARGS.workspace_path() {
     Some(workspace_path) => {
         format!(
             r#"[patch.crates-io]
-casper-engine-test-support = {{ path = "{0}/execution_engine_testing/test_support" }}
 casper-contract = {{ path = "{0}/smart_contracts/contract" }}
 casper-types = {{ path = "{0}/types" }}
 "#,
@@ -60,8 +59,6 @@ pub mod tests {
 
     const CL_CONTRACT_TOML_PATH: &str = "smart_contracts/contract/Cargo.toml";
     const CL_TYPES_TOML_PATH: &str = "types/Cargo.toml";
-    const CL_ENGINE_TEST_SUPPORT_TOML_PATH: &str =
-        "execution_engine_testing/test_support/Cargo.toml";
     const PACKAGE_FIELD_NAME: &str = "package";
     const VERSION_FIELD_NAME: &str = "version";
     const PATH_PREFIX: &str = "/execution_engine_testing/cargo_casper";
@@ -113,10 +110,5 @@ pub mod tests {
     #[test]
     fn check_cl_types_version() {
         check_package_version(&*CL_TYPES, CL_TYPES_TOML_PATH);
-    }
-
-    #[test]
-    fn check_cl_engine_test_support_version() {
-        check_package_version(&*CL_ENGINE_TEST_SUPPORT, CL_ENGINE_TEST_SUPPORT_TOML_PATH);
     }
 }

@@ -17,7 +17,7 @@ datasize = "0.2.9"
 hex = { version = "0.4.2", default-features = false, features = ["serde"] }
 hex-buffer-serde = "0.3.0"
 itertools = "0.10.1"
-schemars = "0.8.3"
+schemars = { version = "=0.8.5", features = ["preserve_order"] }
 serde = "1.0.130"
 thiserror = "1.0.29"
 

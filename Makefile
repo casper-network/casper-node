@@ -89,7 +89,7 @@ test-contracts-rs: build-contracts-rs
 .PHONY: test-contracts-as
 test-contracts-as: build-contracts-rs build-contracts-as
 	@# see https://github.com/rust-lang/cargo/issues/5015#issuecomment-515544290
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "execution_engine_testing/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "execution_engine_testing/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts-as

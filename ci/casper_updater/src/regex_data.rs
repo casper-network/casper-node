@@ -43,11 +43,6 @@ pub mod types {
                 replacement,
             ),
             DependentFile::new(
-                "execution_engine_testing/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "node/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -90,11 +85,6 @@ pub mod hashing {
                 replacement,
             ),
             DependentFile::new(
-                "execution_engine_testing/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "node/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -123,12 +113,6 @@ pub mod execution_engine {
         vec![
                 DependentFile::new(
                     "client/Cargo.toml",
-                    Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#)
-                        .unwrap(),
-                    replacement,
-                ),
-                DependentFile::new(
-                    "execution_engine_testing/test_support/Cargo.toml",
                     Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#)
                         .unwrap(),
                     replacement,
@@ -230,11 +214,6 @@ pub mod smart_contracts_contract {
                 replacement,
             ),
             DependentFile::new(
-                "execution_engine_testing/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-contract = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "smart_contracts/contract/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
@@ -268,34 +247,6 @@ pub mod smart_contracts_contract_as {
             ),
         ]
     });
-}
-
-pub mod execution_engine_testing_test_support {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-                DependentFile::new(
-                    "execution_engine_testing/cargo_casper/src/common.rs",
-                    Regex::new(r#"(?m)("casper-engine-test-support",\s*)"(?:[^"]+)"#).unwrap(),
-                    cargo_casper_src_test_package_rs_replacement,
-                ),
-                DependentFile::new(
-                    "execution_engine_testing/test_support/Cargo.toml",
-                    MANIFEST_VERSION_REGEX.clone(),
-                    replacement,
-                ),
-                DependentFile::new(
-                    "execution_engine_testing/test_support/src/lib.rs",
-                    Regex::new(r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-engine-test-support)/(?:[^"]+)"#).unwrap(),
-                    replacement_with_slash,
-                ),
-            ]
-    });
-
-    fn cargo_casper_src_test_package_rs_replacement(updated_version: &str) -> String {
-        format!(r#"$1"{}"#, updated_version)
-    }
 }
 
 pub mod execution_engine_testing_cargo_casper {

@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 base16 = "0.2.1"
 base64 = "0.13"
-casper-engine-test-support = { path = "../../execution_engine_testing/test_support" }
+casper-engine-test-support = "2.0.1"
 casper-execution-engine = { path = "../../execution_engine" }
 casper-hashing = { path = "../../hashing" }
 casper-types = { path = "../../types" }
