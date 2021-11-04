@@ -606,7 +606,7 @@ impl EraEnd {
         // Sort next era validator weights by descending weight. Assuming the top validators are
         // online, a client can get away with just a few (plus a Merkle proof of the rest)
         // to check finality signatures.
-        let descending_validator_weight_hashed_pairs: Vec<Digest> = next_era_validator_weights
+        let descending_validator_weight_hashed_pairs = next_era_validator_weights
             .iter()
             .sorted_by_key(|(_, weight)| Reverse(**weight))
             .map(|(validator_id, weight)| {
@@ -614,8 +614,7 @@ impl EraEnd {
                     Digest::hash(validator_id.to_bytes().expect("Could not hash validator"));
                 let weight_hash = Digest::hash(weight.to_bytes().expect("Could not hash weight"));
                 Digest::hash_pair(&validator_hash, &weight_hash)
-            })
-            .collect();
+            });
         let hashed_next_era_validator_weights =
             Digest::hash_merkle_tree(descending_validator_weight_hashed_pairs);
         let hashed_era_report: Digest = era_report.hash();
