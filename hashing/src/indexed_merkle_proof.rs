@@ -177,7 +177,7 @@ impl IndexedMerkleProof {
     }
 
     pub(crate) fn verify(&self) -> Result<(), MerkleVerificationError> {
-        if !((self.count == 0 && self.index == 0) || self.index < self.count) {
+        if self.index >= self.count {
             return Err(MerkleVerificationError::IndexOutOfBounds {
                 count: self.count,
                 index: self.index,
@@ -287,12 +287,7 @@ mod test {
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(error::MerkleVerificationError::UnexpectedProofLength {
-                count: 0,
-                index: 0,
-                expected_proof_length: 0,
-                actual_proof_length: 3
-            })
+            Err(error::MerkleVerificationError::IndexOutOfBounds { count: 0, index: 0 })
         )
     }
 
@@ -332,11 +327,7 @@ mod test {
             count: 0,
             merkle_proof: vec![],
         };
-        assert_eq!(indexed_merkle_proof.verify(), Ok(()));
-        assert_eq!(
-            indexed_merkle_proof.root_hash(),
-            Digest::hash_pair(0u64.to_le_bytes(), Digest::SENTINEL_MERKLE_TREE)
-        );
+        assert!(indexed_merkle_proof.verify().is_err());
     }
 
     #[proptest]
