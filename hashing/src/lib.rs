@@ -96,6 +96,7 @@ impl Digest {
 
     // Temporarily unused, see comments inside `Digest::hash()` for details.
     #[allow(unused)]
+    #[inline(always)]
     fn should_hash_with_chunks<T: AsRef<[u8]>>(data: T) -> bool {
         data.as_ref().len() > ChunkWithProof::CHUNK_SIZE_BYTES
     }
