@@ -2,11 +2,12 @@ use std::{
     env,
     fmt::{self, Display, Formatter},
     fs,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
-use indicatif::ProgressBar;
 use reqwest::ClientBuilder;
 use retrieve_state::{put_block_with_deploys, BlockWithDeploys};
 use structopt::StructOpt;
@@ -28,14 +29,20 @@ const CONVERT_BLOCK_FILES: &str = "convert-block-files";
 struct Opts {
     #[structopt(
         short = "n",
-        default_value = "http://localhost:11101",
-        about = "Specifies the host address and port for the node to be
-         reached. e.g. \"http://hostname:9001\""
+        default_value = "127.0.0.1",
+        about = "Specifies the host address for the node to be
+         reached. e.g. \"127.0.0.1\""
     )]
-    server_host: String,
+    server_ip: Ipv4Addr,
 
     #[structopt(
-        short,
+        long = "port",
+        about = "Specifies the port to reach peer RPC endpoints at."
+    )]
+    port: Option<u16>,
+
+    #[structopt(
+        short = "s",
         long,
         about = "Specifies the block from which to start downloading state."
     )]
@@ -43,7 +50,7 @@ struct Opts {
 
     #[structopt(
         required = true,
-        short,
+        short = "a",
         long,
         default_value,
         possible_values = &[DOWNLOAD_TRIES, DOWNLOAD_BLOCKS, CONVERT_BLOCK_FILES],
@@ -53,7 +60,6 @@ struct Opts {
 
     #[structopt(
         required = true,
-        short,
         long,
         default_value = retrieve_state::CHAIN_DOWNLOAD_PATH,
         about = "Specify the path to the folder to be used for downloading blocks."
@@ -61,7 +67,6 @@ struct Opts {
     chain_download_path: PathBuf,
 
     #[structopt(
-        short,
         long,
         default_value = retrieve_state::LMDB_PATH,
         about = "Specify the path to the folder containing the trie LMDB data files."
@@ -69,7 +74,6 @@ struct Opts {
     lmdb_path: PathBuf,
 
     #[structopt(
-        short,
         long,
         about = "Specify the max size (in bytes) that the underlying LMDB can grow to."
     )]
@@ -79,14 +83,20 @@ struct Opts {
     use_gzip: bool,
 
     #[structopt(
-        short,
+        short = "b",
         long,
         about = "Specify the path to the folder to be used for loading block files to be converted."
     )]
     block_file_download_path: Option<PathBuf>,
 
-    #[structopt(short, long, about = "Enable manual syncing after each block to LMDB")]
-    manual_sync_enabled: bool,
+    #[structopt(long, about = "Enable manual syncing after each block to LMDB")]
+    manual_sync_enabled: Option<bool>,
+
+    #[structopt(
+        long,
+        about = "Derive the port from peer's address. Useful for nctl-based networks that have different RPC ports."
+    )]
+    port_derived_from_peers: bool,
 }
 
 #[derive(Debug)]
@@ -136,12 +146,22 @@ async fn main() -> Result<(), anyhow::Error> {
     let opts = Opts::from_args();
 
     let chain_download_path = env::current_dir()?.join(&opts.chain_download_path);
-    let url = format!("{}/rpc", opts.server_host);
+
+    // port used for peers as well as initial target node
+    let port = opts.port.unwrap_or(7777);
+    let initial_server_address = SocketAddr::V4(SocketAddrV4::new(opts.server_ip, port));
+    let url = format!(
+        "http://{}:{}/rpc",
+        initial_server_address.ip(),
+        initial_server_address.port()
+    );
 
     let maybe_highest_block = opts.highest_block;
     let maybe_download_block = opts
         .highest_block
         .map(|block_identifier| GetBlockParams { block_identifier });
+
+    let port_derived_from_peers = opts.port_derived_from_peers;
 
     match opts.action {
         Action::ConvertBlockFiles => {
@@ -166,7 +186,6 @@ async fn main() -> Result<(), anyhow::Error> {
                 block_file_download_path.display(),
                 opts.chain_download_path.display()
             );
-            let progress = ProgressBar::new(block_files.len() as u64);
             let mut blocks_converted = 0;
             let mut blocks_already_present = 0;
             for block_file in block_files {
@@ -178,7 +197,6 @@ async fn main() -> Result<(), anyhow::Error> {
                         blocks_converted += 1;
                     }
                 }
-                progress.inc(1);
             }
             println!(
                 "Converted and loaded {} blocks, with {} blocks already present in db.",
@@ -186,7 +204,7 @@ async fn main() -> Result<(), anyhow::Error> {
             );
         }
         Action::DownloadBlocks => {
-            let mut client = ClientBuilder::new().gzip(opts.use_gzip).build().unwrap();
+            let client = ClientBuilder::new().gzip(opts.use_gzip).build().unwrap();
             if !chain_download_path.exists() {
                 println!(
                     "creating new chain download data dir {}",
@@ -195,20 +213,18 @@ async fn main() -> Result<(), anyhow::Error> {
                 fs::create_dir_all(&chain_download_path)?;
             }
             let highest_block: JsonBlock =
-                retrieve_state::get_block(&mut client, &url, maybe_download_block)
+                retrieve_state::get_block(&client, &url, maybe_download_block)
                     .await?
                     .block
                     .unwrap();
-            let progress = ProgressBar::new(highest_block.header.height);
 
             let mut storage = create_storage(&chain_download_path).expect("should create storage");
             println!("Downloading all blocks to genesis...");
             let (downloaded, read_from_disk) = retrieve_state::download_or_read_blocks(
-                &mut client,
+                &client,
                 &mut storage,
                 &url,
                 maybe_highest_block.as_ref(),
-                || progress.inc(1),
             )
             .await?;
             println!(
@@ -217,14 +233,40 @@ async fn main() -> Result<(), anyhow::Error> {
             );
         }
         Action::DownloadTries => {
-            let mut client = ClientBuilder::new().gzip(opts.use_gzip).build().unwrap();
+            let client = ClientBuilder::new().gzip(opts.use_gzip).build().unwrap();
+
+            let mut peers_list = retrieve_state::get_peers_list(&client, &url)
+                .await?
+                .peers
+                .into_inner()
+                .into_iter()
+                .flat_map(|peer| {
+                    let address = peer.address.parse::<SocketAddrV4>().ok()?;
+                    // for nctl-networks we want our bound address
+                    let address = if port_derived_from_peers {
+                        SocketAddr::V4(SocketAddrV4::new(
+                            *address.ip(),
+                            address.port().saturating_sub(11000),
+                        ))
+                    } else {
+                        // the peer's list gives us the port for the node, and instead we want to
+                        // use the user-provided RPC port
+                        SocketAddr::V4(SocketAddrV4::new(*address.ip(), port))
+                    };
+                    Some(address)
+                })
+                .collect::<Vec<_>>();
+
+            // also use the server we provided inititially that peers were gathered from.
+            peers_list.push(initial_server_address);
+
             let highest_block: JsonBlock =
-                retrieve_state::get_block(&mut client, &url, maybe_download_block)
+                retrieve_state::get_block(&client, &url, maybe_download_block)
                     .await?
                     .block
-                    .unwrap();
-            let progress = ProgressBar::new(highest_block.header.height);
-            println!(
+                    .expect("unable to download highest block");
+
+            eprintln!(
                 "retrieving global state at height {}...",
                 highest_block.header.height
             );
@@ -233,18 +275,18 @@ async fn main() -> Result<(), anyhow::Error> {
                 lmdb_path,
                 opts.max_db_size
                     .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE),
-                opts.manual_sync_enabled,
-            )?;
+                opts.manual_sync_enabled.unwrap_or(true),
+            )
+            .expect("unable to create execution engine");
             retrieve_state::download_trie(
-                &mut client,
-                &url,
-                &engine_state,
+                &client,
+                &peers_list,
+                engine_state,
                 highest_block.header.state_root_hash,
-                || progress.inc(1),
             )
             .await
             .expect("should download trie");
-            println!("Finished downloading global state.");
+            eprintln!("Finished downloading global state.");
         }
     }
     Ok(())

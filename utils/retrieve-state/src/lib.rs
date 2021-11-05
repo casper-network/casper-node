@@ -1,6 +1,12 @@
-use std::time::Instant;
+use std::{
+    collections::HashMap,
+    net::{AddrParseError, SocketAddr},
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use reqwest::Client;
+use futures_util::{future::Either, stream::StreamExt, FutureExt};
+pub use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
@@ -11,14 +17,22 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_node::{
     rpcs::{
-        chain::{BlockIdentifier, GetBlockParams, GetBlockResult},
-        info::{GetDeployParams, GetDeployResult},
-        state::{GetTrieParams, GetTrieResult},
+        chain::{
+            BlockIdentifier, GetBlockParams, GetBlockResult, GetEraInfoParams, GetEraInfoResult,
+        },
+        info::{GetDeployParams, GetDeployResult, GetPeersResult},
+        state::{
+            GetItemParams, GetItemResult, GetTrieParams, GetTrieResult, QueryGlobalStateParams,
+            QueryGlobalStateResult,
+        },
     },
     storage::Storage,
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
 };
 use casper_types::{bytesrepr::FromBytes, Key, StoredValue};
+use futures_channel::{mpsc::UnboundedSender, oneshot};
+use futures_util::SinkExt;
+use tokio::{task::JoinHandle, time::error::Elapsed};
 
 pub mod rpc;
 pub mod storage;
@@ -43,9 +57,34 @@ pub enum GetBlockError {
     },
 }
 
+/// Get the list of peers from the perspective of the queried node.
+pub async fn get_peers_list(client: &Client, url: &str) -> Result<GetPeersResult, rpc::Error> {
+    rpc::rpc_without_params(client, url, "info_get_peers").await
+}
+
+/// Query global state for StoredValue
+pub async fn query_global_state(
+    client: &Client,
+    url: &str,
+    params: QueryGlobalStateParams,
+) -> Result<QueryGlobalStateResult, rpc::Error> {
+    let result = rpc::rpc(client, url, "query_global_state", params).await?;
+    Ok(result)
+}
+
+/// Query global state for EraInfo
+pub async fn get_era_info(
+    client: &Client,
+    url: &str,
+    params: GetEraInfoParams,
+) -> Result<GetEraInfoResult, rpc::Error> {
+    let result = rpc::rpc(client, url, "chain_get_era_info", params).await?;
+    Ok(result)
+}
+
 /// Get a block with optional parameters.
 pub async fn get_block(
-    client: &mut Client,
+    client: &Client,
     url: &str,
     params: Option<GetBlockParams>,
 ) -> Result<GetBlockResult, GetBlockError> {
@@ -70,10 +109,7 @@ pub async fn get_block(
 }
 
 /// Get the genesis block.
-pub async fn get_genesis_block(
-    client: &mut Client,
-    url: &str,
-) -> Result<GetBlockResult, rpc::Error> {
+pub async fn get_genesis_block(client: &Client, url: &str) -> Result<GetBlockResult, rpc::Error> {
     rpc::rpc(
         client,
         url,
@@ -85,16 +121,27 @@ pub async fn get_genesis_block(
     .await
 }
 
-async fn get_trie(
-    client: &mut Client,
+/// Query a node for a trie.
+pub async fn get_trie(
+    client: &Client,
     url: &str,
     params: GetTrieParams,
 ) -> Result<GetTrieResult, rpc::Error> {
     rpc::rpc(client, url, "state_get_trie", params).await
 }
 
-async fn get_deploy(
-    client: &mut Client,
+/// Query a node for an item.
+pub async fn get_item(
+    client: &Client,
+    url: &str,
+    params: GetItemParams,
+) -> Result<GetItemResult, rpc::Error> {
+    rpc::rpc(client, url, "state_get_item", params).await
+}
+
+/// Query a node for a deploy.
+pub async fn get_deploy(
+    client: &Client,
     url: &str,
     params: GetDeployParams,
 ) -> Result<GetDeployResult, rpc::Error> {
@@ -111,7 +158,7 @@ pub struct BlockWithDeploys {
 
 /// Download a block, along with all it's deploys.
 pub async fn download_block_with_deploys(
-    client: &mut Client,
+    client: &Client,
     url: &str,
     block_hash: BlockHash,
 ) -> Result<BlockWithDeploys, anyhow::Error> {
@@ -158,11 +205,10 @@ pub async fn download_block_with_deploys(
 
 /// Download block files from the highest (provided) block hash to genesis.
 pub async fn download_or_read_blocks(
-    client: &mut Client,
+    client: &Client,
     storage: &mut Storage,
     url: &str,
     highest_block: Option<&BlockIdentifier>,
-    progress_fn: impl Fn() + Send + Sync,
 ) -> Result<(usize, usize), anyhow::Error> {
     let mut new_blocks_downloaded = 0;
     let mut blocks_read_from_disk = 0;
@@ -192,7 +238,6 @@ pub async fn download_or_read_blocks(
             &BlockIdentifier::Hash(*next_block_hash),
         )
         .await?;
-        progress_fn();
     }
     Ok((new_blocks_downloaded, blocks_read_from_disk))
 }
@@ -214,7 +259,7 @@ pub fn get_block_by_identifier(
 }
 
 async fn download_or_read_block_and_extract_parent_hash(
-    client: &mut Client,
+    client: &Client,
     storage: &mut Storage,
     url: &str,
     block_identifier: &BlockIdentifier,
@@ -239,7 +284,7 @@ async fn download_or_read_block_and_extract_parent_hash(
 }
 
 async fn get_block_and_download(
-    client: &mut Client,
+    client: &Client,
     storage: &mut Storage,
     url: &str,
     block_identifier: Option<BlockIdentifier>,
@@ -289,50 +334,330 @@ pub fn put_block_with_deploys(
     Ok(())
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum PeerError {
+    #[error(transparent)]
+    AddrParseError(#[from] AddrParseError),
+
+    /// Peer failed to download.
+    #[error("Failed to download {trie_key:?} from {peer_address:?} due to {error:?}")]
+    FailedRpc {
+        peer_address: SocketAddr,
+        trie_key: Digest,
+        error: Either<rpc::Error, Elapsed>,
+    },
+}
+
+pub enum PeerMsg {
+    /// Download and save the trie under this
+    GetTrie(Digest),
+    TrieDownloaded {
+        trie: Trie<Key, StoredValue>,
+        peer: SocketAddr,
+        elapsed: Duration,
+    },
+    NoBytes {
+        trie_key: Digest,
+        peer: SocketAddr,
+    },
+}
+
 /// Download the trie from a node to the provided lmdb path.
 pub async fn download_trie(
-    client: &mut Client,
-    url: &str,
-    engine_state: &EngineState<LmdbGlobalState>,
+    client: &Client,
+    peers: &[SocketAddr],
+    engine_state: Arc<EngineState<LmdbGlobalState>>,
     state_root_hash: Digest,
-    progress_fn: impl Fn() + Send + Sync,
 ) -> Result<usize, anyhow::Error> {
-    let mut outstanding_tries = vec![state_root_hash];
+    let (base_send, mut base_recv) = futures_channel::mpsc::unbounded();
+    let mut peer_futures = Vec::new();
+    for peer in peers {
+        let base_send = base_send.clone();
+        let peer_future = async move {
+            let maybe_peer =
+                match maybe_construct_peer(base_send.clone(), *peer, client, state_root_hash).await
+                {
+                    Ok(peer) => Some(peer),
+                    Err(_err) => {
+                        // just skip those that can't be communicated with
+                        // println!("error constructing peer with address {:?} {:?}", peer,
+                        // err);
+                        None
+                    }
+                };
+            maybe_peer
+        };
+        peer_futures.push(peer_future);
+    }
+    let mut peer_map = futures::future::join_all(peer_futures)
+        .await
+        .into_iter()
+        .flatten()
+        .map(|peer: Peer| (peer.address, peer))
+        .collect::<HashMap<SocketAddr, Peer>>();
 
-    let mut start = Instant::now();
-    let mut tries_downloaded = 0;
-    while let Some(next_trie_key) = outstanding_tries.pop() {
-        let read_result = get_trie(
-            client,
-            url,
-            GetTrieParams {
-                trie_key: next_trie_key,
-            },
-        )
-        .await?;
-        if let Some(blob) = read_result.maybe_trie_bytes {
-            let bytes: Vec<u8> = blob.into();
-            let (trie, _): (Trie<Key, StoredValue>, _) = FromBytes::from_bytes(&bytes)?;
-            let mut missing_descendants = engine_state
-                .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)?;
-            outstanding_tries.append(&mut missing_descendants);
-            tries_downloaded += 1;
-            progress_fn()
-        } else {
-            return Err(anyhow::anyhow!(
-                "unable to download trie at {:?}",
-                next_trie_key
-            ));
+    println!("got {}/{} valid peers", peer_map.len(), peers.len());
+
+    let mut total_tries_count = 0;
+
+    let mut outstanding_trie_keys = vec![state_root_hash];
+    let mut tries_downloaded = 0usize;
+    let mut in_flight_counters = peers
+        .iter()
+        .map(|addr| (addr, 0usize))
+        .collect::<HashMap<_, _>>();
+    loop {
+        for (address, peer) in peer_map.iter() {
+            let counter = in_flight_counters.get_mut(&address).unwrap();
+            // TODO: understand what's happening when requests get backed up, causing starvation of
+            // base_recv
+            if *counter < 10 {
+                if let Some(next_trie_key) = outstanding_trie_keys.pop() {
+                    let mut sender = peer.sender.clone();
+                    *counter += 1;
+                    sender.send(PeerMsg::GetTrie(next_trie_key)).await.unwrap();
+                } else {
+                    break;
+                }
+            }
         }
-        if tries_downloaded % 1000 == 0 {
-            println!(
-                "downloaded {} tries in {}ms",
-                tries_downloaded,
-                start.elapsed().as_millis()
-            );
-            start = Instant::now();
+
+        if let Some(msg) = base_recv.next().await {
+            match msg {
+                Ok(PeerMsg::TrieDownloaded {
+                    trie,
+                    peer,
+                    elapsed: _,
+                }) => {
+                    // Top level task keeps track of missing descendants and work distribution.
+                    let engine_state = Arc::clone(&engine_state);
+                    let mut missing_trie_descendants = tokio::task::spawn_blocking(move || {
+                        engine_state
+                            .put_trie_and_find_missing_descendant_trie_keys(
+                                CorrelationId::new(),
+                                &trie,
+                            )
+                            .unwrap()
+                    })
+                    .await
+                    .unwrap();
+
+                    // count of all tries we know about
+                    total_tries_count += missing_trie_descendants.len();
+
+                    outstanding_trie_keys.append(&mut missing_trie_descendants);
+
+                    // in-flight requests
+                    if let Some(counter) = in_flight_counters.get_mut(&peer) {
+                        *counter = counter.saturating_sub(1);
+                    }
+
+                    // count of all tries downloaded
+                    tries_downloaded += 1;
+
+                    if tries_downloaded % 1000 == 0 {
+                        println!(
+                            "tries downloaded: {downloaded}/{total}",
+                            downloaded = tries_downloaded,
+                            total = total_tries_count,
+                        );
+                    }
+
+                    /*
+                    println!(
+                        "{flag}trie ({downloaded}/{total}) downloaded from {peer} {elapsed}ms ({outstanding} outstanding trie keys)",
+                        flag=if elapsed > Duration::from_millis(750) {
+                            "SLOW "
+                        } else {
+                            ""
+                        },
+                        downloaded=tries_downloaded,
+                        total=total_tries_count,
+                        peer=peer,
+                        elapsed=elapsed.as_millis(),
+                        outstanding=outstanding_trie_keys.len(),
+                    );
+                    */
+                }
+                Ok(PeerMsg::NoBytes { trie_key, peer }) => {
+                    println!(
+                        "got no bytes for key {} from peer {} (will query for it again...)",
+                        trie_key, peer
+                    );
+                    outstanding_trie_keys.push(trie_key);
+                }
+                Ok(PeerMsg::GetTrie(_)) => panic!("GetTrie should not be sent by workers"),
+                Err(PeerError::FailedRpc {
+                    trie_key,
+                    peer_address,
+                    error,
+                }) => {
+                    println!(
+                        "failed to get key {} from peer {} error {:?}",
+                        trie_key, peer_address, error
+                    );
+                }
+                Err(err) => {
+                    println!("Error {:?}", err);
+                }
+            }
+        }
+
+        // Finishing state, we downloaded all the intermediate tries we found, as well as the state
+        // root we started with.
+        if tries_downloaded == total_tries_count + 1 {
+            let missing =
+                engine_state.missing_trie_keys(CorrelationId::new(), vec![state_root_hash])?;
+
+            if missing.is_empty() {
+                println!("state root has no missing descendants.");
+                println!(
+                    "tries downloaded: {downloaded}/{total}",
+                    downloaded = tries_downloaded,
+                    total = total_tries_count,
+                );
+                break;
+            } else {
+                println!(
+                    "state root still has {} missing descendants. {:#?}",
+                    missing.len(),
+                    in_flight_counters,
+                );
+            }
         }
     }
-    println!("Downloaded {} tries", tries_downloaded);
-    Ok(tries_downloaded)
+
+    for (_address, peer) in peer_map.drain() {
+        peer.shutdown.send(()).unwrap();
+        peer.join_handle.await.unwrap();
+    }
+
+    Ok(0)
+}
+
+struct Peer {
+    address: SocketAddr,
+    sender: UnboundedSender<PeerMsg>,
+    join_handle: JoinHandle<()>,
+    shutdown: oneshot::Sender<()>,
+}
+
+async fn maybe_construct_peer(
+    base_send: UnboundedSender<Result<PeerMsg, PeerError>>,
+    address: SocketAddr,
+    client: &Client,
+    state_root_hash: Digest,
+) -> Result<Peer, PeerError> {
+    let url = format!("http://{}:{}/rpc", address.ip(), address.port());
+    let base_send = base_send.clone();
+    let client = client.clone();
+    let read_future = get_trie(
+        &client,
+        &url,
+        GetTrieParams {
+            trie_key: state_root_hash,
+        },
+    );
+    let read_or_timeout = tokio::time::timeout(Duration::from_secs(1), read_future).await;
+    match read_or_timeout {
+        Ok(Ok(_)) => Ok(spawn_peer(base_send, address, client)),
+        Ok(Err(error)) => {
+            return Err(PeerError::FailedRpc {
+                peer_address: address,
+                trie_key: state_root_hash,
+                error: Either::Left(error),
+            })
+        }
+        Err(elapsed) => {
+            return Err(PeerError::FailedRpc {
+                peer_address: address,
+                trie_key: state_root_hash,
+                error: Either::Right(elapsed),
+            })
+        }
+    }
+}
+
+/// Spawns a task to handle requests sent to this peer. This task will query the peer for a given
+/// Trie under a Digest. The returned Digest will be written to LMDB global state.
+fn spawn_peer(
+    base_send: UnboundedSender<Result<PeerMsg, PeerError>>,
+    address: SocketAddr,
+    client: Client,
+) -> Peer {
+    let (sender, peer_recv) = futures_channel::mpsc::unbounded::<PeerMsg>();
+    let peer_recv = peer_recv.map(|msg| Either::Left(msg));
+
+    let (shutdown, shutdown_recv) = futures_channel::oneshot::channel::<()>();
+    let shutdown_recv = shutdown_recv.into_stream().map(|_| Either::Right(()));
+
+    let mut next_peer_msg_or_shutdown_stream = futures::stream::select(peer_recv, shutdown_recv);
+
+    let join_handle = tokio::spawn(async move {
+        let client = client.clone();
+        'peer: while let Some(Either::Left(PeerMsg::GetTrie(next_trie_key))) =
+            next_peer_msg_or_shutdown_stream.next().await
+        {
+            let start = Instant::now();
+            let mut base_send = base_send.clone();
+            let url = format!("http://{}:{}/rpc", address.ip(), address.port());
+            match get_trie(
+                &client,
+                &url,
+                GetTrieParams {
+                    trie_key: next_trie_key,
+                },
+            )
+            .await
+            {
+                Ok(GetTrieResult {
+                    maybe_trie_bytes: Some(blob),
+                    ..
+                }) => {
+                    let bytes: Vec<u8> = blob.into();
+                    // tokio::time::sleep(Duration::from_millis(150)).await;
+                    let (trie, _): (Trie<Key, StoredValue>, _) =
+                        FromBytes::from_bytes(&bytes).expect("unable to tobytes");
+                    base_send
+                        .send(Ok(PeerMsg::TrieDownloaded {
+                            trie,
+                            peer: address,
+                            elapsed: start.elapsed(),
+                        }))
+                        .await
+                        .unwrap();
+                }
+                Ok(GetTrieResult {
+                    maybe_trie_bytes: None,
+                    ..
+                }) => {
+                    // No bytes for this trie? let's try another peer.
+                    base_send
+                        .send(Ok(PeerMsg::NoBytes {
+                            trie_key: next_trie_key,
+                            peer: address,
+                        }))
+                        .await
+                        .unwrap();
+                }
+                Err(err) => {
+                    base_send
+                        .send(Err(PeerError::FailedRpc {
+                            peer_address: address,
+                            trie_key: next_trie_key,
+                            error: Either::Left(err),
+                        }))
+                        .await
+                        .unwrap();
+                    continue 'peer;
+                }
+            };
+        }
+    });
+    Peer {
+        address,
+        sender,
+        join_handle,
+        shutdown,
+    }
 }

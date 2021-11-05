@@ -1754,6 +1754,19 @@ where
         Ok(missing_descendant_trie_keys)
     }
 
+    /// Puts a trie.
+    pub fn put_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<Digest, Error>
+    where
+        Error: From<S::Error>,
+    {
+        let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
+        Ok(inserted_trie_key)
+    }
+
     /// Performs a lookup for a list of missing root hashes.
     pub fn missing_trie_keys(
         &self,
