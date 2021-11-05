@@ -648,12 +648,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             // We're ahead.
             match state.panorama().get(vid) {
                 None => {
-                    error!(?vid, "received a request for non-existing validator");
+                    warn!(?vid, "received a request for non-existing validator");
                     vec![]
                 }
                 Some(observation) => match observation {
                     Observation::None | Observation::Faulty => {
-                        error!(
+                        warn!(
                             ?vid,
                             our_next_seq,
                             ?observation,
