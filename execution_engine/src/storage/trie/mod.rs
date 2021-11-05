@@ -12,8 +12,11 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_hashing::{ChunkWithProof, Digest};
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Key, StoredValue,
+};
 
 #[cfg(test)]
 pub mod gens;
@@ -344,6 +347,14 @@ impl ::std::fmt::Debug for PointerBlock {
         }
         write!(f, "])")
     }
+}
+
+/// Documentation
+pub enum TrieOrChunkedData {
+    /// Documentation
+    Trie(Trie<Key, StoredValue>),
+    /// Documentation
+    ChunkWithProof(ChunkWithProof),
 }
 
 /// Represents a Merkle Trie.

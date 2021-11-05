@@ -1,7 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
-use casper_hashing::Digest;
-use casper_types::{Key, StoredValue};
+use casper_hashing::{ChunkWithProof, Digest};
+use casper_types::{bytesrepr, Key, StoredValue};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -15,7 +15,10 @@ use crate::{
             },
             Transaction, TransactionSource,
         },
-        trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
+        trie::{
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie,
+            TrieOrChunkedData,
+        },
         trie_store::{
             in_memory::InMemoryTrieStore,
             operations::{
@@ -239,11 +242,25 @@ impl StateProvider for InMemoryGlobalState {
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+    ) -> Result<Option<TrieOrChunkedData>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
+
+        // TODO[RC]: `get()` deserializes the value, which we immediately serialize back
+        // just to get the size of it. Optimize that later.
         let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
-        txn.commit()?;
-        Ok(ret)
+        txn.commit()?; // TODO[RC]: Needed for read only txn?
+
+        let serialized_back = bytesrepr::serialize(ret.clone())?;
+        if serialized_back.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+            Ok(Some(TrieOrChunkedData::Trie(ret.unwrap())))
+        } else {
+            let chunk_with_proof = ChunkWithProof::new(
+                serialized_back.as_slice(),
+                0, // TODO[RC]: Index must come from the caller
+            )
+            .map_err(|_| lmdb::Error::Other(8888))?; // TODO[RC]: Better error
+            Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
+        }
     }
 
     fn put_trie(
