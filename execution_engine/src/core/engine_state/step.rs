@@ -5,9 +5,7 @@
 use std::{collections::BTreeMap, vec::Vec};
 
 use casper_hashing::Digest;
-use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, ProtocolVersion, PublicKey,
-};
+use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion, PublicKey};
 
 use crate::core::{
     engine_state::{execution_effect::ExecutionEffect, Error},
@@ -116,14 +114,11 @@ impl StepRequest {
     }
 
     /// Returns list of slashed validators.
-    pub fn slashed_validators(&self) -> Result<Vec<PublicKey>, bytesrepr::Error> {
-        let mut ret = vec![];
-        for slash_item in &self.slash_items {
-            let public_key: PublicKey =
-                bytesrepr::deserialize(slash_item.validator_id.clone().to_bytes()?)?;
-            ret.push(public_key);
-        }
-        Ok(ret)
+    pub fn slashed_validators(&self) -> Vec<PublicKey> {
+        self.slash_items
+            .iter()
+            .map(|si| si.validator_id.clone())
+            .collect()
     }
 
     /// Returns all reward factors.
