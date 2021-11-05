@@ -456,15 +456,18 @@ impl Executor {
         }
 
         let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            let seed = [&[1u8], deploy_hash.as_bytes()].concat();
+            let generator = AddressGenerator::new(&seed, phase);
             Rc::new(RefCell::new(generator))
         };
         let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            let seed = [&[2u8], deploy_hash.as_bytes()].concat();
+            let generator = AddressGenerator::new(&seed, phase);
             Rc::new(RefCell::new(generator))
         };
         let transfer_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            let seed = [&[3u8], deploy_hash.as_bytes()].concat();
+            let generator = AddressGenerator::new(&seed, phase);
             Rc::new(RefCell::new(generator))
         };
         let gas_counter = Gas::default(); // maybe const?
