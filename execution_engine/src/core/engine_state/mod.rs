@@ -2058,54 +2058,51 @@ where
             }
         }
 
-        if step_request.run_auction {
-            let run_auction_args = RuntimeArgs::try_new(|args| {
-                args.insert(
-                    ARG_ERA_END_TIMESTAMP_MILLIS,
-                    step_request.era_end_timestamp_millis,
-                )?;
-                args.insert(
-                    ARG_EVICTED_VALIDATORS,
-                    step_request
-                        .evict_items
-                        .iter()
-                        .map(|item| item.validator_id.clone())
-                        .collect::<Vec<PublicKey>>(),
-                )?;
-                Ok(())
-            })?;
+        let run_auction_args = RuntimeArgs::try_new(|args| {
+            args.insert(
+                ARG_ERA_END_TIMESTAMP_MILLIS,
+                step_request.era_end_timestamp_millis,
+            )?;
+            args.insert(
+                ARG_EVICTED_VALIDATORS,
+                step_request
+                    .evict_items
+                    .iter()
+                    .map(|item| item.validator_id.clone())
+                    .collect::<Vec<PublicKey>>(),
+            )?;
+            Ok(())
+        })?;
 
-            let run_auction_call_stack = {
-                let system = CallStackElement::session(PublicKey::System.to_account_hash());
-                let auction = CallStackElement::stored_contract(
-                    auction_contract.contract_package_hash(),
-                    *auction_contract_hash,
-                );
-                vec![system, auction]
-            };
-            let (_, execution_result): (Option<()>, ExecutionResult) = executor
-                .exec_system_contract(
-                    DirectSystemContractCall::RunAuction,
-                    system_module,
-                    run_auction_args,
-                    &mut named_keys,
-                    Default::default(),
-                    base_key,
-                    &virtual_system_account,
-                    authorization_keys,
-                    BlockTime::default(),
-                    deploy_hash,
-                    gas_limit,
-                    step_request.protocol_version,
-                    correlation_id,
-                    Rc::clone(&tracking_copy),
-                    Phase::Session,
-                    run_auction_call_stack,
-                );
+        let run_auction_call_stack = {
+            let system = CallStackElement::session(PublicKey::System.to_account_hash());
+            let auction = CallStackElement::stored_contract(
+                auction_contract.contract_package_hash(),
+                *auction_contract_hash,
+            );
+            vec![system, auction]
+        };
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::RunAuction,
+            system_module,
+            run_auction_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            run_auction_call_stack,
+        );
 
-            if let Some(exec_error) = execution_result.take_error() {
-                return Err(StepError::AuctionError(exec_error));
-            }
+        if let Some(exec_error) = execution_result.take_error() {
+            return Err(StepError::AuctionError(exec_error));
         }
 
         let execution_effect = tracking_copy.borrow().effect();

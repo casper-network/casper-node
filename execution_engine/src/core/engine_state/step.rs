@@ -77,8 +77,6 @@ pub struct StepRequest {
     /// Compared to a slashing, evictions are deactivating a given validator, but his stake is
     /// unchanged. A further re-activation is possible.
     pub evict_items: Vec<EvictItem>,
-    /// If true an auction contract will be executed to compute new era validators.
-    pub run_auction: bool,
     /// Specifies which era validators will be returned based on `next_era_id`.
     ///
     /// Intended use is to always specify the current era id + 1 which will return computed era at
@@ -97,7 +95,6 @@ impl StepRequest {
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
         evict_items: Vec<EvictItem>,
-        run_auction: bool,
         next_era_id: EraId,
         era_end_timestamp_millis: u64,
     ) -> Self {
@@ -107,7 +104,6 @@ impl StepRequest {
             slash_items,
             reward_items,
             evict_items,
-            run_auction,
             next_era_id,
             era_end_timestamp_millis,
         }
