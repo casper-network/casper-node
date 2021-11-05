@@ -629,6 +629,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         their_next_seq: u64,
     ) -> Vec<HighwayMessage<C>> {
         let state = self.highway.state();
+        if our_next_seq == their_next_seq {
+            return vec![];
+        }
         if our_next_seq < their_next_seq {
             // We're behind. Request missing vertices.
             (our_next_seq..their_next_seq)
