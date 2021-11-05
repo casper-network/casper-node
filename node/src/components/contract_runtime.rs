@@ -439,7 +439,7 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                tokio::task::spawn(async move {
+                async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
                             engine_state.as_ref(),
@@ -454,7 +454,7 @@ where
                     .await;
                     trace!(?result, "execute block response");
                     responder.respond(result).await
-                })
+                }
                 .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
