@@ -655,14 +655,24 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     vec![]
                 }
                 Some(observation) => match observation {
-                    Observation::None | Observation::Faulty => {
+                    Observation::None => {
                         warn!(
                             ?vid,
                             our_next_seq,
                             ?observation,
-                            "`IndexPanorama` doesn't match `state.panorama` for validator"
+                            "expected unit for validator but found none"
                         );
                         vec![]
+                    }
+                    Observation::Faulty => {
+                        let ev = match state.maybe_evidence(vid) {
+                            Some(ev) => ev.clone(),
+                            None => {
+                                error!(?vid, instance_id=?self.highway.instance_id(), "panorama marked validator as faulty but no evidence was found");
+                                return vec![];
+                            }
+                        };
+                        vec![HighwayMessage::NewVertex(Vertex::Evidence(ev))]
                     }
                     Observation::Correct(hash) => (their_next_seq..our_next_seq)
                         .take(self.config.max_request_batch_size)
