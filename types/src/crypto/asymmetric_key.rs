@@ -78,15 +78,26 @@ where
     /// by `AsymmetricType::to_hex()`.
     fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error> {
         if input.as_ref().len() < 2 {
-            return Err(Error::AsymmetricKey("too short".to_string()));
+            return Err(Error::AsymmetricKey(
+                "failed to decode from hex: too short".to_string(),
+            ));
         }
 
-        let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
+        let (tag_hex, key_hex) = input.as_ref().split_at(2);
 
-        let tag = checksummed_hex::decode(&tag_bytes)?;
-        let key_bytes = checksummed_hex::decode(&key_bytes)?;
+        let tag = checksummed_hex::decode(&tag_hex)?;
+        let key_bytes = checksummed_hex::decode(&key_hex)?;
 
         match tag[0] {
+            SYSTEM_TAG => {
+                if key_bytes.is_empty() {
+                    Ok(Self::system())
+                } else {
+                    Err(Error::AsymmetricKey(
+                        "failed to decode from hex: invalid system variant".to_string(),
+                    ))
+                }
+            }
             ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
             SECP256K1_TAG => Self::secp256k1_from_bytes(&key_bytes),
             _ => Err(Error::AsymmetricKey(format!(

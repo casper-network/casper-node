@@ -1,4 +1,4 @@
-use crate::{crypto::SecretKey, AsymmetricType, PublicKey};
+use crate::{crypto::SecretKey, PublicKey};
 
 #[test]
 fn can_construct_ed25519_keypair_from_zeroes() {
