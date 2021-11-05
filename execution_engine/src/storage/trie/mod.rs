@@ -349,11 +349,13 @@ impl ::std::fmt::Debug for PointerBlock {
     }
 }
 
-/// Documentation
+/// Represents a Merkle Tree or a chunk of data with attached proof.
+/// Chunk with attached proof is used when the requested
+/// trie is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
 pub enum TrieOrChunkedData {
-    /// Documentation
+    /// Represents a Merkle Trie.
     Trie(Trie<Key, StoredValue>),
-    /// Documentation
+    /// Represents a chunk of data with attached proof.
     ChunkWithProof(ChunkWithProof),
 }
 

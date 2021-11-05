@@ -95,8 +95,7 @@ pub trait StateProvider {
     /// Returns an empty root hash.
     fn empty_root(&self) -> Digest;
 
-    /// Documentation
-    // TODO[RC]: Reads a `Trie` from the state if it is present
+    /// Reads a `Trie` from the state if it is present
     fn get_trie(
         &self,
         correlation_id: CorrelationId,
