@@ -24,6 +24,7 @@ use crate::{
 };
 
 /// Global state implemented against LMDB as a backing data store.
+#[derive(Debug)]
 pub struct LmdbGlobalState {
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
@@ -35,6 +36,7 @@ pub struct LmdbGlobalState {
 }
 
 /// Represents a "view" of global state at a particular root hash.
+#[derive(Debug)]
 pub struct LmdbGlobalStateView {
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
@@ -160,11 +162,13 @@ impl StateProvider for LmdbGlobalState {
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
+        dbg!(&maybe_root);
         let maybe_state = maybe_root.map(|_| LmdbGlobalStateView {
             environment: Arc::clone(&self.environment),
             store: Arc::clone(&self.trie_store),
             root_hash: state_hash,
         });
+        dbg!(&maybe_state);
         txn.commit()?;
         Ok(maybe_state)
     }
@@ -193,6 +197,7 @@ impl StateProvider for LmdbGlobalState {
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
+        index: u64,
     ) -> Result<Option<TrieOrChunkedData>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
 
@@ -202,14 +207,13 @@ impl StateProvider for LmdbGlobalState {
         txn.commit()?; // TODO[RC]: Needed for read only txn?
 
         let serialized_back = bytesrepr::serialize(ret.clone())?;
+        dbg!(serialized_back.len());
+        dbg!(ChunkWithProof::CHUNK_SIZE_BYTES);
         if serialized_back.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
             Ok(Some(TrieOrChunkedData::Trie(ret.unwrap())))
         } else {
-            let chunk_with_proof = ChunkWithProof::new(
-                serialized_back.as_slice(),
-                0, // TODO[RC]: Index must come from the caller
-            )
-            .map_err(|_| lmdb::Error::Other(8888))?; // TODO[RC]: Better error
+            let chunk_with_proof = ChunkWithProof::new(serialized_back.as_slice(), index)
+                .map_err(|_| lmdb::Error::Other(8888))?; // TODO[RC]: Better error
             Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
         }
     }
@@ -256,7 +260,7 @@ mod tests {
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, bytesrepr::Bytes, CLValue, ContractWasm};
 
     use super::*;
     use crate::storage::{
@@ -271,14 +275,19 @@ mod tests {
     }
 
     fn create_test_pairs() -> [TestPair; 2] {
+        let large_vec = String::from_utf8(vec![b'a'; 1024 * 1024 * 2]).unwrap();
+        let clvaluea = CLValue::from_t(large_vec).unwrap();
+        let large_vec = String::from_utf8(vec![b'b'; 1024 * 1024 * 2]).unwrap();
+        let clvalueb = CLValue::from_t(large_vec).unwrap();
+
         [
             TestPair {
                 key: Key::Account(AccountHash::new([1_u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
+                value: StoredValue::CLValue(clvaluea),
             },
             TestPair {
                 key: Key::Account(AccountHash::new([2_u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
+                value: StoredValue::CLValue(clvalueb),
             },
         ]
     }
@@ -303,6 +312,7 @@ mod tests {
     fn create_test_state() -> (LmdbGlobalState, Digest) {
         let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
+        dbg!(&temp_dir.path().to_path_buf());
         let environment = Arc::new(
             LmdbEnvironment::new(
                 &temp_dir.path().to_path_buf(),
@@ -314,6 +324,7 @@ mod tests {
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
+        dbg!(&trie_store);
 
         let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
         let mut current_root = ret.empty_root_hash;
@@ -427,5 +438,53 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn returns_trie_or_chunk() {
+        let correlation_id = CorrelationId::new();
+        let (state, root_hash) = create_test_state();
+
+        // Expect `Trie` with NodePointer when asking with a root hash.
+        let trie = state
+            .get_trie(correlation_id, &root_hash, 0)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(trie, TrieOrChunkedData::Trie(_)));
+
+        // Expect another `Trie` with two LeafPointers.
+        let trie = state
+            .get_trie(correlation_id, &extract_next_hash_from_trie(trie), 0)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(trie, TrieOrChunkedData::Trie(_)));
+
+        // Now, the next hash will point to the actual leaf, which as we expect
+        // contains large data, so we expect to get `ChunkWithProof`.
+        let chunked_data = state
+            .get_trie(correlation_id, &extract_next_hash_from_trie(trie), 0)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(chunked_data, TrieOrChunkedData::ChunkWithProof(_)));
+    }
+
+    fn extract_next_hash_from_trie(trie: TrieOrChunkedData) -> Digest {
+        let next_hash = if let TrieOrChunkedData::Trie(trie) = trie {
+            if let Trie::Node { pointer_block } = trie {
+                if pointer_block.child_count() == 0 {
+                    panic!("expected children");
+                }
+                let (_, ptr) = pointer_block.as_indexed_pointers().next().unwrap();
+                match ptr {
+                    crate::storage::trie::Pointer::LeafPointer(ptr)
+                    | crate::storage::trie::Pointer::NodePointer(ptr) => ptr,
+                }
+            } else {
+                panic!("expected `Node`");
+            }
+        } else {
+            panic!("expected `Trie`");
+        };
+        next_hash
     }
 }

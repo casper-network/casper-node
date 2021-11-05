@@ -1763,9 +1763,12 @@ where
     where
         Error: From<S::Error>,
     {
+        // TODO[RC]: Need to have correct index here.
+        let index = 0;
+
         Ok(self
             .state
-            .get_trie(correlation_id, &trie_key)?
+            .get_trie(correlation_id, &trie_key, index)?
             .map(|trie_or_chunked_data| match trie_or_chunked_data {
                 TrieOrChunkedData::Trie(maybe_trie) => maybe_trie,
                 TrieOrChunkedData::ChunkWithProof(_) => unimplemented!(),

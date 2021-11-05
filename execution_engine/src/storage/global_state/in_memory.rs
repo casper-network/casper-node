@@ -242,6 +242,7 @@ impl StateProvider for InMemoryGlobalState {
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
+        index: u64,
     ) -> Result<Option<TrieOrChunkedData>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
 
@@ -254,11 +255,8 @@ impl StateProvider for InMemoryGlobalState {
         if serialized_back.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
             Ok(Some(TrieOrChunkedData::Trie(ret.unwrap())))
         } else {
-            let chunk_with_proof = ChunkWithProof::new(
-                serialized_back.as_slice(),
-                0, // TODO[RC]: Index must come from the caller
-            )
-            .map_err(|_| lmdb::Error::Other(8888))?; // TODO[RC]: Better error
+            let chunk_with_proof = ChunkWithProof::new(serialized_back.as_slice(), index)
+                .map_err(|_| lmdb::Error::Other(8888))?; // TODO[RC]: Better error
             Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
         }
     }

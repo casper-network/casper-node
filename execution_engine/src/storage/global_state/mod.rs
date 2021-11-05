@@ -100,6 +100,7 @@ pub trait StateProvider {
         &self,
         correlation_id: CorrelationId,
         trie_key: &Digest,
+        index: u64,
     ) -> Result<Option<TrieOrChunkedData>, Self::Error>;
 
     /// Insert a trie node into the trie
