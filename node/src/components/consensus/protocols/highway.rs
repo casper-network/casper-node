@@ -668,7 +668,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         let ev = match state.maybe_evidence(vid) {
                             Some(ev) => ev.clone(),
                             None => {
-                                error!(?vid, instance_id=?self.highway.instance_id(), "panorama marked validator as faulty but no evidence was found");
+                                warn!(
+                                    ?vid, instance_id=?self.highway.instance_id(),
+                                    "panorama marked validator as faulty but no evidence was found"
+                                );
                                 return vec![];
                             }
                         };
