@@ -2977,6 +2977,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-transforms"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "os_str_bytes"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
