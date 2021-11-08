@@ -151,13 +151,18 @@ pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 /// A responder satisfying a request.
 #[must_use]
 #[derive(DataSize)]
-pub(crate) struct Responder<T>(Option<oneshot::Sender<T>>);
+pub(crate) struct Responder<T> {
+    /// Sender through which the response ultimately should be sent.
+    sender: Option<oneshot::Sender<T>>,
+}
 
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
     #[inline]
     fn new(sender: oneshot::Sender<T>) -> Self {
-        Responder(Some(sender))
+        Responder {
+            sender: Some(sender),
+        }
     }
 
     /// Helper method for tests.
@@ -167,7 +172,7 @@ impl<T: 'static + Send> Responder<T> {
     #[cfg(test)]
     #[inline]
     pub(crate) fn create(sender: oneshot::Sender<T>) -> Self {
-        Responder::new(sender)
+        Responder::new { sender }
     }
 }
 
@@ -177,7 +182,7 @@ where
 {
     /// Send `data` to the origin of the request.
     pub(crate) async fn respond(mut self, data: T) {
-        if let Some(sender) = self.0.take() {
+        if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
                 error!(
                     ?data,
@@ -207,7 +212,7 @@ impl<T> Display for Responder<T> {
 
 impl<T> Drop for Responder<T> {
     fn drop(&mut self) {
-        if self.0.is_some() {
+        if self.sender.is_some() {
             // This is usually a very serious error, as another component will now be stuck.
             error!(
                 responder=?self,
@@ -386,12 +391,17 @@ where
 /// Provides methods allowing the creation of effects which need to be scheduled
 /// on the reactor's event queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub(crate) struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
+pub(crate) struct EffectBuilder<REv: 'static> {
+    /// A handle to the referenced event queue.
+    event_queue: EventQueueHandle<REv>,
+}
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder(self.0)
+        EffectBuilder {
+            event_queue: self.event_queue,
+        }
     }
 }
 
@@ -399,8 +409,8 @@ impl<REv> Copy for EffectBuilder<REv> {}
 
 impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
-    pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
-        EffectBuilder(event_queue_handle)
+    pub(crate) fn new(event_queue: EventQueueHandle<REv>) -> Self {
+        EffectBuilder { event_queue }
     }
 
     /// Schedules a regular event.
@@ -408,13 +418,13 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<E>,
     {
-        self.0.schedule(event, QueueKind::Regular).await
+        self.event_queue.schedule(event, QueueKind::Regular).await
     }
 
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
-        self.0
+        self.event_queue
     }
 
     /// Performs a request.
@@ -441,7 +451,7 @@ impl<REv> EffectBuilder<REv> {
 
         // Now inject the request event into the event loop.
         let request_event = f(responder).into();
-        self.0.schedule(request_event, queue_kind).await;
+        self.event_queue.schedule(request_event, queue_kind).await;
 
         match receiver.await {
             Ok(value) => value,
@@ -481,7 +491,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ControlAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ControlAnnouncement::FatalError { file, line, msg },
                 QueueKind::Control,
@@ -606,7 +616,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<BlockProposerAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 BlockProposerAnnouncement::DeploysExpired(hashes),
                 QueueKind::Regular,
@@ -619,7 +629,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkAnnouncement<I, P>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 NetworkAnnouncement::MessageReceived { sender, payload },
                 QueueKind::NetworkIncoming,
@@ -632,7 +642,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkAnnouncement<I, P>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 NetworkAnnouncement::GossipOurAddress(our_address),
                 QueueKind::Regular,
@@ -645,7 +655,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkAnnouncement<I, P>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 NetworkAnnouncement::NewPeer(peer_id),
                 QueueKind::NetworkIncoming,
@@ -663,7 +673,7 @@ impl<REv> EffectBuilder<REv> {
             "{} must be an item where the ID _is_ the complete item",
             item
         );
-        self.0
+        self.event_queue
             .schedule(
                 GossiperAnnouncement::NewCompleteItem(item),
                 QueueKind::Regular,
@@ -679,7 +689,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<RpcServerAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 RpcServerAnnouncement::DeployReceived { deploy, responder },
                 QueueKind::Api,
@@ -696,7 +706,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<DeployAcceptorAnnouncement<I>>,
     {
-        self.0.schedule(
+        self.event_queue.schedule(
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             QueueKind::Regular,
         )
@@ -708,7 +718,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<GossiperAnnouncement<T>>,
         T: Item,
     {
-        self.0
+        self.event_queue
             .schedule(
                 GossiperAnnouncement::FinishedGossiping(item_id),
                 QueueKind::Regular,
@@ -725,7 +735,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<DeployAcceptorAnnouncement<I>>,
     {
-        self.0.schedule(
+        self.event_queue.schedule(
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
             QueueKind::Regular,
         )
@@ -739,7 +749,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ContractRuntimeAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
                 QueueKind::Regular,
@@ -752,7 +762,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ChainspecLoaderAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
                 QueueKind::Regular,
@@ -1225,7 +1235,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ContractRuntimeRequest>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
@@ -1260,7 +1270,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ConsensusAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Regular,
@@ -1275,7 +1285,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ConsensusAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ConsensusAnnouncement::CreatedFinalitySignature(Box::new(finality_signature)),
                 QueueKind::Regular,
@@ -1292,7 +1302,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ConsensusAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ConsensusAnnouncement::Fault {
                     era_id,
@@ -1309,7 +1319,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<BlocklistAnnouncement<I>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
                 QueueKind::Regular,
@@ -1322,7 +1332,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<LinearChainAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 LinearChainAnnouncement::BlockAdded(block),
                 QueueKind::Regular,
@@ -1335,7 +1345,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<LinearChainAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
                 QueueKind::Regular,

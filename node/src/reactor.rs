@@ -179,21 +179,27 @@ pub(crate) type Scheduler<Ev> = WeightedRoundRobin<(Option<NonZeroU64>, Ev), Que
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 #[derive(DataSize, Debug)]
-pub(crate) struct EventQueueHandle<REv>(&'static Scheduler<REv>)
+pub(crate) struct EventQueueHandle<REv>
 where
-    REv: 'static;
+    REv: 'static,
+{
+    /// A reference to the scheduler of the event queue.
+    scheduler: &'static Scheduler<REv>,
+}
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
 impl<REv> Clone for EventQueueHandle<REv> {
     fn clone(&self) -> Self {
-        EventQueueHandle(self.0)
+        EventQueueHandle {
+            scheduler: self.scheduler,
+        }
     }
 }
 impl<REv> Copy for EventQueueHandle<REv> {}
 
 impl<REv> EventQueueHandle<REv> {
     pub(crate) fn new(scheduler: &'static Scheduler<REv>) -> Self {
-        EventQueueHandle(scheduler)
+        EventQueueHandle { scheduler }
     }
 
     /// Schedule an event on a specific queue.
@@ -215,12 +221,14 @@ impl<REv> EventQueueHandle<REv> {
     ) where
         REv: From<Ev>,
     {
-        self.0.push((ancestor, event.into()), queue_kind).await
+        self.scheduler
+            .push((ancestor, event.into()), queue_kind)
+            .await
     }
 
     /// Returns number of events in each of the scheduler's queues.
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
-        self.0.event_queues_counts()
+        self.scheduler.event_queues_counts()
     }
 }
 
