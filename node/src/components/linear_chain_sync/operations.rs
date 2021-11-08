@@ -27,9 +27,6 @@ use crate::{
 
 const SLEEP_DURATION_SO_WE_DONT_SPAM: Duration = Duration::from_millis(100);
 
-/// The maximum number of in-flight requests we make in parallel.
-const MAX_PARALLEL_FETCHES: usize = 20;
-
 /// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
 /// necessary for the item. Not suited to fetching a block header or block by height, which require
 /// verification with finality signatures.
@@ -481,14 +478,15 @@ async fn fetch_and_store_block_by_hash(
 async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
     state_root_hash: Digest,
+    max_parallel_trie_fetches: usize,
 ) -> Result<(), LinearChainSyncError> {
     info!(?state_root_hash, "syncing trie store",);
     // TODO: This implementation works like a stream with ordered buffering. Use an actual stream
     //       with unordered buffering instead.
     let mut outstanding_trie_keys = vec![state_root_hash];
-    let mut fetches_in_progress = Vec::with_capacity(MAX_PARALLEL_FETCHES);
+    let mut fetches_in_progress = Vec::with_capacity(max_parallel_trie_fetches);
     while !fetches_in_progress.is_empty() || !outstanding_trie_keys.is_empty() {
-        let fetches_to_start = MAX_PARALLEL_FETCHES.saturating_sub(fetches_in_progress.len());
+        let fetches_to_start = max_parallel_trie_fetches.saturating_sub(fetches_in_progress.len());
         let new_fetches = outstanding_trie_keys
             .drain(outstanding_trie_keys.len().saturating_sub(fetches_to_start)..)
             .map(|trie_key| tokio::spawn(fetch_and_store_trie(effect_builder, trie_key)));
@@ -515,6 +513,7 @@ async fn fast_sync_to_most_recent(
     effect_builder: EffectBuilder<JoinerEvent>,
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
+    node_config: NodeConfig,
 ) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
     let mut trusted_key_block_info =
         get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
@@ -590,7 +589,12 @@ async fn fast_sync_to_most_recent(
     }
 
     // Synchronize the trie store for the most recent block header.
-    sync_trie_store(effect_builder, *most_recent_block_header.state_root_hash()).await?;
+    sync_trie_store(
+        effect_builder,
+        *most_recent_block_header.state_root_hash(),
+        node_config.max_parallel_trie_fetches as usize,
+    )
+    .await?;
 
     Ok((trusted_key_block_info, most_recent_block_header))
 }
@@ -599,6 +603,7 @@ async fn fast_sync_to_most_recent(
 async fn sync_deploys_and_transfers_and_state(
     effect_builder: EffectBuilder<JoinerEvent>,
     block: &Block,
+    node_config: &NodeConfig,
 ) -> Result<(), LinearChainSyncError> {
     let hash_iter: Vec<_> = block
         .deploy_hashes()
@@ -608,13 +613,18 @@ async fn sync_deploys_and_transfers_and_state(
         .collect();
     futures::stream::iter(hash_iter)
         .map(|hash| fetch_and_store_deploy(effect_builder, hash))
-        .buffer_unordered(MAX_PARALLEL_FETCHES)
+        .buffer_unordered(node_config.max_parallel_deploy_fetches as usize)
         .for_each(|result| {
             trace!("fetched {:?}", result);
             async move {}
         })
         .await;
-    Ok(())
+    sync_trie_store(
+        effect_builder,
+        *block.header().state_root_hash(),
+        node_config.max_parallel_trie_fetches as usize,
+    )
+    .await
 }
 
 /// Archival sync all the way up to the current version.
@@ -632,6 +642,7 @@ async fn archival_sync(
     effect_builder: EffectBuilder<JoinerEvent>,
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
+    node_config: NodeConfig,
 ) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
@@ -644,7 +655,7 @@ async fn archival_sync(
     // Sync to genesis
     let mut walkback_block = trusted_block.clone();
     loop {
-        sync_deploys_and_transfers_and_state(effect_builder, &walkback_block).await?;
+        sync_deploys_and_transfers_and_state(effect_builder, &walkback_block, &node_config).await?;
         if walkback_block.height() == 0 {
             break;
         } else {
@@ -673,7 +684,8 @@ async fn archival_sync(
                 continue;
             }
         };
-        sync_deploys_and_transfers_and_state(effect_builder, &most_recent_block).await?;
+        sync_deploys_and_transfers_and_state(effect_builder, &most_recent_block, &node_config)
+            .await?;
         if let Some(key_block_info) =
             KeyBlockInfo::maybe_from_block_header(most_recent_block.header())
         {
@@ -757,15 +769,32 @@ pub(crate) async fn run_fast_sync_task(
         .await?
         .is_none()
         {
-            sync_trie_store(effect_builder, *trusted_block_header.state_root_hash()).await?;
+            sync_trie_store(
+                effect_builder,
+                *trusted_block_header.state_root_hash(),
+                node_config.max_parallel_trie_fetches as usize,
+            )
+            .await?;
             return Ok(*trusted_block_header);
         }
     }
 
     let (mut trusted_key_block_info, mut most_recent_block_header) = if node_config.archival_sync {
-        archival_sync(effect_builder, *trusted_block_header, &chainspec).await?
+        archival_sync(
+            effect_builder,
+            *trusted_block_header,
+            &chainspec,
+            node_config,
+        )
+        .await?
     } else {
-        fast_sync_to_most_recent(effect_builder, *trusted_block_header, &chainspec).await?
+        fast_sync_to_most_recent(
+            effect_builder,
+            *trusted_block_header,
+            &chainspec,
+            node_config,
+        )
+        .await?
     };
 
     // Execute blocks to get to current.

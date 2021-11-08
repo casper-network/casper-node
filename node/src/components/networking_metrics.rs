@@ -100,7 +100,7 @@ impl NetworkingMetrics {
             "count of outgoing messages with block request/response payload",
         )?;
         let out_count_trie_transfer = IntCounter::new(
-            "net_out_count_block_transfer",
+            "net_out_count_trie_transfer",
             "count of outgoing messages with trie payloads",
         )?;
         let out_count_other = IntCounter::new(
@@ -133,7 +133,7 @@ impl NetworkingMetrics {
             "volume in bytes of outgoing messages with block request/response payload",
         )?;
         let out_bytes_trie_transfer = IntCounter::new(
-            "net_out_bytes_block_transfer",
+            "net_out_bytes_trie_transfer",
             "volume in bytes of outgoing messages with trie payloads",
         )?;
         let out_bytes_other = IntCounter::new(
@@ -153,6 +153,7 @@ impl NetworkingMetrics {
         registry.register(Box::new(out_count_address_gossip.clone()))?;
         registry.register(Box::new(out_count_deploy_transfer.clone()))?;
         registry.register(Box::new(out_count_block_transfer.clone()))?;
+        registry.register(Box::new(out_count_trie_transfer.clone()))?;
         registry.register(Box::new(out_count_other.clone()))?;
 
         registry.register(Box::new(out_bytes_protocol.clone()))?;
@@ -161,6 +162,7 @@ impl NetworkingMetrics {
         registry.register(Box::new(out_bytes_address_gossip.clone()))?;
         registry.register(Box::new(out_bytes_deploy_transfer.clone()))?;
         registry.register(Box::new(out_bytes_block_transfer.clone()))?;
+        registry.register(Box::new(out_bytes_trie_transfer.clone()))?;
         registry.register(Box::new(out_bytes_other.clone()))?;
 
         Ok(NetworkingMetrics {
