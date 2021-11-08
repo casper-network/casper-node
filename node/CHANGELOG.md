@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes` that return the status changes of active validators.
 * Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
+* Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
