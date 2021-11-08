@@ -1,7 +1,10 @@
 use std::{ops::Deref, sync::Arc};
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{
+    bytesrepr::{self},
+    Key, StoredValue,
+};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -28,6 +31,8 @@ use crate::{
         },
     },
 };
+
+const ERROR_UNABLE_TO_CREATE_CHUNK_WITH_PROOF: i32 = 1;
 
 /// Global state implemented purely in memory only. No state is saved to disk. This is mostly
 /// used for testing purposes.
@@ -245,20 +250,23 @@ impl StateProvider for InMemoryGlobalState {
         index: u64,
     ) -> Result<Option<TrieOrChunkedData>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-
-        // TODO[RC]: `get()` deserializes the value, which we immediately serialize back
-        // just to get the size of it. Optimize that later.
-        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        let bytes =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
         txn.commit()?; // TODO[RC]: Needed for read only txn?
 
-        let serialized_back = bytesrepr::serialize(ret.clone())?;
-        if serialized_back.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            Ok(Some(TrieOrChunkedData::Trie(ret.unwrap())))
-        } else {
-            let chunk_with_proof = ChunkWithProof::new(serialized_back.as_slice(), index)
-                .map_err(|_| lmdb::Error::Other(8888))?; // TODO[RC]: Better error
-            Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
-        }
+        bytes.map_or_else(
+            || Ok(None),
+            |bytes| {
+                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+                    let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
+                    Ok(Some(TrieOrChunkedData::Trie(deserialized_trie)))
+                } else {
+                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), index)
+                        .map_err(|_| lmdb::Error::Other(ERROR_UNABLE_TO_CREATE_CHUNK_WITH_PROOF))?;
+                    Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
+                }
+            },
+        )
     }
 
     fn put_trie(

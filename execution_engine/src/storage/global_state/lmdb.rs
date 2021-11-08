@@ -23,8 +23,9 @@ use crate::{
     },
 };
 
+const ERROR_UNABLE_TO_CREATE_CHUNK_WITH_PROOF: i32 = 1;
+
 /// Global state implemented against LMDB as a backing data store.
-#[derive(Debug)]
 pub struct LmdbGlobalState {
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
@@ -36,7 +37,6 @@ pub struct LmdbGlobalState {
 }
 
 /// Represents a "view" of global state at a particular root hash.
-#[derive(Debug)]
 pub struct LmdbGlobalStateView {
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
@@ -162,13 +162,11 @@ impl StateProvider for LmdbGlobalState {
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        dbg!(&maybe_root);
         let maybe_state = maybe_root.map(|_| LmdbGlobalStateView {
             environment: Arc::clone(&self.environment),
             store: Arc::clone(&self.trie_store),
             root_hash: state_hash,
         });
-        dbg!(&maybe_state);
         txn.commit()?;
         Ok(maybe_state)
     }
@@ -200,22 +198,23 @@ impl StateProvider for LmdbGlobalState {
         index: u64,
     ) -> Result<Option<TrieOrChunkedData>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-
-        // TODO[RC]: `get()` deserializes the value, which we immediately serialize back
-        // just to get the size of it. Optimize that later.
-        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        let bytes =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
         txn.commit()?; // TODO[RC]: Needed for read only txn?
 
-        let serialized_back = bytesrepr::serialize(ret.clone())?;
-        dbg!(serialized_back.len());
-        dbg!(ChunkWithProof::CHUNK_SIZE_BYTES);
-        if serialized_back.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            Ok(Some(TrieOrChunkedData::Trie(ret.unwrap())))
-        } else {
-            let chunk_with_proof = ChunkWithProof::new(serialized_back.as_slice(), index)
-                .map_err(|_| lmdb::Error::Other(8888))?; // TODO[RC]: Better error
-            Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
-        }
+        bytes.map_or_else(
+            || Ok(None),
+            |bytes| {
+                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+                    let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
+                    Ok(Some(TrieOrChunkedData::Trie(deserialized_trie)))
+                } else {
+                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), index)
+                        .map_err(|_| lmdb::Error::Other(ERROR_UNABLE_TO_CREATE_CHUNK_WITH_PROOF))?;
+                    Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
+                }
+            },
+        )
     }
 
     fn put_trie(
@@ -260,7 +259,7 @@ mod tests {
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, bytesrepr::Bytes, CLValue, ContractWasm};
+    use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
     use crate::storage::{
@@ -275,19 +274,33 @@ mod tests {
     }
 
     fn create_test_pairs() -> [TestPair; 2] {
-        let large_vec = String::from_utf8(vec![b'a'; 1024 * 1024 * 2]).unwrap();
-        let clvaluea = CLValue::from_t(large_vec).unwrap();
-        let large_vec = String::from_utf8(vec![b'b'; 1024 * 1024 * 2]).unwrap();
-        let clvalueb = CLValue::from_t(large_vec).unwrap();
-
         [
             TestPair {
                 key: Key::Account(AccountHash::new([1_u8; 32])),
-                value: StoredValue::CLValue(clvaluea),
+                value: StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
             },
             TestPair {
                 key: Key::Account(AccountHash::new([2_u8; 32])),
-                value: StoredValue::CLValue(clvalueb),
+                value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
+            },
+        ]
+    }
+
+    // Creates the test pairs that contain data of size
+    // greater than the chunk limit.
+    fn create_test_pairs_with_large_data() -> [TestPair; 2] {
+        let val = CLValue::from_t(
+            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 2]).unwrap(),
+        )
+        .unwrap();
+        [
+            TestPair {
+                key: Key::Account(AccountHash::new([1_u8; 32])),
+                value: StoredValue::CLValue(val.clone()),
+            },
+            TestPair {
+                key: Key::Account(AccountHash::new([2_u8; 32])),
+                value: StoredValue::CLValue(val),
             },
         ]
     }
@@ -309,10 +322,9 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (LmdbGlobalState, Digest) {
+    fn create_test_state(pairs_creator: fn() -> [TestPair; 2]) -> (LmdbGlobalState, Digest) {
         let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
-        dbg!(&temp_dir.path().to_path_buf());
         let environment = Arc::new(
             LmdbEnvironment::new(
                 &temp_dir.path().to_path_buf(),
@@ -324,14 +336,13 @@ mod tests {
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
-        dbg!(&trie_store);
 
         let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
         let mut current_root = ret.empty_root_hash;
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
 
-            for TestPair { key, value } in &create_test_pairs() {
+            for TestPair { key, value } in &(pairs_creator)() {
                 match write::<_, _, _, LmdbTrieStore, error::Error>(
                     correlation_id,
                     &mut txn,
@@ -358,7 +369,7 @@ mod tests {
     #[test]
     fn reads_from_a_checkout_return_expected_values() {
         let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state();
+        let (state, root_hash) = create_test_state(create_test_pairs);
         let checkout = state.checkout(root_hash).unwrap().unwrap();
         for TestPair { key, value } in create_test_pairs().iter().cloned() {
             assert_eq!(Some(value), checkout.read(correlation_id, &key).unwrap());
@@ -367,7 +378,7 @@ mod tests {
 
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
-        let (state, _) = create_test_state();
+        let (state, _) = create_test_state(create_test_pairs);
         let fake_hash: Digest = Digest::hash(&[1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
@@ -378,7 +389,7 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state();
+        let (state, root_hash) = create_test_state(create_test_pairs);
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
@@ -405,7 +416,7 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state();
+        let (state, root_hash) = create_test_state(create_test_pairs);
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
@@ -443,7 +454,7 @@ mod tests {
     #[test]
     fn returns_trie_or_chunk() {
         let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state();
+        let (state, root_hash) = create_test_state(create_test_pairs_with_large_data);
 
         // Expect `Trie` with NodePointer when asking with a root hash.
         let trie = state
