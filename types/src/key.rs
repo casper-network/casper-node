@@ -398,6 +398,16 @@ impl Key {
         }
     }
 
+    /// Returns a reference to the inner [`URefAddr`] if `self` is of type [`Key::Balance`],
+    /// otherwise returns `None`.
+    pub fn as_balance(&self) -> Option<&URefAddr> {
+        if let Self::Balance(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
     /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
     pub fn into_uref(self) -> Option<URef> {
         match self {

@@ -23,7 +23,7 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+            QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -548,15 +548,19 @@ where
     }
 
     /// Increments engine state.
-    pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
-        let StepSuccess {
-            post_state_hash, ..
-        } = self
+    pub fn step(&mut self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
+        let step_result = self
             .engine_state
-            .commit_step(CorrelationId::new(), step_request)
-            .expect("should step");
-        self.post_state_hash = Some(post_state_hash);
-        self
+            .commit_step(CorrelationId::new(), step_request);
+
+        if let Ok(StepSuccess {
+            post_state_hash, ..
+        }) = &step_result
+        {
+            self.post_state_hash = Some(post_state_hash.clone());
+        }
+
+        step_result
     }
 
     /// Expects a successful run
