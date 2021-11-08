@@ -398,7 +398,7 @@ impl Key {
         }
     }
 
-    /// Returns a reference to the inner [`URefAddr`] if `self` is of type [`Key::Balance`],
+    /// Returns a reference to the inner `URefAddr` if `self` is of type [`Key::Balance`],
     /// otherwise returns `None`.
     pub fn as_balance(&self) -> Option<&URefAddr> {
         if let Self::Balance(v) = self {

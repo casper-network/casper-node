@@ -1,37 +1,28 @@
 use std::{
     collections::BTreeSet,
     convert::TryInto,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
-    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_RUN_GENESIS_REQUEST,
+    utils, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::GenesisValidator, Error as CoreError, GenesisAccount, RewardItem, SlashItem,
-        StepSuccess, MAX_PAYMENT,
+        genesis::GenesisValidator, GenesisAccount, RewardItem, SlashItem, StepSuccess,
     },
-    shared::{opcode_costs::DEFAULT_NOP_COST, transform::Transform, wasm},
+    shared::transform::Transform,
 };
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME,
-    runtime_args,
     system::auction::{
         Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    CLValue, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
-    StoredValue, U512,
+    CLValue, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 use once_cell::sync::Lazy;
-use parity_wasm::{
-    builder,
-    elements::{Instruction, Instructions},
-};
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();

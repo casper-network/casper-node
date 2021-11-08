@@ -557,7 +557,7 @@ where
             post_state_hash, ..
         }) = &step_result
         {
-            self.post_state_hash = Some(post_state_hash.clone());
+            self.post_state_hash = Some(*post_state_hash);
         }
 
         step_result
