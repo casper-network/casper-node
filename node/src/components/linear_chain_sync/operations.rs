@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
 
@@ -599,13 +600,20 @@ async fn sync_deploys_and_transfers_and_state(
     effect_builder: EffectBuilder<JoinerEvent>,
     block: &Block,
 ) -> Result<(), LinearChainSyncError> {
-    for deploy_hash in block.deploy_hashes() {
-        fetch_and_store_deploy(effect_builder, *deploy_hash).await?;
-    }
-    for transfer_hash in block.transfer_hashes() {
-        fetch_and_store_deploy(effect_builder, *transfer_hash).await?;
-    }
-    sync_trie_store(effect_builder, *block.header().state_root_hash()).await?;
+    let hash_iter: Vec<_> = block
+        .deploy_hashes()
+        .iter()
+        .chain(block.transfer_hashes())
+        .cloned()
+        .collect();
+    futures::stream::iter(hash_iter)
+        .map(|hash| fetch_and_store_deploy(effect_builder, hash))
+        .buffer_unordered(MAX_PARALLEL_FETCHES)
+        .for_each(|result| {
+            trace!("fetched {:?}", result);
+            async move {}
+        })
+        .await;
     Ok(())
 }
 
