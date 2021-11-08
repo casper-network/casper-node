@@ -47,6 +47,8 @@ unbonding_delay = 14
 round_seigniorage_rate = [15_959, 6_204_824_582_392]
 # Maximum number of associated keys for a single account.
 max_associated_keys = 100
+# Maximum height of contract runtime call stack.
+max_runtime_call_stack_height = 12
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
