@@ -5,6 +5,7 @@ use std::{
 };
 
 use num_traits::Zero;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
@@ -22,7 +23,6 @@ use casper_types::{
     },
     CLValue, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
-use once_cell::sync::Lazy;
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
