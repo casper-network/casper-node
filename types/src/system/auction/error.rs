@@ -265,7 +265,13 @@ pub enum Error {
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
-    GasLimit,
+    GasLimit = 40,
+    /// Too many frames on the runtime stack.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(41, Error::RuntimeStackOverflow as u8);
+    /// ```
+    RuntimeStackOverflow = 41,
 }
 
 impl Display for Error {
@@ -311,6 +317,7 @@ impl Display for Error {
             Error::DelegationRateTooLarge => formatter.write_str("Delegation rate too large"),
             Error::DelegatorFundsLocked => formatter.write_str("Delegator's funds are locked"),
             Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow"),
+            Error::RuntimeStackOverflow => formatter.write_str("Runtime stack overflow"),
             Error::GasLimit => formatter.write_str("GasLimit"),
         }
     }
@@ -381,6 +388,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
+            d if d == Error::RuntimeStackOverflow as u8 => Ok(Error::RuntimeStackOverflow),
             _ => Err(TryFromU8ForError(())),
         }
     }
