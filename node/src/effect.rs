@@ -187,10 +187,17 @@ where
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
-                error!(
-                    ?data,
-                    "could not send response to request down oneshot channel"
-                );
+                if self.is_shutting_down.is_set() {
+                    debug!(
+                        ?data,
+                        "ignored failure to send response to request down oneshot channel"
+                    );
+                } else {
+                    error!(
+                        ?data,
+                        "could not send response to request down oneshot channel"
+                    );
+                }
             }
         } else {
             error!(
@@ -216,12 +223,18 @@ impl<T> Display for Responder<T> {
 impl<T> Drop for Responder<T> {
     fn drop(&mut self) {
         if self.sender.is_some() {
-            // This is usually a very serious error, as another component will now be stuck.
-            error!(
-                responder=?self,
-                "dropped without being responded to --- \
-                 this is always a bug and will likely cause another component to be stuck!"
-            );
+            if self.is_shutting_down.is_set() {
+                debug!(
+                    responder=?self,
+                    "ignored dropping of responder during shutdown"
+                );
+            } else {
+                // This is usually a very serious error, as another component will now be stuck.
+                error!(
+                    responder=?self,
+                    "dropped without being responded to outside of shutdown"
+                );
+            }
         }
     }
 }
