@@ -172,7 +172,7 @@ impl<T: 'static + Send> Responder<T> {
     #[cfg(test)]
     #[inline]
     pub(crate) fn create(sender: oneshot::Sender<T>) -> Self {
-        Responder::new { sender }
+        Responder::new(sender)
     }
 }
 
