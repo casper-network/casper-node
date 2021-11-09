@@ -276,7 +276,6 @@ fn commit_step(
         // Note: The Casper Network does not slash, but another network could
         slash_items: vec![],
         evict_items,
-        run_auction: true,
         next_era_id,
         era_end_timestamp_millis,
     };
