@@ -124,7 +124,7 @@ pub(crate) fn leak<T>(value: T) -> &'static T {
 }
 
 /// A flag shared across multiple subsystem.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, DataSize, Debug)]
 pub(crate) struct SharedFlag(&'static AtomicBool);
 
 impl SharedFlag {
@@ -143,6 +143,12 @@ impl SharedFlag {
     /// Set the flag.
     pub(crate) fn set(self) {
         self.0.store(true, Ordering::SeqCst)
+    }
+}
+
+impl Default for SharedFlag {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

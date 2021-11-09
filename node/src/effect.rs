@@ -458,7 +458,7 @@ impl<REv> EffectBuilder<REv> {
             Err(err) => {
                 // The channel should never be closed, ever. If it is, we pretend nothing happened
                 // though, instead of crashing.
-                if self.event_queue.is_shutting_down() {
+                if self.event_queue.shutdown_flag().is_set() {
                     debug!(%err, ?queue_kind, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
                 } else {
                     error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \

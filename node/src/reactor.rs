@@ -41,7 +41,7 @@ use std::{
     mem,
     num::NonZeroU64,
     str::FromStr,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::Ordering,
 };
 
 use datasize::DataSize;
@@ -63,7 +63,7 @@ use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     unregister_metric,
-    utils::{self, WeightedRoundRobin},
+    utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
@@ -186,7 +186,7 @@ where
     /// A reference to the scheduler of the event queue.
     scheduler: &'static Scheduler<REv>,
     /// Flag indicating whether or not the reactor processing this event queue is shutting down.
-    is_shutting_down: &'static AtomicBool,
+    is_shutting_down: SharedFlag,
 }
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
@@ -202,10 +202,7 @@ impl<REv> Copy for EventQueueHandle<REv> {}
 
 impl<REv> EventQueueHandle<REv> {
     /// Creates a new event queue handle.
-    pub(crate) fn new(
-        scheduler: &'static Scheduler<REv>,
-        is_shutting_down: &'static AtomicBool,
-    ) -> Self {
+    pub(crate) fn new(scheduler: &'static Scheduler<REv>, is_shutting_down: SharedFlag) -> Self {
         EventQueueHandle {
             scheduler,
             is_shutting_down,
@@ -219,8 +216,7 @@ impl<REv> EventQueueHandle<REv> {
     pub(crate) fn without_shutdown(scheduler: &'static Scheduler<REv>) -> Self {
         // We keep a single shared instance of the flag around that is not accessible by anything
         // outside of this function, thus staying eternally unset.
-        static UNUSED_SHUTDOWN_FLAG: Lazy<&'static AtomicBool> =
-            Lazy::new(|| utils::leak(AtomicBool::new(false)));
+        static UNUSED_SHUTDOWN_FLAG: Lazy<SharedFlag> = Lazy::new(SharedFlag::new);
 
         EventQueueHandle::new(scheduler, *UNUSED_SHUTDOWN_FLAG)
     }
@@ -255,8 +251,8 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns whether the associated reactor is currently shutting down.
-    pub(crate) fn is_shutting_down(&self) -> bool {
-        self.is_shutting_down.load(Ordering::SeqCst)
+    pub(crate) fn shutdown_flag(&self) -> SharedFlag {
+        self.is_shutting_down
     }
 }
 
@@ -386,7 +382,7 @@ where
     last_queue_dump: Option<Timestamp>,
 
     /// Flag indicating the reactor is being shut down.
-    is_shutting_down: &'static AtomicBool,
+    is_shutting_down: SharedFlag,
 }
 
 /// Metric data for the Runner
@@ -501,7 +497,7 @@ where
         }
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-        let is_shutting_down = utils::leak(AtomicBool::new(false));
+        let is_shutting_down = SharedFlag::new();
 
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
@@ -785,7 +781,7 @@ where
 
     /// Sets the "reactor is shutting down" flag.
     fn set_is_shutting_down(&mut self) {
-        self.is_shutting_down.store(true, Ordering::SeqCst)
+        self.is_shutting_down.set()
     }
 }
 
@@ -854,7 +850,7 @@ impl Runner<InitializerReactor> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
-        let is_shutting_down = utils::leak(AtomicBool::new(false));
+        let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) =
             InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
