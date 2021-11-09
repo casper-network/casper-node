@@ -111,9 +111,7 @@ pub struct RuntimeContext<'a, R> {
     deploy_hash: DeployHash,
     gas_limit: Gas,
     gas_counter: Gas,
-    hash_address_generator: Rc<RefCell<AddressGenerator>>,
-    uref_address_generator: Rc<RefCell<AddressGenerator>>,
-    transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+    address_generator: Rc<RefCell<AddressGenerator>>,
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
     phase: Phase,
@@ -142,9 +140,7 @@ where
         deploy_hash: DeployHash,
         gas_limit: Gas,
         gas_counter: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         phase: Phase,
@@ -164,9 +160,7 @@ where
             base_key,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -328,18 +322,8 @@ where
     }
 
     /// Returns new shared instance of an address generator.
-    pub fn uref_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
-        Rc::clone(&self.uref_address_generator)
-    }
-
-    /// Returns new shared instance of a hash generator.
-    pub fn hash_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
-        Rc::clone(&self.hash_address_generator)
-    }
-
-    /// Returns new shared instance of a transfer address generator.
-    pub fn transfer_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
-        Rc::clone(&self.transfer_address_generator)
+    pub fn address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
+        Rc::clone(&self.address_generator)
     }
 
     /// Returns new shared instance of a tracking copy.
@@ -387,13 +371,13 @@ where
 
     /// Generates new deterministic hash for uses as an address.
     pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
-        Ok(self.hash_address_generator.borrow_mut().new_hash_address())
+        Ok(self.address_generator.borrow_mut().new_hash_address())
     }
 
     /// Creates new [`URef`] instance.
     pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, Error> {
         let uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.insert_uref(uref);
@@ -408,10 +392,7 @@ where
 
     /// Creates a new transfer address using a transfer address generator.
     pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
-        let transfer_addr = self
-            .transfer_address_generator
-            .borrow_mut()
-            .create_address();
+        let transfer_addr = self.address_generator.borrow_mut().create_address();
         Ok(TransferAddr::new(transfer_addr))
     }
 
