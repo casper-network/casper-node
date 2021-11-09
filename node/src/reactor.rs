@@ -239,6 +239,11 @@ impl<REv> EventQueueHandle<REv> {
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
         self.scheduler.event_queues_counts()
     }
+
+    /// Returns whether the associated reactor is currently shutting down.
+    pub(crate) fn is_shutting_down(&self) -> bool {
+        self.is_shutting_down.load(Ordering::SeqCst)
+    }
 }
 
 /// Reactor core.

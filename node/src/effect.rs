@@ -77,9 +77,9 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-use tracing::error;
 #[cfg(not(feature = "fast-sync"))]
 use tracing::warn;
+use tracing::{debug, error};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -458,8 +458,12 @@ impl<REv> EffectBuilder<REv> {
             Err(err) => {
                 // The channel should never be closed, ever. If it is, we pretend nothing happened
                 // though, instead of crashing.
-                error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
-                       check if a component is stuck from now on ");
+                if self.event_queue.is_shutting_down() {
+                    debug!(%err, ?queue_kind, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
+                } else {
+                    error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
+                           check if a component is stuck from now on");
+                }
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
