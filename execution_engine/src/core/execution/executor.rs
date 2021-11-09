@@ -130,15 +130,7 @@ impl Executor {
             extract_access_rights_from_keys(keys)
         };
 
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let target_address_generator = {
+        let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
@@ -162,9 +154,7 @@ impl Executor {
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            target_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -300,15 +290,7 @@ impl Executor {
         R::Error: Into<Error>,
     {
         // use host side standard payment
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
+        let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
@@ -325,9 +307,7 @@ impl Executor {
             blocktime,
             deploy_hash,
             payment_gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             Rc::clone(&tracking_copy),
@@ -455,15 +435,7 @@ impl Executor {
             }
         }
 
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
+        let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
@@ -487,9 +459,7 @@ impl Executor {
             blocktime,
             deploy_hash,
             gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             tracking_copy,
@@ -533,9 +503,7 @@ impl Executor {
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -562,9 +530,7 @@ impl Executor {
             blocktime,
             deploy_hash,
             gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             tracking_copy,
@@ -624,9 +590,7 @@ impl Executor {
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -659,9 +623,7 @@ impl Executor {
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,

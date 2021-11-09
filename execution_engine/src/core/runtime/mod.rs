@@ -1443,9 +1443,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let hash_address_generator = self.context.hash_address_generator();
-        let uref_address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1463,9 +1461,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1589,9 +1585,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1609,9 +1603,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1718,9 +1710,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
 
@@ -1739,9 +1729,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -2225,9 +2213,7 @@ where
             self.context.get_deploy_hash(),
             self.context.gas_limit(),
             self.context.gas_counter(),
-            self.context.hash_address_generator(),
-            self.context.uref_address_generator(),
-            self.context.transfer_address_generator(),
+            self.context.address_generator(),
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
