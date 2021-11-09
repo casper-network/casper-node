@@ -1,6 +1,6 @@
 [package]
 name = "casper-engine-test-support"
-version = "2.0.0" # when updating, also update 'html_root_url' in lib.rs
+version = "2.0.1" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Library to support testing of Wasm smart contracts for use on the Casper network."
