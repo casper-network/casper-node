@@ -218,7 +218,7 @@ impl<REv: 'static> ComponentHarness<REv> {
         let (sender, receiver) = oneshot::channel();
 
         // Create response function.
-        let responder = Responder::create(sender);
+        let responder = Responder::without_shutdown(sender);
 
         // Create the event for the component.
         let request_event = f(responder);

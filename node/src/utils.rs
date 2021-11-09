@@ -28,6 +28,8 @@ use std::{
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
+#[cfg(test)]
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -143,6 +145,16 @@ impl SharedFlag {
     /// Set the flag.
     pub(crate) fn set(self) {
         self.0.store(true, Ordering::SeqCst)
+    }
+
+    /// Returns a shared instance of the flag for testing.
+    ///
+    /// The returned flag should **never** have `set` be called upon it.
+    #[cfg(test)]
+    pub(crate) fn global_shared() -> Self {
+        static SHARED_FLAG: Lazy<SharedFlag> = Lazy::new(SharedFlag::new);
+
+        *SHARED_FLAG
     }
 }
 

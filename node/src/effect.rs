@@ -113,7 +113,7 @@ use crate::{
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
         FinalizedBlock, Item, TimeDiff, Timestamp,
     },
-    utils::Source,
+    utils::{SharedFlag, Source},
 };
 use announcements::{
     ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
@@ -154,25 +154,28 @@ pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 pub(crate) struct Responder<T> {
     /// Sender through which the response ultimately should be sent.
     sender: Option<oneshot::Sender<T>>,
+    /// Reactor flag indicating shutdown.
+    is_shutting_down: SharedFlag,
 }
 
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
     #[inline]
-    fn new(sender: oneshot::Sender<T>) -> Self {
+    fn new(sender: oneshot::Sender<T>, is_shutting_down: SharedFlag) -> Self {
         Responder {
             sender: Some(sender),
+            is_shutting_down,
         }
     }
 
     /// Helper method for tests.
     ///
-    /// Allows creating a responder manually. This function should not be used, unless you are
-    /// writing alternative infrastructure, e.g. for tests.
+    /// Allows creating a responder manually, without observing the shutdown flag. This function
+    /// should not be used, unless you are writing alternative infrastructure, e.g. for tests.
     #[cfg(test)]
     #[inline]
-    pub(crate) fn create(sender: oneshot::Sender<T>) -> Self {
-        Responder::new(sender)
+    pub(crate) fn without_shutdown(sender: oneshot::Sender<T>) -> Self {
+        Responder::new(sender, SharedFlag::global_shared())
     }
 }
 
@@ -447,7 +450,7 @@ impl<REv> EffectBuilder<REv> {
         let (sender, receiver) = oneshot::channel();
 
         // Create response function.
-        let responder = Responder::new(sender);
+        let responder = Responder::new(sender, self.event_queue.shutdown_flag());
 
         // Now inject the request event into the event loop.
         let request_event = f(responder).into();

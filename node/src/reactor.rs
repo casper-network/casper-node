@@ -214,11 +214,7 @@ impl<REv> EventQueueHandle<REv> {
     /// This method is used in tests, where we are never disabling shutdown warnings anyway.
     #[cfg(test)]
     pub(crate) fn without_shutdown(scheduler: &'static Scheduler<REv>) -> Self {
-        // We keep a single shared instance of the flag around that is not accessible by anything
-        // outside of this function, thus staying eternally unset.
-        static UNUSED_SHUTDOWN_FLAG: Lazy<SharedFlag> = Lazy::new(SharedFlag::new);
-
-        EventQueueHandle::new(scheduler, *UNUSED_SHUTDOWN_FLAG)
+        EventQueueHandle::new(scheduler, SharedFlag::global_shared())
     }
 
     /// Schedule an event on a specific queue.
