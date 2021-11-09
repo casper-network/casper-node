@@ -481,13 +481,18 @@ mod tests {
     #[test]
     fn shared_flag_sanity_check() {
         let flag = SharedFlag::new();
+        let copied = flag;
 
         assert!(!flag.is_set());
+        assert!(!copied.is_set());
         assert!(!flag.is_set());
+        assert!(!copied.is_set());
 
         flag.set();
 
         assert!(flag.is_set());
+        assert!(copied.is_set());
         assert!(flag.is_set());
+        assert!(copied.is_set());
     }
 }
