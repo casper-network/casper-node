@@ -719,7 +719,7 @@ where
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
                     if let Some(reactor_exit) = self.reactor.maybe_exit() {
-                        self.set_is_shutting_down();
+                        self.is_shutting_down.set();
 
                         // TODO: Workaround, until we actually use control announcements for
                         // exiting: Go over the entire remaining event queue and look for a control
@@ -753,15 +753,15 @@ where
                     }
                 }
                 SIGINT => {
-                    self.set_is_shutting_down();
+                    self.is_shutting_down.set();
                     break ReactorExit::ProcessShouldExit(ExitCode::SigInt);
                 }
                 SIGQUIT => {
-                    self.set_is_shutting_down();
+                    self.is_shutting_down.set();
                     break ReactorExit::ProcessShouldExit(ExitCode::SigQuit);
                 }
                 SIGTERM => {
-                    self.set_is_shutting_down();
+                    self.is_shutting_down.set();
                     break ReactorExit::ProcessShouldExit(ExitCode::SigTerm);
                 }
                 _ => error!("should be unreachable - bug in signal handler"),
@@ -770,18 +770,13 @@ where
     }
 
     /// Shuts down a reactor, sealing and draining the entire queue before returning it.
-    pub(crate) async fn drain_into_inner(mut self) -> R {
-        self.set_is_shutting_down();
+    pub(crate) async fn drain_into_inner(self) -> R {
+        self.is_shutting_down.set();
         self.scheduler.seal();
         for (ancestor, event) in self.scheduler.drain_queues().await {
             debug!(?ancestor, %event, "drained event");
         }
         self.reactor
-    }
-
-    /// Sets the "reactor is shutting down" flag.
-    fn set_is_shutting_down(&mut self) {
-        self.is_shutting_down.set()
     }
 }
 
