@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -484,14 +488,14 @@ async fn sync_trie_store(
     // TODO: This implementation works like a stream with ordered buffering. Use an actual stream
     //       with unordered buffering instead.
     let mut outstanding_trie_keys = vec![state_root_hash];
-    let mut fetches_in_progress = Vec::with_capacity(max_parallel_trie_fetches);
+    let mut fetches_in_progress = VecDeque::with_capacity(max_parallel_trie_fetches);
     while !fetches_in_progress.is_empty() || !outstanding_trie_keys.is_empty() {
         let fetches_to_start = max_parallel_trie_fetches.saturating_sub(fetches_in_progress.len());
         let new_fetches = outstanding_trie_keys
             .drain(outstanding_trie_keys.len().saturating_sub(fetches_to_start)..)
             .map(|trie_key| tokio::spawn(fetch_and_store_trie(effect_builder, trie_key)));
         fetches_in_progress.extend(new_fetches);
-        if let Some(join_handle) = fetches_in_progress.pop() {
+        if let Some(join_handle) = fetches_in_progress.pop_front() {
             outstanding_trie_keys.extend(join_handle.await??);
         }
     }
@@ -611,14 +615,13 @@ async fn sync_deploys_and_transfers_and_state(
         .chain(block.transfer_hashes())
         .cloned()
         .collect();
-    futures::stream::iter(hash_iter)
+    let mut stream = futures::stream::iter(hash_iter)
         .map(|hash| fetch_and_store_deploy(effect_builder, hash))
-        .buffer_unordered(node_config.max_parallel_deploy_fetches as usize)
-        .for_each(|result| {
-            trace!("fetched {:?}", result);
-            async move {}
-        })
-        .await;
+        .buffer_unordered(node_config.max_parallel_deploy_fetches as usize);
+    while let Some(result) = stream.next().await {
+        let deploy = result?;
+        trace!("fetched {:?}", deploy);
+    }
     sync_trie_store(
         effect_builder,
         *block.header().state_root_hash(),
