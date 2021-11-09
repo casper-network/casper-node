@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* Revert the change to the path detection logic applied in v2.0.1.
+
 
 
 ## [2.0.1] - 2021-11-4
@@ -101,9 +104,9 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/13585abcf...dev
-[2.0.1]: https://github.com/casper-network/casper-node/compare/420a64fe6...13585abcf
-[2.0.0]: https://github.com/casper-network/casper-node/compare/v1.4.0...420a64fe6
+[unreleased]: https://github.com/casper-network/casper-node/compare/04f48a467...dev
+[2.0.1]: https://github.com/casper-network/casper-node/compare/13585abcf...04f48a467
+[2.0.0]: https://github.com/casper-network/casper-node/compare/v1.4.0...13585abcf
 [1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0

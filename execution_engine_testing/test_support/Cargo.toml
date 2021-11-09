@@ -7,13 +7,13 @@ description = "Library to support testing of Wasm smart contracts for use on the
 documentation = "https://docs.rs/casper-engine-test-support"
 readme = "README.md"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/casper-ecosystem/casper-engine-test-support"
-license = "Apache-2.0"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_engine_testing/test_support"
+license-file = "../../LICENSE"
 
 [dependencies]
-casper-execution-engine = { version = "1", features = ["test-support"] }
-casper-hashing = "1"
-casper-types = "1"
+casper-execution-engine = { version = "1", path = "../../execution_engine", features = ["test-support"] }
+casper-hashing = { version = "1", path = "../../hashing" }
+casper-types = { version = "1", path = "../../types" }
 lmdb = "0.8.0"
 log = "0.4.14"
 num-rational = "0.4.0"
