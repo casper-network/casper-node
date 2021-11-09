@@ -201,6 +201,7 @@ impl<REv> Clone for EventQueueHandle<REv> {
 impl<REv> Copy for EventQueueHandle<REv> {}
 
 impl<REv> EventQueueHandle<REv> {
+    /// Creates a new event queue handle.
     pub(crate) fn new(
         scheduler: &'static Scheduler<REv>,
         is_shutting_down: &'static AtomicBool,
@@ -209,6 +210,19 @@ impl<REv> EventQueueHandle<REv> {
             scheduler,
             is_shutting_down,
         }
+    }
+
+    /// Creates a new event queue handle that is not connected to a shutdown flag.
+    ///
+    /// This method is used in tests, where we are never disabling shutdown warnings anyway.
+    #[cfg(test)]
+    pub(crate) fn without_shutdown(scheduler: &'static Scheduler<REv>) -> Self {
+        // We keep a single shared instance of the flag around that is not accessible by anything
+        // outside of this function, thus staying eternally unset.
+        static UNUSED_SHUTDOWN_FLAG: Lazy<&'static AtomicBool> =
+            Lazy::new(|| utils::leak(AtomicBool::new(false)));
+
+        EventQueueHandle::new(scheduler, *UNUSED_SHUTDOWN_FLAG)
     }
 
     /// Schedule an event on a specific queue.

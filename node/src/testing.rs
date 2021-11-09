@@ -15,7 +15,7 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     ops::Range,
-    sync::atomic::{AtomicBool, AtomicU16, Ordering},
+    sync::atomic::{AtomicU16, Ordering},
     time,
 };
 
@@ -34,7 +34,6 @@ use crate::{
     logging,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
     types::{Deploy, TimeDiff, Timestamp},
-    utils,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
@@ -166,8 +165,7 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
         let rng = self.rng.unwrap_or_else(TestRng::new);
 
         let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
-        let is_shutting_down = utils::leak(AtomicBool::new(false));
-        let event_queue_handle = EventQueueHandle::new(scheduler, is_shutting_down);
+        let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         let runtime = runtime::Builder::new_multi_thread()
             .enable_all()
