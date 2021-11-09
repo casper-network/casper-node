@@ -27,6 +27,7 @@ impl HostFunctionFlag {
     pub(super) fn enter_host_function_scope(&self) -> ScopedHostFunctionFlag {
         let new_count = self.counter.get().checked_add(1).unwrap_or_else(|| {
             error!("checked_add failure in host function flag counter");
+            debug_assert!(false, "checked_add failure in host function flag counter");
             u64::MAX
         });
         self.counter.set(new_count);
@@ -44,6 +45,7 @@ impl Drop for ScopedHostFunctionFlag {
     fn drop(&mut self) {
         let new_count = self.counter.get().checked_sub(1).unwrap_or_else(|| {
             error!("checked_sub failure in host function flag counter");
+            debug_assert!(false, "checked_sub failure in host function flag counter");
             0
         });
         self.counter.set(new_count);
