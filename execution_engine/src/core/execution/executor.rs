@@ -172,14 +172,7 @@ impl Executor {
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            memory,
-            module,
-            context,
-            call_stack,
-            Default::default(),
-        );
+        let mut runtime = Runtime::new(self.config, memory, module, context, call_stack);
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
@@ -679,14 +672,7 @@ impl Executor {
         let (instance, memory) =
             instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
 
-        let runtime = Runtime::new(
-            self.config,
-            memory,
-            module,
-            runtime_context,
-            call_stack,
-            Default::default(),
-        );
+        let runtime = Runtime::new(self.config, memory, module, runtime_context, call_stack);
 
         Ok((instance, runtime))
     }
