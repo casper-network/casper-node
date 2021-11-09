@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Display, Formatter},
     mem,
     path::PathBuf,
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use derive_more::From;
@@ -188,9 +188,10 @@ impl Reactor for MultiStageTestReactor {
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let initializer_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let is_shutting_down = utils::leak(AtomicBool::new(false));
         let initializer_event_queue_handle: EventQueueHandle<
             <InitializerReactor as Reactor>::Event,
-        > = EventQueueHandle::new(initializer_scheduler);
+        > = EventQueueHandle::new(initializer_scheduler, is_shutting_down);
 
         tokio::spawn(forward_to_queue(initializer_scheduler, event_queue));
 
@@ -367,7 +368,9 @@ impl Reactor for MultiStageTestReactor {
                     );
 
                     let joiner_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-                    let joiner_event_queue_handle = EventQueueHandle::new(joiner_scheduler);
+                    let joiner_is_shutting_down = utils::leak(AtomicBool::new(false));
+                    let joiner_event_queue_handle =
+                        EventQueueHandle::new(joiner_scheduler, joiner_is_shutting_down);
 
                     tokio::spawn(forward_to_queue(
                         joiner_scheduler,
@@ -443,8 +446,10 @@ impl Reactor for MultiStageTestReactor {
 
                     // JoinerFinalizing transitions into a participating.
                     let participating_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+                    let is_shutting_down = utils::leak(AtomicBool::new(false));
+
                     let participating_event_queue_handle =
-                        EventQueueHandle::new(participating_scheduler);
+                        EventQueueHandle::new(participating_scheduler, is_shutting_down);
 
                     tokio::spawn(forward_to_queue(
                         participating_scheduler,

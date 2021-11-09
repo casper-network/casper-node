@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
@@ -161,7 +161,9 @@ async fn validate_block(
 
     // Create the reactor and component.
     let reactor = MockReactor::new();
-    let effect_builder = EffectBuilder::new(EventQueueHandle::new(reactor.scheduler));
+    let is_shutting_down = utils::leak(AtomicBool::new(false));
+    let effect_builder =
+        EffectBuilder::new(EventQueueHandle::new(reactor.scheduler, is_shutting_down));
     let chainspec = Arc::new(Chainspec::from_resources("local"));
     let mut block_validator = BlockValidator::<NodeId>::new(chainspec);
 

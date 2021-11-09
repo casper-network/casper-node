@@ -823,6 +823,8 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicBool;
+
     use rand::Rng;
 
     use super::*;
@@ -1042,7 +1044,9 @@ mod tests {
             };
 
             let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-            let effect_builder = EffectBuilder::new(EventQueueHandle::new(scheduler));
+            let is_shutting_down = utils::leak(AtomicBool::new(false));
+            let effect_builder =
+                EffectBuilder::new(EventQueueHandle::new(scheduler, is_shutting_down));
 
             TestFixture {
                 chainspec_loader,

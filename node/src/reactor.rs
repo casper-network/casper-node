@@ -798,7 +798,7 @@ where
     where
         F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
     {
-        let event_queue = EventQueueHandle::new(self.scheduler);
+        let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
         let effect_builder = EffectBuilder::new(event_queue);
 
         let effects = create_effects(effect_builder);
@@ -840,7 +840,8 @@ impl Runner<InitializerReactor> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
-        let event_queue = EventQueueHandle::new(scheduler);
+        let is_shutting_down = utils::leak(AtomicBool::new(false));
+        let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) =
             InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
 
@@ -868,6 +869,7 @@ impl Runner<InitializerReactor> {
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
+            is_shutting_down,
         })
     }
 }
