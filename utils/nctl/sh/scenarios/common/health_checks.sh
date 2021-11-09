@@ -40,6 +40,7 @@ function main() {
 function assert_error_count() {
     local COUNT
     local TOTAL
+    local UNIQ_ERRORS
 
     log_step "Looking for errors in logs..."
 
@@ -47,7 +48,18 @@ function assert_error_count() {
     for i in $(seq 1 "$(get_count_of_nodes)"); do
         COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w '"level":"ERROR"' | wc -l)
         TOTAL=$((TOTAL + COUNT))
-        log "... node-$i: ERROR COUNT = $COUNT"
+        log "... node-$i: TOTAL ERROR COUNT = $COUNT"
+
+        UNIQ_ERRORS=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null \
+                        | { grep -w '"level":"ERROR"' || true; } \
+                        | jq .fields.message \
+                        | sort \
+                        | uniq -c)
+
+        if [ ! -z "$UNIQ_ERRORS" ]; then
+            echo "$UNIQ_ERRORS"
+        fi
+
     done
 
     if [ "$ERRORS_ALLOWED" = "ignore" ]; then
