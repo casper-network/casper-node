@@ -672,16 +672,13 @@ pub fn validate_query_proof(
     let mut proof_value = first_proof.value();
 
     for proof in proofs_iter {
-        match proof_value {
+        if let StoredValue::ContractPackage(_) = proof_value {
             // Skip ContractPackages because they don't have NamedKeys.
-            StoredValue::ContractPackage(_) => {
-                proof_value = proofs_iter2
-                    .next()
-                    .expect("expected a contract after this contract package.")
-                    .value();
-                continue;
-            }
-            _ => (),
+            proof_value = proofs_iter2
+                .next()
+                .expect("expected a contract after this contract package.")
+                .value();
+            continue;
         }
 
         let path_component = path_iter
