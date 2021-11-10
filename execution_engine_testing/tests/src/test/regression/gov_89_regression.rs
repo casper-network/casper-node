@@ -1,27 +1,27 @@
-use std::convert::TryFrom;
+use std::{
+    collections::BTreeSet,
+    convert::TryInto,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
+    utils, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::{GenesisAccount, GenesisValidator},
-        RewardItem, SlashItem,
+        genesis::GenesisValidator, GenesisAccount, RewardItem, SlashItem, StepSuccess,
     },
-    storage::global_state::in_memory::InMemoryGlobalState,
+    shared::transform::Transform,
 };
 use casper_types::{
-    system::{
-        auction::{
-            Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        },
-        mint::TOTAL_SUPPLY_KEY,
+    system::auction::{
+        Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    CLValue, ContractHash, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
@@ -38,20 +38,7 @@ static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
 const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
-fn get_named_key(
-    builder: &mut InMemoryWasmTestBuilder,
-    contract_hash: ContractHash,
-    name: &str,
-) -> Key {
-    *builder
-        .get_contract(contract_hash)
-        .expect("should have contract")
-        .named_keys()
-        .get(name)
-        .expect("should have bid purses")
-}
-
-fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
+fn initialize_builder() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let accounts = {
@@ -81,19 +68,27 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
     builder
 }
 
-/// Should be able to step slashing, rewards, and run auction.
 #[ignore]
 #[test]
-fn should_step() {
+fn should_not_create_same_purse() {
     let mut builder = initialize_builder();
 
-    let step_request = StepRequestBuilder::new()
+    let mut now = SystemTime::now();
+    let eras_end_timestamp_millis_1 = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+
+    now += Duration::from_secs(60 * 60);
+    let eras_end_timestamp_millis_2 = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+
+    assert!(eras_end_timestamp_millis_2 > eras_end_timestamp_millis_1);
+
+    let step_request_1 = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
         .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), BLOCK_REWARD / 2))
         .with_reward_item(RewardItem::new(ACCOUNT_2_PK.clone(), BLOCK_REWARD / 2))
         .with_next_era_id(EraId::from(1))
+        .with_era_end_timestamp_millis(eras_end_timestamp_millis_1.as_millis().try_into().unwrap())
         .build();
 
     let auction_hash = builder.get_auction_contract_hash();
@@ -115,7 +110,10 @@ fn should_step() {
         bids_before_slashing
     );
 
-    builder.step(step_request).unwrap();
+    let StepSuccess {
+        execution_journal: journal_1,
+        ..
+    } = builder.step(step_request_1).expect("should execute step");
 
     let bids_after_slashing: Bids = builder.get_bids();
     let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
@@ -137,57 +135,60 @@ fn should_step() {
             .all(|key| after_auction_seigniorage.contains_key(key)),
         "run auction should have changed seigniorage keys"
     );
-}
 
-/// Should be able to step slashing, rewards, and run auction.
-#[ignore]
-#[test]
-fn should_adjust_total_supply() {
-    let mut builder = initialize_builder();
-    let maybe_post_state_hash = Some(builder.get_post_state_hash());
-
-    let mint_hash = builder.get_mint_contract_hash();
-
-    // should check total supply before step
-    let total_supply_key = get_named_key(&mut builder, mint_hash, TOTAL_SUPPLY_KEY)
-        .into_uref()
-        .expect("should be uref");
-
-    let starting_total_supply = CLValue::try_from(
-        builder
-            .query(maybe_post_state_hash, total_supply_key.into(), &[])
-            .expect("should have total supply"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
-
-    // slash
-    let step_request = StepRequestBuilder::new()
+    let step_request_2 = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
-        .with_slash_item(SlashItem::new(ACCOUNT_2_PK.clone()))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), 0))
+        .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), BLOCK_REWARD / 2))
         .with_reward_item(RewardItem::new(ACCOUNT_2_PK.clone(), BLOCK_REWARD / 2))
-        .with_next_era_id(EraId::from(1))
+        .with_next_era_id(EraId::from(2))
+        .with_era_end_timestamp_millis(eras_end_timestamp_millis_2.as_millis().try_into().unwrap())
         .build();
 
-    builder.step(step_request).unwrap();
-    let maybe_post_state_hash = Some(builder.get_post_state_hash());
+    let StepSuccess {
+        execution_journal: journal_2,
+        ..
+    } = builder.step(step_request_2).expect("should execute step");
 
-    // should check total supply after step
-    let modified_total_supply = CLValue::try_from(
-        builder
-            .query(maybe_post_state_hash, total_supply_key.into(), &[])
-            .expect("should have total supply"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
+    let cl_u512_zero = CLValue::from_t(U512::zero()).unwrap();
 
-    assert!(
-        modified_total_supply < starting_total_supply,
-        "total supply should be reduced due to slashing"
+    let balances_1: BTreeSet<Key> = journal_1
+        .into_iter()
+        .filter_map(|(key, transform)| match transform {
+            Transform::Write(StoredValue::CLValue(cl_value))
+                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
+            {
+                Some(key)
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        balances_1.len(),
+        4,
+        "distribute should create 4 purses and zero out their balance"
     );
+
+    let balances_2: BTreeSet<Key> = journal_2
+        .into_iter()
+        .filter_map(|(key, transform)| match transform {
+            Transform::Write(StoredValue::CLValue(cl_value))
+                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
+            {
+                Some(key)
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        balances_2.len(),
+        4,
+        "distribute should create 4 purses and zero out their balance"
+    );
+
+    let common_keys: BTreeSet<_> = balances_1.intersection(&balances_2).collect();
+    assert_eq!(common_keys.len(), 0, "there should be no commmon Key::Balance keys with Transfer::Write(0) in two distinct step requests");
 }
