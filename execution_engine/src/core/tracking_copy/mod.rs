@@ -643,14 +643,23 @@ pub fn validate_query_proof(
     path: &[String],
     expected_value: &StoredValue,
 ) -> Result<(), ValidationError> {
-    if proofs.len() != path.len() + 1 {
+    let proofs_len = proofs
+        .iter()
+        .filter(|proof| !matches!(proof.value(), StoredValue::ContractPackage(_)))
+        .count();
+
+    if proofs_len != path.len() + 1 {
         return Err(ValidationError::PathLengthDifferentThanProofLessOne);
     }
 
     let mut proofs_iter = proofs.iter();
+    let mut proofs_iter2 = proofs.iter();
+    let mut path_iter = path.iter();
 
     // length check above means we are safe to unwrap here
     let first_proof = proofs_iter.next().unwrap();
+    // keeps proofs_iter2 in sync with proofs_iter.
+    proofs_iter2.next();
 
     if first_proof.key() != &expected_first_key.normalize() {
         return Err(ValidationError::UnexpectedKey);
@@ -662,7 +671,23 @@ pub fn validate_query_proof(
 
     let mut proof_value = first_proof.value();
 
-    for (proof, path_component) in proofs_iter.zip(path.iter()) {
+    for proof in proofs_iter {
+        match proof_value {
+            // Skip ContractPackages because they don't have NamedKeys.
+            StoredValue::ContractPackage(_) => {
+                proof_value = proofs_iter2
+                    .next()
+                    .expect("expected a contract after this contract package.")
+                    .value();
+                continue;
+            }
+            _ => (),
+        }
+
+        let path_component = path_iter
+            .next()
+            .expect("expected path component but none found.");
+
         let named_keys = match proof_value {
             StoredValue::Account(account) => account.named_keys(),
             StoredValue::Contract(contract) => contract.named_keys(),
@@ -683,6 +708,8 @@ pub fn validate_query_proof(
         }
 
         proof_value = proof.value();
+        // advance the iterator to keep both in sync.
+        proofs_iter2.next();
     }
 
     if proof_value != expected_value {
