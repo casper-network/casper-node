@@ -111,7 +111,7 @@ fn should_not_create_same_purse() {
     );
 
     let StepSuccess {
-        execution_effect: transforms_1,
+        execution_journal: journal_1,
         ..
     } = builder.step(step_request_1).expect("should execute step");
 
@@ -147,18 +147,17 @@ fn should_not_create_same_purse() {
         .build();
 
     let StepSuccess {
-        execution_effect: transforms_2,
+        execution_journal: journal_2,
         ..
     } = builder.step(step_request_2).expect("should execute step");
 
     let cl_u512_zero = CLValue::from_t(U512::zero()).unwrap();
 
-    let balances_1: BTreeSet<&Key> = transforms_1
-        .transforms
-        .iter()
+    let balances_1: BTreeSet<Key> = journal_1
+        .into_iter()
         .filter_map(|(key, transform)| match transform {
             Transform::Write(StoredValue::CLValue(cl_value))
-                if key.as_balance().is_some() && cl_value == &cl_u512_zero =>
+                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
             {
                 Some(key)
             }
@@ -172,12 +171,11 @@ fn should_not_create_same_purse() {
         "distribute should create 4 purses and zero out their balance"
     );
 
-    let balances_2: BTreeSet<&Key> = transforms_2
-        .transforms
-        .iter()
+    let balances_2: BTreeSet<Key> = journal_2
+        .into_iter()
         .filter_map(|(key, transform)| match transform {
             Transform::Write(StoredValue::CLValue(cl_value))
-                if key.as_balance().is_some() && cl_value == &cl_u512_zero =>
+                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
             {
                 Some(key)
             }
