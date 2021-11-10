@@ -3,18 +3,18 @@ mod generators;
 use std::{fs::File, io::BufWriter, path::PathBuf};
 
 use anyhow::Context;
-use clap::Clap;
+use clap::Parser;
 
 use casper_validation::{Fixture, ABI_TEST_FIXTURES};
 
-#[derive(Clap)]
+#[derive(Parser)]
 #[clap(version = "1.0")]
 struct Opts {
     #[clap(subcommand)]
     subcmd: SubCommand,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 enum SubCommand {
     Generate(Generate),
 }
@@ -23,7 +23,7 @@ enum SubCommand {
 ///
 /// Do not use with day to day development - for example to fix an error in serialization code by
 /// replacing the fixture with possibly invalid code.
-#[derive(Clap)]
+#[derive(Parser)]
 struct Generate {
     /// Path to fixtures directory.
     #[clap(short, long, parse(from_os_str))]
