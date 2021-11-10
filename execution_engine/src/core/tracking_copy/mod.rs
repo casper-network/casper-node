@@ -509,9 +509,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
-                StoredValue::ContractPackage(cp) => {
-                    if let Some(ch) = cp.current_contract_hash() {
-                        query.navigate(Key::from(ch));
+                StoredValue::ContractPackage(contract_package) => {
+                    if let Some(contract_hash) = contract_package.current_contract_hash() {
+                        query.navigate(Key::from(contract_hash));
                     } else {
                         return Ok(
                             query.into_not_found_result("Could not find current contract hash.")
