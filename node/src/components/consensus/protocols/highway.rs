@@ -629,6 +629,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         their_next_seq: u64,
     ) -> Vec<HighwayMessage<C>> {
         let state = self.highway.state();
+        if our_next_seq == their_next_seq {
+            return vec![];
+        }
         if our_next_seq < their_next_seq {
             // We're behind. Request missing vertices.
             (our_next_seq..their_next_seq)
@@ -648,18 +651,31 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             // We're ahead.
             match state.panorama().get(vid) {
                 None => {
-                    error!(?vid, "received a request for non-existing validator");
+                    warn!(?vid, "received a request for non-existing validator");
                     vec![]
                 }
                 Some(observation) => match observation {
-                    Observation::None | Observation::Faulty => {
-                        error!(
+                    Observation::None => {
+                        warn!(
                             ?vid,
                             our_next_seq,
                             ?observation,
-                            "`IndexPanorama` doesn't match `state.panorama` for validator"
+                            "expected unit for validator but found none"
                         );
                         vec![]
+                    }
+                    Observation::Faulty => {
+                        let ev = match state.maybe_evidence(vid) {
+                            Some(ev) => ev.clone(),
+                            None => {
+                                warn!(
+                                    ?vid, instance_id=?self.highway.instance_id(),
+                                    "panorama marked validator as faulty but no evidence was found"
+                                );
+                                return vec![];
+                            }
+                        };
+                        vec![HighwayMessage::NewVertex(Vertex::Evidence(ev))]
                     }
                     Observation::Correct(hash) => (their_next_seq..our_next_seq)
                         .take(self.config.max_request_batch_size)
