@@ -745,6 +745,7 @@ where
                         break reactor_exit;
                     }
                     if !self.crank(rng).await {
+                        self.is_shutting_down.set();
                         break ReactorExit::ProcessShouldExit(ExitCode::Abort);
                     }
                 }
