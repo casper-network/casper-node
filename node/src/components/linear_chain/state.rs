@@ -5,17 +5,22 @@ use itertools::Itertools;
 use tracing::{debug, warn};
 
 use casper_hashing::Digest;
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
-use crate::types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature};
+use crate::{
+    components::linear_chain_sync::KeyBlockInfo,
+    types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
+};
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain {
     /// The most recently added block.
     latest_block: Option<Block>,
+    /// The key block information of the most recent eras.
+    key_block_info: HashMap<EraId, KeyBlockInfo>,
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: PendingSignatures,
     signature_cache: SignatureCache,
@@ -61,6 +66,7 @@ impl LinearChain {
     ) -> Self {
         LinearChain {
             latest_block: None,
+            key_block_info: Default::default(),
             pending_finality_signatures: PendingSignatures::new(),
             signature_cache: SignatureCache::new(),
             protocol_version,
@@ -114,19 +120,10 @@ impl LinearChain {
             ..
         } = fs.clone();
         if let Some(latest_block) = self.latest_block.as_ref() {
-            // If it's a switch block it has already forgotten its own era's validators,
-            // unbonded some old validators, and determined new ones. In that case, we
-            // should add 1 to last_block_era.
-            let current_era = latest_block.header().era_id()
-                + if latest_block.header().is_switch_block() {
-                    1
-                } else {
-                    0
-                };
-            let lowest_acceptable_era_id =
-                (current_era + self.auction_delay).saturating_sub(self.unbonding_delay);
-            let highest_acceptable_era_id = current_era + self.auction_delay;
-            if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
+            let current_era = latest_block.header().next_block_era_id();
+            if era_id < self.lowest_acceptable_era_id(current_era)
+                || era_id > self.highest_acceptable_era_id(current_era)
+            {
                 warn!(
                     era_id=%era_id.value(),
                     %public_key,
@@ -194,12 +191,16 @@ impl LinearChain {
         self.protocol_version
     }
 
-    pub(super) fn set_latest_block(&mut self, block: Block) {
-        self.latest_block = Some(block);
-    }
-
     fn latest_block(&self) -> &Option<Block> {
         &self.latest_block
+    }
+
+    fn lowest_acceptable_era_id(&self, current_era: EraId) -> EraId {
+        (current_era + self.auction_delay).saturating_sub(self.unbonding_delay)
+    }
+
+    fn highest_acceptable_era_id(&self, current_era: EraId) -> EraId {
+        current_era + self.auction_delay
     }
 
     /// Returns finality signatures for `block_hash`.
@@ -248,7 +249,14 @@ impl LinearChain {
     }
 
     pub(super) fn handle_put_block(&mut self, block: Box<Block>) -> Outcomes {
-        self.set_latest_block(*block.clone());
+        self.latest_block = Some(*block.clone());
+        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(block.header()) {
+            let current_era = key_block_info.era_id();
+            self.key_block_info.insert(current_era, key_block_info);
+            if let Some(old_era_id) = self.lowest_acceptable_era_id(current_era).checked_sub(1) {
+                self.key_block_info.remove(&old_era_id);
+            }
+        }
         vec![Outcome::AnnounceBlock(block)]
     }
 

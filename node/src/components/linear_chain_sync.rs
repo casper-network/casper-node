@@ -8,7 +8,7 @@ use datasize::DataSize;
 use crate::types::BlockHeader;
 
 pub(crate) use error::LinearChainSyncError;
-pub(crate) use operations::run_fast_sync_task;
+pub(crate) use operations::{run_fast_sync_task, KeyBlockInfo};
 
 #[derive(DataSize, Debug)]
 pub(crate) enum LinearChainSyncState {
