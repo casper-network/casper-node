@@ -15,15 +15,13 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{
-            execution_effect::ExecutionEffect, execution_result::ExecutionResult, EngineConfig,
-        },
+        engine_state::{execution_result::ExecutionResult, EngineConfig},
         execution::{address_generator::AddressGenerator, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
         runtime_context::{self, RuntimeContext},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::newtypes::CorrelationId,
+    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
 };
 
@@ -46,14 +44,14 @@ macro_rules! on_fail_charge {
                 warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
-                    execution_effect: Default::default(),
+                    execution_journal: Default::default(),
                     transfers: $transfers,
                     cost: $cost,
                 };
             }
         }
     };
-    ($fn:expr, $cost:expr, $execution_effect:expr, $transfers:expr) => {
+    ($fn:expr, $cost:expr, $execution_journal:expr, $transfers:expr) => {
         match $fn {
             Ok(res) => res,
             Err(e) => {
@@ -61,7 +59,7 @@ macro_rules! on_fail_charge {
                 warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
-                    execution_effect: $execution_effect,
+                    execution_journal: $execution_journal,
                     transfers: $transfers,
                     cost: $cost,
                 };
@@ -137,9 +135,9 @@ impl Executor {
         let gas_counter: Gas = Gas::default();
         let transfers = Vec::default();
 
-        // Snapshot of effects before execution, so in case of error
-        // only nonce update can be returned.
-        let execution_effect = tracking_copy.borrow().effect();
+        // Snapshot of the journal before execution, so in case of an error
+        // we don't apply the execution changes but keep the payment code effects.
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         let context = RuntimeContext::new(
             tracking_copy,
@@ -188,7 +186,7 @@ impl Executor {
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
-                        execution_effect: runtime.context().effect(),
+                        execution_journal: runtime.context().execution_journal(),
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     };
@@ -196,7 +194,7 @@ impl Executor {
                 Err(error) => {
                     return ExecutionResult::Failure {
                         error: error.into(),
-                        execution_effect,
+                        execution_journal,
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     };
@@ -213,7 +211,7 @@ impl Executor {
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
-                        execution_effect: runtime.context().effect(),
+                        execution_journal: runtime.context().execution_journal(),
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     };
@@ -221,8 +219,8 @@ impl Executor {
                 Err(error) => {
                     return ExecutionResult::Failure {
                         error: error.into(),
-                        execution_effect,
                         transfers: runtime.context().transfers().to_owned(),
+                        execution_journal,
                         cost: runtime.context().gas_counter(),
                     };
                 }
@@ -238,15 +236,15 @@ impl Executor {
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
-                        execution_effect: runtime.context().effect(),
+                        execution_journal: runtime.context().execution_journal(),
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     }
                 }
                 Err(error) => {
                     return ExecutionResult::Failure {
+                        execution_journal,
                         error: error.into(),
-                        execution_effect,
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     }
@@ -256,12 +254,12 @@ impl Executor {
         on_fail_charge!(
             instance.invoke_export(entry_point_name, &[], &mut runtime),
             runtime.context().gas_counter(),
-            execution_effect,
+            execution_journal,
             runtime.context().transfers().to_owned()
         );
 
         ExecutionResult::Success {
-            execution_effect: runtime.context().effect(),
+            execution_journal: runtime.context().execution_journal(),
             transfers: runtime.context().transfers().to_owned(),
             cost: runtime.context().gas_counter(),
         }
@@ -318,24 +316,24 @@ impl Executor {
             Err(error) => {
                 return ExecutionResult::Failure {
                     error: error.into(),
-                    execution_effect: Default::default(),
+                    execution_journal: Default::default(),
                     transfers: Vec::default(),
                     cost: Gas::default(),
                 };
             }
         };
 
-        let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         match runtime.call_host_standard_payment() {
             Ok(()) => ExecutionResult::Success {
-                execution_effect: runtime.context().effect(),
+                execution_journal: runtime.context().execution_journal(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
             Err(error) => ExecutionResult::Failure {
+                execution_journal,
                 error: error.into(),
-                execution_effect,
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
@@ -443,7 +441,7 @@ impl Executor {
 
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
-        let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         let transfers = Vec::default();
 
@@ -469,7 +467,7 @@ impl Executor {
             Ok((instance, runtime)) => (instance, runtime),
             Err(error) => {
                 return ExecutionResult::Failure {
-                    execution_effect,
+                    execution_journal,
                     transfers,
                     cost: gas_counter,
                     error: error.into(),
@@ -485,7 +483,7 @@ impl Executor {
             &mut inner_named_keys,
             &runtime_args,
             extra_keys,
-            execution_effect,
+            execution_journal,
         );
         *named_keys = inner_named_keys;
         ret
@@ -681,7 +679,7 @@ impl DirectSystemContractCall {
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        execution_effect: ExecutionEffect,
+        execution_journal: ExecutionJournal,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -742,22 +740,22 @@ impl DirectSystemContractCall {
         match result {
             Ok(value) => match value.into_t() {
                 Ok(ret) => ExecutionResult::Success {
-                    execution_effect: runtime.context().effect(),
+                    execution_journal: runtime.context().execution_journal(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
+                    execution_journal,
                     error: Error::CLValue(error).into(),
-                    execution_effect,
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_without_ret(),
             },
             Err(error) => ExecutionResult::Failure {
+                execution_journal,
                 error: error.into(),
-                execution_effect,
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             }

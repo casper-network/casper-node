@@ -1117,7 +1117,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect())
+            session_result = session_result.with_journal(tracking_copy.borrow().execution_journal())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();
@@ -1126,7 +1126,7 @@ where
         execution_result_builder.set_finalize_execution_result(finalize_result);
 
         let execution_result = execution_result_builder
-            .build(tracking_copy.borrow().reader(), correlation_id)
+            .build()
             .expect("ExecutionResultBuilder not initialized properly");
 
         Ok(execution_result)
@@ -1587,7 +1587,8 @@ where
             // so we start again from the post-payment state.
             Rc::new(RefCell::new(post_payment_tracking_copy.fork()))
         } else {
-            session_result = session_result.with_effect(session_tracking_copy.borrow().effect());
+            session_result =
+                session_result.with_journal(session_tracking_copy.borrow().execution_journal());
             session_tracking_copy
         };
 
@@ -1694,7 +1695,7 @@ where
 
         // We panic here to indicate that the builder was not used properly.
         let ret = execution_result_builder
-            .build(tracking_copy.borrow().reader(), correlation_id)
+            .build()
             .expect("ExecutionResultBuilder not initialized properly");
 
         // NOTE: payment_code_spec_5_a is enforced in execution_result_builder.build()
@@ -2106,6 +2107,7 @@ where
         }
 
         let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         // commit
         let post_state_hash = self
@@ -2113,13 +2115,13 @@ where
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                execution_effect.transforms.clone(),
+                execution_effect.transforms,
             )
             .map_err(Into::into)?;
 
         Ok(StepSuccess {
             post_state_hash,
-            execution_effect,
+            execution_journal,
         })
     }
 

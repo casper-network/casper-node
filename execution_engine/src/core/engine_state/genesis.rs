@@ -796,7 +796,7 @@ where
     }
 
     pub(crate) fn finalize(self) -> ExecutionEffect {
-        self.tracking_copy.borrow_mut().effect()
+        self.tracking_copy.borrow().effect()
     }
 
     pub(crate) fn create_mint(&mut self) -> Result<ContractHash, GenesisError> {

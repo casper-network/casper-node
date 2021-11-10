@@ -632,11 +632,11 @@ impl ContractRuntime {
         announcements::linear_chain_block(effect_builder, block, execution_results).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_effect,
+            step_execution_journal,
             upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
-            announcements::step_success(effect_builder, current_era_id, step_execution_effect)
+            announcements::step_success(effect_builder, current_era_id, step_execution_journal)
                 .await;
 
             announcements::upcoming_era_validators(
