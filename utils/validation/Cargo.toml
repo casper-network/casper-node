@@ -9,7 +9,7 @@ anyhow = "1"
 base16 = "0.2.1"
 casper-execution-engine = { path = "../../execution_engine" }
 casper-types = { path = "../../types" }
-clap = "3.0.0-beta.2"
+clap = "3.0.0-beta.5"
 derive_more = "0.99.13"
 hex = { version = "0.4.2", features = ["serde"] }
 serde = "1"

@@ -35,7 +35,7 @@ proptest = { version = "1.0.0", optional = true }
 pwasm-utils = "0.16.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
-schemars = { version = "0.8.0", features = ["preserve_order"] }
+schemars = { version = "=0.8.5", features = ["preserve_order"] }
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11.5"
 serde_json = "1"

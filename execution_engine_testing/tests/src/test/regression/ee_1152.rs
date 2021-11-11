@@ -154,7 +154,7 @@ fn should_run_ee_1152_regression_test() {
         step_request = step_request.with_reward_item(RewardItem::new(public_key, reward_amount));
     }
 
-    builder.step(step_request.build());
+    builder.step(step_request.build()).unwrap();
 
     builder.run_auction(timestamp_millis, Vec::new());
 }

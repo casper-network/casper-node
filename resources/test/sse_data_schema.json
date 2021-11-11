@@ -1155,7 +1155,7 @@
       ]
     },
     "ExecutionEffect": {
-      "description": "The effect of executing a single deploy.",
+      "description": "The journal of execution transforms from a single deploy.",
       "type": "object",
       "required": [
         "operations",
@@ -1170,7 +1170,7 @@
           }
         },
         "transforms": {
-          "description": "The resulting transformations.",
+          "description": "The journal of execution transforms.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransformEntry"
