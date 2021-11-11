@@ -64,12 +64,12 @@ pub(crate) enum Error {
     },
 
     /// The deploy received by the node from the client has expired.
-    #[error("deploy received by the node expired at {deploy_expiry_timestamp} with node's time at {node_current_timestamp}")]
+    #[error("deploy received by the node expired at {deploy_expiry_timestamp} with node's time at {current_node_timestamp}")]
     ExpiredDeploy {
         /// The timestamp when the deploy expires.
         deploy_expiry_timestamp: Timestamp,
         /// The timestamp when the node validated the expiry timestamp.
-        node_current_timestamp: Timestamp,
+        current_node_timestamp: Timestamp,
     },
 }
 
@@ -208,19 +208,21 @@ impl DeployAcceptor {
         }
 
         // We only perform expiry checks on deploys received from the client.
-        let node_current_timestamp = Timestamp::now();
-        if source.from_client() && deploy.header().expired(node_current_timestamp) {
-            let time_of_expiry = deploy.header().expires();
-            debug!(%deploy, "deploy has expired");
-            return self.handle_invalid_deploy_result(
-                effect_builder,
-                EventMetadata::new(deploy, source, maybe_responder),
-                Error::ExpiredDeploy {
-                    deploy_expiry_timestamp: time_of_expiry,
-                    node_current_timestamp,
-                },
-                verification_start_timestamp,
-            );
+        if source.from_client() {
+            let current_node_timestamp = Timestamp::now();
+            if deploy.header().expired(current_node_timestamp) {
+                let time_of_expiry = deploy.header().expires();
+                debug!(%deploy, "deploy has expired");
+                return self.handle_invalid_deploy_result(
+                    effect_builder,
+                    EventMetadata::new(deploy, source, maybe_responder),
+                    Error::ExpiredDeploy {
+                        deploy_expiry_timestamp: time_of_expiry,
+                        current_node_timestamp,
+                    },
+                    verification_start_timestamp,
+                );
+            }
         }
 
         if self.verify_accounts {
