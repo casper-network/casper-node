@@ -64,8 +64,8 @@ pub(crate) enum Error {
     },
 
     /// The deploy received by the node from the client has expired.
-    #[error("deploy received by the node from the client has expired")]
-    ExpiredDeploy,
+    #[error("deploy received by the node expired at {0}")]
+    ExpiredDeploy(Timestamp),
 }
 
 /// A representation of the way in which a deploy failed validation checks.
@@ -204,11 +204,12 @@ impl DeployAcceptor {
 
         // We only perform expiry checks on deploys received from the client.
         if source.from_client() && deploy.header().expired(Timestamp::now()) {
+            let time_of_expiry = deploy.header().expires();
             debug!(%deploy, "deploy has expired");
             return self.handle_invalid_deploy_result(
                 effect_builder,
                 EventMetadata::new(deploy, source, maybe_responder),
-                Error::ExpiredDeploy,
+                Error::ExpiredDeploy(time_of_expiry),
                 verification_start_timestamp,
             );
         }

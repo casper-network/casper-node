@@ -1295,7 +1295,7 @@ async fn should_reject_deploy_with_mangled_transfer_amount() {
 async fn should_reject_expired_deploy_from_client() {
     let test_scenario = TestScenario::ShouldNotAcceptExpiredDeploySentByClient;
     let result = run_deploy_acceptor(test_scenario).await;
-    assert!(matches!(result, Err(super::Error::ExpiredDeploy)))
+    assert!(matches!(result, Err(super::Error::ExpiredDeploy(_))))
 }
 
 #[tokio::test]
