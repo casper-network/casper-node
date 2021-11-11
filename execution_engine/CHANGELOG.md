@@ -13,6 +13,17 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+
+## [1.4.2] - 2021-11-11
+
+### Changed
+* Execution transforms are returned in their insertion order.
+
+### Removed
+* Removed `SystemContractCache` as it was not being used anymore
+
+## [1.4.0] - 2021-10-04
+
 ### Added
 * Added genesis validation step to ensure there are more genesis validators than validator slots.
 * Added a support for passing a public key as a `target` argument in native transfers.
@@ -29,13 +40,11 @@ All notable changes to this project will be documented in this file.  The format
 * Improve doc comments to clarify behavior of the bidding functionality.
 * Document `core` and `shared` modules and their children.
 * Change parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
-* Execution transforms are returned in their insertion order.
 
 ### Fixed
 * Fix a case where user could potentially supply a refund purse as a payment purse.
 
-### Removed
-* Removed `SystemContractCache` as it was not being used anymore
+
 
 ## [1.3.0] - 2021-07-19
 
@@ -86,7 +95,9 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/37d561634adf73dab40fffa7f1f1ee47e80bf8a1...dev
+[1.4.2]: https://github.com/casper-network/casper-node/compare/v1.4.0...37d561634adf73dab40fffa7f1f1ee47e80bf8a1
+[1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
