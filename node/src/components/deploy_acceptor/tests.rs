@@ -638,7 +638,7 @@ async fn run_deploy_acceptor_without_timeout(
     let block = Box::new(Block::random(&mut rng));
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
-    let block_responder = Responder::create(block_sender);
+    let block_responder = Responder::without_shutdown(block_sender);
 
     runner
         .process_injected_effects(put_block_to_storage(block, block_responder))
@@ -653,7 +653,7 @@ async fn run_deploy_acceptor_without_timeout(
 
     // Create a responder to assert the validity of the deploy
     let (deploy_sender, deploy_receiver) = oneshot::channel();
-    let deploy_responder = Responder::create(deploy_sender);
+    let deploy_responder = Responder::without_shutdown(deploy_sender);
 
     // Create a deploy specific to the test scenario
     let deploy = test_scenario.deploy(&mut rng);
@@ -665,7 +665,7 @@ async fn run_deploy_acceptor_without_timeout(
         if test_scenario.is_repeated_deploy_case() {
             let injected_deploy = Box::new(deploy.clone());
             let (injected_sender, injected_receiver) = oneshot::channel();
-            let injected_responder = Responder::create(injected_sender);
+            let injected_responder = Responder::without_shutdown(injected_sender);
             runner
                 .process_injected_effects(put_deploy_to_storage(
                     injected_deploy,
@@ -682,7 +682,7 @@ async fn run_deploy_acceptor_without_timeout(
         if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {
             let fatal_deploy = Box::new(deploy.clone());
             let (deploy_sender, _) = oneshot::channel();
-            let deploy_responder = Responder::create(deploy_sender);
+            let deploy_responder = Responder::without_shutdown(deploy_sender);
             runner
                 .process_injected_effects(inject_balance_check_for_peer(
                     fatal_deploy,

@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.  The format
   * `[gossip][gossip_request_timeout]`
   * `[gossip][get_remainder_timeout]`
   * `[fetcher][get_from_peer_timeout]`
+* There are now less false warnings/errors regarding dropped responders or closed channels during a shutdown, where they are expected and harmless.
 * Execution transforms are ordered by insertion order.
 
 ### Removed

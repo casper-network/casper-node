@@ -17,7 +17,7 @@ use std::{
 use enum_iterator::IntoEnumIterator;
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
-use tracing::warn;
+use tracing::debug;
 
 /// Weighted round-robin scheduler.
 ///
@@ -243,7 +243,7 @@ where
     /// Panics if the queue identified by key `queue` does not exist.
     pub(crate) async fn push(&self, item: I, queue: K) {
         if self.sealed.load(Ordering::SeqCst) {
-            warn!("queue sealed, dropping item");
+            debug!("queue sealed, dropping item");
             return;
         }
 
