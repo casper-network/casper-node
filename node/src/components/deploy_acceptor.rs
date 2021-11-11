@@ -62,6 +62,10 @@ pub(crate) enum Error {
         prestate_hash: Digest,
         failure: DeployParameterFailure,
     },
+
+    /// The deploy received by the node from the client has expired.
+    #[error("deploy received by the node from the client has expired")]
+    ExpiredDeploy,
 }
 
 /// A representation of the way in which a deploy failed validation checks.
@@ -194,6 +198,17 @@ impl DeployAcceptor {
                 effect_builder,
                 EventMetadata::new(deploy, source, maybe_responder),
                 Error::InvalidDeployConfiguration(error),
+                verification_start_timestamp,
+            );
+        }
+
+        // We only perform expiry checks on deploys received from the client.
+        if source.from_client() && deploy.header().expired(Timestamp::now()) {
+            debug!(%deploy, "deploy has expired");
+            return self.handle_invalid_deploy_result(
+                effect_builder,
+                EventMetadata::new(deploy, source, maybe_responder),
+                Error::ExpiredDeploy,
                 verification_start_timestamp,
             );
         }
@@ -762,8 +777,13 @@ impl DeployAcceptor {
                         }
                     }
                 }
+                // We continue to the next step in None case due to the subjective
+                // nature of global state.
                 None => {
                     if is_payment {
+                        // This function can be used to validate both session and payment
+                        // code. However, there is a call order where payment code must
+                        // be verified first before verifying session code.
                         self.verify_session_logic(
                             effect_builder,
                             event_metadata,
