@@ -9,7 +9,6 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
-
     # TODO: re-enable once we figure out publishing
     # - name: markdown-link-check
     #   image: casperlabs/node-build-u1804
@@ -43,7 +42,7 @@ steps:
 
 trigger:
   branch:
-    - master
+    - main
     - trying
     - staging
     - dev
@@ -70,7 +69,7 @@ steps:
         from_secret: slack_webhook
       template:
         - |
-          casper-node build status: *{{ uppercasefirst build.status }}*
+          casper-node-private build status: *{{ uppercasefirst build.status }}*
           Author: {{ build.author }}
           Drone Build: <{{ build.link }}|#{{ build.number }}>
           Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
@@ -78,7 +77,7 @@ trigger:
   status:
     - failure
   branch:
-    - master
+    - main
     - trying
     - staging
     - dev
@@ -125,7 +124,7 @@ depends_on:
 
 trigger:
   branch:
-    - master
+    - main
     - trying
     - staging
     - dev
@@ -198,7 +197,7 @@ steps:
     target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/"
   when:
     branch:
-      - master
+      - main
       - dev
       - "release-*"
       - "feat-*"
@@ -216,7 +215,7 @@ steps:
       from_secret: put-drone-aws-sk
   when:
     branch:
-    - master
+    - main
     - dev
     - "release-*"
     - "feat-*"
@@ -247,83 +246,83 @@ steps:
     target: "/drone/${DRONE_COMMIT}/"
   when:
     branch:
-      - master
+      - main
       - dev
       - "release-*"
       - "feat-*"
     event:
       - push
 
-- name: nctl-upgrade-assets-stage-rc
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./ci/nctl_upgrade_stage.sh"
-  volumes:
-  - name: nctl-temp-dir
-    path: /tmp/nctl_upgrade_stage
-  when:
-    branch:
-      - "release-*"
-    event:
-      - push
-
-- name: nctl-bucket-pr-clear
-  image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-  commands:
-    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_BRANCH} --recursive"
-  when:
-    branch:
-      - "release-*"
-    event:
-      - push
-
-- name: nctl-bucket-upload-rc
-  image: plugins/s3-sync:latest
-  settings:
-    bucket: 'nctl.casperlabs.io'
-    access_key:
-      from_secret: put-drone-aws-ak
-    secret_key:
-      from_secret: put-drone-aws-sk
-    region: us-east-2
-    source: '../../tmp/nctl_upgrade_stage/'
-    target: "/${DRONE_BRANCH}/"
-  volumes:
-  - name: nctl-temp-dir
-    path: /tmp/nctl_upgrade_stage
-  when:
-    branch:
-      - "release-*"
-    event:
-      - push
-
-- name: nctl-upgrade-test
-  image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-  commands:
-    - "python3 -m pip install supervisor toml"
-    - "apt update && apt install lsof -y"
-    - "bash -i ./ci/nctl_upgrade.sh"
-  when:
-    branch:
-      - trying
-      - staging
+#- name: nctl-upgrade-assets-stage-rc
+#  image: casperlabs/node-build-u1804
+#  commands:
+#    - "./ci/nctl_upgrade_stage.sh"
+#  volumes:
+#  - name: nctl-temp-dir
+#    path: /tmp/nctl_upgrade_stage
+#  when:
+#    branch:
+#      - "release-*"
+#    event:
+#      - push
+#
+#- name: nctl-bucket-pr-clear
+#  image: casperlabs/node-build-u1804
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: put-drone-aws-ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: put-drone-aws-sk
+#  commands:
+#    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_BRANCH} --recursive"
+#  when:
+#    branch:
+#      - "release-*"
+#    event:
+#      - push
+#
+#- name: nctl-bucket-upload-rc
+#  image: plugins/s3-sync:latest
+#  settings:
+#    bucket: 'nctl.casperlabs.io'
+#    access_key:
+#      from_secret: put-drone-aws-ak
+#    secret_key:
+#      from_secret: put-drone-aws-sk
+#    region: us-east-2
+#    source: '../../tmp/nctl_upgrade_stage/'
+#    target: "/${DRONE_BRANCH}/"
+#  volumes:
+#  - name: nctl-temp-dir
+#    path: /tmp/nctl_upgrade_stage
+#  when:
+#    branch:
+#      - "release-*"
+#    event:
+#      - push
+#
+#- name: nctl-upgrade-test
+#  image: casperlabs/node-build-u1804
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: put-drone-aws-ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: put-drone-aws-sk
+#  commands:
+#    - "python3 -m pip install supervisor toml"
+#    - "apt update && apt install lsof -y"
+#    - "bash -i ./ci/nctl_upgrade.sh"
+#  when:
+#    branch:
+#      - trying
+#      - staging
 
 depends_on:
   - pre-checks
 
 trigger:
   branch:
-    - master
+    - main
     - trying
     - staging
     - dev
@@ -332,10 +331,6 @@ trigger:
   event:
     exclude:
       - tag
-
-volumes:
-- name: nctl-temp-dir
-  temp: {}
 
 ---
 # Run on success of cargo-test and package pipelines.
@@ -360,44 +355,44 @@ steps:
       from_secret: put-drone-s3-bucket
   when:
     branch:
-      - master
+      - main
       - dev
       - "release-*"
       - "feat-*"
     event:
       - push
 
-- name: publish-repo-test
-  image: casperlabs/aptly:latest
-  failure: ignore
-  environment:
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: APTLY_SECRET_KEY
-    AWS_ACCESS_KEY_ID:
-      from_secret: APTLY_KEY_ID
-  settings:
-    repo_name:
-      from_secret: APTLY_REPO_NAME
-    region:
-      from_secret: APTLY_REGION
-    gpg_key:
-      from_secret: APTLY_GPG_KEY
-    gpg_pass:
-      from_secret: APTLY_GPG_PASS
-    distribution_id:
-      from_secret: APTLY_DISTRIBUTION_ID
-    acl: 'public-read'
-    prefix: 'releases'
-    deb_path: './target/debian'
-    deb_name: '*.deb'
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
+#- name: publish-repo-test
+#  image: casperlabs/aptly:latest
+#  failure: ignore
+#  environment:
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: APTLY_SECRET_KEY
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: APTLY_KEY_ID
+#  settings:
+#    repo_name:
+#      from_secret: APTLY_REPO_NAME
+#    region:
+#      from_secret: APTLY_REGION
+#    gpg_key:
+#      from_secret: APTLY_GPG_KEY
+#    gpg_pass:
+#      from_secret: APTLY_GPG_PASS
+#    distribution_id:
+#      from_secret: APTLY_DISTRIBUTION_ID
+#    acl: 'public-read'
+#    prefix: 'releases'
+#    deb_path: './target/debian'
+#    deb_name: '*.deb'
+#  when:
+#    branch:
+#      - main
+#      - dev
+#      - "release-*"
+#      - "feat-*"
+#    event:
+#      - push
 
 depends_on:
   - cargo-test
@@ -405,7 +400,7 @@ depends_on:
 
 trigger:
   branch:
-    - master
+    - main
     - trying
     - staging
     - dev
@@ -439,7 +434,7 @@ steps:
       from_secret: put-drone-s3-bucket
   when:
     branch:
-      - master
+      - main
       - dev
       - "release-*"
       - "feat-*"
@@ -458,7 +453,7 @@ steps:
 #      from_secret: vault_host
 #  when:
 #    branch:
-#      - master
+#      - main
 #      - "release-*"
 #    event:
 #      - push
@@ -470,7 +465,7 @@ steps:
       from_secret: slack_webhook
     template:
       - |
-        casper-node build status: *{{ uppercasefirst build.status }}*
+        casper-node-private build status: *{{ uppercasefirst build.status }}*
         Author: {{ build.author }}
         Drone Build: <{{ build.link }}|#{{ build.number }}>
         Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
@@ -479,7 +474,7 @@ trigger:
   status:
     - failure
   branch:
-    - master
+    - main
     - trying
     - staging
     - dev
@@ -497,171 +492,175 @@ depends_on:
 # release-by-tag
 #      | (failure)
 # failed-tag
----
+#---
 # act on release - when the tag is created
-kind: pipeline
-type: docker
-name: release-by-tag
+#kind: pipeline
+#type: docker
+#name: release-by-tag
+#
+#steps:
+#- name: build-rpm
+#  image: casperlabs/rpm-package
+#  commands:
+#    - make rpm
+#- name: build-deb
+#  image: casperlabs/node-build-u1804
+#  commands:
+#    - "make deb"
 
-steps:
-- name: build-rpm
-  image: casperlabs/rpm-package
-  commands:
-    - make rpm
+#- name: publish-repo-prod
+#  image: casperlabs/aptly:latest
+#  failure: ignore
+#  environment:
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: aptly_prod_secret_key
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: aptly_prod_key_id
+#  settings:
+#    repo_name:
+#      from_secret: aptly_prod_repo
+#    region:
+#      from_secret: aptly_prod_region
+#    gpg_key:
+#      from_secret: aptly_prod_gpg_key
+#    gpg_pass:
+#      from_secret: aptly_prod_gpg_pass
+#    distribution_id:
+#      from_secret: aptly_prod_dist_id
+#    acl: 'public-read'
+#    prefix: 'releases'
+#    deb_path: './target/debian'
+#    deb_name: '*.deb'
 
-- name: build-deb
-  image: casperlabs/node-build-u1804
-  commands:
-    - make deb
+#- name: build-upgrade-package
+#  image: casperlabs/node-build-u1804
+#  commands:
+#    - "./ci/build_update_package.sh"
+#
+#- name: publish-github-pre-release
+#  image: plugins/github-release
+#  settings:
+#    api_key:
+#      from_secret: github_token
+#    checksum:
+#    - sha256
+#    - md5
+#    files:
+#    - "./target/debian/*.deb"
+#     - "./target/release/rpmbuild/RPMS/x86_64/*.rpm"
+#    - "./target/upgrade_build/*.gz"
+#    prerelease:
+#    - true
+#  when:
+#    ref:
+#    - refs/tags/v*
 
-- name: publish-repo-prod
-  image: casperlabs/aptly:latest
-  failure: ignore
-  environment:
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: aptly_prod_secret_key
-    AWS_ACCESS_KEY_ID:
-      from_secret: aptly_prod_key_id
-  settings:
-    repo_name:
-      from_secret: aptly_prod_repo
-    region:
-      from_secret: aptly_prod_region
-    gpg_key:
-      from_secret: aptly_prod_gpg_key
-    gpg_pass:
-      from_secret: aptly_prod_gpg_pass
-    distribution_id:
-      from_secret: aptly_prod_dist_id
-    acl: 'public-read'
-    prefix: 'releases'
-    deb_path: './target/debian'
-    deb_name: '*.deb'
+#- name: publish-crate
+#  image: casperlabs/node-build-u1804
+#  commands:
+#    - "./ci/publish_to_crates_io.sh"
+#  environment:
+#    CARGO_TOKEN:
+#      from_secret: crates_io_token
+#
+#- name: as-setup
+#  image: casperlabs/node-build-u1804
+#  commands:
+#    - "make setup-as"
 
-- name: build-upgrade-package
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./ci/build_update_package.sh"
-
-- name: publish-github-pre-release
-  image: plugins/github-release
-  settings:
-    api_key:
-      from_secret: github_token
-    checksum:
-    - sha256
-    - md5
-    files:
-    - "./target/debian/*.deb"
-    - "./target/release/rpmbuild/RPMS/x86_64/*.rpm"
-    - "./target/upgrade_build/*.gz"
-    prerelease:
-    - true
-  when:
-    ref:
-    - refs/tags/v*
-
-- name: publish-crate
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./ci/publish_to_crates_io.sh"
-  environment:
-    CARGO_TOKEN:
-      from_secret: crates_io_token
-
-- name: as-contract-publish
-  image: plugins/npm
-  settings:
-    username:
-      from_secret: npm_user
-    token:
-      from_secret: npm_token
-    email:
-      from_secret: npm_email
-    folder:
-    - "smart_contracts/contract_as"
-    fail_on_version_conflict:
-    - true
-    access:
-    - "public"
-
-- name: nctl-upgrade-assets-stage
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./ci/nctl_upgrade_stage.sh"
-  volumes:
-  - name: nctl-temp-dir
-    path: /tmp/nctl_upgrade_stage
-
-- name: nctl-bucket-tag-clear
-  image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-  commands:
-    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_TAG} --recursive"
-
-- name: nctl-bucket-upload
-  image: plugins/s3-sync:latest
-  settings:
-    bucket: 'nctl.casperlabs.io'
-    access_key:
-      from_secret: put-drone-aws-ak
-    secret_key:
-      from_secret: put-drone-aws-sk
-    region: us-east-2
-    source: '../../tmp/nctl_upgrade_stage/'
-    target: "/${DRONE_TAG}/"
-  volumes:
-  - name: nctl-temp-dir
-    path: /tmp/nctl_upgrade_stage
-
-- name: update-default-branch
-  image: casperlabs/node-build-u1804
-  environment:
-    GITHUB_TOKEN:
-      from_secret: github_token_def_branch
-  commands:
-    - "./ci/change_default_branch.py"
-
-volumes:
-- name: nctl-temp-dir
-  temp: {}
-
-trigger:
-  ref:
-  - refs/tags/v*
-
----
-kind: pipeline
-type: docker
-name: failed-tag
-
-clone:
-  disable: true
-
-steps:
-- name: notify
-  image: plugins/slack
-  settings:
-    webhook:
-      from_secret: slack_webhook
-    template:
-    - |
-      casper-node build status: *{{ uppercasefirst build.status }}*
-      Author: {{ build.author }}
-      Drone Build: <{{ build.link }}|#{{ build.number }}>
-      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
-trigger:
-  status:
-  - failure
-  ref:
-    - refs/tags/v*
-
-depends_on:
-- release-by-tag
+#- name: as-contract-publish
+#  image: plugins/npm
+#  settings:
+#    username:
+#      from_secret: npm_user
+#    token:
+#      from_secret: npm_token
+#    email:
+#      from_secret: npm_email
+#    folder:
+#    - "smart_contracts/contract_as"
+#    fail_on_version_conflict:
+#    - true
+#    access:
+#    - "public"
+#
+#- name: nctl-upgrade-assets-stage
+#  image: casperlabs/node-build-u1804
+#  commands:
+#    - "./ci/nctl_upgrade_stage.sh"
+#  volumes:
+#  - name: nctl-temp-dir
+#    path: /tmp/nctl_upgrade_stage
+#
+#- name: nctl-bucket-tag-clear
+#  image: casperlabs/node-build-u1804
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: put-drone-aws-ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: put-drone-aws-sk
+#  commands:
+#    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_TAG} --recursive"
+#
+#- name: nctl-bucket-upload
+#  image: plugins/s3-sync:latest
+#  settings:
+#    bucket: 'nctl.casperlabs.io'
+#    access_key:
+#      from_secret: put-drone-aws-ak
+#    secret_key:
+#      from_secret: put-drone-aws-sk
+#    region: us-east-2
+#    source: '../../tmp/nctl_upgrade_stage/'
+#    target: "/${DRONE_TAG}/"
+#  volumes:
+#  - name: nctl-temp-dir
+#    path: /tmp/nctl_upgrade_stage
+#
+#- name: update-default-branch
+#  image: casperlabs/node-build-u1804
+#  environment:
+#    GITHUB_TOKEN:
+#      from_secret: github_token_def_branch
+#  commands:
+#    - "./ci/change_default_branch.py"#
+#
+#volumes:
+#- name: nctl-temp-dir
+#  temp: {}
+#
+#trigger:
+#  ref:
+#  - refs/tags/v*
+#
+#---
+#kind: pipeline
+#type: docker
+#name: failed-tag
+#
+#clone:
+#  disable: true
+#
+#steps:
+#- name: notify
+#  image: plugins/slack
+#  settings:
+#    webhook:
+#      from_secret: slack_webhook
+#    template:
+#    - |
+#      casper-node-private build status: *{{ uppercasefirst build.status }}*
+#      Author: {{ build.author }}
+#      Drone Build: <{{ build.link }}|#{{ build.number }}>
+#      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+#trigger:
+#  status:
+#  - failure
+#  ref:
+#    - refs/tags/v*
+#
+#depends_on:
+#- release-by-tag
 
 ---
 kind: pipeline
@@ -671,11 +670,6 @@ name: nightly-tests-cron
 steps:
 - name: nctl-nighly-script
   image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
   commands:
   - "python3 -m pip install supervisor toml"
   - "apt update && apt install lsof -y"
