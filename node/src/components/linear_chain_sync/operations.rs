@@ -201,6 +201,16 @@ impl KeyBlockInfo {
     pub(crate) fn era_id(&self) -> EraId {
         self.era_id
     }
+
+    /// Returns the hash of the key block, i.e. the last block before `era_id`.
+    pub(crate) fn key_block_hash(&self) -> &BlockHash {
+        &self.key_block_hash
+    }
+
+    /// Returns the validator weights for this era.
+    pub(crate) fn validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.validator_weights
+    }
 }
 
 /// Gets the trusted key block info for a trusted block header.

@@ -129,8 +129,6 @@ pub struct EraSupervisor<I> {
     /// deactivated, the era supervisor indicates that the node should stop running to allow an
     /// upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
-    /// If true, the process should stop execution to allow an upgrade to proceed.
-    stop_for_upgrade: bool,
     /// The era that was current when this node joined the network.
     era_where_we_joined: EraId,
 }
@@ -189,7 +187,6 @@ where
             metrics,
             unit_hashes_folder,
             next_upgrade_activation_point,
-            stop_for_upgrade: false,
             next_executed_height: next_height,
             era_where_we_joined: current_era,
         };
@@ -303,10 +300,6 @@ where
     fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
         let has_validator = |era: &Era<I>| era.validators().contains_key(pub_key);
         self.open_eras.get(&era_id).map_or(false, has_validator)
-    }
-
-    pub(crate) fn stop_for_upgrade(&self) -> bool {
-        self.stop_for_upgrade
     }
 
     /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
@@ -738,11 +731,6 @@ where
         if faulty_num == old_faulty_num {
             info!(era = era_id.value(), "stop voting in era");
             era.consensus.deactivate_validator();
-            if self.should_upgrade_after(&era_id) {
-                // If the next era is at or after the upgrade activation point, stop the node.
-                info!(era = era_id.value(), "shutting down for upgrade");
-                self.stop_for_upgrade = true;
-            }
             Effects::new()
         } else {
             let deactivate_era = move |_| Event::DeactivateEra {
