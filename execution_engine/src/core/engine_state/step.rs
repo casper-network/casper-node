@@ -8,7 +8,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion, PublicKey};
 
 use crate::{
-    core::{engine_state::Error, execution},
+    core::{engine_state::Error, execution, runtime::stack::RuntimeStackOverflow},
     shared::execution_journal::ExecutionJournal,
 };
 
@@ -177,6 +177,12 @@ impl From<bytesrepr::Error> for StepError {
 impl From<CLValueError> for StepError {
     fn from(error: CLValueError) -> Self {
         StepError::CLValueError(error)
+    }
+}
+
+impl From<RuntimeStackOverflow> for StepError {
+    fn from(overflow: RuntimeStackOverflow) -> Self {
+        StepError::OtherEngineStateError(Error::from(overflow))
     }
 }
 
