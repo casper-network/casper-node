@@ -8,7 +8,7 @@ readme = "README.md"
 documentation = "https://docs.rs/casper-contract"
 homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/smart_contracts/contract"
-license-file = "../../LICENSE"
+license = "Apache-2.0"
 
 [dependencies]
 casper-types = { version = "1.4.2", path = "../../types" }

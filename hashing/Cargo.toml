@@ -7,7 +7,7 @@ readme = "README.md"
 documentation = "https://docs.rs/casper-hashing"
 homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/hashing"
-license-file = "../LICENSE"
+license = "Apache-2.0"
 
 [dependencies]
 blake2 = "0.9.0"
