@@ -14,7 +14,6 @@ pub mod op;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
-pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
 
@@ -65,7 +64,6 @@ pub use self::{
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
-    system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
@@ -111,7 +109,6 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 #[derive(Debug)]
 pub struct EngineState<S> {
     config: EngineConfig,
-    system_contract_cache: SystemContractCache,
     state: S,
 }
 
@@ -132,12 +129,7 @@ where
 {
     /// Creates new engine state.
     pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
-        let system_contract_cache = Default::default();
-        EngineState {
-            config,
-            system_contract_cache,
-            state,
-        }
+        EngineState { config, state }
     }
 
     /// Returns engine config.
@@ -784,7 +776,6 @@ where
                             correlation_id,
                             Rc::clone(&tracking_copy),
                             Phase::Session,
-                            SystemContractCache::clone(&self.system_contract_cache),
                             create_purse_call_stack,
                         );
                     match maybe_uref {
@@ -884,7 +875,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    SystemContractCache::clone(&self.system_contract_cache),
                     get_payment_purse_call_stack,
                 );
 
@@ -937,7 +927,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    SystemContractCache::clone(&self.system_contract_cache),
                     transfer_to_payment_purse_call_stack,
                 );
 
@@ -1032,7 +1021,6 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                SystemContractCache::clone(&self.system_contract_cache),
                 transfer_call_stack,
             );
 
@@ -1105,7 +1093,6 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    SystemContractCache::clone(&self.system_contract_cache),
                     finalize_payment_call_stack,
                 );
 
@@ -1130,7 +1117,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect())
+            session_result = session_result.with_journal(tracking_copy.borrow().execution_journal())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();
@@ -1139,7 +1126,7 @@ where
         execution_result_builder.set_finalize_execution_result(finalize_result);
 
         let execution_result = execution_result_builder
-            .build(tracking_copy.borrow().reader(), correlation_id)
+            .build()
             .expect("ExecutionResultBuilder not initialized properly");
 
         Ok(execution_result)
@@ -1334,7 +1321,6 @@ where
             let payment_entry_point = payment_metadata.entry_point;
 
             let payment_args = payment.args().clone();
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             if is_standard_payment {
                 executor.exec_standard_payment(
@@ -1351,7 +1337,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    system_contract_cache,
                     payment_call_stack,
                 )
             } else {
@@ -1370,7 +1355,6 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    system_contract_cache,
                     &payment_package,
                     payment_call_stack,
                 )
@@ -1536,7 +1520,6 @@ where
                         ))
                     }
                 };
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
                 session_module,
@@ -1553,7 +1536,6 @@ where
                 correlation_id,
                 Rc::clone(&session_tracking_copy),
                 Phase::Session,
-                system_contract_cache,
                 &session_package,
                 session_call_stack,
             )
@@ -1605,7 +1587,8 @@ where
             // so we start again from the post-payment state.
             Rc::new(RefCell::new(post_payment_tracking_copy.fork()))
         } else {
-            session_result = session_result.with_effect(session_tracking_copy.borrow().effect());
+            session_result =
+                session_result.with_journal(session_tracking_copy.borrow().execution_journal());
             session_tracking_copy
         };
 
@@ -1671,7 +1654,6 @@ where
             let mut handle_payment_keys = handle_payment_contract.named_keys().to_owned();
 
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             let handle_payment_call_stack = {
                 let deploy_account = CallStackElement::session(deploy_item.address);
@@ -1703,7 +1685,6 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    system_contract_cache,
                     handle_payment_call_stack,
                 );
 
@@ -1714,7 +1695,7 @@ where
 
         // We panic here to indicate that the builder was not used properly.
         let ret = execution_result_builder
-            .build(tracking_copy.borrow().reader(), correlation_id)
+            .build()
             .expect("ExecutionResultBuilder not initialized properly");
 
         // NOTE: payment_code_spec_5_a is enforced in execution_result_builder.build()
@@ -1875,7 +1856,6 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                SystemContractCache::clone(&self.system_contract_cache),
                 get_era_validators_call_stack,
             );
 
@@ -1981,8 +1961,9 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let deploy_hash = {
-            // seeds address generator w/ protocol version
-            let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
+            // seeds address generator w/ era_end_timestamp_millis
+            let mut bytes = step_request.era_end_timestamp_millis.into_bytes()?;
+            bytes.append(&mut step_request.next_era_id.into_bytes()?);
             DeployHash::new(Digest::hash(&bytes).value())
         };
 
@@ -2028,7 +2009,6 @@ where
             correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
-            SystemContractCache::clone(&self.system_contract_cache),
             distribute_rewards_call_stack,
         );
 
@@ -2036,75 +2016,18 @@ where
             return Err(StepError::DistributeError(exec_error));
         }
 
-        let slashed_validators = match step_request.slashed_validators() {
-            Ok(slashed_validators) => slashed_validators,
-            Err(error) => {
-                error!(
-                    "failed to deserialize validator_ids for slashing: {}",
-                    error.to_string()
-                );
-                return Err(StepError::BytesRepr(error));
-            }
-        };
+        let slashed_validators: Vec<PublicKey> = step_request.slashed_validators();
 
-        let slash_args = {
-            let mut runtime_args = RuntimeArgs::new();
-            runtime_args
-                .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
-                .map_err(|e| Error::Exec(e.into()))?;
-            runtime_args
-        };
+        if !slashed_validators.is_empty() {
+            let slash_args = {
+                let mut runtime_args = RuntimeArgs::new();
+                runtime_args
+                    .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
+                    .map_err(|e| Error::Exec(e.into()))?;
+                runtime_args
+            };
 
-        let slash_call_stack = {
-            let system = CallStackElement::session(PublicKey::System.to_account_hash());
-            let auction = CallStackElement::stored_contract(
-                auction_contract.contract_package_hash(),
-                *auction_contract_hash,
-            );
-            vec![system, auction]
-        };
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
-            DirectSystemContractCall::Slash,
-            system_module.clone(),
-            slash_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys.clone(),
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            SystemContractCache::clone(&self.system_contract_cache),
-            slash_call_stack,
-        );
-
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::SlashingError(exec_error));
-        }
-
-        if step_request.run_auction {
-            let run_auction_args = RuntimeArgs::try_new(|args| {
-                args.insert(
-                    ARG_ERA_END_TIMESTAMP_MILLIS,
-                    step_request.era_end_timestamp_millis,
-                )?;
-                args.insert(
-                    ARG_EVICTED_VALIDATORS,
-                    step_request
-                        .evict_items
-                        .iter()
-                        .map(|item| item.validator_id.clone())
-                        .collect::<Vec<PublicKey>>(),
-                )?;
-                Ok(())
-            })?;
-
-            let run_auction_call_stack = {
+            let slash_call_stack = {
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let auction = CallStackElement::stored_contract(
                     auction_contract.contract_package_hash(),
@@ -2114,14 +2037,14 @@ where
             };
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
-                    DirectSystemContractCall::RunAuction,
-                    system_module,
-                    run_auction_args,
+                    DirectSystemContractCall::Slash,
+                    system_module.clone(),
+                    slash_args,
                     &mut named_keys,
                     Default::default(),
                     base_key,
                     &virtual_system_account,
-                    authorization_keys,
+                    authorization_keys.clone(),
                     BlockTime::default(),
                     deploy_hash,
                     gas_limit,
@@ -2129,16 +2052,63 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Session,
-                    SystemContractCache::clone(&self.system_contract_cache),
-                    run_auction_call_stack,
+                    slash_call_stack,
                 );
 
             if let Some(exec_error) = execution_result.take_error() {
-                return Err(StepError::AuctionError(exec_error));
+                return Err(StepError::SlashingError(exec_error));
             }
         }
 
+        let run_auction_args = RuntimeArgs::try_new(|args| {
+            args.insert(
+                ARG_ERA_END_TIMESTAMP_MILLIS,
+                step_request.era_end_timestamp_millis,
+            )?;
+            args.insert(
+                ARG_EVICTED_VALIDATORS,
+                step_request
+                    .evict_items
+                    .iter()
+                    .map(|item| item.validator_id.clone())
+                    .collect::<Vec<PublicKey>>(),
+            )?;
+            Ok(())
+        })?;
+
+        let run_auction_call_stack = {
+            let system = CallStackElement::session(PublicKey::System.to_account_hash());
+            let auction = CallStackElement::stored_contract(
+                auction_contract.contract_package_hash(),
+                *auction_contract_hash,
+            );
+            vec![system, auction]
+        };
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::RunAuction,
+            system_module,
+            run_auction_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            run_auction_call_stack,
+        );
+
+        if let Some(exec_error) = execution_result.take_error() {
+            return Err(StepError::AuctionError(exec_error));
+        }
+
         let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         // commit
         let post_state_hash = self
@@ -2146,13 +2116,13 @@ where
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                execution_effect.transforms.clone(),
+                execution_effect.transforms,
             )
             .map_err(Into::into)?;
 
         Ok(StepSuccess {
             post_state_hash,
-            execution_effect,
+            execution_journal,
         })
     }
 

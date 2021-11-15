@@ -603,14 +603,8 @@ impl Storage {
                 txn.commit()?;
                 Ok(responder.respond(()).ignore())
             }
-            #[cfg(test)]
             StateStoreRequest::Load { key, responder } => {
-                let txn = self.env.begin_ro_txn()?;
-                let bytes = match txn.get(self.state_store_db, &key) {
-                    Ok(slice) => Some(slice.to_owned()),
-                    Err(lmdb::Error::NotFound) => None,
-                    Err(err) => return Err(err.into()),
-                };
+                let bytes = self.read_state_store(&key)?;
                 Ok(responder.respond(bytes).ignore())
             }
         }
@@ -1370,6 +1364,18 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
     }
+
+    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
+    fn get_switch_block_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<Block>, Error> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
+    }
 }
 
 /// Inserts the relevant entries to the two indices.
@@ -1633,6 +1639,31 @@ impl Storage {
             }
         }
     }
+
+    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn transactional_get_switch_block_by_era_id(
+        &self,
+        switch_block_era_num: u64,
+    ) -> Option<Block> {
+        let mut read_only_lmdb_transaction = self
+            .env
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let switch_block = self
+            .get_switch_block_by_era_id(
+                &mut read_only_lmdb_transaction,
+                EraId::from(switch_block_era_num),
+            )
+            .expect("LMDB panicked trying to get switch block");
+        read_only_lmdb_transaction
+            .commit()
+            .expect("Could not commit transaction");
+        switch_block
+    }
 }
 
 // Testing code. The functions below allow direct inspection of the storage component and should
@@ -1674,43 +1705,6 @@ impl Storage {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
             .collect()
-    }
-
-    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        era_id: EraId,
-    ) -> Result<Option<Block>, Error> {
-        self.switch_block_era_id_index
-            .get(&era_id)
-            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
-            .transpose()
-    }
-
-    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics on any IO or db corruption error.
-    pub(crate) fn transactional_get_switch_block_by_era_id(
-        &self,
-        switch_block_era_num: u64,
-    ) -> Option<Block> {
-        let mut read_only_lmdb_transaction = self
-            .env
-            .begin_ro_txn()
-            .expect("Could not start read only transaction for lmdb");
-        let switch_block = self
-            .get_switch_block_by_era_id(
-                &mut read_only_lmdb_transaction,
-                EraId::from(switch_block_era_num),
-            )
-            .expect("LMDB panicked trying to get switch block");
-        read_only_lmdb_transaction
-            .commit()
-            .expect("Could not commit transaction");
-        switch_block
     }
 }
 
@@ -2059,30 +2053,33 @@ fn initialize_deploy_metadata_db(
     deleted_block_hashes: &HashSet<BlockHash>,
 ) -> Result<(), LmdbExtError> {
     info!("initializing deploy metadata database");
-    let mut txn = env.begin_rw_txn()?;
-    let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
-        let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
-        let len_before = deploy_metadata.execution_results.len();
+    if !deleted_block_hashes.is_empty() {
+        let mut txn = env.begin_rw_txn()?;
+        let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-        deploy_metadata.execution_results = deploy_metadata
-            .execution_results
-            .drain()
-            .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
-            .collect();
+        for (raw_key, raw_val) in cursor.iter() {
+            let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
+            let len_before = deploy_metadata.execution_results.len();
 
-        // If the deploy's execution results are now empty, we just remove them entirely.
-        if deploy_metadata.execution_results.is_empty() {
-            cursor.del(WriteFlags::empty())?;
-        } else if len_before != deploy_metadata.execution_results.len() {
-            let buffer = lmdb_ext::serialize(&deploy_metadata)?;
-            cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            deploy_metadata.execution_results = deploy_metadata
+                .execution_results
+                .drain()
+                .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
+                .collect();
+
+            // If the deploy's execution results are now empty, we just remove them entirely.
+            if deploy_metadata.execution_results.is_empty() {
+                cursor.del(WriteFlags::empty())?;
+            } else if len_before != deploy_metadata.execution_results.len() {
+                let buffer = lmdb_ext::serialize(&deploy_metadata)?;
+                cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            }
         }
-    }
 
-    drop(cursor);
-    txn.commit()?;
+        drop(cursor);
+        txn.commit()?;
+    }
 
     info!("deploy metadata database initialized");
     Ok(())

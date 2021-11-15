@@ -63,7 +63,7 @@ use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     unregister_metric,
-    utils::{self, WeightedRoundRobin},
+    utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
@@ -179,21 +179,42 @@ pub(crate) type Scheduler<Ev> = WeightedRoundRobin<(Option<NonZeroU64>, Ev), Que
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 #[derive(DataSize, Debug)]
-pub(crate) struct EventQueueHandle<REv>(&'static Scheduler<REv>)
+pub(crate) struct EventQueueHandle<REv>
 where
-    REv: 'static;
+    REv: 'static,
+{
+    /// A reference to the scheduler of the event queue.
+    scheduler: &'static Scheduler<REv>,
+    /// Flag indicating whether or not the reactor processing this event queue is shutting down.
+    is_shutting_down: SharedFlag,
+}
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
 impl<REv> Clone for EventQueueHandle<REv> {
     fn clone(&self) -> Self {
-        EventQueueHandle(self.0)
+        EventQueueHandle {
+            scheduler: self.scheduler,
+            is_shutting_down: self.is_shutting_down,
+        }
     }
 }
 impl<REv> Copy for EventQueueHandle<REv> {}
 
 impl<REv> EventQueueHandle<REv> {
-    pub(crate) fn new(scheduler: &'static Scheduler<REv>) -> Self {
-        EventQueueHandle(scheduler)
+    /// Creates a new event queue handle.
+    pub(crate) fn new(scheduler: &'static Scheduler<REv>, is_shutting_down: SharedFlag) -> Self {
+        EventQueueHandle {
+            scheduler,
+            is_shutting_down,
+        }
+    }
+
+    /// Creates a new event queue handle that is not connected to a shutdown flag.
+    ///
+    /// This method is used in tests, where we are never disabling shutdown warnings anyway.
+    #[cfg(test)]
+    pub(crate) fn without_shutdown(scheduler: &'static Scheduler<REv>) -> Self {
+        EventQueueHandle::new(scheduler, SharedFlag::global_shared())
     }
 
     /// Schedule an event on a specific queue.
@@ -215,12 +236,19 @@ impl<REv> EventQueueHandle<REv> {
     ) where
         REv: From<Ev>,
     {
-        self.0.push((ancestor, event.into()), queue_kind).await
+        self.scheduler
+            .push((ancestor, event.into()), queue_kind)
+            .await
     }
 
     /// Returns number of events in each of the scheduler's queues.
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
-        self.0.event_queues_counts()
+        self.scheduler.event_queues_counts()
+    }
+
+    /// Returns whether the associated reactor is currently shutting down.
+    pub(crate) fn shutdown_flag(&self) -> SharedFlag {
+        self.is_shutting_down
     }
 }
 
@@ -348,6 +376,9 @@ where
 
     /// Last queue dump timestamp
     last_queue_dump: Option<Timestamp>,
+
+    /// Flag indicating the reactor is being shut down.
+    is_shutting_down: SharedFlag,
 }
 
 /// Metric data for the Runner
@@ -462,8 +493,9 @@ where
         }
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let is_shutting_down = SharedFlag::new();
 
-        let event_queue = EventQueueHandle::new(scheduler);
+        let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
@@ -483,6 +515,7 @@ where
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
+            is_shutting_down,
         })
     }
 
@@ -493,7 +526,7 @@ where
     pub(crate) async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         self.metrics.events.inc();
 
-        let event_queue = EventQueueHandle::new(self.scheduler);
+        let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
         let effect_builder = EffectBuilder::new(event_queue);
 
         // Update metrics like memory usage and event queue sizes.
@@ -672,7 +705,6 @@ where
         };
         if let Err(error) = self.scheduler.debug_dump(&mut file).await {
             warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
-            return;
         }
     }
 
@@ -683,6 +715,8 @@ where
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
                     if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                        self.is_shutting_down.set();
+
                         // TODO: Workaround, until we actually use control announcements for
                         // exiting: Go over the entire remaining event queue and look for a control
                         // announcement. This approach is hacky, and should be replaced with
@@ -711,12 +745,22 @@ where
                         break reactor_exit;
                     }
                     if !self.crank(rng).await {
+                        self.is_shutting_down.set();
                         break ReactorExit::ProcessShouldExit(ExitCode::Abort);
                     }
                 }
-                SIGINT => break ReactorExit::ProcessShouldExit(ExitCode::SigInt),
-                SIGQUIT => break ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
-                SIGTERM => break ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
+                SIGINT => {
+                    self.is_shutting_down.set();
+                    break ReactorExit::ProcessShouldExit(ExitCode::SigInt);
+                }
+                SIGQUIT => {
+                    self.is_shutting_down.set();
+                    break ReactorExit::ProcessShouldExit(ExitCode::SigQuit);
+                }
+                SIGTERM => {
+                    self.is_shutting_down.set();
+                    break ReactorExit::ProcessShouldExit(ExitCode::SigTerm);
+                }
                 _ => error!("should be unreachable - bug in signal handler"),
             }
         }
@@ -724,6 +768,7 @@ where
 
     /// Shuts down a reactor, sealing and draining the entire queue before returning it.
     pub(crate) async fn drain_into_inner(self) -> R {
+        self.is_shutting_down.set();
         self.scheduler.seal();
         for (ancestor, event) in self.scheduler.drain_queues().await {
             debug!(?ancestor, %event, "drained event");
@@ -755,7 +800,7 @@ where
     where
         F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
     {
-        let event_queue = EventQueueHandle::new(self.scheduler);
+        let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
         let effect_builder = EffectBuilder::new(event_queue);
 
         let effects = create_effects(effect_builder);
@@ -797,7 +842,8 @@ impl Runner<InitializerReactor> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
-        let event_queue = EventQueueHandle::new(scheduler);
+        let is_shutting_down = SharedFlag::new();
+        let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) =
             InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
 
@@ -825,6 +871,7 @@ impl Runner<InitializerReactor> {
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
+            is_shutting_down,
         })
     }
 }

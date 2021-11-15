@@ -14,6 +14,52 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Changed
+* Revert the change to the path detection logic applied in v2.0.1.
+
+
+
+## [2.0.1] - 2021-11-4
+
+### Changed
+* Change the path detection logic for compiled Wasm as used by the casper-node monorepo.
+
+### Deprecated
+* Deprecate the `test-support` feature.  It had and continues to have no effect when enabled.
+
+
+
+## [2.0.0] - 2021-11-01
+
+### Added
+* Provide fine-grained support for testing all aspects of smart contract execution, including:
+    * `WasmTestBuilder` for building and running a test to exercise a smart contract
+    * `DeployItemBuilder` for building a `DeployItem` from a smart contract
+    * `ExecuteRequestBuilder` for building an `ExecuteRequest` to execute a given smart contract
+    * `AdditiveMapDiff` to allow easy comparison of two AdditiveMaps
+    * `StepRequestBuilder` for building a `StepRequest` (generally only used by the execution engine itself)
+    * `UpgradeRequestBuilder` for building an `UpgradeRequest` (generally only used by the execution engine itself)
+* Provide `InMemoryWasmTestBuilder` which will be suitable in most cases for testing a smart contract
+* Provide `LmdbWasmTestBuilder` can be used where global state needs to be persisted after execution of a smart contract
+* Provide several helper functions in `utils` module
+* Provide several default consts and statics useful across many test scenarios
+
+### Removed
+* Remove coarse-grained support and newtypes for testing smart contracts, including removal of:
+    * `Account`
+    * `AccountHash`
+    * `Error`
+    * `Session`
+    * `SessionBuilder`
+    * `SessionTransferInfo`
+    * `TestContext`
+    * `TestContextBuilder`
+    * `Value`
+
+
+
+## [1.4.0] - 2021-10-04
+
+### Changed
 * Support building and testing using stable Rust.
 
 
@@ -58,7 +104,10 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/04f48a467...dev
+[2.0.1]: https://github.com/casper-network/casper-node/compare/13585abcf...04f48a467
+[2.0.0]: https://github.com/casper-network/casper-node/compare/v1.4.0...13585abcf
+[1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1

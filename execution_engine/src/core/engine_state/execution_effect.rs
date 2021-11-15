@@ -2,7 +2,9 @@
 use casper_types::Key;
 
 use super::op::Op;
-use crate::shared::{additive_map::AdditiveMap, transform::Transform};
+use crate::shared::{
+    additive_map::AdditiveMap, execution_journal::ExecutionJournal, transform::Transform,
+};
 
 /// Represents the effects of executing a single [`crate::core::engine_state::DeployItem`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -14,32 +16,35 @@ pub struct ExecutionEffect {
     pub transforms: AdditiveMap<Key, Transform>,
 }
 
-impl ExecutionEffect {
-    /// Creates a new [`ExecutionEffect`].
-    pub fn new(ops: AdditiveMap<Key, Op>, transforms: AdditiveMap<Key, Transform>) -> Self {
-        ExecutionEffect { ops, transforms }
+impl From<ExecutionJournal> for ExecutionEffect {
+    fn from(journal: ExecutionJournal) -> Self {
+        let mut ops = AdditiveMap::new();
+        let mut transforms = AdditiveMap::new();
+        for (key, transform) in journal.into_iter() {
+            match transform {
+                Transform::Failure(_) => (),
+                Transform::Identity => ops.insert_add(key, Op::Read),
+                Transform::Write(_) => ops.insert_add(key, Op::Write),
+                Transform::AddInt32(_)
+                | Transform::AddUInt64(_)
+                | Transform::AddUInt128(_)
+                | Transform::AddUInt256(_)
+                | Transform::AddUInt512(_)
+                | Transform::AddKeys(_) => ops.insert_add(key, Op::Add),
+            };
+            transforms.insert_add(key, transform);
+        }
+
+        Self { ops, transforms }
     }
 }
 
-impl From<&ExecutionEffect> for casper_types::ExecutionEffect {
-    fn from(effect: &ExecutionEffect) -> Self {
-        casper_types::ExecutionEffect {
-            operations: effect
-                .ops
-                .iter()
-                .map(|(key, op)| casper_types::Operation {
-                    key: key.to_formatted_string(),
-                    kind: op.into(),
-                })
-                .collect(),
-            transforms: effect
-                .transforms
-                .iter()
-                .map(|(key, transform)| casper_types::TransformEntry {
-                    key: key.to_formatted_string(),
-                    transform: transform.into(),
-                })
-                .collect(),
+impl From<ExecutionJournal> for AdditiveMap<Key, Transform> {
+    fn from(journal: ExecutionJournal) -> Self {
+        let mut transforms = AdditiveMap::new();
+        for (key, transform) in journal.into_iter() {
+            transforms.insert_add(key, transform);
         }
+        transforms
     }
 }

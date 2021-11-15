@@ -2,7 +2,7 @@ use std::{env, path::PathBuf, str::FromStr};
 
 use clap::{Arg, ArgMatches};
 
-use casper_engine_test_support::DEFAULT_ACCOUNT_INITIAL_BALANCE;
+use casper_engine_test_support::MINIMUM_ACCOUNT_CREATION_BALANCE;
 use casper_types::{account::AccountHash, U512};
 
 const DATA_DIR_ARG_NAME: &str = "data-dir";
@@ -13,7 +13,7 @@ const DATA_DIR_ARG_HELP: &str = "Directory in which persistent data is stored [d
                                  working directory]";
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
-pub const ACCOUNT_1_INITIAL_AMOUNT: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE - 1_000_000_000;
+pub const ACCOUNT_1_INITIAL_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
 
 pub enum TransferMode {

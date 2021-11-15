@@ -230,11 +230,6 @@ pub mod smart_contracts_contract {
                 replacement,
             ),
             DependentFile::new(
-                "execution_engine_testing/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-contract = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "smart_contracts/contract/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,

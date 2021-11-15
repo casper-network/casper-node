@@ -11,8 +11,8 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
-    fs, io,
-    path::PathBuf,
+    fs,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -104,8 +104,8 @@ pub struct EraSupervisor<I> {
     next_executed_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
-    /// The path to the folder where unit hash files will be stored.
-    unit_hashes_folder: PathBuf,
+    /// The path to the folder where unit files will be stored.
+    unit_files_folder: PathBuf,
     /// The next upgrade activation point. When the era immediately before the activation point is
     /// deactivated, the era supervisor indicates that the node should stop running to allow an
     /// upgrade.
@@ -131,6 +131,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
         current_era: EraId,
+        storage_dir: &Path,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         protocol_config: ProtocolConfig,
@@ -146,7 +147,7 @@ where
                 current_era, protocol_config.last_activation_point
             );
         }
-        let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
+        let unit_files_folder = storage_dir.join("unit_files");
         let (root, config) = config.into_parts();
         let (secret_signing_key, public_signing_key) = config.load_keys(root)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
@@ -167,7 +168,7 @@ where
             new_consensus,
             next_block_height: next_height,
             metrics,
-            unit_hashes_folder,
+            unit_files_folder,
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             next_executed_height: next_height,
@@ -354,7 +355,7 @@ where
                 our_id.clone(),
                 secret,
                 now,
-                Some(self.unit_hash_file(&instance_id)),
+                Some(self.unit_file(&instance_id)),
             ))
         }
 
@@ -399,19 +400,56 @@ where
         // units that refer to evidence from any era that was bonded when it was the current one.
         let oldest_evidence_era_id = oldest_bonded_era(&self.protocol_config, oldest_bonded_era_id);
         if let Some(obsolete_era_id) = oldest_evidence_era_id.checked_sub(1) {
-            if let Some(era) = self.active_eras.remove(&obsolete_era_id) {
+            if let Some(_era) = self.active_eras.remove(&obsolete_era_id) {
                 trace!(era = obsolete_era_id.value(), "removing obsolete era");
-                match fs::remove_file(self.unit_hash_file(era.consensus.instance_id())) {
-                    Ok(_) => {}
-                    Err(err) => match err.kind() {
-                        io::ErrorKind::NotFound => {}
-                        err => warn!(?err, "could not delete unit hash file"),
-                    },
-                }
             }
         }
 
         outcomes
+    }
+
+    fn prune_unit_files(&self) {
+        let valid_unit_files: HashSet<_> = self
+            .active_eras
+            .iter()
+            .map(|(_, era)| self.unit_file(era.consensus.instance_id()))
+            .collect();
+
+        let dir_iterator = match fs::read_dir(&self.unit_files_folder) {
+            Ok(iter) => iter,
+            Err(err) => {
+                warn!(?err, path=?self.unit_files_folder, "could not read the unit files folder");
+                // if we couldn't clean up the unit files, we just return
+                return;
+            }
+        };
+
+        for entry in dir_iterator {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    warn!(
+                        ?err,
+                        path=?self.unit_files_folder,
+                        "error while reading the unit files folder",
+                    );
+                    continue;
+                }
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                // unit files should be stored directly in the folder, not in subdirectories
+                continue;
+            }
+            if valid_unit_files.contains(&path) {
+                // don't remove files corresponding to active eras
+                continue;
+            }
+            debug!(?path, "removing unit file");
+            if let Err(err) = fs::remove_file(&path) {
+                warn!(?err, ?path, "could not delete unit file");
+            }
+        }
     }
 
     /// Returns `true` if the specified era is active and bonded.
@@ -537,6 +575,9 @@ where
             );
             result_map.insert(era_id, results);
         }
+
+        self.prune_unit_files();
+
         let active_era_outcomes = self.active_eras[&self.current_era]
             .consensus
             .handle_is_current(now);
@@ -565,10 +606,10 @@ where
         self.bonded_eras().min(self.protocol_config.auction_delay)
     }
 
-    /// Returns the path to the era's unit hash file.
-    fn unit_hash_file(&self, instance_id: &Digest) -> PathBuf {
-        self.unit_hashes_folder.join(format!(
-            "unit_hash_{:?}_{}.dat",
+    /// Returns the path to the era's unit file.
+    fn unit_file(&self, instance_id: &Digest) -> PathBuf {
+        self.unit_files_folder.join(format!(
+            "unit_{:?}_{}.dat",
             instance_id,
             self.public_signing_key.to_hex()
         ))
@@ -809,21 +850,37 @@ where
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
         }
-        if block_header.is_switch_block() && !self.should_upgrade_after(&era_id) {
-            // if the block is a switch block, we have to get the validators for the new era and
-            // create it, before we can say we handled the block
-            let new_era_id = era_id.successor();
-            let effect = get_booking_block_hash(
-                self.effect_builder,
-                new_era_id,
-                self.era_supervisor.protocol_config.auction_delay,
-                self.era_supervisor.protocol_config.last_activation_point,
-            )
-            .event(move |booking_block_hash| Event::CreateNewEra {
-                switch_block_header: Box::new(block_header),
-                booking_block_hash: Ok(booking_block_hash),
-            });
-            effects.extend(effect);
+        if block_header.is_switch_block() {
+            if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+                // This was the era's last block. Schedule deactivating this era.
+                let delay = Timestamp::now()
+                    .saturating_diff(block_header.timestamp())
+                    .into();
+                let faulty_num = era.consensus.validators_with_evidence().len();
+                let deactivate_era = move |_| Event::DeactivateEra {
+                    era_id,
+                    faulty_num,
+                    delay,
+                };
+                effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
+            } else {
+                error!(era = era_id.value(), %block_header, "executed block in uninitialized era");
+            }
+            // If it's not the last block before an upgrade, initialize the next era.
+            if !self.should_upgrade_after(&era_id) {
+                let new_era_id = era_id.successor();
+                let effect = get_booking_block_hash(
+                    self.effect_builder,
+                    new_era_id,
+                    self.era_supervisor.protocol_config.auction_delay,
+                    self.era_supervisor.protocol_config.last_activation_point,
+                )
+                .event(move |booking_block_hash| Event::CreateNewEra {
+                    switch_block_header: Box::new(block_header),
+                    booking_block_hash: Ok(booking_block_hash),
+                });
+                effects.extend(effect);
+            }
         }
         effects
     }
@@ -931,6 +988,7 @@ where
             switch_block_header.timestamp(),
             switch_block_header.height() + 1,
         );
+        self.era_supervisor.prune_unit_files();
         outcomes.extend(
             self.era_supervisor.active_eras[&era_id]
                 .consensus
@@ -1129,17 +1187,6 @@ where
                     .era_supervisor
                     .next_block_height
                     .max(finalized_block.height() + 1);
-                if finalized_block.era_report().is_some() {
-                    // This was the era's last block. Schedule deactivating this era.
-                    let delay = Timestamp::now().saturating_diff(timestamp).into();
-                    let faulty_num = era.consensus.validators_with_evidence().len();
-                    let deactivate_era = move |_| Event::DeactivateEra {
-                        era_id,
-                        faulty_num,
-                        delay,
-                    };
-                    effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
-                }
                 // Request execution of the finalized block.
                 let effect_builder = self.effect_builder;
                 effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());

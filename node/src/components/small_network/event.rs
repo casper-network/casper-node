@@ -34,6 +34,7 @@ pub(crate) enum Event<P> {
         #[serde(skip)]
         span: Span,
     },
+
     /// Received network message.
     IncomingMessage {
         peer_id: Box<NodeId>,
@@ -41,6 +42,7 @@ pub(crate) enum Event<P> {
         #[serde(skip)]
         span: Span,
     },
+
     /// Incoming connection closed.
     IncomingClosed {
         #[serde(skip_serializing)]
@@ -57,6 +59,7 @@ pub(crate) enum Event<P> {
         #[serde(skip_serializing)]
         span: Span,
     },
+
     /// An established connection was terminated.
     OutgoingDropped {
         peer_id: Box<NodeId>,
@@ -79,6 +82,7 @@ pub(crate) enum Event<P> {
 
     /// The node should gossip its own public listening address.
     GossipOurAddress,
+
     /// We received a peer's public listening address via gossip.
     PeerAddressReceived(GossipedAddress),
 
