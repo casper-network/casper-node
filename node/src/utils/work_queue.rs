@@ -20,11 +20,12 @@ use tokio::sync::Notify;
 /// # Example use
 ///
 /// ```rust
+/// #![allow(non_snake_case)]
 /// # use std::{sync::Arc, time::Duration};
 /// #
 /// # use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
 /// #
-/// # use casper_node::util::work_queue::WorkQueue;
+/// # use casper_node::utils::work_queue::WorkQueue;
 /// #
 /// type DemoJob = (&'static str, usize);
 ///
