@@ -46,6 +46,7 @@ fn output_from_command(mut command: Command) -> Output {
 }
 
 #[test]
+#[ignore]
 fn should_run_cargo_casper() {
     let temp_dir = tempfile::tempdir().unwrap().into_path();
 
