@@ -29,7 +29,10 @@ use casper_node::{
     storage::Storage,
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
 };
-use casper_types::{bytesrepr::FromBytes, Key, StoredValue};
+use casper_types::{
+    bytesrepr::{self, FromBytes},
+    Key, StoredValue,
+};
 use futures_channel::{mpsc::UnboundedSender, oneshot};
 use futures_util::SinkExt;
 use tokio::{task::JoinHandle, time::error::Elapsed};
@@ -340,11 +343,25 @@ pub enum PeerError {
     AddrParseError(#[from] AddrParseError),
 
     /// Peer failed to download.
-    #[error("Failed to download {trie_key:?} from {peer_address:?} due to {error:?}")]
+    #[error("FailedRpc {trie_key:?} from {peer_address:?} due to {error:?}")]
     FailedRpc {
         peer_address: SocketAddr,
         trie_key: Digest,
-        error: Either<rpc::Error, Elapsed>,
+        error: rpc::Error,
+    },
+
+    #[error("TimedOut {trie_key:?} from {peer_address:?} due to {error:?}")]
+    TimedOut {
+        peer_address: SocketAddr,
+        trie_key: Digest,
+        error: Elapsed,
+    },
+
+    #[error("BadData {trie_key:?} from {peer_address:?} due to {error:?}")]
+    BadData {
+        peer_address: SocketAddr,
+        trie_key: Digest,
+        error: bytesrepr::Error,
     },
 }
 
@@ -368,6 +385,7 @@ pub async fn download_trie(
     peers: &[SocketAddr],
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     state_root_hash: Digest,
+    concurrent_requests_per_peer: usize,
 ) -> Result<usize, anyhow::Error> {
     let (base_send, mut base_recv) = futures_channel::mpsc::unbounded();
     let mut peer_futures = Vec::new();
@@ -406,12 +424,14 @@ pub async fn download_trie(
         .iter()
         .map(|addr| (addr, 0usize))
         .collect::<HashMap<_, _>>();
+
     loop {
+        // Top level task keeps track of missing descendants and work distribution.
         for (address, peer) in peer_map.iter() {
             let counter = in_flight_counters.get_mut(&address).unwrap();
             // TODO: understand what's happening when requests get backed up, causing starvation of
             // base_recv
-            if *counter < 10 {
+            if *counter < concurrent_requests_per_peer {
                 if let Some(next_trie_key) = outstanding_trie_keys.pop() {
                     let mut sender = peer.sender.clone();
                     *counter += 1;
@@ -429,8 +449,8 @@ pub async fn download_trie(
                     peer,
                     elapsed: _,
                 }) => {
-                    // Top level task keeps track of missing descendants and work distribution.
                     let engine_state = Arc::clone(&engine_state);
+                    /*
                     let mut missing_trie_descendants = tokio::task::spawn_blocking(move || {
                         engine_state
                             .put_trie_and_find_missing_descendant_trie_keys(
@@ -441,6 +461,10 @@ pub async fn download_trie(
                     })
                     .await
                     .unwrap();
+                    */
+                    let mut missing_trie_descendants = engine_state
+                        .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)
+                        .unwrap();
 
                     // count of all tries we know about
                     total_tries_count += missing_trie_descendants.len();
@@ -462,22 +486,6 @@ pub async fn download_trie(
                             total = total_tries_count,
                         );
                     }
-
-                    /*
-                    println!(
-                        "{flag}trie ({downloaded}/{total}) downloaded from {peer} {elapsed}ms ({outstanding} outstanding trie keys)",
-                        flag=if elapsed > Duration::from_millis(750) {
-                            "SLOW "
-                        } else {
-                            ""
-                        },
-                        downloaded=tries_downloaded,
-                        total=total_tries_count,
-                        peer=peer,
-                        elapsed=elapsed.as_millis(),
-                        outstanding=outstanding_trie_keys.len(),
-                    );
-                    */
                 }
                 Ok(PeerMsg::NoBytes { trie_key, peer }) => {
                     println!(
@@ -486,20 +494,43 @@ pub async fn download_trie(
                     );
                     outstanding_trie_keys.push(trie_key);
                 }
-                Ok(PeerMsg::GetTrie(_)) => panic!("GetTrie should not be sent by workers"),
+                Err(PeerError::BadData {
+                    trie_key,
+                    peer_address,
+                    error,
+                }) => {
+                    println!(
+                        "got bad data at key {} from peer from peer {} error {:?}",
+                        trie_key, peer_address, error
+                    );
+                    outstanding_trie_keys.push(trie_key);
+                }
+                Err(PeerError::TimedOut {
+                    trie_key,
+                    peer_address,
+                    error,
+                }) => {
+                    println!(
+                        "timed out asking for trie at key {} from peer {} error {:?}",
+                        trie_key, peer_address, error
+                    );
+                    outstanding_trie_keys.push(trie_key);
+                }
                 Err(PeerError::FailedRpc {
                     trie_key,
                     peer_address,
                     error,
                 }) => {
                     println!(
-                        "failed to get key {} from peer {} error {:?}",
+                        "rpc failed to get key {} from peer {} error {:?}",
                         trie_key, peer_address, error
                     );
+                    outstanding_trie_keys.push(trie_key);
                 }
-                Err(err) => {
-                    println!("Error {:?}", err);
+                Err(PeerError::AddrParseError(addr_parse_error)) => {
+                    panic!("failed to parse address {:?}", addr_parse_error);
                 }
+                Ok(PeerMsg::GetTrie(_)) => panic!("GetTrie should not be sent by workers"),
             }
         }
 
@@ -565,14 +596,14 @@ async fn maybe_construct_peer(
             return Err(PeerError::FailedRpc {
                 peer_address: address,
                 trie_key: state_root_hash,
-                error: Either::Left(error),
+                error,
             })
         }
         Err(elapsed) => {
-            return Err(PeerError::FailedRpc {
+            return Err(PeerError::TimedOut {
                 peer_address: address,
                 trie_key: state_root_hash,
-                error: Either::Right(elapsed),
+                error: elapsed,
             })
         }
     }
@@ -615,9 +646,20 @@ fn spawn_peer(
                     ..
                 }) => {
                     let bytes: Vec<u8> = blob.into();
-                    // tokio::time::sleep(Duration::from_millis(150)).await;
-                    let (trie, _): (Trie<Key, StoredValue>, _) =
-                        FromBytes::from_bytes(&bytes).expect("unable to tobytes");
+                    let trie: Trie<Key, StoredValue> = match FromBytes::from_bytes(&bytes) {
+                        Ok((trie, _)) => trie,
+                        Err(error) => {
+                            base_send
+                                .send(Err(PeerError::BadData {
+                                    peer_address: address,
+                                    trie_key: next_trie_key,
+                                    error,
+                                }))
+                                .await
+                                .expect("should send");
+                            return;
+                        }
+                    };
                     base_send
                         .send(Ok(PeerMsg::TrieDownloaded {
                             trie,
@@ -625,7 +667,7 @@ fn spawn_peer(
                             elapsed: start.elapsed(),
                         }))
                         .await
-                        .unwrap();
+                        .expect("should send");
                 }
                 Ok(GetTrieResult {
                     maybe_trie_bytes: None,
@@ -638,17 +680,17 @@ fn spawn_peer(
                             peer: address,
                         }))
                         .await
-                        .unwrap();
+                        .expect("should send");
                 }
-                Err(err) => {
+                Err(error) => {
                     base_send
                         .send(Err(PeerError::FailedRpc {
                             peer_address: address,
                             trie_key: next_trie_key,
-                            error: Either::Left(err),
+                            error,
                         }))
                         .await
-                        .unwrap();
+                        .expect("should send");
                     continue 'peer;
                 }
             };

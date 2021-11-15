@@ -5,7 +5,6 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
 };
 
 use reqwest::ClientBuilder;
@@ -24,6 +23,7 @@ use retrieve_state::storage::create_storage;
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";
 const CONVERT_BLOCK_FILES: &str = "convert-block-files";
+const DEFAULT_MAX_REQUESTS_PER_PEER: usize = 1;
 
 #[derive(Debug, StructOpt)]
 struct Opts {
@@ -97,6 +97,12 @@ struct Opts {
         about = "Derive the port from peer's address. Useful for nctl-based networks that have different RPC ports."
     )]
     port_derived_from_peers: bool,
+
+    #[structopt(
+        long,
+        about = "Max number of requests per peer to ask for during trie downloading."
+    )]
+    concurrent_requests_per_peer: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -283,6 +289,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 &peers_list,
                 engine_state,
                 highest_block.header.state_root_hash,
+                opts.concurrent_requests_per_peer
+                    .unwrap_or(DEFAULT_MAX_REQUESTS_PER_PEER),
             )
             .await
             .expect("should download trie");
