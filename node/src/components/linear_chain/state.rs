@@ -278,8 +278,8 @@ impl LinearChain {
     fn should_upgrade(&self, signatures: &BlockSignatures) -> bool {
         let signed_kb_info = match self
             .key_block_info
-            .get(&signatures.era_id.saturating_add(1))
-            .filter(|kb_info| *kb_info.key_block_hash() == signatures.block_hash)
+            .values()
+            .find(|kb_info| *kb_info.block_hash() == signatures.block_hash)
         {
             None => return false, // The signed block is not a key block.
             Some(signed_kb_info) => signed_kb_info,

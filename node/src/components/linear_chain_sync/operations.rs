@@ -188,12 +188,14 @@ impl KeyBlockInfo {
     pub(crate) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
-            .map(|next_era_validator_weights| KeyBlockInfo {
-                key_block_hash: block_header.hash(),
-                validator_weights: next_era_validator_weights.clone(),
-                era_start: block_header.timestamp(),
-                height: block_header.height(),
-                era_id: block_header.era_id() + 1,
+            .and_then(|next_era_validator_weights| {
+                Some(KeyBlockInfo {
+                    key_block_hash: block_header.hash(),
+                    validator_weights: next_era_validator_weights.clone(),
+                    era_start: block_header.timestamp(),
+                    height: block_header.height(),
+                    era_id: block_header.era_id().checked_add(1)?,
+                })
             })
     }
 
@@ -203,7 +205,7 @@ impl KeyBlockInfo {
     }
 
     /// Returns the hash of the key block, i.e. the last block before `era_id`.
-    pub(crate) fn key_block_hash(&self) -> &BlockHash {
+    pub(crate) fn block_hash(&self) -> &BlockHash {
         &self.key_block_hash
     }
 
