@@ -1,9 +1,7 @@
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
@@ -52,7 +50,7 @@ fn store_payment_to_account_context(
     )
     .build();
 
-    builder.exec_commit_finish(exec_request);
+    builder.exec(exec_request).commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -184,7 +182,7 @@ fn should_exec_stored_code_by_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec_commit_finish(exec_request_stored_payment);
+        builder.exec(exec_request_stored_payment).commit();
     }
 
     let (motes_bravo, modified_balance_bravo) = {
@@ -272,7 +270,7 @@ fn should_exec_stored_code_by_named_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec_commit_finish(exec_request_stored_payment);
+        builder.exec(exec_request_stored_payment).commit();
     }
 
     let (motes_bravo, modified_balance_bravo) = {
@@ -320,7 +318,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request);
+    builder.exec(exec_request).commit();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -372,10 +370,10 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    builder.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        builder.is_error(),
         "calling a payment module with increased major protocol version should be error"
     );
     let error_message = builder
@@ -404,7 +402,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request);
+    builder.exec(exec_request).commit();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -453,10 +451,10 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    builder.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        builder.is_error(),
         "calling a payment module with increased major protocol version should be error"
     );
     let error_message = builder
@@ -481,7 +479,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request_1);
+    builder.exec(exec_request_1).commit();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -535,10 +533,10 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    builder.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
     let error_message = builder
@@ -567,7 +565,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request_1);
+    builder.exec(exec_request_1).commit();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -622,10 +620,10 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    builder.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
     let error_message = builder
@@ -654,7 +652,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec_commit_finish(exec_request_1);
+    builder.exec(exec_request_1).commit();
 
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -695,10 +693,10 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
             .build()
     };
 
-    let test_result = builder.exec(exec_request_stored_payment).commit();
+    builder.exec(exec_request_stored_payment).commit();
 
     assert!(
-        test_result.is_error(),
+        builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
     let error_message = builder
@@ -753,15 +751,10 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     // store both contracts
     builder.exec(exec_request_1).expect_success().commit();
 
-    let test_result = builder
-        .exec(exec_request_2)
-        .expect_success()
-        .commit()
-        .finish();
+    builder.exec(exec_request_2).expect_success().commit();
 
     // query both stored contracts by their named keys
-    let query_result = test_result
-        .builder()
+    let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query default account");
     let default_account = query_result
@@ -798,7 +791,8 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
             .build()
     };
 
-    InMemoryWasmTestBuilder::from_result(test_result)
+    builder
+        .clear_results()
         .exec(exec_request_stored_payment)
         .expect_success()
         .commit();

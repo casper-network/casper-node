@@ -19,12 +19,17 @@ use std::{
     ops::{Add, BitXorAssign, Div},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
+#[cfg(test)]
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -118,6 +123,45 @@ pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, Li
 #[inline]
 pub(crate) fn leak<T>(value: T) -> &'static T {
     Box::leak(Box::new(value))
+}
+
+/// A flag shared across multiple subsystem.
+#[derive(Copy, Clone, DataSize, Debug)]
+pub(crate) struct SharedFlag(&'static AtomicBool);
+
+impl SharedFlag {
+    /// Creates a new shared flag.
+    ///
+    /// The flag is initially not set.
+    pub(crate) fn new() -> Self {
+        SharedFlag(leak(AtomicBool::new(false)))
+    }
+
+    /// Checks whether the flag is set.
+    pub(crate) fn is_set(self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+
+    /// Set the flag.
+    pub(crate) fn set(self) {
+        self.0.store(true, Ordering::SeqCst)
+    }
+
+    /// Returns a shared instance of the flag for testing.
+    ///
+    /// The returned flag should **never** have `set` be called upon it.
+    #[cfg(test)]
+    pub(crate) fn global_shared() -> Self {
+        static SHARED_FLAG: Lazy<SharedFlag> = Lazy::new(SharedFlag::new);
+
+        *SHARED_FLAG
+    }
+}
+
+impl Default for SharedFlag {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// A display-helper that shows iterators display joined by ",".
@@ -387,6 +431,8 @@ pub async fn wait_for_arc_drop<T>(arc: Arc<T>, attempts: usize, retry_delay: Dur
 mod tests {
     use std::{sync::Arc, time::Duration};
 
+    use crate::utils::SharedFlag;
+
     use super::{wait_for_arc_drop, xor};
 
     #[test]
@@ -442,5 +488,23 @@ mod tests {
         // Immedetialy after, we should not be able to obtain a strong reference anymore.
         // This test fails only if we have a race condition, so false positive tests are possible.
         assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn shared_flag_sanity_check() {
+        let flag = SharedFlag::new();
+        let copied = flag;
+
+        assert!(!flag.is_set());
+        assert!(!copied.is_set());
+        assert!(!flag.is_set());
+        assert!(!copied.is_set());
+
+        flag.set();
+
+        assert!(flag.is_set());
+        assert!(copied.is_set());
+        assert!(flag.is_set());
+        assert!(copied.is_set());
     }
 }

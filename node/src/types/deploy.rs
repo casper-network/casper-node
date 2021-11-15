@@ -10,7 +10,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::Display;
-use hex::FromHexError;
 use itertools::Itertools;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
@@ -237,8 +236,8 @@ pub enum Error {
     InvalidPayment,
 }
 
-impl From<FromHexError> for Error {
-    fn from(error: FromHexError) -> Self {
+impl From<base16::DecodeError> for Error {
+    fn from(error: base16::DecodeError) -> Self {
         Error::DecodeFromJson(Box::new(error))
     }
 }
@@ -955,7 +954,7 @@ impl Deploy {
         };
         let secret_key = SecretKey::random(rng);
         Deploy::new(
-            deploy.header.timestamp,
+            Timestamp::now(),
             deploy.header.ttl,
             deploy.header.gas_price,
             deploy.header.dependencies,
@@ -1144,6 +1143,23 @@ impl Deploy {
             args: Default::default(),
         };
         Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_expired_deploy(rng: &mut TestRng) -> Self {
+        let deploy = Self::random_valid_native_transfer(rng);
+        let secret_key = SecretKey::random(rng);
+
+        Deploy::new(
+            Timestamp::zero(),
+            TimeDiff::from_seconds(1u32),
+            deploy.header.gas_price,
+            deploy.header.dependencies,
+            deploy.header.chain_name,
+            deploy.payment,
+            deploy.session,
+            &secret_key,
+            None,
+        )
     }
 
     /// Creates a deploy with native transfer as payment code.

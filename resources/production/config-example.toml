@@ -37,9 +37,6 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 # ===========================================
 [consensus.highway]
 
-# The folder in which the files with per-era latest unit hashes will be stored.
-unit_hashes_folder = "/var/lib/casper/casper-node"
-
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '30min'
 
@@ -205,7 +202,8 @@ max_concurrent_subscribers = 100
 [storage]
 
 # Path (absolute, or relative to this config.toml) to the folder where any files created
-# or read by the storage component will exist.
+# or read by the storage component will exist. A subfolder named with the network name will be
+# automatically created and used for the storage component files.
 #
 # If the folder doesn't exist, it and any required parents will be created.
 #

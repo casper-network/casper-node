@@ -94,7 +94,7 @@ mod tests {
 
     use openssl::pkey::{PKey, Private, Public};
 
-    use casper_types::{bytesrepr, AsymmetricType, Tagged};
+    use casper_types::{bytesrepr, checksummed_hex, AsymmetricType, Tagged};
 
     use super::*;
     use crate::{crypto::AsymmetricKeyExt, testing::TestRng};
@@ -189,7 +189,7 @@ mod tests {
     }
 
     fn known_public_key_to_pem(known_key_hex: &str, known_key_pem: &str) {
-        let key_bytes = hex::decode(known_key_hex).unwrap();
+        let key_bytes = checksummed_hex::decode(known_key_hex).unwrap();
         let decoded = PublicKey::from_pem(known_key_pem.as_bytes()).unwrap();
         assert_eq!(key_bytes, Into::<Vec<u8>>::into(decoded));
     }
@@ -267,10 +267,86 @@ mod tests {
         assert_eq!(Some(Ordering::Equal), low.partial_cmp(&low_copy));
     }
 
+    mod system {
+        use super::{sign, verify};
+        use crate::crypto::asymmetric_key_ext::AsymmetricKeyExt;
+        use casper_types::crypto::{AsymmetricType, PublicKey, SecretKey, Signature};
+        use std::path::Path;
+
+        #[test]
+        fn secret_key_to_der_should_error() {
+            assert!(SecretKey::system().to_der().is_err());
+        }
+
+        #[test]
+        fn secret_key_to_pem_should_error() {
+            assert!(SecretKey::system().to_pem().is_err());
+        }
+
+        #[test]
+        fn secret_key_to_file_should_error() {
+            assert!(SecretKey::system().to_file(Path::new("/dev/null")).is_err());
+        }
+
+        #[test]
+        fn public_key_serialization_roundtrip() {
+            super::public_key_serialization_roundtrip(PublicKey::system());
+        }
+
+        #[test]
+        fn public_key_to_der_should_error() {
+            assert!(PublicKey::system().to_der().is_err());
+        }
+
+        #[test]
+        fn public_key_to_pem_should_error() {
+            assert!(PublicKey::system().to_pem().is_err());
+        }
+
+        #[test]
+        fn public_key_to_file_should_error() {
+            assert!(PublicKey::system().to_file(Path::new("/dev/null")).is_err());
+        }
+
+        #[test]
+        fn public_key_to_and_from_hex() {
+            super::public_key_hex_roundtrip(PublicKey::system());
+        }
+
+        #[test]
+        #[should_panic]
+        fn sign_should_panic() {
+            sign([], &SecretKey::system(), &PublicKey::system());
+        }
+
+        #[test]
+        fn signature_to_and_from_hex() {
+            super::signature_hex_roundtrip(Signature::system());
+        }
+
+        #[test]
+        fn public_key_to_account_hash() {
+            assert_ne!(
+                PublicKey::system().to_account_hash().as_ref(),
+                Into::<Vec<u8>>::into(PublicKey::system())
+            );
+        }
+
+        #[test]
+        fn verify_should_error() {
+            assert!(verify([], &Signature::system(), &PublicKey::system()).is_err());
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_signature() {
+            casper_types::bytesrepr::test_serialization_roundtrip(&Signature::system());
+        }
+    }
+
     mod ed25519 {
         use rand::Rng;
 
-        use casper_types::ED25519_TAG;
+        use casper_types::{checksummed_hex, ED25519_TAG};
 
         use super::*;
         use crate::crypto::AsymmetricKeyExt;
@@ -314,9 +390,10 @@ mod tests {
             const KNOWN_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
 MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 -----END PRIVATE KEY-----"#;
-            let key_bytes =
-                hex::decode("d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a88f44755842")
-                    .unwrap();
+            let key_bytes = checksummed_hex::decode(
+                "d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a88f44755842",
+            )
+            .unwrap();
             let expected_key = SecretKey::ed25519_from_bytes(key_bytes).unwrap();
             super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, ED25519_TAG);
         }
@@ -500,10 +577,10 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
                 "279cace6fdaf3945e3837df474b28646143747632bede93e7a66f5ca291d2c24978512ca0cb8827c8c\
                 322685bd605503a5ec94dbae61bbdcae1e49650602bc07";
 
-            let secret_key_bytes = hex::decode(secret_key_hex).unwrap();
-            let public_key_bytes = hex::decode(public_key_hex).unwrap();
-            let message_bytes = hex::decode(message_hex).unwrap();
-            let signature_bytes = hex::decode(signature_hex).unwrap();
+            let secret_key_bytes = base16::decode(secret_key_hex).unwrap();
+            let public_key_bytes = base16::decode(public_key_hex).unwrap();
+            let message_bytes = base16::decode(message_hex).unwrap();
+            let signature_bytes = base16::decode(signature_hex).unwrap();
 
             let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes).unwrap();
             let public_key = PublicKey::ed25519_from_bytes(public_key_bytes).unwrap();
@@ -562,9 +639,10 @@ MHQCAQEEIL3fqaMKAfXSK1D2PnVVbZlZ7jTv133nukq4+95s6kmcoAcGBSuBBAAK
 oUQDQgAEQI6VJjFv0fje9IDdRbLMcv/XMnccnOtdkv+kBR5u4ISEAkuc2TFWQHX0
 Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 -----END EC PRIVATE KEY-----"#;
-            let key_bytes =
-                hex::decode("bddfa9a30a01f5d22b50f63e75556d9959ee34efd77de7ba4ab8fbde6cea499c")
-                    .unwrap();
+            let key_bytes = checksummed_hex::decode(
+                "bddfa9a30a01f5d22b50f63e75556d9959ee34efd77de7ba4ab8fbde6cea499c",
+            )
+            .unwrap();
             let expected_key = SecretKey::secp256k1_from_bytes(key_bytes).unwrap();
             super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, SECP256K1_TAG);
         }
@@ -723,10 +801,10 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let message_hex = "616263";
             let signature_hex = "8016162860f0795154643d15c5ab5bb840d8c695d6de027421755579ea7f2a4629b7e0c88fc3428669a6a89496f426181b73f10c6c8a05ac8f49d6cb5032eb89";
 
-            let secret_key_bytes = hex::decode(secret_key_hex).unwrap();
-            let public_key_bytes = hex::decode(public_key_hex).unwrap();
-            let message_bytes = hex::decode(message_hex).unwrap();
-            let signature_bytes = hex::decode(signature_hex).unwrap();
+            let secret_key_bytes = base16::decode(secret_key_hex).unwrap();
+            let public_key_bytes = base16::decode(public_key_hex).unwrap();
+            let message_bytes = base16::decode(message_hex).unwrap();
+            let signature_bytes = base16::decode(signature_hex).unwrap();
 
             let secret_key = SecretKey::secp256k1_from_bytes(secret_key_bytes).unwrap();
             let public_key = PublicKey::secp256k1_from_bytes(public_key_bytes).unwrap();
@@ -740,17 +818,23 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 
     #[test]
     fn public_key_traits() {
+        let system_key = PublicKey::system();
         let mut rng = crate::new_rng();
         let ed25519_public_key = PublicKey::random_ed25519(&mut rng);
         let secp256k1_public_key = PublicKey::random_secp256k1(&mut rng);
-        check_ord_and_hash(ed25519_public_key, secp256k1_public_key);
+        check_ord_and_hash(ed25519_public_key.clone(), secp256k1_public_key.clone());
+        check_ord_and_hash(system_key.clone(), ed25519_public_key);
+        check_ord_and_hash(system_key, secp256k1_public_key);
     }
 
     #[test]
     fn signature_traits() {
-        let signature_low = Signature::ed25519([3; Signature::ED25519_LENGTH]).unwrap();
-        let signature_high = Signature::secp256k1([1; Signature::SECP256K1_LENGTH]).unwrap();
-        check_ord_and_hash(signature_low, signature_high)
+        let system_sig = Signature::system();
+        let ed25519_sig = Signature::ed25519([3; Signature::ED25519_LENGTH]).unwrap();
+        let secp256k1_sig = Signature::secp256k1([1; Signature::SECP256K1_LENGTH]).unwrap();
+        check_ord_and_hash(ed25519_sig, secp256k1_sig);
+        check_ord_and_hash(system_sig, ed25519_sig);
+        check_ord_and_hash(system_sig, secp256k1_sig);
     }
 
     #[test]
@@ -817,9 +901,16 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 
         // Construct a CL public key from the uncompressed one's hex representation and ensure it's
         // compressed.
-        let uncompressed_hex = format!(
+        let uncompressed_hex = {
+            let tag_bytes = vec![0x02u8];
+            checksummed_hex::encode(&tag_bytes)
+                + &checksummed_hex::encode(&secp256k1_public_key.to_encoded_point(false).as_bytes())
+        };
+
+        format!(
             "02{}",
-            hex::encode(secp256k1_public_key.to_encoded_point(false).as_bytes())
+            checksummed_hex::encode(secp256k1_public_key.to_encoded_point(false).as_bytes())
+                .to_lowercase()
         );
         let from_uncompressed_hex = PublicKey::from_hex(&uncompressed_hex).unwrap();
         assert_eq!(public_key, from_uncompressed_hex);
