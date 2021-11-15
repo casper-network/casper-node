@@ -4,11 +4,10 @@ use std::{
     hash::Hash,
 };
 
+use datasize::DataSize;
 use itertools::{Either, Itertools};
 
-use datasize::DataSize;
-
-use super::{event::DeployInfo, BlockHeight, FinalizationQueue};
+use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
 use crate::types::{DeployHash, DeployHeader, Timestamp};
 
 pub(crate) struct PruneResult {
@@ -47,34 +46,36 @@ pub(super) struct BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
-    /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys.
-    pub(super) fn from_finalized(
+    /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys and
+    /// the cached state.
+    pub(super) fn new(
         finalized_deploys: Vec<(DeployHash, DeployHeader)>,
         next_finalized_height: u64,
-    ) -> BlockProposerDeploySets {
-        BlockProposerDeploySets {
-            finalized_deploys: finalized_deploys.into_iter().collect(),
+        cached_state: CachedState,
+    ) -> (BlockProposerDeploySets, PruneResult) {
+        let finalized_deploys: HashMap<_, _> = finalized_deploys.into_iter().collect();
+
+        let CachedState {
+            mut pending_deploys,
+            mut pending_transfers,
+        } = cached_state;
+        pending_deploys.retain(|hash, _| !finalized_deploys.contains_key(hash));
+        pending_transfers.retain(|hash, _| !finalized_deploys.contains_key(hash));
+
+        let mut sets = BlockProposerDeploySets {
+            pending_deploys,
+            pending_transfers,
+            finalized_deploys,
             next_finalized: next_finalized_height,
             ..Default::default()
-        }
+        };
+        let prune_result = sets.prune(Timestamp::now());
+        (sets, prune_result)
     }
-}
 
-impl Display for BlockProposerDeploySets {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(
-            f,
-            "(pending:{}, finalized:{})",
-            self.pending_deploys.len() + self.pending_transfers.len(),
-            self.finalized_deploys.len()
-        )
-    }
-}
-
-impl BlockProposerDeploySets {
     /// Prunes expired deploy information from the BlockProposerState, returns the
     /// hashes of deploys pruned.
-    pub(crate) fn prune(&mut self, current_instant: Timestamp) -> PruneResult {
+    pub(super) fn prune(&mut self, current_instant: Timestamp) -> PruneResult {
         let pending_deploys = prune_pending_deploys(&mut self.pending_deploys, current_instant);
         let pending_transfers = prune_pending_deploys(&mut self.pending_transfers, current_instant);
 
@@ -89,6 +90,17 @@ impl BlockProposerDeploySets {
         PruneResult::new(
             pending_deploys.len() + pending_transfers.len() + finalized.len(),
             [pending_deploys, pending_transfers].concat(),
+        )
+    }
+}
+
+impl Display for BlockProposerDeploySets {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(
+            f,
+            "(pending:{}, finalized:{})",
+            self.pending_deploys.len() + self.pending_transfers.len(),
+            self.finalized_deploys.len()
         )
     }
 }

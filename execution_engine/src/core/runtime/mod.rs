@@ -3,6 +3,7 @@ mod args;
 mod auction_internal;
 mod externals;
 mod handle_payment_internal;
+mod host_function_flag;
 mod mint_internal;
 mod scoped_instrumenter;
 mod standard_payment_internal;
@@ -45,7 +46,7 @@ use crate::{
         engine_state::EngineConfig,
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
-        runtime::scoped_instrumenter::ScopedInstrumenter,
+        runtime::{host_function_flag::HostFunctionFlag, scoped_instrumenter::ScopedInstrumenter},
         runtime_context::{self, RuntimeContext},
         Address,
     },
@@ -64,6 +65,7 @@ pub struct Runtime<'a, R> {
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
     call_stack: Vec<CallStackElement>,
+    host_function_flag: HostFunctionFlag,
 }
 
 /// Creates an WASM module instance and a memory instance.
@@ -978,13 +980,14 @@ where
     R::Error: Into<Error>,
 {
     /// Creates a new runtime instance.
-    pub fn new(
+    pub(crate) fn new(
         config: EngineConfig,
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
         call_stack: Vec<CallStackElement>,
     ) -> Self {
+        Self::check_preconditions(&call_stack);
         Runtime {
             config,
             memory,
@@ -992,6 +995,40 @@ where
             host_buffer: None,
             context,
             call_stack,
+            host_function_flag: HostFunctionFlag::default(),
+        }
+    }
+
+    /// Creates a new runtime instance by cloning the config, memory, module and host function flag
+    /// from `self`.
+    fn new_from_self(
+        &self,
+        context: RuntimeContext<'a, R>,
+        call_stack: Vec<CallStackElement>,
+    ) -> Self {
+        Self::check_preconditions(&call_stack);
+        Runtime {
+            config: self.config,
+            memory: self.memory.clone(),
+            module: self.module.clone(),
+            host_buffer: None,
+            context,
+            call_stack,
+            host_function_flag: self.host_function_flag.clone(),
+        }
+    }
+
+    /// Preconditions that would render the system inconsistent if violated. Those are strictly
+    /// programming errors.
+    fn check_preconditions(call_stack: &[CallStackElement]) {
+        if call_stack.is_empty() {
+            error!("Call stack should not be empty while creating a new Runtime instance");
+            debug_assert!(false);
+        }
+
+        if call_stack.first().unwrap().contract_hash().is_some() {
+            error!("First element of the call stack should always represent a Session call");
+            debug_assert!(false);
         }
     }
 
@@ -1025,10 +1062,22 @@ where
     }
 
     /// Charge for a system contract call.
+    ///
+    /// This method does not charge for system contract calls if the immediate caller is a system
+    /// contract or if we're currently within the scope of a host function call. This avoids
+    /// misleading gas charges if one system contract calls other system contract (e.g. auction
+    /// contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
         T: Into<Gas>,
     {
+        if self.host_function_flag.is_in_host_function_scope()
+            || self.is_system_immediate_caller()?
+        {
+            // This avoids charging the user in situation when the runtime is in the middle of
+            // handling a host function call or a system contract calls other system contract.
+            return Ok(());
+        }
         self.context.charge_system_contract_call(amount)
     }
 
@@ -1209,10 +1258,7 @@ where
 
     /// Gets the immediate caller of the current execution
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        let call_stack = self.call_stack();
-        let mut call_stack_iter = call_stack.iter().rev();
-        call_stack_iter.next()?;
-        call_stack_iter.next()
+        self.call_stack().iter().rev().nth(1)
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account
@@ -1425,9 +1471,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let hash_address_generator = self.context.hash_address_generator();
-        let uref_address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1445,9 +1489,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1455,13 +1497,7 @@ where
             transfers,
         );
 
-        let mut mint_runtime = Runtime::new(
-            self.config,
-            self.memory.clone(),
-            self.module.clone(),
-            mint_context,
-            call_stack,
-        );
+        let mut mint_runtime = self.new_from_self(mint_context, call_stack);
 
         let system_config = self.config.system_config();
         let mint_costs = system_config.mint_costs();
@@ -1571,9 +1607,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1591,9 +1625,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1601,13 +1633,7 @@ where
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            self.memory.clone(),
-            self.module.clone(),
-            runtime_context,
-            call_stack,
-        );
+        let mut runtime = self.new_from_self(runtime_context, call_stack);
 
         let system_config = self.config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
@@ -1700,9 +1726,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
 
@@ -1721,9 +1745,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1731,13 +1753,7 @@ where
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            self.memory.clone(),
-            self.module.clone(),
-            runtime_context,
-            call_stack,
-        );
+        let mut runtime = self.new_from_self(runtime_context, call_stack);
 
         let system_config = self.config.system_config();
         let auction_costs = system_config.auction_costs();
@@ -2192,8 +2208,6 @@ where
 
         let config = self.config;
 
-        let host_buffer = None;
-
         let context = RuntimeContext::new(
             self.context.state(),
             entry_point.entry_point_type(),
@@ -2207,9 +2221,7 @@ where
             self.context.get_deploy_hash(),
             self.context.gas_limit(),
             self.context.gas_counter(),
-            self.context.hash_address_generator(),
-            self.context.uref_address_generator(),
-            self.context.transfer_address_generator(),
+            self.context.address_generator(),
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
@@ -2232,14 +2244,7 @@ where
 
         call_stack.push(call_stack_element);
 
-        let mut runtime = Runtime {
-            config,
-            memory,
-            module,
-            host_buffer,
-            context,
-            call_stack,
-        };
+        let mut runtime = Runtime::new(config, memory, module, context, call_stack);
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
 
@@ -2879,6 +2884,22 @@ where
         self.context.get_system_contract(MINT)
     }
 
+    fn get_system_contract_stack_frame(&mut self, name: &str) -> Result<CallStackElement, Error> {
+        let contract_hash = self.context.get_system_contract(name)?;
+        let key = Key::from(contract_hash);
+        let contract = match self.context.read_gs(&key)? {
+            Some(StoredValue::Contract(contract)) => contract,
+            Some(_) => {
+                return Err(Error::InvalidContract(contract_hash));
+            }
+            None => return Err(Error::KeyNotFound(key)),
+        };
+        Ok(CallStackElement::StoredContract {
+            contract_package_hash: contract.contract_package_hash(),
+            contract_hash,
+        })
+    }
+
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
@@ -2961,16 +2982,14 @@ where
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
-        let gas_counter = self.gas_counter();
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
-        self.set_gas_counter(gas_counter);
-
         let purse = result?.into_t()?;
         Ok(purse)
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
         self.mint_create(self.get_mint_contract()?)
     }
 
@@ -3088,6 +3107,8 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
+
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
         match self.context.read_account(&target_key)? {
@@ -3624,6 +3645,31 @@ where
             return Err(Trap::from(e));
         }
         Ok(Ok(()))
+    }
+
+    /// Checks if immediate caller is a system contract or account.
+    ///
+    /// For cases where call stack is only the session code, then this method returns `true` if the
+    /// caller is system, or `false` otherwise.
+    fn is_system_immediate_caller(&self) -> Result<bool, Error> {
+        let immediate_caller = match self.get_immediate_caller() {
+            Some(call_stack_element) => call_stack_element,
+            None => {
+                // Immediate caller is assumed to exist at a time this check is run.
+                return Ok(false);
+            }
+        };
+
+        match immediate_caller {
+            CallStackElement::Session { account_hash } => {
+                // This case can happen during genesis where we're setting up purses for accounts.
+                Ok(account_hash == &PublicKey::System.to_account_hash())
+            }
+            CallStackElement::StoredSession { contract_hash, .. }
+            | CallStackElement::StoredContract { contract_hash, .. } => {
+                Ok(self.context.is_system_contract(contract_hash)?)
+            }
+        }
     }
 }
 

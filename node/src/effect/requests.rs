@@ -439,7 +439,6 @@ pub(crate) enum StateStoreRequest {
         /// Notification when storing is complete.
         responder: Responder<()>,
     },
-    #[cfg(test)]
     /// Loads a piece of state from storage.
     Load {
         /// Key to load from.
@@ -460,7 +459,6 @@ impl Display for StateStoreRequest {
                     data.len()
                 )
             }
-            #[cfg(test)]
             StateStoreRequest::Load { key, .. } => {
                 write!(f, "load data from key {}", checksummed_hex::encode(key))
             }

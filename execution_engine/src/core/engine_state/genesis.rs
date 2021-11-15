@@ -31,7 +31,7 @@ use casper_types::{
             self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        standard_payment, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Gas, Key,
@@ -739,9 +739,7 @@ where
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
     exec_config: ExecConfig,
-    uref_address_generator: Rc<RefCell<AddressGenerator>>,
-    hash_address_generator: Rc<RefCell<AddressGenerator>>,
-    transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+    address_generator: Rc<RefCell<AddressGenerator>>,
     executor: Executor,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     system_module: Module,
@@ -765,15 +763,8 @@ where
 
         let phase = Phase::System;
         let genesis_config_hash_bytes = genesis_config_hash.as_ref();
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
+
+        let address_generator = {
             let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
             Rc::new(RefCell::new(generator))
         };
@@ -797,9 +788,7 @@ where
             protocol_version,
             correlation_id,
             exec_config,
-            uref_address_generator,
-            hash_address_generator,
-            transfer_address_generator,
+            address_generator,
             executor,
             tracking_copy,
             system_module,
@@ -807,14 +796,14 @@ where
     }
 
     pub(crate) fn finalize(self) -> ExecutionEffect {
-        self.tracking_copy.borrow_mut().effect()
+        self.tracking_copy.borrow().effect()
     }
 
     pub(crate) fn create_mint(&mut self) -> Result<ContractHash, GenesisError> {
         let round_seigniorage_rate_uref =
             {
                 let round_seigniorage_rate_uref = self
-                    .uref_address_generator
+                    .address_generator
                     .borrow_mut()
                     .new_uref(AccessRights::READ_ADD_WRITE);
 
@@ -836,7 +825,7 @@ where
 
         let total_supply_uref = {
             let total_supply_uref = self
-                .uref_address_generator
+                .address_generator
                 .borrow_mut()
                 .new_uref(AccessRights::READ_ADD_WRITE);
 
@@ -863,7 +852,7 @@ where
         let entry_points = mint::mint_entry_points();
 
         let access_key = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
@@ -903,7 +892,7 @@ where
         let entry_points = handle_payment::handle_payment_entry_points();
 
         let access_key = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
@@ -1035,7 +1024,7 @@ where
             self.initial_seigniorage_recipients(&validators, auction_delay);
 
         let era_id_uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.tracking_copy.borrow_mut().write(
@@ -1048,7 +1037,7 @@ where
         named_keys.insert(ERA_ID_KEY.into(), era_id_uref.into());
 
         let era_end_timestamp_millis_uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.tracking_copy.borrow_mut().write(
@@ -1064,7 +1053,7 @@ where
         );
 
         let initial_seigniorage_recipients_uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.tracking_copy.borrow_mut().write(
@@ -1088,7 +1077,7 @@ where
 
         let validator_slots = self.exec_config.validator_slots();
         let validator_slots_uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.tracking_copy.borrow_mut().write(
@@ -1101,7 +1090,7 @@ where
         named_keys.insert(VALIDATOR_SLOTS_KEY.into(), validator_slots_uref.into());
 
         let auction_delay_uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.tracking_copy.borrow_mut().write(
@@ -1114,7 +1103,7 @@ where
         named_keys.insert(AUCTION_DELAY_KEY.into(), auction_delay_uref.into());
 
         let locked_funds_period_uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.tracking_copy.borrow_mut().write(
@@ -1131,7 +1120,7 @@ where
 
         let unbonding_delay = self.exec_config.unbonding_delay();
         let unbonding_delay_uref = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.tracking_copy.borrow_mut().write(
@@ -1146,7 +1135,7 @@ where
         let entry_points = auction::auction_entry_points();
 
         let access_key = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
@@ -1163,7 +1152,7 @@ where
         let entry_points = standard_payment::standard_payment_entry_points();
 
         let access_key = self
-            .uref_address_generator
+            .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
@@ -1259,7 +1248,9 @@ where
 
         let mut named_keys = mint.named_keys().clone();
 
-        let call_stack = Vec::new();
+        let call_stack = vec![CallStackElement::session(
+            PublicKey::System.to_account_hash(),
+        )];
 
         let (_instance, mut runtime) = self
             .executor
@@ -1275,9 +1266,7 @@ where
                 Default::default(),
                 deploy_hash,
                 Gas::new(U512::MAX),
-                Rc::clone(&self.hash_address_generator),
-                Rc::clone(&self.uref_address_generator),
-                Rc::clone(&self.transfer_address_generator),
+                Rc::clone(&self.address_generator),
                 self.protocol_version,
                 self.correlation_id,
                 Rc::clone(&self.tracking_copy),
@@ -1303,11 +1292,11 @@ where
     ) -> (ContractPackageHash, ContractHash) {
         let protocol_version = self.protocol_version;
         let contract_wasm_hash =
-            ContractWasmHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
+            ContractWasmHash::new(self.address_generator.borrow_mut().new_hash_address());
         let contract_hash =
-            ContractHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
+            ContractHash::new(self.address_generator.borrow_mut().new_hash_address());
         let contract_package_hash =
-            ContractPackageHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
+            ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
         let contract = Contract::new(
