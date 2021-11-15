@@ -1,14 +1,13 @@
-//! Work queue demonstration.
+//! Work queue for finite work.
+//!
+//! A queue that allows for processing a variable amount of work that may spawn more jobs, but is
+//! expected to finish eventually.
 
 use std::collections::VecDeque;
 
-use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
-use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
-    time::Duration,
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
 };
 use tokio::sync::Notify;
 
@@ -21,10 +20,63 @@ use tokio::sync::Notify;
 /// # Example use
 ///
 /// ```rust
-/// // TODO: Convert `main` below to doctest.
+/// # use std::{sync::Arc, time::Duration};
+/// #
+/// # use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
+/// #
+/// # use casper_node::util::work_queue::WorkQueue;
+/// #
+/// type DemoJob = (&'static str, usize);
+///
+/// /// Job processing function.
+/// ///
+/// /// For a given job `(name, n)`, returns two jobs with `n = n -1`, unless `n == 0`.
+/// async fn process_job(job: DemoJob) -> Vec<DemoJob> {
+///     tokio::time::sleep(Duration::from_millis(25)).await;
+///
+///     let (tag, n) = job;
+///
+///     if n == 0 {
+///         Vec::new()
+///     } else {
+///         vec![(tag, n - 1), (tag, n - 1)]
+///     }
+/// }
+///
+/// /// Job-processing worker.
+/// ///
+/// /// `id` is the worker ID for logging.
+/// async fn worker(id: usize, q: Arc<WorkQueue<DemoJob>>) {
+///     println!("worker {}: init", id);
+///
+///     while let Some(job) = q.next_job().await {
+///         println!("worker {}: start job {:?}", id, job.inner());
+///         for new_job in process_job(job.inner().clone()).await {
+///             q.push_job(new_job);
+///         }
+///         println!("worker {}: finish job {:?}", id, job.inner());
+///     }
+///
+///     println!("worker {}: shutting down", id);
+/// }
+///
+/// const WORKER_COUNT: usize = 3;
+/// #
+/// # async fn test_func() {
+/// let q = Arc::new(WorkQueue::default());
+/// q.push_job(("A", 3));
+///
+/// let workers: FuturesUnordered<_> = (0..WORKER_COUNT).map(|id| worker(id, q.clone())).collect();
+///
+/// // Wait for all workers to finish.
+/// workers.for_each(|_| async move {}).await;
+/// # }
+/// # let rt = tokio::runtime::Runtime::new().unwrap();
+/// # let handle = rt.handle();
+/// # handle.block_on(test_func());
 /// ```
 #[derive(Debug, Default)]
-struct WorkQueue<T> {
+pub struct WorkQueue<T> {
     /// Jobs currently in the queue.
     jobs: Mutex<VecDeque<T>>,
     /// Number of jobs that have been popped from the queue using `next_job` but not finished.
@@ -105,8 +157,10 @@ impl<T> WorkQueue<T> {
 ///
 /// The job will be considered completed once `JobHandle` has been dropped.
 #[derive(Debug)]
-struct JobHandle<T> {
+pub struct JobHandle<T> {
+    /// The protected job.
     job: T,
+    /// Queue job was removed from.
     queue: Arc<WorkQueue<T>>,
 }
 
