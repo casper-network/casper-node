@@ -7,7 +7,6 @@ use crate::{error::MerkleConstructionError, indexed_merkle_proof::IndexedMerkleP
 
 /// Represents a chunk of data with attached proof.
 #[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
-#[schemars(with = "String", description = "Chunk of data with attached proof.")]
 #[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
