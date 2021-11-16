@@ -27,8 +27,8 @@ use casper_types::{
         self,
         auction::{
             self, Bids, DelegationRate, EraValidators, UnbondingPurses, ValidatorWeights,
-            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
-            ERA_ID_KEY, INITIAL_ERA_ID,
+            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR_PUBLIC_KEY,
+            ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
     EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
@@ -444,6 +444,7 @@ fn should_run_delegate_and_undelegate() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+            ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .build();
@@ -1232,6 +1233,7 @@ fn undelegated_funds_should_be_released() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+            ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .build();
@@ -1356,6 +1358,7 @@ fn fully_undelegated_funds_should_be_released() {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+            ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2284,6 +2287,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
+            auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2356,6 +2360,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2458,6 +2463,7 @@ fn should_not_undelegate_vfta_holder_stake() {
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
+            auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2519,6 +2525,7 @@ fn should_release_vfta_holder_stake() {
                 auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
                 auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
                 ARG_AMOUNT => U512::from(amount),
+                auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
             },
         )
         .build();
@@ -2534,6 +2541,7 @@ fn should_release_vfta_holder_stake() {
                 auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
                 auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
                 ARG_AMOUNT => U512::from(amount),
+                auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
             },
         )
         .build();

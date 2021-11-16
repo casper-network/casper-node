@@ -109,12 +109,14 @@ fn undelegate(
     delegator: PublicKey,
     validator: PublicKey,
     amount: U512,
+    new_validator_public_key: Option<PublicKey>,
 ) {
     let auction = builder.get_auction_contract_hash();
     let undelegate_args = runtime_args! {
         auction::ARG_DELEGATOR => delegator,
         auction::ARG_VALIDATOR => validator,
         auction::ARG_AMOUNT => amount,
+        auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => new_validator_public_key
     };
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         sender,
@@ -569,6 +571,7 @@ fn should_withdraw_bids_after_distribute() {
             DELEGATOR_1.clone(),
             VALIDATOR_1.clone(),
             undelegate_amount,
+            None,
         );
         assert!(
             get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_none(),
@@ -593,6 +596,7 @@ fn should_withdraw_bids_after_distribute() {
             DELEGATOR_2.clone(),
             VALIDATOR_1.clone(),
             undelegate_amount,
+            None,
         );
         assert!(
             get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_none(),
@@ -986,6 +990,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         DELEGATOR_1.clone(),
         VALIDATOR_1.clone(),
         delegator_1_rewards,
+        None,
     );
     let remaining_delegator_1_bid =
         get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
@@ -1003,6 +1008,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         DELEGATOR_2.clone(),
         VALIDATOR_1.clone(),
         delegator_2_rewards,
+        None,
     );
     let remaining_delegator_2_bid =
         get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())

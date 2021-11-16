@@ -202,6 +202,7 @@ pub trait Auction:
             public_key.clone(), // validator is the unbonder
             *bid.bonding_purse(),
             amount,
+            None,
         )?;
 
         if updated_stake.is_zero() {
@@ -213,6 +214,7 @@ pub trait Auction:
                     delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     *delegator.staked_amount(),
+                    None,
                 )?;
             }
 
@@ -316,6 +318,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
+        new_validator_public_key: Option<PublicKey>,
     ) -> Result<U512, Error> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
@@ -341,6 +344,7 @@ pub trait Auction:
                     delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     amount,
+                    new_validator_public_key,
                 )?;
 
                 let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;

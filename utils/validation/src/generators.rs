@@ -113,6 +113,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         PublicKey::from(&validator_secret_key),
         EraId::new(41),
         U512::from(60_000_000_000u64),
+        None,
     );
     let unbonding_purse_2 = UnbondingPurse::new(
         URef::new([11; 32], AccessRights::READ),
@@ -120,6 +121,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         PublicKey::from(&delegator_secret_key),
         EraId::new(42),
         U512::from(50_000_000_000u64),
+        None,
     );
 
     let transform = {

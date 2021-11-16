@@ -81,6 +81,7 @@ fn forwarded_undelegate_args() -> RuntimeArgs {
         auction::ARG_DELEGATOR => delegator,
         auction::ARG_VALIDATOR => validator,
         auction::ARG_AMOUNT => amount,
+        auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
     }
 }
 

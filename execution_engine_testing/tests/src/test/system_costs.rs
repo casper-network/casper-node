@@ -385,6 +385,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
+            auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .build();
@@ -530,6 +531,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
+            auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
         },
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
