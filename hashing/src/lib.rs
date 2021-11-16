@@ -329,7 +329,7 @@ impl<'de> Deserialize<'de> for Digest {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use std::{collections::BTreeMap, iter};
 
     use proptest_attr_macro::proptest;

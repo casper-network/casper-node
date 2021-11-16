@@ -93,7 +93,7 @@ impl ChunkWithProof {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use std::convert::TryInto;
 
     use proptest::{

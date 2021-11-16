@@ -207,7 +207,7 @@ impl IndexedMerkleProof {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use proptest::prelude::{prop_assert, prop_assert_eq};
     use proptest_attr_macro::proptest;
     use rand::{distributions::Standard, Rng};
