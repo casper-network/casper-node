@@ -200,6 +200,11 @@ function _setup_asset_node_configs()
     # N.B. - these are temporary & come into scope when testing against protocol versions
     #        that have conflicting node configuration schemas.
     _setup_asset_node_config_workaround_1 "$NODE_ID" "$PATH_TO_CONFIG_FILE"
+
+    # unit_hashes_folder was removed in version 1.4.2
+    if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "142" ]; then
+        sed -i '/unit_hashes_folder/d' "$PATH_TO_CONFIG_FILE"
+    fi
 }
 
 #######################################
