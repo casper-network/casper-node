@@ -81,11 +81,12 @@ impl LmdbEnvironment {
         let lmdb_flags = if manual_sync_enabled {
             // These options require that we manually call sync on the environment for the EE.
             EnvironmentFlags::NO_SUB_DIR
+                | EnvironmentFlags::NO_READAHEAD
                 | EnvironmentFlags::MAP_ASYNC
                 | EnvironmentFlags::WRITE_MAP
                 | EnvironmentFlags::NO_META_SYNC
         } else {
-            EnvironmentFlags::NO_SUB_DIR
+            EnvironmentFlags::NO_SUB_DIR | EnvironmentFlags::NO_READAHEAD
         };
 
         let env = Environment::new()
