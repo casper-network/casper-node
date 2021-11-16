@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use datasize::DataSize;
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
 
@@ -169,7 +170,7 @@ fn validate_finality_signatures(
 ///
 /// If the data was scraped from genesis, then `era_id` is 0.
 /// Otherwise if it came from a switch block it is that switch block's `era_id + 1`.
-#[derive(Clone, Debug)]
+#[derive(DataSize, Clone, Debug)]
 pub(crate) struct KeyBlockInfo {
     /// The block hash of the key block
     key_block_hash: BlockHash,
@@ -184,16 +185,33 @@ pub(crate) struct KeyBlockInfo {
 }
 
 impl KeyBlockInfo {
-    fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
+    pub(crate) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
-            .map(|next_era_validator_weights| KeyBlockInfo {
-                key_block_hash: block_header.hash(),
-                validator_weights: next_era_validator_weights.clone(),
-                era_start: block_header.timestamp(),
-                height: block_header.height(),
-                era_id: block_header.era_id() + 1,
+            .and_then(|next_era_validator_weights| {
+                Some(KeyBlockInfo {
+                    key_block_hash: block_header.hash(),
+                    validator_weights: next_era_validator_weights.clone(),
+                    era_start: block_header.timestamp(),
+                    height: block_header.height(),
+                    era_id: block_header.era_id().checked_add(1)?,
+                })
             })
+    }
+
+    /// Returns the era in which the validators are operating
+    pub(crate) fn era_id(&self) -> EraId {
+        self.era_id
+    }
+
+    /// Returns the hash of the key block, i.e. the last block before `era_id`.
+    pub(crate) fn block_hash(&self) -> &BlockHash {
+        &self.key_block_hash
+    }
+
+    /// Returns the validator weights for this era.
+    pub(crate) fn validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.validator_weights
     }
 }
 

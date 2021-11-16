@@ -9,6 +9,7 @@ use datasize::DataSize;
 use std::{convert::Infallible, fmt::Display, marker::PhantomData};
 
 use itertools::Itertools;
+use num::rational::Ratio;
 use prometheus::Registry;
 use tracing::error;
 
@@ -27,6 +28,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
+    types::ActivationPoint,
     NodeRng,
 };
 
@@ -39,6 +41,8 @@ pub(crate) struct LinearChainComponent<I> {
     linear_chain_state: LinearChain,
     #[data_size(skip)]
     metrics: LinearChainMetrics,
+    /// If true, the process should stop execution to allow an upgrade to proceed.
+    stop_for_upgrade: bool,
     _marker: PhantomData<I>,
 }
 
@@ -48,14 +52,27 @@ impl<I> LinearChainComponent<I> {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
+        finality_threshold_fraction: Ratio<u64>,
+        next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
-        let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        let linear_chain_state = LinearChain::new(
+            protocol_version,
+            auction_delay,
+            unbonding_delay,
+            finality_threshold_fraction,
+            next_upgrade_activation_point,
+        );
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,
+            stop_for_upgrade: false,
             _marker: PhantomData,
         })
+    }
+
+    pub(crate) fn stop_for_upgrade(&self) -> bool {
+        self.stop_for_upgrade
     }
 }
 
@@ -75,15 +92,18 @@ where
     outcomes
         .into_iter()
         .map(|outcome| match outcome {
-            Outcome::StoreBlockSignatures(block_signatures) => effect_builder
+            Outcome::StoreBlockSignatures(block_signatures, should_upgrade) => effect_builder
                 .put_signatures_to_storage(block_signatures)
-                .ignore(),
-            Outcome::StoreExecutionResults(block_hash, execution_results) => effect_builder
-                .put_execution_results_to_storage(block_hash, execution_results)
-                .ignore(),
-            Outcome::StoreBlock(block) => effect_builder
-                .put_block_to_storage(block.clone())
-                .event(move |_| Event::PutBlockResult { block }),
+                .events(move |_| should_upgrade.then(|| Event::Upgrade).into_iter()),
+            Outcome::StoreBlock(block, execution_results) => async move {
+                let block_hash = *block.hash();
+                effect_builder.put_block_to_storage(block.clone()).await;
+                effect_builder
+                    .put_execution_results_to_storage(block_hash, execution_results)
+                    .await;
+                block
+            }
+            .event(|block| Event::PutBlockResult { block }),
             Outcome::Gossip(fs) => {
                 let message = Message::FinalitySignature(fs);
                 effect_builder.broadcast_message(message).ignore()
@@ -176,6 +196,15 @@ where
                     is_bonded,
                 );
                 outcomes_to_effects(effect_builder, outcomes)
+            }
+            Event::Upgrade => {
+                self.stop_for_upgrade = true;
+                Effects::new()
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                self.linear_chain_state
+                    .got_upgrade_activation_point(activation_point);
+                Effects::new()
             }
         }
     }
