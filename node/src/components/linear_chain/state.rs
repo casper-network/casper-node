@@ -87,7 +87,7 @@ impl LinearChain {
 
     /// Handles registering an upgrade activation point.
     pub(super) fn got_upgrade_activation_point(&mut self, activation_point: ActivationPoint) {
-        debug!("got {}", activation_point);
+        debug!(?activation_point, "got an activation point");
         self.next_upgrade_activation_point = Some(activation_point);
     }
 
