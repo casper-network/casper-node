@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     net::{AddrParseError, SocketAddr},
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use futures_util::{future::Either, stream::StreamExt, FutureExt};
@@ -372,6 +372,7 @@ pub enum PeerMsg {
         trie: Trie<Key, StoredValue>,
         peer: SocketAddr,
         elapsed: Duration,
+        len_in_bytes: usize,
     },
     NoBytes {
         trie_key: Digest,
@@ -385,7 +386,7 @@ pub async fn download_trie(
     peers: &[SocketAddr],
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     state_root_hash: Digest,
-    concurrent_requests_per_peer: usize,
+    peer_mailbox_size: usize,
 ) -> Result<usize, anyhow::Error> {
     let (base_send, mut base_recv) = futures_channel::mpsc::unbounded();
     let mut peer_futures = Vec::new();
@@ -425,51 +426,48 @@ pub async fn download_trie(
         .map(|addr| (addr, 0usize))
         .collect::<HashMap<_, _>>();
 
+    let start_instant = Instant::now();
+    let mut time_chunk = Instant::now();
+    let mut bytes_downloaded_since_last_iteration = 0;
+
+    // Top level task keeps track of missing descendants and work distribution.
     loop {
-        // Top level task keeps track of missing descendants and work distribution.
+        // Distribute work
         for (address, peer) in peer_map.iter() {
             let counter = in_flight_counters.get_mut(&address).unwrap();
-            // TODO: understand what's happening when requests get backed up, causing starvation of
-            // base_recv
-            if *counter < concurrent_requests_per_peer {
+            if *counter < peer_mailbox_size {
                 if let Some(next_trie_key) = outstanding_trie_keys.pop() {
                     let mut sender = peer.sender.clone();
-                    *counter += 1;
                     sender.send(PeerMsg::GetTrie(next_trie_key)).await.unwrap();
+                    *counter += 1;
                 } else {
                     break;
                 }
             }
         }
 
+        // Handle messages from workers
         if let Some(msg) = base_recv.next().await {
             match msg {
                 Ok(PeerMsg::TrieDownloaded {
                     trie,
                     peer,
                     elapsed: _,
+                    len_in_bytes,
                 }) => {
-                    let engine_state = Arc::clone(&engine_state);
-                    /*
-                    let mut missing_trie_descendants = tokio::task::spawn_blocking(move || {
+                    let mut missing_trie_descendants = tokio::task::block_in_place(|| {
                         engine_state
                             .put_trie_and_find_missing_descendant_trie_keys(
                                 CorrelationId::new(),
                                 &trie,
                             )
                             .unwrap()
-                    })
-                    .await
-                    .unwrap();
-                    */
-                    let mut missing_trie_descendants = engine_state
-                        .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)
-                        .unwrap();
+                    });
 
                     // count of all tries we know about
                     total_tries_count += missing_trie_descendants.len();
-
                     outstanding_trie_keys.append(&mut missing_trie_descendants);
+                    bytes_downloaded_since_last_iteration += len_in_bytes;
 
                     // in-flight requests
                     if let Some(counter) = in_flight_counters.get_mut(&peer) {
@@ -478,14 +476,6 @@ pub async fn download_trie(
 
                     // count of all tries downloaded
                     tries_downloaded += 1;
-
-                    if tries_downloaded % 1000 == 0 {
-                        println!(
-                            "tries downloaded: {downloaded}/{total}",
-                            downloaded = tries_downloaded,
-                            total = total_tries_count,
-                        );
-                    }
                 }
                 Ok(PeerMsg::NoBytes { trie_key, peer }) => {
                     println!(
@@ -534,6 +524,25 @@ pub async fn download_trie(
             }
         }
 
+        if time_chunk.elapsed() > Duration::from_secs(1) {
+            let chunk_elapsed = time_chunk.elapsed().as_millis() as usize;
+            let bytes_per_sec = (bytes_downloaded_since_last_iteration / chunk_elapsed) * 1000;
+            let kbytes_per_sec = bytes_per_sec / 1024;
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
+            println!(
+                "({timestamp}) tries: {downloaded}/{total} - {kbytes_per_sec} kbps",
+                downloaded = tries_downloaded,
+                total = total_tries_count,
+                kbytes_per_sec = kbytes_per_sec,
+                timestamp = timestamp,
+            );
+            bytes_downloaded_since_last_iteration = 0;
+            time_chunk = Instant::now();
+        }
+
         // Finishing state, we downloaded all the intermediate tries we found, as well as the state
         // root we started with.
         if tries_downloaded == total_tries_count + 1 {
@@ -543,9 +552,10 @@ pub async fn download_trie(
             if missing.is_empty() {
                 println!("state root has no missing descendants.");
                 println!(
-                    "tries downloaded: {downloaded}/{total}",
+                    "tries downloaded: {downloaded}/{total} in {total_time} seconds",
                     downloaded = tries_downloaded,
                     total = total_tries_count,
+                    total_time = start_instant.elapsed().as_millis(),
                 );
                 break;
             } else {
@@ -646,6 +656,7 @@ fn spawn_peer(
                     ..
                 }) => {
                     let bytes: Vec<u8> = blob.into();
+                    let len_in_bytes = bytes.len();
                     let trie: Trie<Key, StoredValue> = match FromBytes::from_bytes(&bytes) {
                         Ok((trie, _)) => trie,
                         Err(error) => {
@@ -665,6 +676,7 @@ fn spawn_peer(
                             trie,
                             peer: address,
                             elapsed: start.elapsed(),
+                            len_in_bytes,
                         }))
                         .await
                         .expect("should send");
