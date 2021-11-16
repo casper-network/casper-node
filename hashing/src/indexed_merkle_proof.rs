@@ -35,8 +35,9 @@ impl ToBytes for IndexedMerkleProof {
 
 impl FromBytes for IndexedMerkleProof {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let ((index, count, merkle_proof), remainder) =
-            <(u64, u64, Vec<Digest>)>::from_bytes(bytes)?;
+        let (index, remainder) = FromBytes::from_bytes(bytes)?;
+        let (count, remainder) = FromBytes::from_bytes(remainder)?;
+        let (merkle_proof, remainder) = FromBytes::from_bytes(remainder)?;
 
         Ok((
             IndexedMerkleProof {
