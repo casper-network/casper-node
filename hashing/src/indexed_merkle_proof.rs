@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -67,11 +69,13 @@ impl IndexedMerkleProof {
         }
 
         let leaves = leaves.into_iter();
-        let count: u64 = std::convert::TryInto::try_into(leaves.len()).map_err(|_| {
-            MerkleConstructionError::TooManyLeaves {
-                count: leaves.len().to_string(),
-            }
-        })?;
+        let count: u64 =
+            leaves
+                .len()
+                .try_into()
+                .map_err(|_| MerkleConstructionError::TooManyLeaves {
+                    count: leaves.len().to_string(),
+                })?;
 
         let maybe_proof = leaves
             .enumerate()
