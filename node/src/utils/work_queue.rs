@@ -5,6 +5,7 @@
 
 use std::collections::VecDeque;
 
+use futures::{stream, Stream};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
@@ -136,6 +137,18 @@ impl<T> WorkQueue<T> {
 
         guard.push_back(job);
         self.notify.notify_waiters();
+    }
+
+    /// Creates a streaming consumer of the work queue.
+    #[inline]
+    pub fn to_stream(self: Arc<Self>) -> impl Stream<Item = JobHandle<T>> {
+        stream::unfold((), move |_| {
+            let local_ref = self.clone();
+            async move {
+                let next = local_ref.next_job().await;
+                next.map(|handle| (handle, ()))
+            }
+        })
     }
 
     /// Mark job completion.
