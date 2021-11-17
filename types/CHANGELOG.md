@@ -13,8 +13,25 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Fixed
+* Revert the accidental change to the `std` feature causing a broken build when this feature is enabled.
 
-## [1.4.0] - 2021-10-04
+
+
+## [1.4.2] - 2021-11-13
+
+### Added
+* Add checksummed hex encoding following a scheme similar to [EIP-55](https://eips.ethereum.org/EIPS/eip-55).
+
+
+
+## [1.4.1] - 2021-10-23
+
+No changes.
+
+
+
+## [1.4.0] - 2021-10-21 [YANKED]
 
 ### Added
 * Add `json-schema` feature, disabled by default, to enable many types to be used to produce JSON-schema data.
@@ -80,7 +97,9 @@ No changes.
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.4.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/2be27b3f5...dev
+[1.4.2]: https://github.com/casper-network/casper-node/compare/v1.4.1...2be27b3f5
+[1.4.1]: https://github.com/casper-network/casper-node/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
