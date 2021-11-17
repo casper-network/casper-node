@@ -448,6 +448,8 @@ fn check_block_version(
 
     if is_current_era(header, trusted_key_block_info, chainspec)
         && header.protocol_version() < current_version
+        && (header.next_block_era_id() != chainspec.protocol_config.activation_point.era_id()
+            || !header.is_switch_block())
     {
         return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
             current_version,
