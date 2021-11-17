@@ -608,7 +608,7 @@ impl ContractRuntime {
     ) -> Result<Vec<Digest>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         self.engine_state
-            .missing_trie_keys(correlation_id, trie_keys)
+            .missing_trie_keys(correlation_id, trie_keys, true)
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {

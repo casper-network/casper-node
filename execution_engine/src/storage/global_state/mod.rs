@@ -114,6 +114,7 @@ pub trait StateProvider {
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
+        check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error>;
 }
 
