@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "base16",
  "base64",
