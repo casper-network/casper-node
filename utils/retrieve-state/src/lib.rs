@@ -306,6 +306,7 @@ pub async fn download_trie(
             client,
             url,
             GetTrieParams {
+                trie_index: 0,
                 trie_key: next_trie_key,
             },
         )

@@ -1,5 +1,6 @@
 use std::convert::TryInto;
 
+use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -11,9 +12,9 @@ use crate::{
     Digest,
 };
 
-#[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
+#[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct IndexedMerkleProof {
+pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
     merkle_proof: Vec<Digest>,
@@ -105,13 +106,18 @@ impl IndexedMerkleProof {
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn root_hash(&self) -> Digest {
-        use blake2::{
-            digest::{Update, VariableOutput},
-            VarBlake2b,
-        };
+    /// Returns the index.
+    pub fn index(&self) -> u64 {
+        self.index
+    }
 
+    /// Returns the total count of chunks.
+    pub fn count(&self) -> u64 {
+        self.count
+    }
+
+    /// Returns the root hash of this proof (ie., the index hashed with the Merkle root hash).
+    pub fn root_hash(&self) -> Digest {
         let IndexedMerkleProof {
             index: _,
             count,

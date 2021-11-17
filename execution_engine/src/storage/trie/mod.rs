@@ -17,6 +17,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Key, StoredValue,
 };
+use datasize::DataSize;
 
 #[cfg(test)]
 pub mod gens;
@@ -352,12 +353,91 @@ impl ::std::fmt::Debug for PointerBlock {
 /// Represents a Merkle Tree or a chunk of data with attached proof.
 /// Chunk with attached proof is used when the requested
 /// trie is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrieOrChunkedData {
     /// Represents a Merkle Trie.
     Trie(Trie<Key, StoredValue>),
     /// Represents a chunk of data with attached proof.
     ChunkWithProof(ChunkWithProof),
+}
+
+impl Display for TrieOrChunkedData {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            TrieOrChunkedData::Trie(trie) => {
+                write!(f, "Trie({})", trie)
+            }
+            TrieOrChunkedData::ChunkWithProof(chunk) => {
+                write!(
+                    f,
+                    "ChunkWithProof {{ index = {}, hash = {} }}",
+                    chunk.proof().index(),
+                    chunk.proof().root_hash()
+                )
+            }
+        }
+    }
+}
+
+impl TrieOrChunkedData {
+    fn tag(&self) -> u8 {
+        match self {
+            TrieOrChunkedData::Trie(_) => 0,
+            TrieOrChunkedData::ChunkWithProof(_) => 1,
+        }
+    }
+}
+
+impl ToBytes for TrieOrChunkedData {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut ret = bytesrepr::allocate_buffer(self)?;
+        ret.push(self.tag());
+
+        match self {
+            TrieOrChunkedData::Trie(trie) => {
+                ret.append(&mut trie.to_bytes()?);
+            }
+            TrieOrChunkedData::ChunkWithProof(chunk) => {
+                ret.append(&mut chunk.to_bytes()?);
+            }
+        }
+        Ok(ret)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                TrieOrChunkedData::Trie(trie) => trie.serialized_length(),
+                TrieOrChunkedData::ChunkWithProof(chunk) => chunk.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for TrieOrChunkedData {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, rem) = u8::from_bytes(bytes)?;
+        match tag {
+            0 => {
+                let (trie, rem) = Trie::<Key, StoredValue>::from_bytes(rem)?;
+                Ok((TrieOrChunkedData::Trie(trie), rem))
+            }
+            1 => {
+                let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
+                Ok((TrieOrChunkedData::ChunkWithProof(chunk), rem))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+/// Represents the ID of a `TrieOrChunkedData` - containing the index and the root hash.
+#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct TrieOrChunkedDataId(pub u64, pub Digest);
+
+impl Display for TrieOrChunkedDataId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "({}, {})", self.0, self.1)
+    }
 }
 
 /// Represents a Merkle Trie.

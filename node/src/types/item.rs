@@ -8,9 +8,9 @@ use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use casper_execution_engine::storage::trie::Trie;
+use casper_execution_engine::storage::trie::{TrieOrChunkedData, TrieOrChunkedDataId};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::bytesrepr::ToBytes;
 
 use crate::types::{BlockHash, BlockHeader};
 
@@ -69,8 +69,8 @@ pub(crate) trait Item:
     fn id(&self) -> Self::Id;
 }
 
-impl Item for Trie<Key, StoredValue> {
-    type Id = Digest;
+impl Item for TrieOrChunkedData {
+    type Id = TrieOrChunkedDataId;
     type ValidationError = Infallible;
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
@@ -80,8 +80,16 @@ impl Item for Trie<Key, StoredValue> {
     }
 
     fn id(&self) -> Self::Id {
-        let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
-        Digest::hash(&node_bytes)
+        match self {
+            TrieOrChunkedData::Trie(trie) => {
+                let node_bytes = trie.to_bytes().expect("Could not serialize trie to bytes");
+                TrieOrChunkedDataId(0, Digest::hash(&node_bytes))
+            }
+            TrieOrChunkedData::ChunkWithProof(chunked_data) => TrieOrChunkedDataId(
+                chunked_data.proof().index(),
+                chunked_data.proof().root_hash(),
+            ),
+        }
     }
 }
 

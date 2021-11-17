@@ -85,7 +85,7 @@ use casper_execution_engine::{
         self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
         GetBidsResult, QueryRequest, QueryResult,
     },
-    storage::trie::Trie,
+    storage::trie::{Trie, TrieOrChunkedData},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -121,7 +121,7 @@ use announcements::{
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
+    NetworkRequest, StorageRequest, TrieFetcherRequest,
 };
 
 use self::{
@@ -936,13 +936,15 @@ impl<REv> EffectBuilder<REv> {
     /// Get a trie by its hash key.
     pub(crate) async fn get_trie(
         self,
+        index: u64,
         trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
+    ) -> Result<Option<TrieOrChunkedData>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetTrie {
+                index,
                 trie_key,
                 responder,
             },
@@ -967,6 +969,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Asynchronously returns any missing descendant trie keys given an ancestor.
+    // TODO: get fast sync to not store trie nodes returned from storage and then remove this
+    // allow(unused)
+    #[allow(unused)]
     pub(crate) async fn find_missing_descendant_trie_keys(
         self,
         trie_key: Digest,
@@ -1149,6 +1154,29 @@ impl<REv> EffectBuilder<REv> {
             |responder| FetcherRequest {
                 id,
                 peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    // TODO: remove this once used by fast sync
+    #[allow(unused)]
+    /// Requests a trie node from a peer.
+    pub(crate) async fn fetch_trie<I>(
+        self,
+        hash: Digest,
+        peers: Vec<I>,
+    ) -> Option<Trie<Key, StoredValue>>
+    where
+        REv: From<TrieFetcherRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| TrieFetcherRequest {
+                peers,
+                hash,
                 responder,
             },
             QueueKind::Regular,

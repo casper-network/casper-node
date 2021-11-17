@@ -29,12 +29,12 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
-        trie_store::lmdb::LmdbTrieStore,
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        trie::TrieOrChunkedData, trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
-use casper_types::{Key, ProtocolVersion, StoredValue};
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -251,6 +251,7 @@ where
                 .ignore()
             }
             ContractRuntimeRequest::GetTrie {
+                index,
                 trie_key,
                 responder,
             } => {
@@ -258,10 +259,7 @@ where
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.get_trie(correlation_id, trie_key);
-                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    let result = Self::do_get_trie(&engine_state, &metrics, index, trie_key);
                     trace!(?result, "get_trie response");
                     responder.respond(result).await
                 }
@@ -662,15 +660,26 @@ impl ContractRuntime {
         Ok((block, effects))
     }
 
-    /// Read a [Trie<Key, StoredValue>] from the trie store.
+    /// Reads the trie (or chunk of a trie) under the given key and index.
     pub(crate) fn get_trie(
         &self,
+        index: u64,
         trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
+    ) -> Result<Option<TrieOrChunkedData>, engine_state::Error> {
+        trace!(?trie_key, "read_trie");
+        Self::do_get_trie(&self.engine_state, &self.metrics, index, trie_key)
+    }
+
+    fn do_get_trie(
+        engine_state: &EngineState<LmdbGlobalState>,
+        metrics: &Metrics,
+        index: u64,
+        trie_key: Digest,
+    ) -> Result<Option<TrieOrChunkedData>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
-        let result = self.engine_state.get_trie(correlation_id, trie_key);
-        self.metrics.get_trie.observe(start.elapsed().as_secs_f64());
+        let result = engine_state.get_trie(correlation_id, index, trie_key);
+        metrics.get_trie.observe(start.elapsed().as_secs_f64());
         result
     }
 
