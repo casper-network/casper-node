@@ -546,8 +546,11 @@ pub async fn download_trie(
         // Finishing state, we downloaded all the intermediate tries we found, as well as the state
         // root we started with.
         if tries_downloaded == total_tries_count + 1 {
-            let missing =
-                engine_state.missing_trie_keys(CorrelationId::new(), vec![state_root_hash])?;
+            let missing = engine_state.missing_trie_keys(
+                CorrelationId::new(),
+                vec![state_root_hash],
+                false,
+            )?;
 
             if missing.is_empty() {
                 println!("state root has no missing descendants.");
