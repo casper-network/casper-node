@@ -84,9 +84,9 @@ max_block_size = 10_485_760
 # Maximum deploy size in bytes.  Size is of the deploy when serialized via ToBytes.
 max_deploy_size = 1_048_576
 # The maximum number of non-transfer deploys permitted in a single block.
-block_max_deploy_count = 75
+block_max_deploy_count = 50
 # The maximum number of wasm-less transfer deploys permitted in a single block.
-block_max_transfer_count = 1500
+block_max_transfer_count = 1250
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10_000_000_000_000
 # The limit of length of serialized payment code arguments.
