@@ -369,7 +369,7 @@ pub enum PeerMsg {
     /// Download and save the trie under this
     GetTrie(Digest),
     TrieDownloaded {
-        trie: Trie<Key, StoredValue>,
+        trie: Box<Trie<Key, StoredValue>>,
         peer: SocketAddr,
         elapsed: Duration,
         len_in_bytes: usize,
@@ -605,20 +605,16 @@ async fn maybe_construct_peer(
     let read_or_timeout = tokio::time::timeout(Duration::from_secs(1), read_future).await;
     match read_or_timeout {
         Ok(Ok(_)) => Ok(spawn_peer(base_send, address, client)),
-        Ok(Err(error)) => {
-            return Err(PeerError::FailedRpc {
-                peer_address: address,
-                trie_key: state_root_hash,
-                error,
-            })
-        }
-        Err(elapsed) => {
-            return Err(PeerError::TimedOut {
-                peer_address: address,
-                trie_key: state_root_hash,
-                error: elapsed,
-            })
-        }
+        Ok(Err(error)) => Err(PeerError::FailedRpc {
+            peer_address: address,
+            trie_key: state_root_hash,
+            error,
+        }),
+        Err(elapsed) => Err(PeerError::TimedOut {
+            peer_address: address,
+            trie_key: state_root_hash,
+            error: elapsed,
+        }),
     }
 }
 
@@ -630,7 +626,7 @@ fn spawn_peer(
     client: Client,
 ) -> Peer {
     let (sender, peer_recv) = futures_channel::mpsc::unbounded::<PeerMsg>();
-    let peer_recv = peer_recv.map(|msg| Either::Left(msg));
+    let peer_recv = peer_recv.map(Either::Left);
 
     let (shutdown, shutdown_recv) = futures_channel::oneshot::channel::<()>();
     let shutdown_recv = shutdown_recv.into_stream().map(|_| Either::Right(()));
@@ -676,7 +672,7 @@ fn spawn_peer(
                     };
                     base_send
                         .send(Ok(PeerMsg::TrieDownloaded {
-                            trie,
+                            trie: Box::new(trie),
                             peer: address,
                             elapsed: start.elapsed(),
                             len_in_bytes,
