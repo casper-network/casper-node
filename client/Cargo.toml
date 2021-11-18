@@ -27,7 +27,7 @@ base64 = "0.13.0"
 casper-execution-engine = { version = "1.4.2", path = "../execution_engine" }
 casper-node = { version = "1.4.2", path = "../node" }
 casper-hashing = { version = "1.4.2", path = "../hashing" }
-casper-types = { version = "1.4.3", path = "../types" }
+casper-types = { version = "1.4.4", path = "../types" }
 clap = "2"
 humantime = "2"
 jsonrpc-lite = "0.5.0"
