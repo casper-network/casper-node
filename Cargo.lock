@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",

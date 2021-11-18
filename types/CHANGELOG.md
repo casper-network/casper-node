@@ -15,10 +15,11 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [1.4.3] - 2021-11-17
-
+## [1.4.4] - 2021-11-18
 ### Fixed
 * Revert the accidental change to the `std` feature causing a broken build when this feature is enabled.
+
+## [1.4.3] - 2021-11-17 [YANKED]
 
 
 
