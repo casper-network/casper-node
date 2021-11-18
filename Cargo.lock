@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "base16",
  "base64",
@@ -675,7 +675,6 @@ dependencies = [
  "serde_json",
  "serde_test",
  "strum",
- "thiserror",
  "uint",
  "version-sync",
 ]
