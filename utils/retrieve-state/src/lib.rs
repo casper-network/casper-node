@@ -387,7 +387,7 @@ pub async fn download_trie(
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     state_root_hash: Digest,
     peer_mailbox_size: usize,
-) -> Result<usize, anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     let (base_send, mut base_recv) = futures_channel::mpsc::unbounded();
     let mut peer_futures = Vec::new();
     for peer in peers {
@@ -573,7 +573,7 @@ pub async fn download_trie(
         peer.join_handle.await.unwrap();
     }
 
-    Ok(0)
+    Ok(())
 }
 
 struct Peer {
@@ -602,20 +602,16 @@ async fn maybe_construct_peer(
     let read_or_timeout = tokio::time::timeout(Duration::from_secs(1), read_future).await;
     match read_or_timeout {
         Ok(Ok(_)) => Ok(spawn_peer(base_send, address, client)),
-        Ok(Err(error)) => {
-            return Err(PeerError::FailedRpc {
-                peer_address: address,
-                trie_key: state_root_hash,
-                error,
-            })
-        }
-        Err(elapsed) => {
-            return Err(PeerError::TimedOut {
-                peer_address: address,
-                trie_key: state_root_hash,
-                error: elapsed,
-            })
-        }
+        Ok(Err(error)) => Err(PeerError::FailedRpc {
+            peer_address: address,
+            trie_key: state_root_hash,
+            error,
+        }),
+        Err(elapsed) => Err(PeerError::TimedOut {
+            peer_address: address,
+            trie_key: state_root_hash,
+            error: elapsed,
+        }),
     }
 }
 
@@ -627,7 +623,7 @@ fn spawn_peer(
     client: Client,
 ) -> Peer {
     let (sender, peer_recv) = futures_channel::mpsc::unbounded::<PeerMsg>();
-    let peer_recv = peer_recv.map(|msg| Either::Left(msg));
+    let peer_recv = peer_recv.map(Either::Left);
 
     let (shutdown, shutdown_recv) = futures_channel::oneshot::channel::<()>();
     let shutdown_recv = shutdown_recv.into_stream().map(|_| Either::Right(()));
