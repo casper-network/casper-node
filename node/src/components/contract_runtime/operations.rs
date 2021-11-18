@@ -112,6 +112,8 @@ pub fn execute_finalized_block(
                 finalized_block.timestamp().millis(),
                 finalized_block.era_id().successor(),
             )?;
+            // Flush if we ran commit_step
+            engine_state.flush_environment()?;
             state_root_hash = post_state_hash;
             let upcoming_era_validators = engine_state.get_era_validators(
                 CorrelationId::new(),
