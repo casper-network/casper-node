@@ -18,7 +18,7 @@ use casper_node::{
     StorageConfig, WithDir,
 };
 
-use crate::DEFAULT_MAX_READERS;
+use crate::{DEFAULT_GROW_SIZE_BYTES, DEFAULT_GROW_SIZE_THRESHOLD, DEFAULT_MAX_READERS};
 use casper_types::ProtocolVersion;
 use lmdb::DatabaseFlags;
 
@@ -53,6 +53,8 @@ fn create_lmdb_environment(
         default_max_db_size,
         DEFAULT_MAX_READERS,
         manual_sync_enabled,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )?);
     Ok(lmdb_environment)
 }

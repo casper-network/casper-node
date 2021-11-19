@@ -31,7 +31,8 @@ use crate::{
             operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
             TrieStore,
         },
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+        DEFAULT_GROW_SIZE_BYTES, DEFAULT_GROW_SIZE_THRESHOLD, DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
     },
 };
 
@@ -584,6 +585,8 @@ impl LmdbTestContext {
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
             true,
+            DEFAULT_GROW_SIZE_THRESHOLD,
+            DEFAULT_GROW_SIZE_BYTES,
         )?;
         let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
         put_tries::<_, _, _, _, error::Error>(&environment, &store, tries)?;

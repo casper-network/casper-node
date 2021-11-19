@@ -1,9 +1,10 @@
-use std::path::Path;
+use std::{mem, path::Path};
 
 use casper_types::bytesrepr::Bytes;
 use lmdb::{
     self, Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction, WriteFlags,
 };
+use tracing::debug;
 
 use crate::storage::{
     error,
@@ -61,6 +62,32 @@ impl<'a> Writable for RwTransaction<'a> {
     }
 }
 
+// use lmdb::{Environment, Error};
+use lmdb_sys::{self, MDB_env, MDB_SUCCESS};
+
+/// Safe wrapper around environment info.
+pub struct EnvInfo(lmdb_sys::MDB_envinfo);
+
+impl EnvInfo {
+    /// Returns last page number.
+    pub fn last_pgno(&self) -> usize {
+        self.0.me_last_pgno
+    }
+
+    /// Returns current map size.
+    pub fn mapsize(&self) -> usize {
+        self.0.me_mapsize
+    }
+}
+
+fn lmdb_result(err_code: i32) -> Result<(), lmdb::Error> {
+    if err_code == MDB_SUCCESS {
+        Ok(())
+    } else {
+        Err(lmdb::Error::from_err_code(err_code))
+    }
+}
+
 /// The environment for an LMDB-backed trie store.
 ///
 /// Wraps [`lmdb::Environment`].
@@ -68,6 +95,8 @@ impl<'a> Writable for RwTransaction<'a> {
 pub struct LmdbEnvironment {
     env: Environment,
     manual_sync_enabled: bool,
+    grow_size_threshold: usize,
+    grow_size_bytes: usize,
 }
 
 impl LmdbEnvironment {
@@ -77,6 +106,8 @@ impl LmdbEnvironment {
         map_size: usize,
         max_readers: u32,
         manual_sync_enabled: bool,
+        grow_size_threshold: usize,
+        grow_size_bytes: usize,
     ) -> Result<Self, error::Error> {
         let lmdb_flags = if manual_sync_enabled {
             // These options require that we manually call sync on the environment for the EE.
@@ -96,10 +127,18 @@ impl LmdbEnvironment {
             .set_map_size(map_size)
             .set_max_readers(max_readers)
             .open(&path.as_ref().join(EE_DB_FILENAME))?;
-        Ok(LmdbEnvironment {
+
+        let lmdb_environment = LmdbEnvironment {
             env,
             manual_sync_enabled,
-        })
+            grow_size_threshold,
+            grow_size_bytes,
+        };
+
+        // Try increasing map size if the size exceeds the thresholds.
+        lmdb_environment.resize_if_required()?;
+
+        Ok(lmdb_environment)
     }
 
     /// Returns a reference to the wrapped `Environment`.
@@ -116,6 +155,39 @@ impl LmdbEnvironment {
     pub fn sync(&self) -> Result<(), lmdb::Error> {
         self.env.sync(true)
     }
+
+    /// Get LMDB environment info.
+    pub fn info(&self) -> Result<EnvInfo, lmdb::Error> {
+        let env: *mut MDB_env = self.env().env();
+        let mut env_info = mem::MaybeUninit::uninit();
+        unsafe {
+            lmdb_result(lmdb_sys::mdb_env_info(env, env_info.as_mut_ptr()))?;
+            let env_info = EnvInfo(env_info.assume_init());
+            Ok(env_info)
+        }
+    }
+
+    fn set_map_size(&self, map_size: usize) -> Result<(), lmdb::Error> {
+        let env: *mut MDB_env = self.env().env();
+        let ret = unsafe { lmdb_sys::mdb_env_set_mapsize(env, map_size) };
+        lmdb_result(ret)
+    }
+
+    fn resize_if_required(&self) -> Result<(), lmdb::Error> {
+        let env_info = self.info()?;
+        let stat = self.env.stat()?;
+        let size_used_bytes = stat.page_size() as usize * env_info.last_pgno();
+        let size_left_bytes = env_info.mapsize() - size_used_bytes;
+        if size_left_bytes <= self.grow_size_threshold {
+            let new_map_size = size_used_bytes + self.grow_size_bytes;
+            self.set_map_size(new_map_size)?;
+            debug!(
+                self.grow_size_threshold,
+                self.grow_size_bytes, size_used_bytes, new_map_size, "global state is resized"
+            );
+        }
+        Ok(())
+    }
 }
 
 impl<'a> TransactionSource<'a> for LmdbEnvironment {
@@ -131,7 +203,8 @@ impl<'a> TransactionSource<'a> for LmdbEnvironment {
         self.env.begin_ro_txn()
     }
 
-    fn create_read_write_txn(&'a self) -> Result<RwTransaction<'a>, Self::Error> {
+    fn create_read_write_txn(&'a self) -> Result<Self::ReadWriteTransaction, Self::Error> {
+        self.resize_if_required()?;
         self.env.begin_rw_txn()
     }
 }

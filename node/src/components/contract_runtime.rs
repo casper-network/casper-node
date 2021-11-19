@@ -538,6 +538,8 @@ impl ContractRuntime {
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
             contract_runtime_config.manual_sync_enabled(),
+            contract_runtime_config.grow_size_threshold(),
+            contract_runtime_config.grow_size_bytes(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(

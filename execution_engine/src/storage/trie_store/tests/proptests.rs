@@ -10,7 +10,8 @@ use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 use crate::storage::{
     store::tests as store_tests,
     trie::{gens::trie_arb, Trie},
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+    DEFAULT_GROW_SIZE_BYTES, DEFAULT_GROW_SIZE_THRESHOLD, DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_READERS,
 };
 
 const DEFAULT_MIN_LENGTH: usize = 1;
@@ -54,6 +55,8 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();

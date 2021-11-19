@@ -12,7 +12,8 @@ use crate::storage::{
     },
     trie::Trie,
     trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore, TrieStore},
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+    DEFAULT_GROW_SIZE_BYTES, DEFAULT_GROW_SIZE_THRESHOLD, DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_READERS,
 };
 
 fn put_succeeds<'a, K, V, S, X, E>(
@@ -52,6 +53,8 @@ fn lmdb_put_succeeds() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -111,6 +114,8 @@ fn lmdb_put_get_succeeds() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -158,6 +163,8 @@ fn lmdb_put_get_many_succeeds() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -230,6 +237,8 @@ fn lmdb_uncommitted_read_write_txn_does_not_persist() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -279,6 +288,8 @@ fn lmdb_read_write_transaction_does_not_block_read_transaction() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
 
@@ -336,6 +347,8 @@ fn lmdb_reads_are_isolated() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -398,6 +411,8 @@ fn lmdb_reads_are_isolated_2() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
@@ -466,6 +481,8 @@ fn lmdb_dbs_are_isolated() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();
@@ -530,6 +547,8 @@ fn lmdb_transactions_can_be_used_across_sub_databases() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();
@@ -598,6 +617,8 @@ fn lmdb_uncommitted_transactions_across_sub_databases_do_not_persist() {
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
+        DEFAULT_GROW_SIZE_THRESHOLD,
+        DEFAULT_GROW_SIZE_BYTES,
     )
     .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();

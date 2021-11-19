@@ -244,7 +244,8 @@ mod tests {
     use super::*;
     use crate::storage::{
         trie_store::operations::{write, WriteResult},
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+        DEFAULT_GROW_SIZE_BYTES, DEFAULT_GROW_SIZE_THRESHOLD, DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
     };
 
     #[derive(Debug, Clone)]
@@ -309,12 +310,21 @@ mod tests {
     fn create_global_state(
         map_size: usize,
         max_readers: u32,
+        grow_size_threshold: usize,
+        grow_size_bytes: usize,
     ) -> (LmdbGlobalState, Digest, TempDir) {
         let temp_dir = tempdir().unwrap();
 
         let environment = Arc::new(
-            LmdbEnvironment::new(&temp_dir.path().to_path_buf(), map_size, max_readers, true)
-                .unwrap(),
+            LmdbEnvironment::new(
+                &temp_dir.path().to_path_buf(),
+                map_size,
+                max_readers,
+                true,
+                grow_size_threshold,
+                grow_size_bytes,
+            )
+            .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
@@ -328,8 +338,12 @@ mod tests {
     fn create_test_state() -> (LmdbGlobalState, Digest) {
         let correlation_id = CorrelationId::new();
 
-        let (ret, mut current_root, _temp_dir) =
-            create_global_state(DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS);
+        let (ret, mut current_root, _temp_dir) = create_global_state(
+            DEFAULT_TEST_MAX_DB_SIZE,
+            DEFAULT_TEST_MAX_READERS,
+            DEFAULT_GROW_SIZE_THRESHOLD,
+            DEFAULT_GROW_SIZE_BYTES,
+        );
 
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
@@ -362,14 +376,20 @@ mod tests {
     fn should_not_run_out_of_space() {
         const BYTES_IN_MB: usize = 1024 * 1024;
         const INIT_MAP_SIZE: usize = BYTES_IN_MB * 5;
+        const GROW_THRESHOLD: usize = BYTES_IN_MB * 2;
+        const GROW_SIZE: usize = BYTES_IN_MB * 5;
 
         const TEST_PAIRS: usize = 1000;
         const STEP_BY: usize = 100;
 
         let test_pairs = create_n_test_pairs(TEST_PAIRS);
 
-        let (global_state, mut current_root, _temp_dir) =
-            create_global_state(INIT_MAP_SIZE, DEFAULT_TEST_MAX_READERS);
+        let (global_state, mut current_root, _temp_dir) = create_global_state(
+            INIT_MAP_SIZE,
+            DEFAULT_TEST_MAX_READERS,
+            GROW_THRESHOLD,
+            GROW_SIZE,
+        );
 
         for position in (0..test_pairs.len()).step_by(STEP_BY) {
             let mut txn = global_state.environment.create_read_write_txn().unwrap();

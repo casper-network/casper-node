@@ -490,6 +490,7 @@ dependencies = [
  "libc",
  "linked-hash-map",
  "lmdb",
+ "lmdb-sys",
  "log",
  "num",
  "num-derive",

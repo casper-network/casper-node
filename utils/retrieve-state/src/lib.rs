@@ -27,6 +27,8 @@ pub const LMDB_PATH: &str = "lmdb-data";
 pub const CHAIN_DOWNLOAD_PATH: &str = "chain-download";
 pub const DEFAULT_MAX_DB_SIZE: usize = 483_183_820_800; // 450 gb
 pub const DEFAULT_MAX_READERS: u32 = 512;
+pub const DEFAULT_GROW_SIZE_THRESHOLD: usize = 386_547_056_640; // 360 gb
+pub const DEFAULT_GROW_SIZE_BYTES: usize = 53_687_091_200; // 50 gb
 
 /// Specific representations of  errors from `get_block`.
 #[derive(thiserror::Error, Debug)]

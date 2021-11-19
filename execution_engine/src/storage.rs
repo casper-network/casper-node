@@ -18,3 +18,9 @@ pub(crate) const DEFAULT_TEST_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
 
 #[cfg(test)]
 pub(crate) const DEFAULT_TEST_MAX_READERS: u32 = 512;
+
+#[cfg(test)]
+pub(crate) const DEFAULT_GROW_SIZE_THRESHOLD: usize = 41_943_040; // 50 MiB * 80%
+
+#[cfg(test)]
+pub(crate) const DEFAULT_GROW_SIZE_BYTES: usize = 104_857_600; // 100 MiB

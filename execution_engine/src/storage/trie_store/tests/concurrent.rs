@@ -14,7 +14,8 @@ use crate::storage::{
     },
     trie::Trie,
     trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore},
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+    DEFAULT_GROW_SIZE_BYTES, DEFAULT_GROW_SIZE_THRESHOLD, DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_READERS,
 };
 
 #[test]
@@ -26,6 +27,8 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
             true,
+            DEFAULT_GROW_SIZE_THRESHOLD,
+            DEFAULT_GROW_SIZE_BYTES,
         )
         .unwrap(),
     );

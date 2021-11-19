@@ -38,8 +38,10 @@
 //! // transactions.
 //! let tmp_dir = tempdir().unwrap();
 //! let map_size = 4096 * 2560;  // map size should be a multiple of OS page size
+//! let grow_size_threshold = 2048 * 2560;
+//! let grow_size_bytes = 4096 * 2560;
 //! let max_readers = 512;
-//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers, true).unwrap();
+//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers, true, grow_size_threshold, grow_size_bytes).unwrap();
 //! let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 //!
 //! // First let's create a read-write transaction, persist the values, but

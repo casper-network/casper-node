@@ -187,12 +187,15 @@ impl LmdbWasmTestBuilder {
         let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::global_state_dir(data_dir);
         Self::create_global_state_dir(&global_state_dir);
+        let grow_size_threshold = ((page_size * DEFAULT_LMDB_PAGES) as f32 * 0.8) as usize;
         let environment = Arc::new(
             LmdbEnvironment::new(
                 &global_state_dir,
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
                 true,
+                grow_size_threshold,
+                page_size * DEFAULT_LMDB_PAGES,
             )
             .expect("should create LmdbEnvironment"),
         );
@@ -253,12 +256,15 @@ impl LmdbWasmTestBuilder {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
         Self::create_global_state_dir(&global_state_dir);
+        let grow_size_threshold = ((page_size * DEFAULT_LMDB_PAGES) as f32 * 0.8) as usize;
         let environment = Arc::new(
             LmdbEnvironment::new(
                 &global_state_dir,
                 page_size * DEFAULT_LMDB_PAGES,
                 DEFAULT_MAX_READERS,
                 true,
+                grow_size_threshold,
+                page_size * DEFAULT_LMDB_PAGES,
             )
             .expect("should create LmdbEnvironment"),
         );
