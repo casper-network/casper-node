@@ -25,6 +25,10 @@ pub enum Error {
     /// Error committing to execution engine.
     #[error(transparent)]
     CommitError(#[from] CommitError),
+
+    /// Trie chunking error.
+    #[error("Could not create a ChunkWithProof")]
+    ChunkWithProofError,
 }
 
 impl wasmi::HostError for Error {}

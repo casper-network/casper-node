@@ -32,8 +32,6 @@ use crate::{
     },
 };
 
-const ERROR_UNABLE_TO_CREATE_CHUNK_WITH_PROOF: i32 = 1;
-
 /// Global state implemented purely in memory only. No state is saved to disk. This is mostly
 /// used for testing purposes.
 pub struct InMemoryGlobalState {
@@ -262,7 +260,7 @@ impl StateProvider for InMemoryGlobalState {
                     Ok(Some(TrieOrChunkedData::Trie(deserialized_trie)))
                 } else {
                     let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), index)
-                        .map_err(|_| lmdb::Error::Other(ERROR_UNABLE_TO_CREATE_CHUNK_WITH_PROOF))?;
+                        .map_err(|_| error::Error::ChunkWithProofError)?;
                     Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
                 }
             },
