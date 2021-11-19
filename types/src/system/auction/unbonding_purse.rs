@@ -120,7 +120,11 @@ impl FromBytes for UnbondingPurse {
         let (unbonder_public_key, remainder) = FromBytes::from_bytes(remainder)?;
         let (era_of_creation, remainder) = FromBytes::from_bytes(remainder)?;
         let (amount, remainder) = FromBytes::from_bytes(remainder)?;
-        let (new_validator_public_key, remainder) = FromBytes::from_bytes(remainder)?;
+        let (new_validator_public_key, remainder) = if remainder.is_empty() {
+            (Option::<PublicKey>::None, remainder)
+        } else {
+            FromBytes::from_bytes(remainder)?
+        };
         Ok((
             UnbondingPurse {
                 bonding_purse,

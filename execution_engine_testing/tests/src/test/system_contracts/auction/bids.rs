@@ -5,9 +5,9 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
+    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
     SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
@@ -31,8 +31,12 @@ use casper_types::{
             ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
+
+use crate::lmdb_fixture;
+
+const RELEASE_1_4_2: &str = "release_1_4_2";
 
 const ARG_TARGET: &str = "target";
 
@@ -3065,4 +3069,201 @@ fn should_fail_with_more_accounts_than_slots() {
 #[test]
 fn should_run_genesis_with_exact_validator_slots() {
     check_validator_slots_for_accounts(DEFAULT_EXEC_CONFIG.validator_slots() as usize);
+}
+
+#[ignore]
+#[test]
+fn should_delegate_and_redelegate() {
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_2_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_2),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        delegator_1_fund_request,
+        validator_1_fund_request,
+        validator_2_fund_request,
+        validator_1_add_bid_request,
+        validator_2_add_bid_request,
+        delegator_1_validator_1_delegate_request,
+    ];
+
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    let delegator_1_undelegate_purse = builder
+        .get_account(*BID_ACCOUNT_1_ADDR)
+        .expect("should have default account")
+        .main_purse();
+
+    let delegator_1_redelegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+            ARG_NEW_VALIDATOR_PUBLIC_KEY => Some(NON_FOUNDER_VALIDATOR_2_PK.clone())
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_redelegate_request)
+        .commit()
+        .expect_success();
+
+    let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
+
+    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+        let delegator_1_redelegate_purse_balance =
+            builder.get_purse_balance(delegator_1_undelegate_purse);
+        assert_eq!(
+            delegator_1_purse_balance_before,
+            delegator_1_redelegate_purse_balance
+        );
+
+        builder.run_auction(timestamp_millis, Vec::new());
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
+
+    // Since a redelegation has been processed no funds should have transferred back to the purse.
+    let delegator_1_purse_balance_after = builder.get_purse_balance(delegator_1_undelegate_purse);
+    assert_eq!(
+        delegator_1_purse_balance_before,
+        delegator_1_purse_balance_after
+    );
+
+    let bids: Bids = builder.get_bids();
+    assert_eq!(bids.len(), 2);
+
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
+    assert_eq!(delegators.len(), 1);
+    let delegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
+    assert_eq!(
+        delegated_amount_1,
+        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_2_PK].delegators();
+    assert_eq!(delegators.len(), 1);
+    let redelegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
+    assert_eq!(redelegated_amount_1, U512::from(UNDELEGATE_AMOUNT_1));
+}
+
+#[ignore]
+#[test]
+fn should_upgrade_ubonding_purses_from_rel_1_4_2() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(RELEASE_1_4_2);
+
+    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version = ProtocolVersion::from_parts(
+        previous_protocol_version.value().major,
+        previous_protocol_version.value().minor + 1,
+        0,
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(previous_protocol_version)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(EraId::new(1u64))
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .expect_upgrade_success();
+
+    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
+    assert_eq!(unbonding_purses.len(), 1);
+
+    let unbond_list = unbonding_purses
+        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
+        .expect("should have unbonding purse for non founding validator");
+    assert_eq!(unbond_list.len(), 1);
+    assert_eq!(
+        unbond_list[0].validator_public_key(),
+        &*NON_FOUNDER_VALIDATOR_1_PK
+    );
+    assert!(unbond_list[0].new_validator_public_key().is_none())
 }

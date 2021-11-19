@@ -399,6 +399,39 @@ where
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
+        // Run through global state and process the unbonding purses.
+        {
+            println!("Attempting to get all withdraws");
+            let withdraw_keys = tracking_copy
+                .borrow_mut()
+                .get_keys(correlation_id, &KeyTag::Withdraw)
+                .map_err(|_| Error::FailedToGetWithdrawsKeys)?;
+
+            println!("{}", withdraw_keys.len());
+
+            // The deserialization logic for unbonding purses during the read will assess
+            // if the purse lacks the `new_validator_public_key` field and will implicitly
+            // mark the field as `None` if the field is absent.
+
+            for key in withdraw_keys {
+                // Deserialize to the new representation of unbonding purses
+                // and the write the value back to global state.
+                let unbonding_purses = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &key)
+                    .map_err(|_| Error::FailedToGetWithdrawsKeys)?
+                    .ok_or(Error::FailedToGetStoredWithdraws)?
+                    .as_withdraw()
+                    .ok_or(Error::FailedToGetUnbondingPurses)?
+                    .to_owned();
+
+                // Write the new structure of unbonding purses back to global state.
+                tracking_copy
+                    .borrow_mut()
+                    .write(key, StoredValue::Withdraw(unbonding_purses))
+            }
+        }
+
         let execution_effect = tracking_copy.borrow().effect();
 
         // commit

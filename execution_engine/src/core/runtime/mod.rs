@@ -1264,6 +1264,10 @@ where
     /// Checks if immediate caller is of session type of the same account as the provided account
     /// hash.
     fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
+        if self.context.get_caller() == PublicKey::System.to_account_hash() {
+            return true;
+        }
+
         if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
             return account_hash == provided_account_hash;
         }

@@ -78,6 +78,12 @@ pub enum Error {
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
+    #[error("Failed to get keys for withdraws")]
+    FailedToGetWithdrawsKeys,
+    #[error("Failed to get stored values under withdraws")]
+    FailedToGetStoredWithdraws,
+    #[error("Failed to process unbonding purse")]
+    FailedToGetUnbondingPurses,
 }
 
 impl Error {
