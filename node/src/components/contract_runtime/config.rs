@@ -6,8 +6,8 @@ use casper_execution_engine::shared::utils;
 const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_MAX_READERS: u32 = 512;
 const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
-const DEFAULT_GROW_SIZE_THRESHOLD: usize = 644_245_094_400; // 712.5 GiB (95% of default initial size)
-const DEFAULT_GROW_SIZE_BYTES: usize = 53_687_091_200; // 50 GiB
+const DEFAULT_GROW_SIZE_THRESHOLD: usize = 107_374_182_400; // 100 GiB
+const DEFAULT_GROW_SIZE_BYTES: usize = 161_061_273_600; // 150 GiB
 
 /// Contract runtime configuration.
 #[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize)]
@@ -34,10 +34,10 @@ pub struct Config {
     enable_manual_sync: Option<bool>,
     /// Threshold for global state size that will trigger a resize upon next write transaction.
     ///
-    /// Defaults to 644,245,094,400 == 712.5 GiB
+    /// Defaults to 107,374,182,400 == 100 GiB
     grow_size_threshold: Option<usize>,
     /// After global state will exceed `grow_size_threshold` bytes it will be resized by adding
-    /// extra space. Defaults to 53,687,091,200 == 50 GiB
+    /// extra space. Defaults to 161,061,273,600 == 150 GiB
     grow_size_bytes: Option<usize>,
 }
 

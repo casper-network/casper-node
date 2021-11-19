@@ -326,6 +326,14 @@ verify_accounts = true
 # If unset, defaults to false.
 #enable_manual_sync = false
 
+# Threshold for global state size that will trigger a resize upon next write transaction.
+#
+# Defaults to 107,374,182,400 == 100 GiB
+#grow_size_threshold = 107374182400
+
+# After global state will exceed `grow_size_threshold` bytes it will be resized by adding
+# extra space. Defaults to 161,061,273,600 == 150 GiB
+#grow_size_bytes = 161061273600
 
 # ========================================================
 # Configuration options for synchronizing the linear chain
