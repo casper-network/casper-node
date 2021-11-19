@@ -236,10 +236,10 @@ impl StateProvider for LmdbGlobalState {
 #[cfg(test)]
 mod tests {
     use lmdb::DatabaseFlags;
-    use tempfile::tempdir;
+    use tempfile::{tempdir, TempDir};
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, CLValue, U256, U512};
 
     use super::*;
     use crate::storage::{
@@ -266,6 +266,29 @@ mod tests {
         ]
     }
 
+    fn create_n_test_pairs(n: usize) -> Vec<TestPair> {
+        let mut vec = Vec::with_capacity(n);
+
+        for i in 1..=n {
+            let key = {
+                let u256_val = U256::from(i);
+                let mut account_hash_bytes: [u8; 32] = Default::default();
+                u256_val.to_big_endian(&mut account_hash_bytes);
+                Key::from(AccountHash::new(account_hash_bytes))
+            };
+
+            let value = {
+                let u512_val = U512::from(i);
+                let cl_value = CLValue::from_t(u512_val).unwrap();
+                StoredValue::CLValue(cl_value)
+            };
+
+            vec.push(TestPair { key, value });
+        }
+
+        vec
+    }
+
     fn create_test_pairs_updated() -> [TestPair; 3] {
         [
             TestPair {
@@ -283,23 +306,31 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (LmdbGlobalState, Digest) {
-        let correlation_id = CorrelationId::new();
+    fn create_global_state(
+        map_size: usize,
+        max_readers: u32,
+    ) -> (LmdbGlobalState, Digest, TempDir) {
         let temp_dir = tempdir().unwrap();
+
         let environment = Arc::new(
-            LmdbEnvironment::new(
-                &temp_dir.path().to_path_buf(),
-                DEFAULT_TEST_MAX_DB_SIZE,
-                DEFAULT_TEST_MAX_READERS,
-                true,
-            )
-            .unwrap(),
+            LmdbEnvironment::new(&temp_dir.path().to_path_buf(), map_size, max_readers, true)
+                .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
         let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
-        let mut current_root = ret.empty_root_hash;
+
+        let empty_root_hash = ret.empty_root_hash;
+        (ret, empty_root_hash, temp_dir)
+    }
+
+    fn create_test_state() -> (LmdbGlobalState, Digest) {
+        let correlation_id = CorrelationId::new();
+
+        let (ret, mut current_root, _temp_dir) =
+            create_global_state(DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS);
+
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
 
@@ -325,6 +356,49 @@ mod tests {
             txn.commit().unwrap();
         }
         (ret, current_root)
+    }
+
+    #[test]
+    fn should_not_run_out_of_space() {
+        const BYTES_IN_MB: usize = 1024 * 1024;
+        const INIT_MAP_SIZE: usize = BYTES_IN_MB * 5;
+
+        const TEST_PAIRS: usize = 1000;
+        const STEP_BY: usize = 100;
+
+        let test_pairs = create_n_test_pairs(TEST_PAIRS);
+
+        let (global_state, mut current_root, _temp_dir) =
+            create_global_state(INIT_MAP_SIZE, DEFAULT_TEST_MAX_READERS);
+
+        for position in (0..test_pairs.len()).step_by(STEP_BY) {
+            let mut txn = global_state.environment.create_read_write_txn().unwrap();
+
+            for TestPair { key, value } in &test_pairs[position..position + STEP_BY] {
+                match write::<_, _, _, LmdbTrieStore, error::Error>(
+                    CorrelationId::new(),
+                    &mut txn,
+                    &global_state.trie_store,
+                    &current_root,
+                    key,
+                    value,
+                ) {
+                    Ok(WriteResult::Written(root_hash)) => {
+                        current_root = root_hash;
+                    }
+                    Ok(WriteResult::AlreadyExists) => (),
+                    Ok(WriteResult::RootNotFound) => panic!("LmdbGlobalState has invalid root"),
+                    Err(error) => panic!(
+                        "should write pairs {}..{} but received error: {:?}",
+                        position,
+                        position + STEP_BY,
+                        error
+                    ),
+                }
+            }
+
+            txn.commit().unwrap();
+        }
     }
 
     #[test]
