@@ -176,7 +176,7 @@ impl Reactor {
                     ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(response.sender),
-                        responder: None,
+                        maybe_responder: None,
                     }),
                 )
             }

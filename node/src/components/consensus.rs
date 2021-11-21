@@ -286,7 +286,7 @@ where
                 self.handle_action(effect_builder, rng, era_id, action_id)
             }
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
-                handling_es.handle_message(sender, message)
+                self.handle_message(effect_builder, rng, sender, message)
             }
             Event::NewBlockPayload(new_block_payload) => {
                 self.handle_new_block_payload(effect_builder, rng, new_block_payload)

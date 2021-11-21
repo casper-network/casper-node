@@ -79,11 +79,6 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::error;
 
-use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-    RpcServerAnnouncement,
-};
 use casper_execution_engine::{
     core::engine_state::{
         self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
@@ -119,7 +114,7 @@ use crate::{
 };
 use announcements::{
     ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
 use requests::{
@@ -128,8 +123,9 @@ use requests::{
     NetworkRequest, StorageRequest,
 };
 
-use self::announcements::{
-    requests::BeginGossipRequest, BlockProposerAnnouncement, BlocklistAnnouncement,
+use self::{
+    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
+    requests::BeginGossipRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.

@@ -337,10 +337,10 @@ async fn run_equivocator_network() {
             let first_message_time = match (&event, maybe_first_message_time) {
                 (
                     ParticipatingEvent::NetworkRequest(_)
-                    | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }),
+                    | ParticipatingEvent::Consensus(consensus::Event::Incoming { .. }),
                     Some(first_message_time),
                 ) => first_message_time,
-                (ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. }), None) => {
+                (ParticipatingEvent::Consensus(consensus::Event::Incoming { .. }), None) => {
                     maybe_first_message_time = Some(now);
                     now
                 }

@@ -36,8 +36,8 @@ use crate::{
             GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequest, NetRequestIncoming,
-            NetResponse, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
+            NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
@@ -370,7 +370,7 @@ impl reactor::Reactor for Reactor {
                             deploy_acceptor::Event::Accept {
                                 deploy,
                                 source: Source::Peer(sender),
-                                responder: None,
+                                maybe_responder: None,
                             },
                         ),
                     )

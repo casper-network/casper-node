@@ -49,6 +49,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -82,10 +83,9 @@ use crate::{
         consensus, consensus::error::FinalitySignatureError, fetcher::FetchedOrNotFound, Component,
     },
     crypto,
-    crypto::hash::{self, Digest},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
-        requests::{NetworkRequest, StorageRequest},
+        requests::NetworkRequest,
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -93,7 +93,7 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Chainspec, Deploy, DeployHash,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
         DeployHeader, DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody,
         MerkleBlockBodyPart, MerkleLinkedListNode, NodeId, TimeDiff,
     },
@@ -149,7 +149,7 @@ const STORAGE_FILES: [&str; 5] = [
 /// An error of this kinds indicates that storage is corrupted or otherwise irrecoverably broken, at
 /// least for the moment. It should usually be followed by swift termination of the node.
 #[derive(Debug, Error)]
-pub(crate) enum FatalStorageError {
+pub enum FatalStorageError {
     /// Failure to create the root database directory.
     #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
@@ -333,6 +333,7 @@ enum GetRequestError {
     GossipedAddressNotGettable,
 }
 
+/// The storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
     /// Storage location.
@@ -1075,7 +1076,7 @@ impl Storage {
     }
 
     /// Put a single deploy into storage.
-    pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, Error> {
+    pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
         let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
         txn.commit()?;
@@ -1088,7 +1089,10 @@ impl Storage {
     }
 
     /// Directly returns a deploy from internal store.
-    pub fn read_deploy_by_hash(&self, deploy_hash: DeployHash) -> Result<Option<Deploy>, Error> {
+    pub fn read_deploy_by_hash(
+        &self,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<Deploy>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
     }
@@ -1187,12 +1191,12 @@ impl Storage {
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
-    pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, Error> {
+    pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
     /// Gets the highest block.
-    pub fn read_highest_block(&self) -> Result<Option<Block>, Error> {
+    pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
         self.get_highest_block(&mut self.env.begin_ro_txn()?)
     }
 
@@ -1693,7 +1697,7 @@ impl Storage {
     ///
     /// If the given item is `None`, returns a non-pooled serialization of
     /// `FetchedOrNotFound::NotFound`.
-    pub fn update_pool_and_send<REv, T>(
+    fn update_pool_and_send<REv, T>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
@@ -1975,7 +1979,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         era_id: EraId,
-    ) -> Result<Option<Block>, Error> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         self.switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())

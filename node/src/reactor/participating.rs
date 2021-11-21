@@ -254,7 +254,6 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
-            ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
             ParticipatingEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
@@ -265,6 +264,16 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
+            ParticipatingEvent::Storage(_) => "Storage",
+            ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            ParticipatingEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
+            ParticipatingEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
+            ParticipatingEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
+            ParticipatingEvent::NetRequestIncoming(_) => "NetRequestIncoming",
+            ParticipatingEvent::NetResponseIncoming(_) => "NetResponseIncoming",
+            ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
+            ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
         }
     }
 }
@@ -1227,7 +1236,7 @@ impl reactor::Reactor for Reactor {
                         ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
-                            responder: None,
+                            maybe_responder: None,
                         })
                     }
                     NetResponse::Block(_) => {

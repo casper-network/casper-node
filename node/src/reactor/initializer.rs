@@ -82,6 +82,7 @@ impl ReactorEvent for Event {
             Event::Storage(_) => "Storage",
             Event::ContractRuntime(_) => "ContractRuntime",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
+            Event::StorageRequest(_) => "StorageRequest",
         }
     }
 }

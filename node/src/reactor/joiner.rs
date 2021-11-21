@@ -64,7 +64,7 @@ use crate::{
     },
     types::{
         Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
-        Tag, Timestamp,
+        Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -282,7 +282,6 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
-            JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
             JoinerEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             JoinerEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
@@ -300,6 +299,16 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::FinishedJoining { .. } => "FinishedJoining",
             JoinerEvent::Shutdown(_) => "Shutdown",
             JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            JoinerEvent::StorageRequest(_) => "StorageRequest",
+            JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            JoinerEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
+            JoinerEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
+            JoinerEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
+            JoinerEvent::NetRequestIncoming(_) => "NetRequestIncoming",
+            JoinerEvent::NetResponseIncoming(_) => "NetResponseIncoming",
+            JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
+            JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
         }
     }
 }

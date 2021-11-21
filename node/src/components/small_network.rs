@@ -90,7 +90,7 @@ use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
+        announcements::BlocklistAnnouncement,
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
