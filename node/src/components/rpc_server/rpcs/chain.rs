@@ -5,7 +5,7 @@
 
 mod era_summary;
 
-use std::str;
+use std::{num::ParseIntError, str};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
+use casper_hashing::Digest;
 use casper_types::{Key, ProtocolVersion, Transfer};
 
 use super::{
@@ -23,10 +24,9 @@ use super::{
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
 };
 use crate::{
-    crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    rpcs::common::{self},
+    rpcs::common,
     types::{Block, BlockHash, BlockWithMetadata, Item, JsonBlock},
 };
 pub use era_summary::EraSummary;
@@ -74,6 +74,41 @@ pub enum BlockIdentifier {
     Hash(BlockHash),
     /// Identify and retrieve the block with its height.
     Height(u64),
+}
+
+impl str::FromStr for BlockIdentifier {
+    type Err = ParseBlockIdentifierError;
+
+    fn from_str(maybe_block_identifier: &str) -> Result<Self, Self::Err> {
+        if maybe_block_identifier.is_empty() {
+            return Err(ParseBlockIdentifierError::EmptyString);
+        }
+
+        if maybe_block_identifier.len() == (Digest::LENGTH * 2) {
+            let hash = Digest::from_hex(maybe_block_identifier)
+                .map_err(ParseBlockIdentifierError::FromHexError)?;
+            Ok(BlockIdentifier::Hash(BlockHash::new(hash)))
+        } else {
+            let height = maybe_block_identifier
+                .parse()
+                .map_err(ParseBlockIdentifierError::ParseIntError)?;
+            Ok(BlockIdentifier::Height(height))
+        }
+    }
+}
+
+/// Represents errors that can arise when parsing a [`BlockIdentifier`].
+#[derive(thiserror::Error, Debug)]
+pub enum ParseBlockIdentifierError {
+    /// String was empty.
+    #[error("Empty string is not a valid block identifier.")]
+    EmptyString,
+    /// Couldn't parse a height value.
+    #[error("Unable to parse height from string. {0}")]
+    ParseIntError(ParseIntError),
+    /// Couldn't parse a blake2bhash.
+    #[error("Unable to parse digest from string. {0}")]
+    FromHexError(casper_hashing::Error),
 }
 
 /// Params for "chain_get_block" RPC request.
@@ -380,16 +415,14 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 }
             };
 
-            let era_id = match block.header().era_end() {
-                Some(_) => block.header().era_id(),
-                None => {
-                    return Ok(response_builder.success(Self::ResponseResult {
-                        api_version,
-                        era_summary: None,
-                    })?)
-                }
-            };
+            if !block.header().is_switch_block() {
+                return Ok(response_builder.success(Self::ResponseResult {
+                    api_version,
+                    era_summary: None,
+                })?);
+            }
 
+            let era_id = block.header().era_id();
             let state_root_hash = block.state_root_hash().to_owned();
             let base_key = Key::EraInfo(era_id);
             let path = Vec::new();
@@ -423,7 +456,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                     era_id,
                     stored_value,
                     state_root_hash,
-                    merkle_proof: hex::encode(proof_bytes),
+                    merkle_proof: base16::encode_lower(&proof_bytes),
                 }),
             };
 

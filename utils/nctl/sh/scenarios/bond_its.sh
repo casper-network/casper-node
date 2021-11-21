@@ -42,8 +42,14 @@ function main() {
     do_await_era_change "3"
     # 11. Assert node didn't propose since being unbonded
     assert_no_proposal_walkback '6' "$AFTER_EVICTION_HASH"
-    # 12. Check for equivocators
-    assert_no_equivocators_logs
+    # 12. Run Health Checks
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors=0 \
+            equivocators=0 \
+            doppels=0 \
+            crashes=0 \
+            restarts=0 \
+            ejections=0
 
     log "------------------------------------------------------------"
     log "Scenario bonding complete"

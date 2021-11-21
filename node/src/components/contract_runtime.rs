@@ -1,67 +1,65 @@
 //! Contract Runtime component.
+
+pub(crate) mod announcements;
 mod config;
 mod error;
 mod operations;
 mod types;
 
 use std::{
+    collections::BTreeMap,
     fmt::{self, Debug, Formatter},
     path::Path,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Instant,
 };
-
-pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError};
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
         GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        stored_value::StoredValue,
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
         global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{Key, ProtocolVersion};
+use casper_hashing::Digest;
+use casper_types::{Key, ProtocolVersion, StoredValue};
 
 use crate::{
-    components::Component,
-    crypto::hash::Digest,
+    components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
-        requests::ContractRuntimeRequest,
-        EffectBuilder, EffectExt, Effects,
+        announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
+        EffectExt, Effects,
     },
     fatal,
     types::{Block, BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
-use std::collections::BTreeMap;
+pub(crate) use announcements::ContractRuntimeAnnouncement;
+pub(crate) use config::Config;
+pub(crate) use error::{BlockExecutionError, ConfigError};
+pub use operations::execute_finalized_block;
+pub use types::BlockAndExecutionEffects;
+pub(crate) use types::EraValidatorsRequest;
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
-pub(crate) struct ExecutionPreState {
-    /// The state root to use when executing deploys.
-    pre_state_root_hash: Digest,
+pub struct ExecutionPreState {
     /// The height of the next `Block` to be constructed. Note that this must match the height of
     /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
+    /// The state root to use when executing deploys.
+    pre_state_root_hash: Digest,
     /// The parent hash of the next `Block`.
     parent_hash: BlockHash,
     /// The accumulated seed for the pseudo-random number generator to be incorporated into the
@@ -95,17 +93,18 @@ impl From<&BlockHeader> for ExecutionPreState {
         }
     }
 }
+type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
 
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
-    execution_pre_state: ExecutionPreState,
+    execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
     protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
-    exec_queue: BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>,
+    exec_queue: ExecQueue,
 }
 
 impl Debug for ContractRuntime {
@@ -116,7 +115,7 @@ impl Debug for ContractRuntime {
 
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
-pub(crate) struct ContractRuntimeMetrics {
+pub struct ContractRuntimeMetrics {
     run_execute: Histogram,
     apply_effect: Histogram,
     commit_upgrade: Histogram,
@@ -128,8 +127,9 @@ pub(crate) struct ContractRuntimeMetrics {
     get_bids: Histogram,
     missing_trie_keys: Histogram,
     put_trie: Histogram,
-    read_trie: Histogram,
+    get_trie: Histogram,
     chain_height: IntGauge,
+    exec_block: Histogram,
 }
 
 /// Value of upper bound of histogram.
@@ -163,12 +163,14 @@ const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators in seconds.";
 const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
 const GET_BIDS_HELP: &str = "tracking run of engine_state.get_bids in seconds.";
-const READ_TRIE_NAME: &str = "contract_runtime_read_trie";
-const READ_TRIE_HELP: &str = "tracking run of engine_state.read_trie in seconds.";
+const GET_TRIE_NAME: &str = "contract_runtime_get_trie";
+const GET_TRIE_HELP: &str = "tracking run of engine_state.get_trie in seconds.";
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "tracking run of engine_state.put_trie in seconds.";
 const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
 const MISSING_TRIE_KEYS_HELP: &str = "tracking run of engine_state.missing_trie_keys in seconds.";
+const EXEC_BLOCK_NAME: &str = "contract_runtime_execute_block";
+const EXEC_BLOCK_HELP: &str = "tracking execution of all deploys in a block.";
 
 /// Create prometheus Histogram and register.
 fn register_histogram_metric(
@@ -219,13 +221,14 @@ impl ContractRuntimeMetrics {
                 GET_ERA_VALIDATORS_HELP,
             )?,
             get_bids: register_histogram_metric(registry, GET_BIDS_NAME, GET_BIDS_HELP)?,
-            read_trie: register_histogram_metric(registry, READ_TRIE_NAME, READ_TRIE_HELP)?,
+            get_trie: register_histogram_metric(registry, GET_TRIE_NAME, GET_TRIE_HELP)?,
             put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
             missing_trie_keys: register_histogram_metric(
                 registry,
                 MISSING_TRIE_KEYS_NAME,
                 MISSING_TRIE_KEYS_HELP,
             )?,
+            exec_block: register_histogram_metric(registry, EXEC_BLOCK_NAME, EXEC_BLOCK_HELP)?,
         })
     }
 }
@@ -295,8 +298,7 @@ where
                 trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                let request =
-                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                let request = GetEraValidatorsRequest::new(state_root_hash, protocol_version);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
@@ -333,21 +335,19 @@ where
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::ReadTrie {
+            ContractRuntimeRequest::GetTrie {
                 trie_key,
                 responder,
             } => {
-                trace!(?trie_key, "read_trie request");
-                let result = self.read_trie(trie_key);
+                trace!(?trie_key, "get_trie request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(?error, "read_trie_request");
-                            None
-                        }
-                    };
-                    trace!(?result, "read_trie response");
+                    let correlation_id = CorrelationId::new();
+                    let start = Instant::now();
+                    let result = engine_state.get_trie(correlation_id, trie_key);
+                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get_trie response");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -361,9 +361,19 @@ where
                     let start = Instant::now();
                     let result = engine_state
                         .put_trie_and_find_missing_descendant_trie_keys(correlation_id, &*trie);
-                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "put_trie response");
-                    responder.respond(result).await
+                    // PERF: this *could* be called only periodically.
+                    if let Err(lmdb_error) = engine_state.flush_environment() {
+                        fatal!(
+                            effect_builder,
+                            "error flushing lmdb environment {:?}",
+                            lmdb_error
+                        )
+                        .await;
+                    } else {
+                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                        trace!(?result, "put_trie response");
+                        responder.respond(result).await
+                    }
                 }
                 .ignore()
             }
@@ -384,10 +394,10 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let result = operations::execute_finalized_block(
+                tokio::task::unconstrained(async move {
+                    let result = execute_finalized_block(
                         engine_state.as_ref(),
-                        metrics.as_ref(),
+                        Some(metrics),
                         protocol_version,
                         execution_pre_state,
                         finalized_block,
@@ -396,7 +406,7 @@ where
                     );
                     trace!(?result, "execute block response");
                     responder.respond(result).await
-                }
+                })
                 .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
@@ -405,25 +415,36 @@ where
                 transfers,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
-                if self.execution_pre_state.next_block_height == finalized_block.height() {
-                    match self.execute_finalized_block(
-                        effect_builder,
-                        self.protocol_version,
-                        self.execution_pre_state.clone(),
-                        finalized_block,
-                        deploys,
-                        transfers,
-                    ) {
-                        Ok((_, effects)) => effects,
-                        Err(error) => fatal!(effect_builder, "{}", error).ignore(),
-                    }
+                let mut effects = Effects::new();
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                let exec_queue = Arc::clone(&self.exec_queue);
+                let execution_pre_state = Arc::clone(&self.execution_pre_state);
+                let protocol_version = self.protocol_version;
+                if self.execution_pre_state.lock().unwrap().next_block_height
+                    == finalized_block.height()
+                {
+                    effects.extend(
+                        Self::execute_finalized_block_or_requeue(
+                            engine_state,
+                            metrics,
+                            exec_queue,
+                            execution_pre_state,
+                            effect_builder,
+                            protocol_version,
+                            finalized_block,
+                            deploys,
+                            transfers,
+                        )
+                        .ignore(),
+                    )
                 } else {
-                    self.exec_queue.insert(
+                    exec_queue.lock().unwrap().insert(
                         finalized_block.height(),
                         (finalized_block, deploys, transfers),
                     );
-                    Effects::new()
                 }
+                effects
             }
             ContractRuntimeRequest::GetBids {
                 get_bids_request,
@@ -442,32 +463,52 @@ where
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::FindMissingDescendantTrieKeys {
+                trie_key,
+                responder,
+            } => {
+                trace!(?trie_key, "find missing descendant trie keys");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let start = Instant::now();
+                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
+                    metrics
+                        .missing_trie_keys
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "find missing descendant trie keys");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }
 
 impl ContractRuntime {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
         contract_runtime_config: &Config,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
+        max_associated_keys: u32,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
-        let execution_pre_state = ExecutionPreState {
+        let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
             pre_state_root_hash: Default::default(),
             next_block_height: 0,
             parent_hash: Default::default(),
             parent_seed: Default::default(),
-        };
+        }));
 
         let environment = Arc::new(LmdbEnvironment::new(
             storage_dir,
             contract_runtime_config.max_global_state_size(),
             contract_runtime_config.max_readers(),
+            contract_runtime_config.manual_sync_enabled(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(
@@ -479,6 +520,7 @@ impl ContractRuntime {
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
+            max_associated_keys,
             wasm_config,
             system_config,
         );
@@ -486,10 +528,11 @@ impl ContractRuntime {
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
         let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
+
         Ok(ContractRuntime {
             execution_pre_state,
             protocol_version,
-            exec_queue: BTreeMap::new(),
+            exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             engine_state,
             metrics,
         })
@@ -498,16 +541,16 @@ impl ContractRuntime {
     /// Commits a genesis using a chainspec
     pub(crate) fn commit_genesis(
         &self,
-        chainspec: &Arc<Chainspec>,
+        chainspec: &Chainspec,
     ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
-        let ee_config = chainspec.as_ref().into();
+        let ee_config = chainspec.into();
         self.engine_state.commit_genesis(
             correlation_id,
-            genesis_config_hash.into(),
+            genesis_config_hash,
             protocol_version,
             &ee_config,
         )
@@ -532,22 +575,98 @@ impl ContractRuntime {
     /// Retrieve trie keys for the integrity check.
     pub(crate) fn trie_store_check(
         &self,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, engine_state::Error> {
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         self.engine_state
             .missing_trie_keys(correlation_id, trie_keys)
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
-        self.execution_pre_state = sequential_block_state;
+        *self.execution_pre_state.lock().unwrap() = sequential_block_state;
     }
 
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_finalized_block_or_requeue<REv>(
+        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        metrics: Arc<ContractRuntimeMetrics>,
+        exec_queue: ExecQueue,
+        execution_pre_state: Arc<Mutex<ExecutionPreState>>,
+        effect_builder: EffectBuilder<REv>,
+        protocol_version: ProtocolVersion,
+        finalized_block: FinalizedBlock,
+        deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
+    ) where
+        REv: From<ContractRuntimeRequest>
+            + From<ContractRuntimeAnnouncement>
+            + From<ControlAnnouncement>
+            + Send,
+    {
+        let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
+        let BlockAndExecutionEffects {
+            block,
+            execution_results,
+            maybe_step_effect_and_upcoming_era_validators,
+        } = match tokio::task::unconstrained(async move {
+            execute_finalized_block(
+                engine_state.as_ref(),
+                Some(metrics),
+                protocol_version,
+                current_execution_pre_state,
+                finalized_block,
+                deploys,
+                transfers,
+            )
+        })
+        .await
+        {
+            Ok(block_and_execution_effects) => block_and_execution_effects,
+            Err(error) => return fatal!(effect_builder, "{}", error).await,
+        };
+
+        let new_execution_pre_state = ExecutionPreState::from(block.header());
+        *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
+
+        let current_era_id = block.header().era_id();
+
+        announcements::linear_chain_block(effect_builder, block, execution_results).await;
+
+        if let Some(StepEffectAndUpcomingEraValidators {
+            step_execution_effect,
+            upcoming_era_validators,
+        }) = maybe_step_effect_and_upcoming_era_validators
+        {
+            announcements::step_success(effect_builder, current_era_id, step_execution_effect)
+                .await;
+
+            announcements::upcoming_era_validators(
+                effect_builder,
+                current_era_id,
+                upcoming_era_validators,
+            )
+            .await;
+        }
+
+        // If the child is already finalized, start execution.
+        let next_block = {
+            // needed to help this async block impl Send (the MutexGuard lives too long)
+            let queue = &mut *exec_queue.lock().expect("mutex poisoned");
+            queue.remove(&new_execution_pre_state.next_block_height)
+        };
+        if let Some((finalized_block, deploys, transfers)) = next_block {
+            effect_builder
+                .enqueue_block_for_execution(finalized_block, deploys, transfers)
+                .await
+        }
+    }
+
+    // TODO: Deduplicate this and execute_finalized_block_or_requeue.
     pub(crate) fn execute_finalized_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
-        execution_pre_state: ExecutionPreState,
+        current_execution_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
@@ -561,36 +680,52 @@ impl ContractRuntime {
         let BlockAndExecutionEffects {
             block,
             execution_results,
-            maybe_step_execution_effect,
-        } = operations::execute_finalized_block(
+            maybe_step_effect_and_upcoming_era_validators,
+        } = execute_finalized_block(
             self.engine_state.as_ref(),
-            self.metrics.as_ref(),
+            Some(Arc::clone(&self.metrics)),
             protocol_version,
-            execution_pre_state,
+            current_execution_pre_state,
             finalized_block,
             deploys,
             transfers,
         )?;
 
-        self.execution_pre_state = ExecutionPreState::from(block.header());
+        let new_execution_pre_state = ExecutionPreState::from(block.header());
+        *self.execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
-        let era_id = block.header().era_id();
-        let mut effects = effect_builder
-            .announce_linear_chain_block(block.clone(), execution_results)
-            .ignore();
-        if let Some(step_execution_effect) = maybe_step_execution_effect {
+        let current_era_id = block.header().era_id();
+
+        let mut effects =
+            announcements::linear_chain_block(effect_builder, block.clone(), execution_results)
+                .ignore();
+
+        if let Some(StepEffectAndUpcomingEraValidators {
+            step_execution_effect,
+            upcoming_era_validators,
+        }) = maybe_step_effect_and_upcoming_era_validators
+        {
             effects.extend(
-                effect_builder
-                    .announce_step_success(era_id, step_execution_effect)
+                announcements::step_success(effect_builder, current_era_id, step_execution_effect)
                     .ignore(),
+            );
+            effects.extend(
+                announcements::upcoming_era_validators(
+                    effect_builder,
+                    current_era_id,
+                    upcoming_era_validators,
+                )
+                .ignore(),
             );
         }
 
         // If the child is already finalized, start execution.
-        if let Some((finalized_block, deploys, transfers)) = self
-            .exec_queue
-            .remove(&self.execution_pre_state.next_block_height)
-        {
+        let next_block = {
+            // needed to help this async block impl Send (the MutexGuard lives too long)
+            let queue = &mut *self.exec_queue.lock().expect("mutex poisoned");
+            queue.remove(&new_execution_pre_state.next_block_height)
+        };
+        if let Some((finalized_block, deploys, transfers)) = next_block {
             effects.extend(
                 effect_builder
                     .enqueue_block_for_execution(finalized_block, deploys, transfers)
@@ -601,16 +736,14 @@ impl ContractRuntime {
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.
-    pub(crate) fn read_trie(
+    pub(crate) fn get_trie(
         &self,
-        trie_key: Blake2bHash,
+        trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
-        let result = self.engine_state.read_trie(correlation_id, trie_key);
-        self.metrics
-            .read_trie
-            .observe(start.elapsed().as_secs_f64());
+        let result = self.engine_state.get_trie(correlation_id, trie_key);
+        self.metrics.get_trie.observe(start.elapsed().as_secs_f64());
         result
     }
 

@@ -44,7 +44,7 @@ use super::{
     Event, FramedTransport, Message, Payload, Transport,
 };
 use crate::{
-    components::networking_metrics::NetworkingMetrics,
+    components::{networking_metrics::NetworkingMetrics, small_network::message::PayloadWeights},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
@@ -182,6 +182,8 @@ where
     pub(super) public_addr: SocketAddr,
     /// Optional set of consensus keys, to identify as a validator during handshake.
     pub(super) consensus_keys: Option<ConsensusKeyPair>,
+    /// Weights to estimate payloads with.
+    pub(super) payload_weights: PayloadWeights,
 }
 
 /// Handles an incoming connection.
@@ -462,7 +464,9 @@ where
                     // then push it to the reactor.
 
                     limiter
-                        .request_allowance(msg.payload_incoming_resource_estimate())
+                        .request_allowance(
+                            msg.payload_incoming_resource_estimate(&context.payload_weights),
+                        )
                         .await;
                     context
                         .event_queue

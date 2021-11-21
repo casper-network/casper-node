@@ -149,3 +149,6 @@ cmake-build-debug/
 
 # client c headers
 client/headers/**
+
+# OS X
+.DS_Store

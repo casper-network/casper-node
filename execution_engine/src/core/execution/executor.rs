@@ -9,22 +9,21 @@ use casper_types::{
     bytesrepr::FromBytes,
     contracts::NamedKeys,
     system::{auction, handle_payment, mint, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
-    Phase, ProtocolVersion, RuntimeArgs,
+    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key,
+    Phase, ProtocolVersion, RuntimeArgs, StoredValue,
 };
 
 use crate::{
     core::{
         engine_state::{
-            execution_effect::ExecutionEffect, execution_result::ExecutionResult,
-            system_contract_cache::SystemContractCache, EngineConfig,
+            execution_effect::ExecutionEffect, execution_result::ExecutionResult, EngineConfig,
         },
         execution::{address_generator::AddressGenerator, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
         runtime_context::{self, RuntimeContext},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::newtypes::CorrelationId,
     storage::global_state::StateReader,
 };
 
@@ -71,20 +70,28 @@ macro_rules! on_fail_charge {
     };
 }
 
+/// Executor object deals with execution of WASM modules.
 pub struct Executor {
     config: EngineConfig,
 }
 
 #[allow(clippy::too_many_arguments)]
 impl Executor {
+    /// Creates new executor object.
     pub fn new(config: EngineConfig) -> Self {
         Executor { config }
     }
 
+    /// Returns config.
     pub fn config(&self) -> EngineConfig {
         self.config
     }
 
+    /// Executes a WASM module.
+    ///
+    /// This method checks if a given contract hash is a system contract, and then short circuits to
+    /// a specific native implementation of it. Otherwise, a supplied WASM module is executed.
+    #[allow(clippy::too_many_arguments)]
     pub fn exec<R>(
         &self,
         module: Module,
@@ -101,7 +108,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         contract_package: &ContractPackage,
         call_stack: Vec<CallStackElement>,
     ) -> ExecutionResult
@@ -166,14 +172,7 @@ impl Executor {
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            system_contract_cache,
-            memory,
-            module,
-            context,
-            call_stack,
-        );
+        let mut runtime = Runtime::new(self.config, memory, module, context, call_stack);
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
@@ -278,6 +277,7 @@ impl Executor {
         }
     }
 
+    /// Executes a standard payment code natively.
     pub fn exec_standard_payment<R>(
         &self,
         system_module: Module,
@@ -293,7 +293,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> ExecutionResult
     where
@@ -333,7 +332,6 @@ impl Executor {
             correlation_id,
             Rc::clone(&tracking_copy),
             phase,
-            system_contract_cache,
             call_stack,
         ) {
             Ok((_instance, runtime)) => runtime,
@@ -364,6 +362,12 @@ impl Executor {
         }
     }
 
+    /// Executes a system contract.
+    ///
+    /// System contracts are implemented as a native code, and no WASM execution is involved at all.
+    /// This approach has a benefit of speed as compared to executing WASM modules.
+    ///
+    /// Returns an optional return value from the system contract call, and an [`ExecutionResult`].
     pub fn exec_system_contract<R, T>(
         &self,
         direct_system_contract_call: DirectSystemContractCall,
@@ -381,7 +385,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> (Option<T>, ExecutionResult)
     where
@@ -491,7 +494,6 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            system_contract_cache,
             call_stack,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
@@ -538,7 +540,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> Result<T, Error>
     where
@@ -568,7 +569,6 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            system_contract_cache,
             call_stack,
         )?;
 
@@ -605,7 +605,13 @@ impl Executor {
         Ok(ret)
     }
 
-    pub fn create_runtime<'a, R>(
+    /// Creates new runtime object.
+    ///
+    /// This method also deals with proper initialiation of a WASM module by pre-allocating a memory
+    /// instance, and attaching a host function resolver.
+    ///
+    /// Returns a module and an instance of [`Runtime`] which is ready to execute the WASM modules.
+    pub(crate) fn create_runtime<'a, R>(
         &self,
         module: Module,
         entry_point_type: EntryPointType,
@@ -625,7 +631,6 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         call_stack: Vec<CallStackElement>,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
@@ -667,27 +672,29 @@ impl Executor {
         let (instance, memory) =
             instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
 
-        let runtime = Runtime::new(
-            self.config,
-            system_contract_cache,
-            memory,
-            module,
-            runtime_context,
-            call_stack,
-        );
+        let runtime = Runtime::new(self.config, memory, module, runtime_context, call_stack);
 
         Ok((instance, runtime))
     }
 }
 
+/// Represents a variant of a system contract call.
 pub enum DirectSystemContractCall {
+    /// Calls auction's `slash` entry point.
     Slash,
+    /// Calls auction's `run_auction` entry point.
     RunAuction,
+    /// Calls auction's `distribute` entry point.
     DistributeRewards,
+    /// Calls handle payment's `finalize` entry point.
     FinalizePayment,
+    /// Calls mint's `create` entry point.
     CreatePurse,
+    /// Calls mint's `transfer` entry point.
     Transfer,
+    /// Calls auction's `get_era_validators` entry point.
     GetEraValidators,
+    /// Calls handle payment's `
     GetPaymentPurse,
 }
 

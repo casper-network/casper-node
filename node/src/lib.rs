@@ -31,13 +31,18 @@ pub(crate) mod reactor;
 #[cfg(test)]
 pub(crate) mod testing;
 pub(crate) mod tls;
-pub(crate) mod utils;
 
 // Public API
 pub mod cli;
 pub mod crypto;
 pub mod types;
-pub use components::rpc_server::rpcs;
+pub mod utils;
+pub use components::{
+    contract_runtime,
+    rpc_server::rpcs,
+    storage::{self, Config as StorageConfig},
+};
+pub use utils::WithDir;
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
@@ -60,7 +65,6 @@ pub(crate) use components::{
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig, rest_server::Config as RestServerConfig,
     rpc_server::Config as RpcServerConfig, small_network::Config as SmallNetworkConfig,
-    storage::Config as StorageConfig,
 };
 pub(crate) use types::NodeRng;
 

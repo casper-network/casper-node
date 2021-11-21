@@ -1,3 +1,4 @@
+//! Utilities.
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use once_cell::sync::Lazy;
 use serde::Serialize;

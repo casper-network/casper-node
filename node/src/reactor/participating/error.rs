@@ -1,14 +1,12 @@
 use thiserror::Error;
 
 use crate::{
-    components::{
-        contract_runtime, contract_runtime::BlockExecutionError, network, small_network, storage,
-    },
+    components::{contract_runtime, contract_runtime::BlockExecutionError, small_network, storage},
     types::{Block, BlockHeader},
     utils::ListeningError,
 };
 use casper_execution_engine::core::engine_state;
-use casper_types::{bytesrepr, EraId};
+use casper_types::{bytesrepr, EraId, ProtocolVersion};
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
@@ -16,10 +14,6 @@ pub(crate) enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
-
-    /// `Network` component error.
-    #[error("network error: {0}")]
-    Network(#[from] network::Error),
 
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]
@@ -51,7 +45,16 @@ pub(crate) enum Error {
 
     /// [`bytesrepr`] error.
     #[error("bytesrepr error: {0}")]
-    BytesRepr(#[from] bytesrepr::Error),
+    BytesRepr(bytesrepr::Error),
+
+    /// Cannot run genesis on a non v1.0.0 blockchain.
+    #[error(
+        "Genesis must run on protocol version 1.0.0. \
+         Chainspec protocol version: {chainspec_protocol_version:?}"
+    )]
+    GenesisNeedsProtocolVersion1_0_0 {
+        chainspec_protocol_version: ProtocolVersion,
+    },
 
     /// Cannot run genesis on preexisting blockchain.
     #[error("Cannot run genesis on preexisting blockchain. First block: {highest_block_header:?}")]
@@ -85,4 +88,10 @@ pub(crate) enum Error {
         /// A new block we made which should be a switch block but is not.
         new_bad_block: Box<Block>,
     },
+}
+
+impl From<bytesrepr::Error> for Error {
+    fn from(err: bytesrepr::Error) -> Self {
+        Self::BytesRepr(err)
+    }
 }

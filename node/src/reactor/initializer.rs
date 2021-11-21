@@ -17,7 +17,6 @@ use crate::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
         gossiper,
-        network::NetworkIdentity,
         small_network::{GossipedAddress, SmallNetworkIdentity, SmallNetworkIdentityError},
         storage::{self, Storage},
         Component,
@@ -74,6 +73,15 @@ impl ReactorEvent for Event {
             Some(ctrl_ann)
         } else {
             None
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Event::Chainspec(_) => "Chainspec",
+            Event::Storage(_) => "Storage",
+            Event::ContractRuntime(_) => "ContractRuntime",
+            Event::ControlAnnouncement(_) => "ControlAnnouncement",
         }
     }
 }
@@ -174,8 +182,6 @@ pub(crate) struct Reactor {
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) small_network_identity: SmallNetworkIdentity,
-    #[data_size(skip)]
-    pub(super) network_identity: NetworkIdentity,
 }
 
 impl Reactor {
@@ -190,9 +196,18 @@ impl Reactor {
         let storage_config = config.map_ref(|cfg| cfg.storage.clone());
         let storage = Storage::new(
             &storage_config,
-            chainspec_loader.chainspec().clone(),
             hard_reset_to_start_of_era,
+            chainspec_loader.chainspec().protocol_config.version,
             crashed,
+            &chainspec_loader.chainspec().network_config.name,
+            chainspec_loader
+                .chainspec()
+                .highway_config
+                .finality_threshold_fraction,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .last_emergency_restart,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -201,6 +216,7 @@ impl Reactor {
             &config.value().contract_runtime,
             chainspec_loader.chainspec().wasm_config,
             chainspec_loader.chainspec().system_costs_config,
+            chainspec_loader.chainspec().core_config.max_associated_keys,
             registry,
         )?;
 
@@ -220,15 +236,12 @@ impl Reactor {
 
         let small_network_identity = SmallNetworkIdentity::new()?;
 
-        let network_identity = NetworkIdentity::new();
-
         let reactor = Reactor {
             config,
             chainspec_loader,
             storage,
             contract_runtime,
             small_network_identity,
-            network_identity,
         };
         Ok((reactor, effects))
     }
@@ -239,6 +252,11 @@ impl Reactor {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
+    }
+
+    /// Inspect the contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
     }
 }
 
@@ -298,11 +316,8 @@ impl reactor::Reactor for Reactor {
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
-    use crate::{
-        components::network::ENABLE_LIBP2P_NET_ENV_VAR, testing::network::NetworkedReactor,
-        types::Chainspec,
-    };
-    use std::{env, sync::Arc};
+    use crate::{testing::network::NetworkedReactor, types::Chainspec};
+    use std::sync::Arc;
 
     impl Reactor {
         pub(crate) fn new_with_chainspec(
@@ -321,11 +336,7 @@ pub(crate) mod test {
     impl NetworkedReactor for Reactor {
         type NodeId = NodeId;
         fn node_id(&self) -> Self::NodeId {
-            if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
-                NodeId::from(&self.small_network_identity)
-            } else {
-                NodeId::from(&self.network_identity)
-            }
+            NodeId::from(&self.small_network_identity)
         }
     }
 }

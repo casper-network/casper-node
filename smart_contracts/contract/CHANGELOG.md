@@ -14,11 +14,11 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Add explicit `no-std` feature, enabled by default and which causes a compiler error if enabled along with `std`.
+* Add `no-std-helpers` feature, enabled by default, which provides no-std panic/oom handlers and a global allocator as a convenience.
+* Add new APIs for transferring tokens to the main purse associated with a public key: `transfer_to_public_key` and `transfer_from_purse_to_public_key`.
 
-### Changed
-* Feature-gate the convenience functionality of providing a global allocator for use in `no_std` smart-contracts.
-* Change default feature set to enable new `no-std` and `provide-allocator` features.
+### Deprecated
+* Feature `std` is deprecated as it is now a no-op, since there is no benefit to linking the std lib via this crate.
 
 
 

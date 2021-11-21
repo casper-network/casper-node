@@ -9,12 +9,13 @@ use core::{
     str::FromStr,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,20 +26,10 @@ use crate::{
 
 /// Era ID newtype.
 #[derive(
-    DataSize,
-    Debug,
-    Default,
-    Clone,
-    Copy,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
+    Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct EraId(u64);
 
@@ -65,9 +56,11 @@ impl EraId {
     }
 
     /// Returns a successor to current era.
-    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
+    ///
+    /// For `u64::MAX`, this returns `u64::MAX` again: We want to make sure this doesn't panic, and
+    /// that era number will never be reached in practice.
     pub fn successor(self) -> EraId {
-        EraId::from(self.0 + 1)
+        EraId::from(self.0.saturating_add(1))
     }
 
     /// Returns the current era plus `x`, or `None` if that would overflow

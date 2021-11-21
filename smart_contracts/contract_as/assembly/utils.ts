@@ -66,4 +66,3 @@ export function checkTypedArrayEqual(a: Uint8Array, b: Uint8Array, len: i32 = 0)
   }
   return true;
 }
-

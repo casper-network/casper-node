@@ -5,23 +5,18 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            genesis::{GenesisAccount, GenesisValidator},
-        },
-        execution,
+use casper_execution_engine::core::{
+    engine_state::{
+        self,
+        genesis::{GenesisAccount, GenesisValidator},
     },
-    shared::motes::Motes,
+    execution,
 };
 use casper_types::{
     self,
@@ -36,7 +31,7 @@ use casper_types::{
             ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";

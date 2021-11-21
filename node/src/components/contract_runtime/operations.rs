@@ -1,37 +1,39 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
+    sync::Arc,
     time::Instant,
 };
 
-use engine_state::ExecuteRequest;
 use itertools::Itertools;
 use tracing::{debug, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, step::EvictItem, DeployItem, EngineState, ExecutionResult as EngineExecutionResult,
-        ExecutionResults, RewardItem, StepError, StepRequest, StepSuccess,
+        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
+        ExecutionResult as EngineExecutionResult, ExecutionResults, GetEraValidatorsRequest,
+        RewardItem, StepError, StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
-use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey};
+use casper_hashing::Digest;
+use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::{
         consensus::EraReport,
         contract_runtime::{
-            error::BlockExecutionError, BlockAndExecutionEffects, ContractRuntimeMetrics,
-            ExecutionPreState,
+            error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
+            BlockAndExecutionEffects, ContractRuntimeMetrics, ExecutionPreState,
         },
     },
-    crypto::hash::Digest,
     types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 
-pub(super) fn execute_finalized_block(
+/// Executes a finalized block.
+pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    metrics: Option<Arc<ContractRuntimeMetrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
@@ -55,11 +57,12 @@ pub(super) fn execute_finalized_block(
         HashMap::new();
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
+    let start = Instant::now();
     for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
-            state_root_hash.into(),
+            state_root_hash,
             block_time,
             vec![DeployItem::from(deploy)],
             protocol_version,
@@ -71,73 +74,96 @@ pub(super) fn execute_finalized_block(
         // mapping between deploy_hash and execution result, and this outer logic is
         // enriching it with the deploy hash. If we were passing multiple deploys per exec
         // the relation between the deploy and the execution results would be lost.
-        let result = execute(engine_state, metrics, execute_request)?;
+        let result = execute(engine_state, metrics.clone(), execute_request)?;
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result) =
-            commit_execution_effects(engine_state, metrics, state_root_hash, deploy_hash, result)?;
+        let (state_hash, execution_result) = commit_execution_effects(
+            engine_state,
+            metrics.clone(),
+            state_root_hash,
+            deploy_hash,
+            result,
+        )?;
         execution_results.insert(deploy_hash, (deploy_header, execution_result));
         state_root_hash = state_hash;
     }
 
-    // If the finalized block has an era report, run the auction contract
-    let maybe_step_success = match finalized_block.era_report() {
-        None => None,
-        Some(era_report) => Some(commit_step(
-            engine_state,
-            metrics,
-            protocol_version,
-            state_root_hash,
-            era_report,
-            finalized_block.timestamp().millis(),
-            finalized_block.era_id().successor(),
-        )?),
-    };
+    // Flush once, after all deploys have been executed.
+    engine_state.flush_environment()?;
+
+    if let Some(metrics) = metrics.as_ref() {
+        metrics.exec_block.observe(start.elapsed().as_secs_f64());
+    }
+
+    // If the finalized block has an era report, run the auction contract and get the upcoming era
+    // validators
+    let maybe_step_effect_and_upcoming_era_validators =
+        if let Some(era_report) = finalized_block.era_report() {
+            let StepSuccess {
+                post_state_hash,
+                execution_effect,
+            } = commit_step(
+                engine_state,
+                metrics.clone(),
+                protocol_version,
+                state_root_hash,
+                era_report,
+                finalized_block.timestamp().millis(),
+                finalized_block.era_id().successor(),
+            )?;
+            state_root_hash = post_state_hash;
+            let upcoming_era_validators = engine_state.get_era_validators(
+                CorrelationId::new(),
+                GetEraValidatorsRequest::new(state_root_hash, protocol_version),
+            )?;
+            Some(StepEffectAndUpcomingEraValidators {
+                step_execution_effect: execution_effect,
+                upcoming_era_validators,
+            })
+        } else {
+            None
+        };
 
     // Update the metric.
     let block_height = finalized_block.height();
-    metrics.chain_height.set(block_height as i64);
+    if let Some(metrics) = metrics.as_ref() {
+        metrics.chain_height.set(block_height as i64);
+    }
 
-    let block_and_execution_effects = if let Some(StepSuccess {
-        post_state_hash,
-        next_era_validators,
-        execution_effect,
-    }) = maybe_step_success
-    {
-        BlockAndExecutionEffects {
-            block: Block::new(
-                parent_hash,
-                parent_seed,
-                post_state_hash.into(),
-                finalized_block,
-                Some(next_era_validators),
-                protocol_version,
-            )?,
-            execution_results,
-            maybe_step_execution_effect: Some(execution_effect),
-        }
-    } else {
-        BlockAndExecutionEffects {
-            block: Block::new(
-                parent_hash,
-                parent_seed,
-                state_root_hash,
-                finalized_block,
-                None,
-                protocol_version,
-            )?,
-            execution_results,
-            maybe_step_execution_effect: None,
-        }
-    };
-    Ok(block_and_execution_effects)
+    let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+        maybe_step_effect_and_upcoming_era_validators
+            .as_ref()
+            .and_then(
+                |StepEffectAndUpcomingEraValidators {
+                     upcoming_era_validators,
+                     ..
+                 }| {
+                    upcoming_era_validators
+                        .get(&finalized_block.era_id().successor())
+                        .cloned()
+                },
+            );
+    let block = Block::new(
+        parent_hash,
+        parent_seed,
+        state_root_hash,
+        finalized_block,
+        next_era_validator_weights,
+        protocol_version,
+    )?;
+
+    Ok(BlockAndExecutionEffects {
+        block,
+        execution_results,
+        maybe_step_effect_and_upcoming_era_validators,
+    })
 }
 
 /// Commits the execution effects.
 fn commit_execution_effects(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    metrics: Option<Arc<ContractRuntimeMetrics>>,
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
@@ -183,36 +209,40 @@ fn commit_execution_effects(
 
 fn commit_transforms(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    metrics: Option<Arc<ContractRuntimeMetrics>>,
     state_root_hash: Digest,
     effects: AdditiveMap<Key, Transform>,
 ) -> Result<Digest, engine_state::Error> {
     trace!(?state_root_hash, ?effects, "commit");
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.apply_effect(correlation_id, state_root_hash.into(), effects);
-    metrics.apply_effect.observe(start.elapsed().as_secs_f64());
+    let result = engine_state.apply_effect(correlation_id, state_root_hash, effects);
+    if let Some(metrics) = metrics {
+        metrics.apply_effect.observe(start.elapsed().as_secs_f64());
+    }
     trace!(?result, "commit result");
     result.map(Digest::from)
 }
 
 fn execute(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    metrics: Option<Arc<ContractRuntimeMetrics>>,
     execute_request: ExecuteRequest,
 ) -> Result<VecDeque<EngineExecutionResult>, engine_state::Error> {
     trace!(?execute_request, "execute");
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
     let result = engine_state.run_execute(correlation_id, execute_request);
-    metrics.run_execute.observe(start.elapsed().as_secs_f64());
+    if let Some(metrics) = metrics {
+        metrics.run_execute.observe(start.elapsed().as_secs_f64());
+    }
     trace!(?result, "execute result");
     result
 }
 
 fn commit_step(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: &ContractRuntimeMetrics,
+    maybe_metrics: Option<Arc<ContractRuntimeMetrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
     era_report: &EraReport<PublicKey>,
@@ -240,7 +270,7 @@ fn commit_step(
         .collect();
 
     let step_request = StepRequest {
-        pre_state_hash: pre_state_root_hash.into(),
+        pre_state_hash: pre_state_root_hash,
         protocol_version,
         reward_items,
         // Note: The Casper Network does not slash, but another network could
@@ -255,7 +285,9 @@ fn commit_step(
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
     let result = engine_state.commit_step(correlation_id, step_request);
-    metrics.commit_step.observe(start.elapsed().as_secs_f64());
+    if let Some(metrics) = maybe_metrics {
+        metrics.commit_step.observe(start.elapsed().as_secs_f64());
+    }
     trace!(?result, "step response");
     result
 }

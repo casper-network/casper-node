@@ -32,7 +32,7 @@ pub(super) struct NetworkingMetrics {
     pub(super) out_count_deploy_transfer: IntCounter,
     /// Count of outgoing messages with block request/response payload.
     pub(super) out_count_block_transfer: IntCounter,
-    /// Count of outgoing messages with block request/response payload.
+    /// Count of outgoing messages with trie request/response payload.
     pub(super) out_count_trie_transfer: IntCounter,
     /// Count of outgoing messages with other payload.
     pub(super) out_count_other: IntCounter,
@@ -53,16 +53,6 @@ pub(super) struct NetworkingMetrics {
     pub(super) out_bytes_trie_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with other payload.
     pub(super) out_bytes_other: IntCounter,
-
-    // Potentially temporary metrics, not supported by all networking components:
-    /// Number of do-nothing futures that have not finished executing for read requests.
-    pub(super) read_futures_in_flight: prometheus::Gauge,
-    /// Number of do-nothing futures created total (read).
-    pub(super) read_futures_total: prometheus::Gauge,
-    /// Number of do-nothing futures that have not finished executing for write responses.
-    pub(super) write_futures_in_flight: prometheus::Gauge,
-    /// Number of do-nothing futures created total (write).
-    pub(super) write_futures_total: prometheus::Gauge,
 
     /// Registry instance.
     registry: Registry,
@@ -110,7 +100,7 @@ impl NetworkingMetrics {
             "count of outgoing messages with block request/response payload",
         )?;
         let out_count_trie_transfer = IntCounter::new(
-            "net_out_count_block_transfer",
+            "net_out_count_trie_transfer",
             "count of outgoing messages with trie payloads",
         )?;
         let out_count_other = IntCounter::new(
@@ -143,29 +133,12 @@ impl NetworkingMetrics {
             "volume in bytes of outgoing messages with block request/response payload",
         )?;
         let out_bytes_trie_transfer = IntCounter::new(
-            "net_out_bytes_block_transfer",
+            "net_out_bytes_trie_transfer",
             "volume in bytes of outgoing messages with trie payloads",
         )?;
         let out_bytes_other = IntCounter::new(
             "net_out_bytes_other",
             "volume in bytes of outgoing messages with other payload",
-        )?;
-
-        let read_futures_in_flight = prometheus::Gauge::new(
-            "owm_read_futures_in_flight",
-            "number of do-nothing futures in flight created by `Codec::read_response`",
-        )?;
-        let read_futures_total = prometheus::Gauge::new(
-            "owm_read_futures_total",
-            "number of do-nothing futures total created by `Codec::read_response`",
-        )?;
-        let write_futures_in_flight = prometheus::Gauge::new(
-            "owm_write_futures_in_flight",
-            "number of do-nothing futures in flight created by `Codec::write_response`",
-        )?;
-        let write_futures_total = prometheus::Gauge::new(
-            "owm_write_futures_total",
-            "number of do-nothing futures total created by `Codec::write_response`",
         )?;
 
         registry.register(Box::new(broadcast_requests.clone()))?;
@@ -180,6 +153,7 @@ impl NetworkingMetrics {
         registry.register(Box::new(out_count_address_gossip.clone()))?;
         registry.register(Box::new(out_count_deploy_transfer.clone()))?;
         registry.register(Box::new(out_count_block_transfer.clone()))?;
+        registry.register(Box::new(out_count_trie_transfer.clone()))?;
         registry.register(Box::new(out_count_other.clone()))?;
 
         registry.register(Box::new(out_bytes_protocol.clone()))?;
@@ -188,12 +162,8 @@ impl NetworkingMetrics {
         registry.register(Box::new(out_bytes_address_gossip.clone()))?;
         registry.register(Box::new(out_bytes_deploy_transfer.clone()))?;
         registry.register(Box::new(out_bytes_block_transfer.clone()))?;
+        registry.register(Box::new(out_bytes_trie_transfer.clone()))?;
         registry.register(Box::new(out_bytes_other.clone()))?;
-
-        registry.register(Box::new(read_futures_in_flight.clone()))?;
-        registry.register(Box::new(read_futures_total.clone()))?;
-        registry.register(Box::new(write_futures_in_flight.clone()))?;
-        registry.register(Box::new(write_futures_total.clone()))?;
 
         Ok(NetworkingMetrics {
             broadcast_requests,
@@ -217,10 +187,6 @@ impl NetworkingMetrics {
             out_bytes_block_transfer,
             out_bytes_trie_transfer,
             out_bytes_other,
-            read_futures_in_flight,
-            read_futures_total,
-            write_futures_in_flight,
-            write_futures_total,
             registry: registry.clone(),
         })
     }
@@ -292,10 +258,5 @@ impl Drop for NetworkingMetrics {
         unregister_metric!(self.registry, self.out_bytes_block_transfer);
         unregister_metric!(self.registry, self.out_bytes_trie_transfer);
         unregister_metric!(self.registry, self.out_bytes_other);
-
-        unregister_metric!(self.registry, self.read_futures_in_flight);
-        unregister_metric!(self.registry, self.read_futures_total);
-        unregister_metric!(self.registry, self.write_futures_in_flight);
-        unregister_metric!(self.registry, self.write_futures_total);
     }
 }

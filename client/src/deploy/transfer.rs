@@ -38,9 +38,9 @@ pub(super) mod target_account {
 
     pub(in crate::deploy) const ARG_NAME: &str = "target-account";
     const ARG_SHORT: &str = "t";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_VALUE_NAME: &str = "FORMATTED STRING";
     const ARG_HELP: &str =
-        "Hex-encoded public key of the account from which the main purse will be used as the \
+        "Account hash, uref or hex-encoded public key of the account from which the main purse will be used as the \
         target";
 
     // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand. Don't

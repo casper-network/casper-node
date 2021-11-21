@@ -1,12 +1,8 @@
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::stored_value::StoredValue;
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs};
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue};
 
 const CONTRACT_MAIN_PURSE: &str = "main_purse.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

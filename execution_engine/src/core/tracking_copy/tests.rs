@@ -3,12 +3,13 @@ use std::{cell::Cell, iter, rc::Rc};
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, URef,
-    U256, U512,
+    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
+    StoredValue, URef, U256, U512,
 };
 
 use super::{
@@ -20,11 +21,7 @@ use crate::{
         runtime_context::dictionary,
         ValidationError,
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        stored_value::{gens::stored_value_arb, StoredValue},
-        transform::Transform,
-    },
+    shared::{newtypes::CorrelationId, transform::Transform},
     storage::{
         global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
         trie::merkle_proof::TrieMerkleProof,
@@ -704,7 +701,7 @@ fn validate_query_proof_should_work() {
     // Bad proof hash
     assert_eq!(
         crate::core::validate_query_proof(
-            &Blake2bHash::new(&[]),
+            &Digest::hash(&[]),
             &proofs,
             &main_account_key,
             path,

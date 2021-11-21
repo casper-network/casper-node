@@ -45,8 +45,15 @@ function main() {
     assert_chain_progressed "5" "$STALLED_LFB"
     assert_chain_progressed "4" "$STALLED_LFB"
     assert_chain_progressed "3" "$STALLED_LFB"
-    # 16. Check for Equivocators
-    assert_no_equivocators_logs
+    # 16. Run Health Checks
+    # ... restarts=3: due to nodes being stopped and restarted
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors=0 \
+            equivocators=0 \
+            doppels=0 \
+            crashes=0 \
+            restarts=3 \
+            ejections=0
 
     log "------------------------------------------------------------"
     log "Scenario itst02 complete"

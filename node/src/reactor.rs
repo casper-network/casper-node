@@ -283,6 +283,11 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
     /// [`ControlAnnouncement`](`crate::effect::announcements::ControlAnnouncement`) if the event
     /// is indeed a control announcement variant.
     fn as_control(&self) -> Option<&ControlAnnouncement>;
+
+    /// Returns a cheap but human-readable description of the event.
+    fn description(&self) -> &'static str {
+        "anonymous event"
+    }
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -310,7 +315,7 @@ struct AllocatedMem {
 
 /// A runner for a reactor.
 ///
-/// The runner manages a reactors event queue and reactor itself and can run it either continuously
+/// The runner manages a reactor's event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
 pub(crate) struct Runner<R>
@@ -538,6 +543,7 @@ where
 
         let ((ancestor, event), queue) = self.scheduler.pop().await;
         trace!(%event, %queue, "current");
+        let event_desc = event.description();
 
         // Create another span for tracing the processing of one event.
         Span::current().record("ev", &self.current_event_id);
@@ -570,7 +576,7 @@ where
         // Warn if processing took a long time, record to histogram.
         let delta = self.clock.delta(start, end);
         if delta > *DISPATCH_EVENT_THRESHOLD {
-            warn!(ns = delta.into_nanos(), "event took very long to dispatch");
+            warn!(%event_desc, ns = delta.into_nanos(), "event took very long to dispatch");
         }
         self.metrics
             .event_dispatch_duration

@@ -9,10 +9,10 @@ mod memory_metrics;
 mod tests;
 
 use std::{
-    env,
     fmt::{self, Debug, Display, Formatter},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -24,9 +24,6 @@ use tracing::{debug, error, info, trace};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
-
-use casper_execution_engine::core::engine_state::{GenesisSuccess, UpgradeConfig, UpgradeSuccess};
-use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::{
@@ -41,7 +38,6 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
@@ -50,9 +46,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, RpcServerAnnouncement,
+            BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
+            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            LinearChainBlock, RpcServerAnnouncement,
         },
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
@@ -76,7 +73,8 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-
+use casper_execution_engine::core::engine_state::{GenesisSuccess, UpgradeConfig, UpgradeSuccess};
+use casper_types::{EraId, ProtocolVersion, PublicKey};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 use linear_chain::LinearChainComponent;
@@ -85,10 +83,9 @@ use memory_metrics::MemoryMetrics;
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
+// Note: The large enum size must be reigned in eventually. This is a stopgap for now.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum ParticipatingEvent {
-    /// Network event.
-    #[from]
-    Network(network::Event<Message>),
     /// Small network event.
     #[from]
     SmallNetwork(small_network::Event<Message>),
@@ -218,6 +215,9 @@ pub(crate) enum ParticipatingEvent {
     /// Incoming finality signature network message.
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
+    /// Block proposer announcement.
+    #[from]
+    BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -226,6 +226,45 @@ impl ReactorEvent for ParticipatingEvent {
             Some(ctrl_ann)
         } else {
             None
+        }
+    }
+    #[inline]
+    fn description(&self) -> &'static str {
+        match self {
+            ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
+            ParticipatingEvent::BlockProposer(_) => "BlockProposer",
+            ParticipatingEvent::RpcServer(_) => "RpcServer",
+            ParticipatingEvent::RestServer(_) => "RestServer",
+            ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
+            ParticipatingEvent::ChainspecLoader(_) => "ChainspecLoader",
+            ParticipatingEvent::Consensus(_) => "Consensus",
+            ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
+            ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
+            ParticipatingEvent::DeployGossiper(_) => "DeployGossiper",
+            ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
+            ParticipatingEvent::BlockValidator(_) => "BlockValidator",
+            ParticipatingEvent::LinearChain(_) => "LinearChain",
+            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
+            ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
+            ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
+            ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
+            ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
+            ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
+            ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
+            ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
+            ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            ParticipatingEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
+            ParticipatingEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
+            ParticipatingEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
+            ParticipatingEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
+            ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
+            ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
         }
     }
 }
@@ -276,7 +315,6 @@ impl Display for ParticipatingEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
-            ParticipatingEvent::Network(event) => write!(f, "network: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
             ParticipatingEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
@@ -339,6 +377,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::LinearChainAnnouncement(ann) => {
                 write!(f, "linear chain announcement: {}", ann)
             }
+            ParticipatingEvent::BlockProposerAnnouncement(ann) => {
+                write!(f, "block proposer announcement: {}", ann)
+            }
             ParticipatingEvent::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
@@ -367,7 +408,7 @@ pub(crate) struct ParticipatingInitConfig {
     pub(super) maybe_latest_block_header: Option<BlockHeader>,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
-    pub(super) network_identity: NetworkIdentity,
+    pub(super) node_startup_instant: Instant,
 }
 
 #[cfg(test)]
@@ -375,6 +416,11 @@ impl ParticipatingInitConfig {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
+    }
+
+    /// Inspect the contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
     }
 }
 
@@ -389,7 +435,6 @@ impl Debug for ParticipatingInitConfig {
 pub(crate) struct Reactor {
     metrics: Metrics,
     small_network: SmallNetwork<ParticipatingEvent, Message>,
-    network: Network<ParticipatingEvent, Message>,
     address_gossiper: Gossiper<GossipedAddress, ParticipatingEvent>,
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -444,7 +489,7 @@ impl Reactor {
         match tag {
             Tag::Trie => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_key| {
-                    self.contract_runtime.read_trie(trie_key)
+                    self.contract_runtime.get_trie(trie_key)
                 })
             }
             _ => todo!("already handled"),
@@ -519,7 +564,7 @@ impl reactor::Reactor for Reactor {
             maybe_latest_block_header,
             event_stream_server,
             small_network_identity,
-            network_identity,
+            node_startup_instant,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
@@ -529,29 +574,29 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let network_config = network::Config::from(&config.network);
-        let (network, network_effects) = Network::new(
-            event_queue,
-            network_config,
-            registry,
-            network_identity,
-            chainspec_loader.chainspec(),
-        )?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
-        let rpc_server =
-            RpcServer::new(config.rpc_server.clone(), effect_builder, *protocol_version)?;
+        let rpc_server = RpcServer::new(
+            config.rpc_server.clone(),
+            effect_builder,
+            *protocol_version,
+            node_startup_instant,
+        )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
+            node_startup_instant,
         )?;
 
-        let deploy_acceptor =
-            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            &*chainspec_loader.chainspec(),
+            registry,
+        )?;
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -579,6 +624,13 @@ impl reactor::Reactor for Reactor {
             let chainspec = chainspec_loader.chainspec();
             match chainspec.protocol_config.activation_point {
                 ActivationPoint::Genesis(genesis_timestamp) => {
+                    // Do not run genesis on a node which is not protocol version 1.0.0
+                    if chainspec.protocol_config.version != ProtocolVersion::V1_0_0 {
+                        return Err(Error::GenesisNeedsProtocolVersion1_0_0 {
+                            chainspec_protocol_version: chainspec.protocol_config.version,
+                        });
+                    }
+
                     // Check that no blocks exist in storage so we don't try to run genesis again on
                     // an existing blockchain.
                     if let Some(highest_block_header) = storage.read_highest_block_header()? {
@@ -595,7 +647,7 @@ impl reactor::Reactor for Reactor {
                     trace!(%post_state_hash, ?execution_effect);
                     initial_pre_state = ExecutionPreState::new(
                         0,
-                        post_state_hash.into(),
+                        post_state_hash,
                         Default::default(),
                         Default::default(),
                     );
@@ -630,7 +682,7 @@ impl reactor::Reactor for Reactor {
                         post_state_hash,
                         execution_effect,
                     } = contract_runtime.commit_upgrade(UpgradeConfig::new(
-                        (*upgrade_block_header.state_root_hash()).into(),
+                        *upgrade_block_header.state_root_hash(),
                         upgrade_block_header.protocol_version(),
                         chainspec.protocol_version(),
                         Some(chainspec.protocol_config.activation_point.era_id()),
@@ -649,7 +701,7 @@ impl reactor::Reactor for Reactor {
                     trace!(%post_state_hash, ?execution_effect);
                     initial_pre_state = ExecutionPreState::new(
                         upgrade_block_header.height() + 1,
-                        post_state_hash.into(),
+                        post_state_hash,
                         upgrade_block_header.hash(),
                         upgrade_block_header.accumulated_seed(),
                     );
@@ -673,7 +725,7 @@ impl reactor::Reactor for Reactor {
                 vec![],
             )?;
             // Make sure the new block really is a switch block
-            if new_switch_block.header().era_end().is_none() {
+            if !new_switch_block.header().is_switch_block() {
                 return Err(Error::FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
                     new_bad_block: Box::new(new_switch_block),
                 });
@@ -697,27 +749,20 @@ impl reactor::Reactor for Reactor {
             block_proposer_effects,
         ));
 
-        let (small_network, small_network_effects) = {
-            let maybe_initial_validators_hash_set = latest_block_header
-                .next_era_validator_weights()
-                .cloned()
-                .map(|validator_weights| validator_weights.into_keys().collect());
-            SmallNetwork::new(
-                event_queue,
-                config.network,
-                Some(WithDir::new(&root, &config.consensus)),
-                registry,
-                small_network_identity,
-                chainspec_loader.chainspec().as_ref(),
-                maybe_initial_validators_hash_set,
-            )?
-        };
+        let (small_network, small_network_effects) = SmallNetwork::new(
+            event_queue,
+            config.network,
+            Some(WithDir::new(&root, &config.consensus)),
+            registry,
+            small_network_identity,
+            chainspec_loader.chainspec().as_ref(),
+        )?;
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),
             WithDir::new(root, config.consensus),
             effect_builder,
-            chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.chainspec().clone(),
             &latest_block_header,
             maybe_next_activation_point,
             registry,
@@ -738,12 +783,13 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
+            chainspec_loader
+                .chainspec()
+                .highway_config
+                .finality_threshold_fraction,
+            maybe_next_activation_point,
         )?;
 
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::Network,
-            network_effects,
-        ));
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::SmallNetwork,
             small_network_effects,
@@ -759,7 +805,6 @@ impl reactor::Reactor for Reactor {
             Reactor {
                 metrics,
                 small_network,
-                network,
                 address_gossiper,
                 storage,
                 contract_runtime,
@@ -791,10 +836,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::Storage(event) => reactor::wrap_effects(
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
-            ),
-            ParticipatingEvent::Network(event) => reactor::wrap_effects(
-                ParticipatingEvent::Network,
-                self.network.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::SmallNetwork(event) => reactor::wrap_effects(
                 ParticipatingEvent::SmallNetwork,
@@ -862,19 +903,11 @@ impl reactor::Reactor for Reactor {
 
             // Requests:
             ParticipatingEvent::NetworkRequest(req) => {
-                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-                    ParticipatingEvent::Network(network::Event::from(req))
-                } else {
-                    ParticipatingEvent::SmallNetwork(small_network::Event::from(req))
-                };
+                let event = ParticipatingEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             ParticipatingEvent::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-                    ParticipatingEvent::Network(network::Event::from(req))
-                } else {
-                    ParticipatingEvent::SmallNetwork(small_network::Event::from(req))
-                };
+                let event = ParticipatingEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             ParticipatingEvent::DeployFetcherRequest(req) => self.dispatch_event(
@@ -915,7 +948,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-
             ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
                 responder,
@@ -923,7 +955,7 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
-                    responder,
+                    maybe_responder: responder,
                 };
                 self.dispatch_event(
                     effect_builder,
@@ -1103,16 +1135,20 @@ impl reactor::Reactor for Reactor {
                     consensus::Event::BlockAdded(Box::new(block.header().clone())),
                 );
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
-                    event_stream_server::Event::BlockAdded(block.clone()),
+                    event_stream_server::Event::BlockAdded(block),
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
-                ));
+
                 effects
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+            ) => {
+                let reactor_event = ParticipatingEvent::EventStreamServer(
+                    event_stream_server::Event::DeploysExpired(hashes),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
@@ -1132,6 +1168,10 @@ impl reactor::Reactor for Reactor {
 
                 let reactor_event = ParticipatingEvent::Consensus(
                     consensus::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event = ParticipatingEvent::LinearChain(
+                    linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
                 );
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
@@ -1243,6 +1283,11 @@ impl reactor::Reactor for Reactor {
                 self.linear_chain
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
+            ParticipatingEvent::ContractRuntimeAnnouncement(ann) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::SmallNetwork(ann.into()),
+            ),
         }
     }
 
@@ -1253,7 +1298,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.consensus
+        self.linear_chain
             .stop_for_upgrade()
             .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
@@ -1263,10 +1308,6 @@ impl reactor::Reactor for Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-            self.network.node_id()
-        } else {
-            self.small_network.node_id()
-        }
+        self.small_network.node_id()
     }
 }

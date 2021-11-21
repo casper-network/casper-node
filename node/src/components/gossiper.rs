@@ -467,10 +467,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         effect_builder: EffectBuilder<REv>,
         item: T,
         requester: NodeId,
-    ) -> Effects<Event<T>>
-    where
-        T: Item,
-    {
+    ) -> Effects<Event<T>> {
         match NodeMessage::new_get_response(&FetchedOrNotFound::Fetched(item)) {
             Ok(message) => effect_builder.send_message(requester, message).ignore(),
             Err(error) => {

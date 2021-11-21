@@ -66,6 +66,16 @@ function do_start_node() {
     local NODE_ID=${1}
     local LFB_HASH=${2}
     log_step "starting node-$NODE_ID. Syncing from hash=${LFB_HASH}"
+
+    # Deleting the pid due to crash that gets logged
+    if [ -f "$(get_path_to_node_storage $NODE_ID)/initializer.pid" ]; then
+        log "... pid file detected, removing (<= 1.3)"
+        rm -f "$(get_path_to_node_storage $NODE_ID)/initializer.pid"
+    elif [ -f "$(get_path_to_node_storage $NODE_ID)/casper-net-1/initializer.pid" ]; then
+        log "... pid file detected, removing (1.4+)"
+        rm -f "$(get_path_to_node_storage $NODE_ID)/casper-net-1/initializer.pid"
+    fi
+
     do_node_start "$NODE_ID" "$LFB_HASH"
     sleep 1
     if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" != "RUNNING" ]; then

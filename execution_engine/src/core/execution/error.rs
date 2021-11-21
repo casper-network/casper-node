@@ -1,111 +1,159 @@
+//! Execution error and supporting code.
 use parity_wasm::elements;
 use thiserror::Error;
 
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, URef,
+    ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };
 
-use crate::{
-    core::resolvers::error::ResolverError,
-    shared::{wasm_prep, TypeMismatch},
-    storage,
-};
+use crate::{core::resolvers::error::ResolverError, shared::wasm_prep, storage};
 
+/// Possible execution errors.
 #[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// WASM interpreter error.
     #[error("Interpreter error: {}", _0)]
     Interpreter(String),
+    /// Storage error.
     #[error("Storage error: {}", _0)]
     Storage(storage::error::Error),
+    /// Failed to (de)serialize bytes.
     #[error("Serialization error: {}", _0)]
     BytesRepr(bytesrepr::Error),
+    /// Unable to find named key.
     #[error("Named key {} not found", _0)]
     NamedKeyNotFound(String),
+    /// Unable to find a key.
     #[error("Key {} not found", _0)]
     KeyNotFound(Key),
+    /// Unable to find an account.
     #[error("Account {:?} not found", _0)]
     AccountNotFound(Key),
+    /// Type mismatch error.
     #[error("{}", _0)]
-    TypeMismatch(TypeMismatch),
+    TypeMismatch(StoredValueTypeMismatch),
+    /// Invalid access.
     #[error("Invalid access rights: {}", required)]
-    InvalidAccess { required: AccessRights },
+    InvalidAccess {
+        /// Required access rights of the operation.
+        required: AccessRights,
+    },
+    /// Forged reference error.
     #[error("Forged reference: {}", _0)]
     ForgedReference(URef),
+    /// Unable to find a [`URef`].
     #[error("URef not found: {}", _0)]
     URefNotFound(URef),
+    /// Unable to find a function.
     #[error("Function not found: {}", _0)]
     FunctionNotFound(String),
+    /// Parity WASM error.
     #[error("{}", _0)]
     ParityWasm(elements::Error),
+    /// Error optimizing WASM.
     #[error("WASM optimizer error")]
     WasmOptimizer,
+    /// Execution exceeded the gas limit.
     #[error("Out of gas error")]
     GasLimit,
+    /// A stored smart contract incorrectly called a ret function.
     #[error("Return")]
     Ret(Vec<URef>),
-    #[error("{}", _0)]
-    Rng(String),
+    /// Error using WASM host function resolver.
     #[error("Resolver error: {}", _0)]
     Resolver(ResolverError),
     /// Reverts execution with a provided status
     #[error("{}", _0)]
     Revert(ApiError),
+    /// Error adding an associated key.
     #[error("{}", _0)]
     AddKeyFailure(AddKeyFailure),
+    /// Error removing an associated key.
     #[error("{}", _0)]
     RemoveKeyFailure(RemoveKeyFailure),
+    /// Error updating an associated key.
     #[error("{}", _0)]
     UpdateKeyFailure(UpdateKeyFailure),
+    /// Error setting threshold on associated key.
     #[error("{}", _0)]
     SetThresholdFailure(SetThresholdFailure),
+    /// Error executing system contract.
     #[error("{}", _0)]
     SystemContract(system::Error),
+    /// Weight of all used associated keys does not meet account's deploy threshold.
     #[error("Deployment authorization failure")]
     DeploymentAuthorizationFailure,
+    /// Host buffer expected a value to be present.
     #[error("Expected return value")]
     ExpectedReturnValue,
+    /// Host buffer was not expected to contain a value.
     #[error("Unexpected return value")]
     UnexpectedReturnValue,
+    /// Error calling a host function in a wrong context.
     #[error("Invalid context")]
     InvalidContext,
+    /// Unable to execute a deploy with invalid major protocol version.
     #[error("Incompatible protocol major version. Expected version {expected} but actual version is {actual}")]
-    IncompatibleProtocolMajorVersion { expected: u32, actual: u32 },
+    IncompatibleProtocolMajorVersion {
+        /// Expected major version.
+        expected: u32,
+        /// Actual major version supplied.
+        actual: u32,
+    },
+    /// Error converting a CLValue.
     #[error("{0}")]
     CLValue(CLValueError),
+    /// Unable to access host buffer.
     #[error("Host buffer is empty")]
     HostBufferEmpty,
+    /// WASM bytes contains an unsupported "start" section.
     #[error("Unsupported WASM start")]
     UnsupportedWasmStart,
+    /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
     NoActiveContractVersions(ContractPackageHash),
+    /// Invalid contract version supplied.
     #[error("Invalid contract version: {}", _0)]
     InvalidContractVersion(ContractVersionKey),
+    /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
+    /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(wasm_prep::PreprocessingError),
-    #[error("Unexpected Key length. Expected length {expected} but actual length is {actual}")]
-    InvalidKeyLength { expected: usize, actual: usize },
+    /// Unable to convert a [`Key`] into an [`URef`].
     #[error("Key is not a URef: {}", _0)]
     KeyIsNotAURef(Key),
+    /// Unexpected variant of a stored value.
     #[error("Unexpected variant of a stored value")]
     UnexpectedStoredValueVariant,
+    /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
     LockedContract(ContractPackageHash),
+    /// Unable to find a contract package by a specified hash address.
     #[error("Invalid contract package: {}", _0)]
     InvalidContractPackage(ContractPackageHash),
+    /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
     InvalidContract(ContractHash),
+    /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
     InvalidContractWasm(ContractWasmHash),
+    /// Error calling a smart contract with a missing argument.
     #[error("Missing argument: {name}")]
-    MissingArgument { name: String },
+    MissingArgument {
+        /// Name of the required argument.
+        name: String,
+    },
+    /// Error writing a dictionary item key which exceeded maximum allowed length.
     #[error("Dictionary item key exceeded maximum length")]
     DictionaryItemKeyExceedsLength,
+    /// Missing system contract registry.
     #[error("Missing system contract registry")]
     MissingSystemContractRegistry,
+    /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
 }
@@ -123,11 +171,12 @@ impl From<pwasm_utils::OptimizerError> for Error {
 }
 
 impl Error {
+    /// Returns new type mismatch error.
     pub fn type_mismatch(expected: CLType, found: CLType) -> Error {
-        Error::TypeMismatch(TypeMismatch {
-            expected: format!("{:?}", expected),
-            found: format!("{:?}", found),
-        })
+        Error::TypeMismatch(StoredValueTypeMismatch::new(
+            format!("{:?}", expected),
+            format!("{:?}", found),
+        ))
     }
 }
 

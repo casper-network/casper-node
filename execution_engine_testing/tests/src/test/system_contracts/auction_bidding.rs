@@ -2,24 +2,18 @@ use assert_matches::assert_matches;
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
-    },
-    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            genesis::{GenesisAccount, GenesisValidator},
-            Error as EngineError,
-        },
-        execution::Error,
+use casper_execution_engine::core::{
+    engine_state::{
+        genesis::{GenesisAccount, GenesisValidator},
+        Error as EngineError,
     },
-    shared::motes::Motes,
+    execution::Error,
 };
 
 use casper_types::{
@@ -32,7 +26,7 @@ use casper_types::{
         },
         mint,
     },
-    ApiError, EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

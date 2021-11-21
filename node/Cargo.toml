@@ -19,11 +19,11 @@ backtrace = "0.3.50"
 base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
-blake2 = { version = "0.9.0", default-features = false }
 bytes = "1.0.1"
 casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 casper-node-macros = { version = "1.0.0", path = "../node_macros" }
-casper-types = { version = "1.0.0", path = "../types", default-features = false, features = ["std", "gens"] }
+casper-hashing = { version = "1.0.0", path = "../hashing" }
+casper-types = { version = "1.0.0", path = "../types", features = ["datasize", "gens", "json-schema"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
@@ -35,8 +35,7 @@ fs2 = "0.4.3"
 futures = "0.3.5"
 futures-io = "0.3.5"
 getrandom = "0.2.0"
-hex = "0.4.2"
-hex-buffer-serde = "0.2.1"
+hex-buffer-serde = "0.3.0"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
 http = "0.2.1"
@@ -47,7 +46,6 @@ jemalloc-ctl = "0.3.3"
 jemallocator = "0.3.2"
 k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
 libc = "0.2.66"
-libp2p = { version = "0.35.1", default-features = false, features = ["deflate", "dns", "floodsub", "gossipsub", "identify", "kad", "mdns", "mplex", "noise", "ping", "request-response", "tcp-tokio", "uds", "yamux"] }
 linked-hash-map = "0.5.3"
 lmdb = "0.8.0"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
@@ -68,7 +66,7 @@ rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
 rmp-serde = "0.14.4"
-schemars = { version = "0.8.0", features = ["preserve_order"] }
+schemars = { version = "0.8.0", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde-big-array = "0.3.0"
 serde_bytes = "0.11.5"
@@ -95,7 +93,7 @@ tracing-subscriber = { version = "0.2.10", features = ["fmt", "json"] }
 uint = "0.9.0"
 untrusted = "0.7.1"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-warp = "0.3.0"
+warp = { version = "0.3.0", features = ["compression"] }
 warp-json-rpc = "0.3.0"
 wheelbuf = "0.2.0"
 
@@ -103,8 +101,8 @@ wheelbuf = "0.2.0"
 vergen = "3"
 
 [dev-dependencies]
+assert-json-diff = "2.0.1"
 fake_instant = "0.4.0"
-multihash = "0.13.2"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
 rand_core = "0.6.2"
@@ -113,6 +111,7 @@ reqwest = { version = "0.11.3", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]
+default = ['casper-mainnet']
 vendored-openssl = ['openssl/vendored']
 casper-mainnet = []
 

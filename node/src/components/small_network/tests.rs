@@ -177,7 +177,6 @@ impl Reactor for TestReactor {
             registry,
             small_network_identity,
             ChainInfo::create_for_testing(),
-            None,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =

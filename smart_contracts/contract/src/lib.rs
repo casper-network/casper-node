@@ -3,8 +3,7 @@
 //!
 //! # `no_std`
 //!
-//! By default, the library is `no_std`, however you can enable full `std` functionality by enabling
-//! the crate's `std` feature.
+//! The library is `no_std`, but uses the `core` and `alloc` crates.
 //!
 //! # Example
 //!
@@ -46,9 +45,9 @@
 //! Support for writing smart contracts are contained in the [`contract_api`] module and its
 //! submodules.
 
-#![cfg_attr(feature = "no-std", no_std)]
+#![cfg_attr(not(test), no_std)]
 #![cfg_attr(
-    all(feature = "no-std", not(any(test, doc))),
+    all(not(test), feature = "no-std-helpers"),
     feature(alloc_error_handler, core_intrinsics, lang_items)
 )]
 #![doc(html_root_url = "https://docs.rs/casper-contract/1.0.0")]
@@ -59,22 +58,16 @@
 )]
 #![warn(missing_docs)]
 
-#[cfg(feature = "no-std")]
 extern crate alloc;
 
 pub mod contract_api;
 pub mod ext_ffi;
-#[cfg(all(feature = "no-std", not(any(test, doc))))]
+#[cfg(all(not(test), feature = "no-std-helpers", not(feature = "std")))]
 mod no_std_handlers;
 pub mod unwrap_or_revert;
 
-#[cfg(not(any(feature = "std", feature = "no-std")))]
-compile_error!(
-    "casper-contract requires one of 'no-std' (enabled by default) or 'std' features to be enabled"
-);
-
 /// An instance of [`WeeAlloc`](https://docs.rs/wee_alloc) which allows contracts built as `no_std`
 /// to avoid having to provide a global allocator themselves.
-#[cfg(feature = "provide-allocator")]
+#[cfg(all(not(test), feature = "no-std-helpers"))]
 #[global_allocator]
 pub static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;

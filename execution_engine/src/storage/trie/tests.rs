@@ -18,7 +18,7 @@ mod pointer_block {
 
     #[test]
     fn assignment_and_indexing() {
-        let test_hash = Blake2bHash::new(b"TrieTrieAgain");
+        let test_hash = Digest::hash(b"TrieTrieAgain");
         let leaf_pointer = Some(Pointer::LeafPointer(test_hash));
         let mut pointer_block = PointerBlock::new();
         pointer_block[0] = leaf_pointer;
@@ -32,7 +32,7 @@ mod pointer_block {
     #[test]
     #[should_panic]
     fn assignment_off_end() {
-        let test_hash = Blake2bHash::new(b"TrieTrieAgain");
+        let test_hash = Digest::hash(b"TrieTrieAgain");
         let leaf_pointer = Some(Pointer::LeafPointer(test_hash));
         let mut pointer_block = PointerBlock::new();
         pointer_block[RADIX] = leaf_pointer;
@@ -49,12 +49,9 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::*;
 
-    use casper_types::{bytesrepr, gens::key_arb, Key};
+    use casper_types::{bytesrepr, gens::key_arb, Key, StoredValue};
 
-    use crate::{
-        shared::stored_value::StoredValue,
-        storage::trie::{gens::*, PointerBlock, Trie},
-    };
+    use crate::storage::trie::{gens::*, PointerBlock, Trie};
 
     proptest! {
         #[test]

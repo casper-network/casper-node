@@ -7,19 +7,18 @@ pub mod associated_keys;
 mod error;
 mod weight;
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    contracts::NamedKeys,
-    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
-};
+use serde::Serialize;
+
 use alloc::{collections::BTreeSet, vec::Vec};
+use core::{
+    convert::TryFrom,
+    fmt::{self, Debug, Display, Formatter},
+};
+
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-use core::{convert::TryFrom, fmt::Debug};
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
@@ -29,9 +28,14 @@ pub use self::{
     error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::NamedKeys,
+    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
+};
 
 /// Represents an Account in the global state.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,
@@ -106,8 +110,8 @@ impl Account {
     }
 
     /// Returns associated keys.
-    pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
-        self.associated_keys.iter()
+    pub fn associated_keys(&self) -> &AssociatedKeys {
+        &self.associated_keys
     }
 
     /// Returns action thresholds.
@@ -282,9 +286,6 @@ impl FromBytes for Account {
         ))
     }
 }
-/// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
-/// account.
-pub const MAX_ASSOCIATED_KEYS: usize = 10;
 
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
@@ -301,29 +302,29 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum AddKeyFailure {
-    /// There are already [`MAX_ASSOCIATED_KEYS`] [`AccountHash`]s associated with the given
-    /// account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key because maximum amount of keys is reached")
-    )]
+    /// There are already maximum [`AccountHash`]s associated with the given account.
     MaxKeysLimit = 1,
     /// The given [`AccountHash`] is already associated with the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key because given key already exists")
-    )]
     DuplicateKey = 2,
     /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key due to insufficient permissions")
-    )]
     PermissionDenied = 3,
+}
+
+impl Display for AddKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            AddKeyFailure::MaxKeysLimit => formatter.write_str(
+                "Unable to add new associated key because maximum amount of keys is reached",
+            ),
+            AddKeyFailure::DuplicateKey => formatter
+                .write_str("Unable to add new associated key because given key already exists"),
+            AddKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to add new associated key due to insufficient permissions"),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -343,26 +344,31 @@ impl TryFrom<i32> for AddKeyFailure {
 
 /// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum RemoveKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[cfg_attr(feature = "std", error("Unable to remove a key that does not exist"))]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to remove associated key due to insufficient permissions")
-    )]
     PermissionDenied = 2,
     /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
     /// `AccountHash`s to fall below one of the action thresholds for the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to remove a key which would violate action threshold constraints")
-    )]
     ThresholdViolation = 3,
+}
+
+impl Display for RemoveKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            RemoveKeyFailure::MissingKey => {
+                formatter.write_str("Unable to remove a key that does not exist")
+            }
+            RemoveKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to remove associated key due to insufficient permissions"),
+            RemoveKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to remove a key which would violate action threshold constraints",
+            ),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -387,30 +393,32 @@ impl TryFrom<i32> for RemoveKeyFailure {
 /// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
 /// associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum UpdateKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update the value under an associated key that does not exist")
-    )]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update associated key due to insufficient permissions")
-    )]
     PermissionDenied = 2,
     /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
     /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
     /// account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update weight that would fall below any of action thresholds")
-    )]
     ThresholdViolation = 3,
+}
+
+impl Display for UpdateKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            UpdateKeyFailure::MissingKey => formatter.write_str(
+                "Unable to update the value under an associated key that does not exist",
+            ),
+            UpdateKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to update associated key due to insufficient permissions"),
+            UpdateKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to update weight that would fall below any of action thresholds",
+            ),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -432,9 +440,50 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
+#[doc(hidden)]
+#[cfg(any(feature = "gens", test))]
+pub mod gens {
+    use proptest::prelude::*;
+
+    use crate::{
+        account::{
+            action_thresholds::gens::action_thresholds_arb,
+            associated_keys::gens::associated_keys_arb, Account, Weight,
+        },
+        gens::{account_hash_arb, named_keys_arb, uref_arb},
+    };
+
+    prop_compose! {
+        pub fn account_arb()(
+            account_hash in account_hash_arb(),
+            urefs in named_keys_arb(3),
+            purse in uref_arb(),
+            thresholds in action_thresholds_arb(),
+            mut associated_keys in associated_keys_arb(),
+        ) -> Account {
+                associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
+                Account::new(
+                    account_hash,
+                    urefs,
+                    purse,
+                    associated_keys,
+                    thresholds,
+                )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryFrom, vec::Vec};
+    use crate::{
+        account::{
+            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
+            SetThresholdFailure, UpdateKeyFailure, Weight,
+        },
+        contracts::NamedKeys,
+        AccessRights, URef,
+    };
+    use std::{collections::BTreeSet, convert::TryFrom, iter::FromIterator, vec::Vec};
 
     use super::*;
 
@@ -544,17 +593,6 @@ mod tests {
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(account_hash, decoded);
     }
-
-    use std::{collections::BTreeSet, iter::FromIterator};
-
-    use crate::{
-        account::{
-            Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
-            SetThresholdFailure, UpdateKeyFailure, Weight,
-        },
-        contracts::NamedKeys,
-        AccessRights, URef,
-    };
 
     #[test]
     fn associated_keys_can_authorize_keys() {
@@ -896,39 +934,6 @@ mod tests {
         account
             .update_associated_key(key_1, Weight::new(1))
             .expect("should work");
-    }
-}
-
-#[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
-pub mod gens {
-    use proptest::prelude::*;
-
-    use crate::{
-        account::{
-            action_thresholds::gens::action_thresholds_arb,
-            associated_keys::gens::associated_keys_arb, Account, Weight,
-        },
-        gens::{account_hash_arb, named_keys_arb, uref_arb},
-    };
-
-    prop_compose! {
-        pub fn account_arb()(
-            account_hash in account_hash_arb(),
-            urefs in named_keys_arb(3),
-            purse in uref_arb(),
-            thresholds in action_thresholds_arb(),
-            mut associated_keys in associated_keys_arb(),
-        ) -> Account {
-                associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
-                Account::new(
-                    account_hash,
-                    urefs,
-                    purse,
-                    associated_keys,
-                    thresholds,
-                )
-        }
     }
 }
 

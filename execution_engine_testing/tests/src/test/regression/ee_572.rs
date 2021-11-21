@@ -1,12 +1,8 @@
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::stored_value::StoredValue;
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue, U512};
 
 const CONTRACT_CREATE: &str = "ee_572_regression_create.wasm";
 const CONTRACT_ESCALATE: &str = "ee_572_regression_escalate.wasm";

@@ -1,4 +1,4 @@
-use casper_engine_test_support::internal::{
+use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::Error;
@@ -20,14 +20,13 @@ fn should_run_ee_532_get_uref_regression_test() {
     )
     .build();
 
-    let result = InMemoryWasmTestBuilder::default()
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
-        .finish();
+        .commit();
 
-    let deploy_result = result
-        .builder()
+    let deploy_result = builder
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)

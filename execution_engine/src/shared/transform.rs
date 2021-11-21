@@ -1,3 +1,4 @@
+//! Support for transforms produced during execution.
 use std::{
     any,
     convert::TryFrom,
@@ -11,10 +12,8 @@ use num::traits::{AsPrimitive, WrappingAdd};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
-    CLType, CLTyped, CLValue, CLValueError, U128, U256, U512,
+    CLType, CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
-
-use crate::shared::{stored_value::StoredValue, TypeMismatch};
 
 /// Error type for applying and combining transforms. A `TypeMismatch`
 /// occurs when a transform cannot be applied because the types are
@@ -25,10 +24,18 @@ use crate::shared::{stored_value::StoredValue, TypeMismatch};
 /// cause an overflow).
 #[derive(PartialEq, Eq, Debug, Clone, thiserror::Error)]
 pub enum Error {
-    #[error(transparent)]
+    /// Error while (de)serializing data.
+    #[error("{0}")]
     Serialization(bytesrepr::Error),
-    #[error(transparent)]
-    TypeMismatch(#[from] TypeMismatch),
+    /// Type mismatch error.
+    #[error("{0}")]
+    TypeMismatch(StoredValueTypeMismatch),
+}
+
+impl From<StoredValueTypeMismatch> for Error {
+    fn from(error: StoredValueTypeMismatch) -> Self {
+        Error::TypeMismatch(error)
+    }
 }
 
 impl From<CLValueError> for Error {
@@ -38,24 +45,46 @@ impl From<CLValueError> for Error {
             CLValueError::Type(cl_type_mismatch) => {
                 let expected = format!("{:?}", cl_type_mismatch.expected);
                 let found = format!("{:?}", cl_type_mismatch.found);
-                let type_mismatch = TypeMismatch { expected, found };
+                let type_mismatch = StoredValueTypeMismatch::new(expected, found);
                 Error::TypeMismatch(type_mismatch)
             }
         }
     }
 }
 
+/// Representation of a single transformation ocurring during execution.
+///
+/// Note that all arithmetic variants of [`Transform`] are commutative which means that a given
+/// collection of them can be executed in any order to produce the same end result.
 #[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Transform {
+    /// An identity transformation that does not modify a value in the global state.
+    ///
+    /// Created as part of a read from the global state.
     Identity,
+    /// Writes a new value in the global state.
     Write(StoredValue),
+    /// A wrapping addition of an `i32` to an existing numeric value (not necessarily an `i32`) in
+    /// the global state.
     AddInt32(i32),
+    /// A wrapping addition of a `u64` to an existing numeric value (not necessarily an `u64`) in
+    /// the global state.
     AddUInt64(u64),
+    /// A wrapping addition of a `U128` to an existing numeric value (not necessarily an `U128`) in
+    /// the global state.
     AddUInt128(U128),
+    /// A wrapping addition of a `U256` to an existing numeric value (not necessarily an `U256`) in
+    /// the global state.
     AddUInt256(U256),
+    /// A wrapping addition of a `U512` to an existing numeric value (not necessarily an `U512`) in
+    /// the global state.
     AddUInt512(U512),
+    /// Adds new named keys to an existing entry in the global state.
+    ///
+    /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
+    /// Represents the case where applying a transform would cause an error.
     Failure(Error),
 }
 
@@ -116,7 +145,7 @@ where
         other => {
             let expected = format!("integral type compatible with {}", any::type_name::<Y>());
             let found = format!("{:?}", other);
-            Err(TypeMismatch::new(expected, found).into())
+            Err(StoredValueTypeMismatch::new(expected, found).into())
         }
     }
 }
@@ -133,6 +162,9 @@ where
 }
 
 impl Transform {
+    /// Applies the transformation on a specified stored value instance.
+    ///
+    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
     pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
         match self {
             Transform::Identity => Ok(stored_value),
@@ -154,42 +186,42 @@ impl Transform {
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::ContractPackage(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractPackage".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::ContractWasm(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractWasm".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Transfer(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Transfer".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::DeployInfo(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "DeployInfo".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::EraInfo(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "EraInfo".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Bid(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Bid".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Withdraw(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Withdraw".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
             Transform::Failure(error) => Err(error),
@@ -217,11 +249,7 @@ where
     } else {
         match T::try_from(b) {
             Err(b_type) => Transform::Failure(
-                TypeMismatch {
-                    expected: String::from(expected),
-                    found: b_type,
-                }
-                .into(),
+                StoredValueTypeMismatch::new(String::from(expected), b_type).into(),
             ),
 
             Ok(j) => i.wrapping_add(&j).into(),
@@ -253,7 +281,8 @@ impl Add for Transform {
                 Transform::AddUInt256(j) => Transform::AddUInt256(j.wrapping_add(&(i.as_()))),
                 Transform::AddUInt512(j) => Transform::AddUInt512(j.wrapping_add(&i.as_())),
                 other => Transform::Failure(
-                    TypeMismatch::new("AddInt32".to_owned(), format!("{:?}", other)).into(),
+                    StoredValueTypeMismatch::new("AddInt32".to_owned(), format!("{:?}", other))
+                        .into(),
                 ),
             },
             (Transform::AddUInt64(i), b) => match b {
@@ -263,7 +292,8 @@ impl Add for Transform {
                 Transform::AddUInt256(j) => Transform::AddUInt256(j.wrapping_add(&i.into())),
                 Transform::AddUInt512(j) => Transform::AddUInt512(j.wrapping_add(&i.into())),
                 other => Transform::Failure(
-                    TypeMismatch::new("AddUInt64".to_owned(), format!("{:?}", other)).into(),
+                    StoredValueTypeMismatch::new("AddUInt64".to_owned(), format!("{:?}", other))
+                        .into(),
                 ),
             },
             (Transform::AddUInt128(i), b) => wrapped_transform_addition(i, b, "U128"),
@@ -275,7 +305,8 @@ impl Add for Transform {
                     Transform::AddKeys(ks1)
                 }
                 other => Transform::Failure(
-                    TypeMismatch::new("AddKeys".to_owned(), format!("{:?}", other)).into(),
+                    StoredValueTypeMismatch::new("AddKeys".to_owned(), format!("{:?}", other))
+                        .into(),
                 ),
             },
         }
@@ -351,12 +382,14 @@ impl From<&Transform> for casper_types::Transform {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{collection::vec, prelude::*};
 
+    use casper_types::gens::stored_value_arb;
+
     use super::Transform;
-    use crate::shared::stored_value::gens::stored_value_arb;
 
     pub fn transform_arb() -> impl Strategy<Value = Transform> {
         prop_oneof![

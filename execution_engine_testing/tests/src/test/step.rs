@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
-use casper_engine_test_support::internal::{
+use casper_engine_test_support::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
@@ -11,7 +11,6 @@ use casper_execution_engine::{
         genesis::{GenesisAccount, GenesisValidator},
         RewardItem, SlashItem,
     },
-    shared::motes::Motes,
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -22,7 +21,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, ContractHash, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {

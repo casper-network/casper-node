@@ -2,17 +2,11 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, SYSTEM_ADDR,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
-use casper_execution_engine::{
-    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
-    shared::motes::Motes,
-};
+use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -23,7 +17,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

@@ -3,7 +3,7 @@
 
 use alloc::{boxed::Box, vec::Vec};
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +17,7 @@ const SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG: u8 = 1;
 
 /// Information about a seigniorage allocation
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum SeigniorageAllocation {
     /// Info about a seigniorage allocation for a validator
@@ -159,7 +159,7 @@ impl CLTyped for SeigniorageAllocation {
 
 /// Auction metadata.  Intended to be recorded at each era.
 #[derive(Debug, Default, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct EraInfo {
     seigniorage_allocations: Vec<SeigniorageAllocation>,

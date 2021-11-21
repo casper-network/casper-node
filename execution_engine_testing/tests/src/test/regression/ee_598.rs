@@ -2,20 +2,15 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-    },
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{
-    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
-    shared::motes::Motes,
-};
+use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate},
-    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -90,13 +85,9 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let result = builder.exec(exec_request_2).commit().finish();
+    builder.exec(exec_request_2).commit();
 
-    let response = result
-        .builder()
-        .get_exec_result(1)
-        .expect("should have a response")
-        .to_owned();
+    let response = builder.get_exec_result(1).expect("should have a response");
     let error_message = utils::get_error_message(response);
 
     // Error::UnbondTooLarge,

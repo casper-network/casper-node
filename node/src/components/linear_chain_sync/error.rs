@@ -3,14 +3,15 @@ use std::fmt::Debug;
 use thiserror::Error;
 
 use casper_execution_engine::{
-    core::engine_state, shared::stored_value::StoredValue, storage::trie::Trie,
+    core::{engine_state, engine_state::GetEraValidatorsError},
+    storage::trie::Trie,
 };
-use casper_types::{EraId, Key, ProtocolVersion};
+use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{
         consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError,
+        fetcher::FetcherError, linear_chain_sync::operations::KeyBlockInfo,
     },
     crypto,
     types::{
@@ -31,6 +32,16 @@ pub(crate) enum SignatureValidationError {
         block_header: Box<BlockHeader>,
         block_hash: Box<BlockHash>,
         block_signatures: Box<BlockSignatures>,
+    },
+
+    #[error(
+        "Block header is in wrong era. \
+         block header: {block_header:?} \
+         trusted key block info: {trusted_key_block_info:?}"
+    )]
+    HeaderIsInWrongEra {
+        block_header: Box<BlockHeader>,
+        trusted_key_block_info: Box<KeyBlockInfo>,
     },
 
     #[error(transparent)]
@@ -62,6 +73,15 @@ pub(crate) enum LinearChainSyncError {
     RetrievedBlockHeaderFromFutureVersion {
         current_version: ProtocolVersion,
         block_header_with_future_version: Box<BlockHeader>,
+    },
+
+    #[error(
+        "Current version is {current_version}, but current block header has older version: \
+         {block_header_with_old_version:?}"
+    )]
+    CurrentBlockHeaderHasOldVersion {
+        current_version: ProtocolVersion,
+        block_header_with_old_version: Box<BlockHeader>,
     },
 
     #[error(transparent)]
@@ -111,11 +131,25 @@ pub(crate) enum LinearChainSyncError {
         trusted_block_header: Box<BlockHeader>,
     },
 
-    #[error(
-        "Can't download block before genesis. \
-         Genesis block header: {genesis_block_header}"
-    )]
-    CantDownloadBlockBeforeGenesis {
-        genesis_block_header: Box<BlockHeader>,
+    #[error("Hit genesis block trying to get trusted era validators.")]
+    HitGenesisBlockTryingToGetTrustedEraValidators { trusted_header: BlockHeader },
+
+    /// Error getting era validators from the execution engine.
+    #[error(transparent)]
+    GetEraValidatorsError(#[from] GetEraValidatorsError),
+
+    #[error("Stored block has unexpected parent hash. parent: {parent:?}, child: {child:?}")]
+    UnexpectedParentHash {
+        parent: Box<BlockHeader>,
+        child: Box<BlockHeader>,
     },
+
+    #[error("Block has a lower version than its parent.")]
+    LowerVersionThanParent {
+        parent: Box<BlockHeader>,
+        child: Box<BlockHeader>,
+    },
+
+    #[error("Parent block has a height of u64::MAX.")]
+    HeightOverflow { parent: Box<BlockHeader> },
 }

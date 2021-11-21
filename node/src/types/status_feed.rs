@@ -5,12 +5,14 @@ use std::{
     collections::BTreeMap,
     hash::Hash,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    time::Duration,
 };
 
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion, PublicKey};
 
 use crate::{
@@ -18,7 +20,7 @@ use crate::{
         chainspec_loader::NextUpgrade,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
-    crypto::{hash::Digest, AsymmetricKeyExt},
+    crypto::AsymmetricKeyExt,
     types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, TimeDiff, Timestamp},
 };
 
@@ -45,6 +47,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         our_public_signing_key: Some(PublicKey::doc_example().clone()),
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
+        node_uptime: Duration::from_secs(13),
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
@@ -88,6 +91,8 @@ pub struct StatusFeed<I> {
     pub round_length: Option<TimeDiff>,
     /// The compiled node version.
     pub version: &'static str,
+    /// Time that passed since the node has started.
+    pub node_uptime: Duration,
 }
 
 impl<I> StatusFeed<I> {
@@ -96,6 +101,7 @@ impl<I> StatusFeed<I> {
         peers: BTreeMap<I, String>,
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
+        node_uptime: Duration,
     ) -> Self {
         let (our_public_signing_key, round_length) = match consensus_status {
             Some((public_key, round_length)) => (Some(public_key), round_length),
@@ -108,6 +114,7 @@ impl<I> StatusFeed<I> {
             our_public_signing_key,
             round_length,
             version: crate::VERSION_STRING.as_str(),
+            node_uptime,
         }
     }
 }
@@ -147,8 +154,8 @@ pub struct GetStatusResult {
     /// The chainspec name.
     pub chainspec_name: String,
     /// The state root hash used at the start of the current session.
-    #[deprecated(since = "1.4.0")]
-    pub starting_state_root_hash: Option<Digest>,
+    #[deprecated(since = "1.5.0")]
+    pub starting_state_root_hash: Digest,
     /// The node ID and network address of each connected peer.
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
@@ -161,6 +168,8 @@ pub struct GetStatusResult {
     pub next_upgrade: Option<NextUpgrade>,
     /// The compiled node version.
     pub build_version: String,
+    /// Time that passed since the node has started.
+    pub uptime: TimeDiff,
 }
 
 impl GetStatusResult {
@@ -169,13 +178,19 @@ impl GetStatusResult {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
-            starting_state_root_hash: Some(Default::default()),
+            starting_state_root_hash: Digest::from([0u8; 32]),
             peers: PeersMap::from(status_feed.peers),
             last_added_block_info: status_feed.last_added_block.map(Into::into),
             our_public_signing_key: status_feed.our_public_signing_key,
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
+            uptime: status_feed.node_uptime.into(),
+            #[cfg(not(test))]
             build_version: crate::VERSION_STRING.clone(),
+
+            //  Prevent these values from changing between test sessions
+            #[cfg(test)]
+            build_version: String::from("1.0.0-xxxxxxxxx@DEBUG"),
         }
     }
 }

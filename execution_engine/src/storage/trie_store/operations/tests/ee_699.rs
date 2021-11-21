@@ -1,13 +1,14 @@
 use proptest::{arbitrary, array, collection, prop_oneof, strategy::Strategy};
 
-use crate::{make_array_newtype, newtypes::Blake2bHash};
+use casper_hashing::Digest;
+
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     gens, URef,
 };
 
 use super::{HashedTrie, TestValue};
-use crate::trie::Trie;
+use crate::{make_array_newtype, storage::trie::Trie};
 
 pub const BASIC_LENGTH: usize = 4;
 pub const SIMILAR_LENGTH: usize = 4;
@@ -263,11 +264,10 @@ const TEST_LEAVES: [TestTrie; TEST_LEAVES_LENGTH] = [
     },
 ];
 
-fn create_0_leaf_trie(
-) -> Result<(Blake2bHash, Vec<HashedTrie<TestKey, TestValue>>), bytesrepr::Error> {
+fn create_0_leaf_trie() -> Result<(Digest, Vec<HashedTrie<TestKey, TestValue>>), bytesrepr::Error> {
     let root = HashedTrie::new(Trie::node(&[]))?;
 
-    let root_hash: Blake2bHash = root.hash;
+    let root_hash: Digest = root.hash;
 
     let parents: Vec<HashedTrie<TestKey, TestValue>> = vec![root];
 
@@ -281,12 +281,13 @@ fn create_0_leaf_trie(
 }
 
 mod empty_tries {
-    use casper_types::newtypes::CorrelationId;
-
     use super::*;
     use crate::{
-        error::in_memory,
-        trie_store::operations::tests::{self, InMemoryTestContext},
+        shared::newtypes::CorrelationId,
+        storage::{
+            error::in_memory,
+            trie_store::operations::tests::{self, InMemoryTestContext},
+        },
     };
 
     #[test]
@@ -314,9 +315,18 @@ mod empty_tries {
 }
 
 mod proptests {
+    use std::ops::RangeInclusive;
+
     use proptest::{collection::vec, proptest};
 
-    use casper_types::newtypes::CorrelationId;
+    use super::*;
+    use crate::{
+        shared::newtypes::CorrelationId,
+        storage::{
+            error::{self, in_memory},
+            trie_store::operations::tests::{self, InMemoryTestContext, LmdbTestContext},
+        },
+    };
 
     const DEFAULT_MIN_LENGTH: usize = 0;
     const DEFAULT_MAX_LENGTH: usize = 100;
@@ -330,13 +340,6 @@ mod proptests {
             .unwrap_or(DEFAULT_MAX_LENGTH);
         RangeInclusive::new(start, end)
     }
-
-    use super::*;
-    use crate::{
-        error::{self, in_memory},
-        trie_store::operations::tests::{self, InMemoryTestContext, LmdbTestContext},
-    };
-    use std::ops::RangeInclusive;
 
     fn lmdb_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
         let correlation_id = CorrelationId::new();
@@ -360,7 +363,7 @@ mod proptests {
             &context.environment,
             &context.store,
             &states_to_check,
-            &pairs,
+            pairs,
         )
         .unwrap()
     }
@@ -387,7 +390,7 @@ mod proptests {
             &context.environment,
             &context.store,
             &states_to_check,
-            &pairs,
+            pairs,
         )
         .unwrap()
     }

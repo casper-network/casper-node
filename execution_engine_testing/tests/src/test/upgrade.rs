@@ -1,11 +1,10 @@
 use casper_engine_test_support::{
-    internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
-    runtime_args, CLValue, ContractPackageHash, RuntimeArgs,
+    runtime_args, CLValue, ContractPackageHash, RuntimeArgs, StoredValue,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";

@@ -16,7 +16,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::{
-    components::{consensus::EraSupervisor, storage::Storage},
+    components::{consensus::EraSupervisor, contract_runtime::ContractRuntime, storage::Storage},
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::{
         initializer::Reactor as InitializerReactor,
@@ -153,6 +153,31 @@ impl MultiStageTestReactor {
                 participating_reactor,
                 ..
             } => Some(participating_reactor.storage()),
+        }
+    }
+
+    pub(crate) fn contract_runtime(&self) -> Option<&ContractRuntime> {
+        match self {
+            MultiStageTestReactor::Deactivated => unreachable!(),
+            MultiStageTestReactor::Initializer {
+                initializer_reactor,
+                ..
+            } => Some(initializer_reactor.contract_runtime()),
+            MultiStageTestReactor::Joiner { joiner_reactor, .. } => {
+                Some(joiner_reactor.contract_runtime())
+            }
+            MultiStageTestReactor::JoinerFinalizing {
+                maybe_participating_init_config: None,
+                ..
+            } => None,
+            MultiStageTestReactor::JoinerFinalizing {
+                maybe_participating_init_config: Some(participating_init_config),
+                ..
+            } => Some(participating_init_config.contract_runtime()),
+            MultiStageTestReactor::Participating {
+                participating_reactor,
+                ..
+            } => Some(participating_reactor.contract_runtime()),
         }
     }
 }

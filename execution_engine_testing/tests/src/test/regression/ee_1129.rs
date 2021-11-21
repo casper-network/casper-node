@@ -3,11 +3,9 @@ use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -17,14 +15,14 @@ use casper_execution_engine::{
         },
         execution,
     },
-    shared::{motes::Motes, wasm::do_nothing_bytes, wasm_prep::PreprocessingError},
+    shared::{wasm::do_nothing_bytes, wasm_prep::PreprocessingError},
 };
 use casper_types::{
     account::AccountHash,
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";
