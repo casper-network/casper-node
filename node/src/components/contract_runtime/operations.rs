@@ -89,9 +89,6 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    // Flush once, after all deploys have been executed.
-    engine_state.flush_environment()?;
-
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
     }
@@ -112,8 +109,6 @@ pub fn execute_finalized_block(
                 finalized_block.timestamp().millis(),
                 finalized_block.era_id().successor(),
             )?;
-            // Flush if we ran commit_step
-            engine_state.flush_environment()?;
             state_root_hash = post_state_hash;
             let upcoming_era_validators = engine_state.get_era_validators(
                 CorrelationId::new(),
@@ -126,6 +121,9 @@ pub fn execute_finalized_block(
         } else {
             None
         };
+
+    // Flush once, after all deploys have been executed.
+    engine_state.flush_environment()?;
 
     // Update the metric.
     let block_height = finalized_block.height();
