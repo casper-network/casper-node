@@ -457,6 +457,9 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
+    if LNC_DISABLED {
+        return Ok(());
+    }
     //           a0'<-----+
     // Alice              |
     //           a0 <--+  |
