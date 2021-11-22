@@ -26,6 +26,10 @@ use crate::{
     types::{TimeDiff, Timestamp},
 };
 
+/// If the latest known unit from ourselves has not changed for this long, vote even if it doesn't
+/// agree with our unit file.
+const TIMEOUT_TO_VOTE_ANYWAY: TimeDiff = TimeDiff::from_seconds(20 * 60);
+
 /// An action taken by a validator.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum Effect<C: Context> {
@@ -80,6 +84,7 @@ where
     target_ftt: Weight,
     /// If this flag is set we don't create new units and just send pings instead.
     paused: bool,
+    last_seen_own_unit: Option<(u64, Timestamp)>,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -126,6 +131,7 @@ impl<C: Context> ActiveValidator<C> {
             own_last_unit,
             target_ftt,
             paused: false,
+            last_seen_own_unit: None,
         };
         let mut effects = av.schedule_timer(start_time, state);
         effects.push(av.send_ping(current_time, instance_id));
@@ -139,6 +145,11 @@ impl<C: Context> ActiveValidator<C> {
     /// cannot start creating new units until its state is fully synchronized, otherwise it will
     /// most likely equivocate.
     fn can_vote(&self, state: &State<C>) -> bool {
+        if let Some((_, t)) = self.last_seen_own_unit {
+            if t.elapsed() > TIMEOUT_TO_VOTE_ANYWAY {
+                return true;
+            }
+        }
         self.own_last_unit
             .as_ref()
             .map_or(true, |swunit| state.has_unit(&swunit.hash()))
@@ -420,7 +431,16 @@ impl<C: Context> ActiveValidator<C> {
             return None; // Wait for the first proposal before creating a unit without a value.
         }
         if !self.can_vote(state) {
-            info!(?self.own_last_unit, "not voting - last own unit unknown");
+            if let Some(hash) = state.panorama()[self.vidx].correct() {
+                let seq_number = state.unit(hash).seq_number;
+                if Some(seq_number) != self.last_seen_own_unit.map(|(sn, _)| sn) {
+                    self.last_seen_own_unit = Some((seq_number, Timestamp::now()));
+                }
+                info!(
+                    ?self.own_last_unit, ?self.last_seen_own_unit,
+                    "not voting - last own unit unknown"
+                );
+            }
             return None;
         }
         if let Some((prop_context, _)) = self.next_proposal.take() {
