@@ -147,7 +147,7 @@ impl Reactor {
         match response.message {
             NetResponse::Deploy(ref serialized_item) => {
                 let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
-                    &serialized_item,
+                    serialized_item,
                 ) {
                     Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
                     Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {

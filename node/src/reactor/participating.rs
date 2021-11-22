@@ -1285,7 +1285,7 @@ impl reactor::Reactor for Reactor {
             }) => self.handle_get_request(effect_builder, sender, Tag::Trie, serialized_id),
             ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {
                 error!("cannot handle get response for read-trie from {}", sender);
-                return Effects::new();
+                Effects::new()
             }
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,

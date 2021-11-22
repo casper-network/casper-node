@@ -889,7 +889,7 @@ impl reactor::Reactor for Reactor {
                     NetResponse::Deploy(ref serialized_item) =>
                         match fetcher::Event::<Deploy>::from_get_response_serialized_item(
                             sender,
-                            &serialized_item,
+                            serialized_item,
                         ) {
                             Some(fetcher_event) => self.dispatch_event(
                                 effect_builder,
@@ -906,7 +906,7 @@ impl reactor::Reactor for Reactor {
 
                     NetResponse::Block(ref serialized_item) => match fetcher::Event::<Block>::from_get_response_serialized_item(
                             sender,
-                            &serialized_item,
+                            serialized_item,
                         ) {
                             Some(fetcher_event) => self.dispatch_event(
                                 effect_builder,
@@ -929,7 +929,7 @@ impl reactor::Reactor for Reactor {
                     NetResponse::BlockAndMetadataByHeight(ref serialized_item) =>
                         match fetcher::Event::<BlockWithMetadata>::from_get_response_serialized_item(
                             sender,
-                            &serialized_item,
+                            serialized_item,
                         ) {
                             Some(fetcher_event) => self.dispatch_event(
                                 effect_builder,
@@ -951,7 +951,7 @@ impl reactor::Reactor for Reactor {
                     NetResponse::BlockHeaderByHash(ref serialized_item) =>
                          match fetcher::Event::<BlockHeader>::from_get_response_serialized_item(
                             sender,
-                            &serialized_item,
+                            serialized_item,
                         ) {
                             Some(fetcher_event) => self.dispatch_event(
                                 effect_builder,
