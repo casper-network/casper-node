@@ -295,7 +295,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             total_weight = %self.highway.state().total_weight().0,
             "too many faulty validators"
         );
-        self.log_participation();
+        self.log_participation(false);
         vec![ProtocolOutcome::FttExceeded]
     }
 
@@ -449,11 +449,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
-    fn log_participation(&self) {
+    fn log_participation(&self, current: bool) {
         let instance_id = self.highway.instance_id();
         let participation = participation::Participation::new(&self.highway);
         info!(?participation, %instance_id, "validator participation");
-        debug!(state = ?self.highway.state(), "state dump");
+        if current {
+            debug!(state = ?self.highway.state(), "state dump");
+        }
     }
 
     /// Logs the vertex' serialized size.
@@ -887,7 +889,12 @@ where
         }
     }
 
-    fn handle_timer(&mut self, now: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C> {
+    fn handle_timer(
+        &mut self,
+        now: Timestamp,
+        timer_id: TimerId,
+        current: bool,
+    ) -> ProtocolOutcomes<I, C> {
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
                 let effects = self.highway.handle_timer(now);
@@ -904,7 +911,7 @@ where
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
             TIMER_ID_LOG_PARTICIPATION => {
-                self.log_participation();
+                self.log_participation(current);
                 match self.config.log_participation_interval {
                     Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
                         vec![ProtocolOutcome::ScheduleTimer(now + interval, timer_id)]

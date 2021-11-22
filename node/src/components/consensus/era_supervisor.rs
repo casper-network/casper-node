@@ -724,8 +724,9 @@ where
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event<I>> {
+        let current = era_id == self.era_supervisor.current_era;
         self.delegate_to_era(era_id, move |consensus| {
-            consensus.handle_timer(timestamp, timer_id)
+            consensus.handle_timer(timestamp, timer_id, current)
         })
     }
 
