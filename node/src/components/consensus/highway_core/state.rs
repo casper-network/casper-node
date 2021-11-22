@@ -52,7 +52,7 @@ use tallies::Tallies;
 // endorsements again.
 pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 
-// Disables checking the least naivete criterion for endorsements.
+// Disables checking the limited naivete criterion for endorsements.
 const LNC_DISABLED: bool = true;
 
 /// Number of maximum-length rounds after which a validator counts as offline, if we haven't heard
