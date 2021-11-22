@@ -453,13 +453,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
-    fn log_participation(&self, current: bool) {
+    fn log_participation(&self, _current: bool) {
         let instance_id = self.highway.instance_id();
         let participation = participation::Participation::new(&self.highway);
         info!(?participation, %instance_id, "validator participation");
-        if current {
+        /*if current {
             debug!(state = ?self.highway.state(), "state dump");
-        }
+        }*/
     }
 
     /// Logs the vertex' serialized size.
