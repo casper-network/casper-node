@@ -1158,6 +1158,24 @@ where
     assert!(*t == deserialized)
 }
 
+pub(crate) fn write_string(writer: &mut Vec<u8>, text: &str) {
+    let text_bytes = text.as_bytes();
+    writer.extend((text_bytes.len() as u32).to_le_bytes());
+    writer.extend_from_slice(text_bytes);
+}
+
+pub(crate) fn write_tree<K, V, FK, FV>(writer: &mut Vec<u8>, tree: &BTreeMap<K, V>, key_fn: FK, value_fn: FV)
+where
+    FK: Fn(&K, &mut Vec<u8>) -> (),
+    FV: Fn(&V, &mut Vec<u8>) -> (),
+{
+    writer.extend((tree.len() as u32).to_le_bytes());
+    for (k, v) in tree.iter() {
+        key_fn(k, writer);
+        value_fn(v, writer);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

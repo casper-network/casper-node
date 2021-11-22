@@ -87,6 +87,11 @@ impl ActionThresholds {
             ActionType::KeyManagement => self.set_key_management_threshold(new_threshold),
         }
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        self.deployment().write_bytes(writer);
+        self.key_management().write_bytes(writer);
+    }
 }
 
 impl Default for ActionThresholds {

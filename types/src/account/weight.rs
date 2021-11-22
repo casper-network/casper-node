@@ -25,6 +25,10 @@ impl Weight {
     pub fn value(self) -> u8 {
         self.0
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.push(self.0)
+    }
 }
 
 impl ToBytes for Weight {
