@@ -869,7 +869,7 @@ impl<C: Context> State<C> {
             }
         }
         for hash in &wunit.endorsed {
-            if !wunit.panorama.sees(self, hash) {
+            if !LNC_DISABLED && !wunit.panorama.sees(self, hash) {
                 return Err(UnitError::EndorsedButUnseen {
                     hash: format!("{:?}", hash),
                     wire_unit: format!("{:?}", wunit),
@@ -1165,7 +1165,11 @@ impl<C: Context> State<C> {
                 pan = pan.merge(self, &self.inclusive_panorama(prev_uhash));
             }
         }
-        let endorsed = self.seen_endorsed(&pan);
+        let endorsed = if LNC_DISABLED {
+            Default::default() // Don't cite any endorsements.
+        } else {
+            self.seen_endorsed(&pan)
+        };
         if self.validate_lnc(creator, &pan, &endorsed).is_none() {
             return pan;
         }
