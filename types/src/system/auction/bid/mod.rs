@@ -443,3 +443,17 @@ mod tests {
         assert!(!bid.process(delegator_2_release_timestamp + 1));
     }
 }
+
+#[cfg(test)]
+mod prop_tests {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        #[test]
+        fn test_value_bid(bid in gens::bid_arb(1..100)) {
+            bytesrepr::test_serialization_roundtrip(&bid);
+        }
+    }
+}
