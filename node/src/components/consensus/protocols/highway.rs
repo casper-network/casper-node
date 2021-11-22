@@ -409,7 +409,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         }
         if !vv.inner().is_proposal() {
             if let Some(hash) = vv.inner().unit_hash() {
-                trace!(?hash, "adding unit to the protocol state");
+                debug!(
+                    ?hash,
+                    timestamp = ?vv.inner().timestamp(),
+                    "adding unit to the protocol state"
+                );
             } else {
                 trace!(vertex=?vv.inner(), "adding vertex to the protocol state");
             }
