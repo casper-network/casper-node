@@ -52,6 +52,9 @@ use tallies::Tallies;
 // endorsements again.
 pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 
+// Disables checking the least naivete criterion for endorsements.
+const LNC_DISABLED: bool = true;
+
 /// Number of maximum-length rounds after which a validator counts as offline, if we haven't heard
 /// from them.
 const PING_TIMEOUT: u64 = 3;
@@ -973,9 +976,14 @@ impl<C: Context> State<C> {
         panorama: &Panorama<C>,
         endorsed: &BTreeSet<C::Hash>,
     ) -> Option<ValidatorIndex> {
-        let violates_lnc =
-            |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx);
-        panorama.iter_faulty().find(violates_lnc)
+        if LNC_DISABLED {
+            None
+        } else {
+            let violates_lnc = |eq_idx: &ValidatorIndex| {
+                !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx)
+            };
+            panorama.iter_faulty().find(violates_lnc)
+        }
     }
 
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
