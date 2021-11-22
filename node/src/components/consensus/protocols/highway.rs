@@ -453,6 +453,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let instance_id = self.highway.instance_id();
         let participation = participation::Participation::new(&self.highway);
         info!(?participation, %instance_id, "validator participation");
+        debug!(state = ?self.highway.state(), "state dump");
     }
 
     /// Logs the vertex' serialized size.
