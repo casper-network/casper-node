@@ -12,9 +12,21 @@ use proptest::{
     result,
 };
 
-use crate::{AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey, ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, U128, U256, U512, URef, account::{gens::account_arb, AccountHash, Weight}, contracts::{
+use crate::{
+    account::{gens::account_arb, AccountHash, Weight},
+    contracts::{
         ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
-    }, crypto::gens::public_key_arb_no_system, system::auction::{Bid, DELEGATION_RATE_DENOMINATOR, DelegationRate, Delegator, UnbondingPurse, gens::era_info_arb}, transfer::TransferAddr};
+    },
+    crypto::gens::public_key_arb_no_system,
+    system::auction::{
+        gens::era_info_arb, Bid, DelegationRate, Delegator, UnbondingPurse,
+        DELEGATION_RATE_DENOMINATOR,
+    },
+    transfer::TransferAddr,
+    AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
+    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
+    NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+};
 
 use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
