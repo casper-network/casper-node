@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.4.2"
+version = "1.4.4"
 dependencies = [
  "base16",
  "base64",
@@ -675,7 +675,6 @@ dependencies = [
  "serde_json",
  "serde_test",
  "strum",
- "thiserror",
  "uint",
  "version-sync",
 ]
