@@ -261,7 +261,7 @@ impl ToBytes for Account {
             |key, writer| {
                 key.write_bytes(writer);
                 Ok(())
-            }
+            },
         )?;
         self.main_purse.write_bytes(&mut result);
         self.associated_keys().write_bytes(&mut result);

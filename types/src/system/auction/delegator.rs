@@ -144,6 +144,16 @@ impl Delegator {
     pub fn vesting_schedule_mut(&mut self) -> Option<&mut VestingSchedule> {
         self.vesting_schedule.as_mut()
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.delegator_public_key).write_bytes(writer);
+        bytesrepr::write_u512(writer, &self.staked_amount)?;
+        (&self.bonding_purse).write_bytes(writer);
+        (&self.validator_public_key).write_bytes(writer);
+        bytesrepr::write_option(writer, &self.vesting_schedule, |schedule, writer| {
+            schedule.write_bytes(writer)
+        })
+    }
 }
 
 impl CLTyped for Delegator {

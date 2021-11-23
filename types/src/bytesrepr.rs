@@ -1197,7 +1197,25 @@ where
     Ok(())
 }
 
+pub(crate) fn write_iter<'a, V: 'a, I: IntoIterator<Item = &'a V>, FV>(
+    writer: &mut Vec<u8>,
+    i: I,
+    write_fn: FV,
+) -> Result<(), self::Error>
+where
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>
+{
+    for element in i {
+        write_fn(element, writer)?
+    }
+    Ok(())
+}
+
 pub(crate) fn write_u32(writer: &mut Vec<u8>, u: u32) {
+    writer.extend(u.to_le_bytes());
+}
+
+pub(crate) fn write_u64(writer: &mut Vec<u8>, u: &u64) {
     writer.extend(u.to_le_bytes());
 }
 
@@ -1212,6 +1230,36 @@ where
     writer.extend((set.len() as u32).to_le_bytes());
     for element in set.iter() {
         write_fn(element, writer)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn write_u512(writer: &mut Vec<u8>, u: &crate::U512) -> Result<(), self::Error> {
+    Ok(writer.extend(u.to_bytes()?))
+}
+
+pub(crate) fn write_u8(writer: &mut Vec<u8>, u: u8) {
+    writer.push(u);
+}
+
+pub(crate) fn write_bool(writer: &mut Vec<u8>, b: bool) {
+    writer.push(u8::from(b));
+}
+
+pub(crate) fn write_option<V, FV>(
+    writer: &mut Vec<u8>,
+    o: &Option<V>,
+    write_fn: FV,
+) -> Result<(), self::Error>
+where
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    match o {
+        None => writer.push(OPTION_NONE_TAG),
+        Some(value) => {
+            writer.push(OPTION_SOME_TAG);
+            write_fn(value, writer)?;
+        }
     }
     Ok(())
 }
