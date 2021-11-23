@@ -843,15 +843,17 @@ impl<C: Context> State<C> {
             }
         }
         // All endorsed units from the panorama of this wunit.
-        let endorsements_in_panorama = panorama
-            .iter_correct_hashes()
-            .flat_map(|hash| self.unit(hash).claims_endorsed())
-            .collect::<HashSet<_>>();
-        if endorsements_in_panorama
-            .iter()
-            .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
-        {
-            return Err(UnitError::EndorsementsNotMonotonic);
+        if !LNC_DISABLED {
+            let endorsements_in_panorama = panorama
+                .iter_correct_hashes()
+                .flat_map(|hash| self.unit(hash).claims_endorsed())
+                .collect::<HashSet<_>>();
+            if endorsements_in_panorama
+                .iter()
+                .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
+            {
+                return Err(UnitError::EndorsementsNotMonotonic);
+            }
         }
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
