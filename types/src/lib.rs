@@ -1,10 +1,16 @@
 //! Types used to allow creation of Wasm contracts and tests for use on the Casper Platform.
 
 #![cfg_attr(
-    not(any(feature = "json-schema", feature = "datasize", feature = "gens", test)),
+    not(any(
+        feature = "json-schema",
+        feature = "datasize",
+        feature = "gens",
+        feature = "std",
+        test,
+    )),
     no_std
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/1.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-types/1.4.2")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",

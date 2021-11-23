@@ -1675,3 +1675,27 @@ mod tests {
         assert_eq!(contract_hash, decoded)
     }
 }
+
+#[cfg(test)]
+mod prop_tests {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        // #![proptest_config(ProptestConfig {
+        //     cases: 1024,
+        //     .. ProptestConfig::default()
+        // })]
+
+        #[test]
+        fn test_value_contract(contract in gens::contract_arb()) {
+            bytesrepr::test_serialization_roundtrip(&contract);
+        }
+
+        #[test]
+        fn test_value_contract_package(contract_pkg in gens::contract_package_arb()) {
+            bytesrepr::test_serialization_roundtrip(&contract_pkg);
+        }
+    }
+}

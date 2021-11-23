@@ -1042,7 +1042,7 @@ mod tests {
             };
 
             let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-            let effect_builder = EffectBuilder::new(EventQueueHandle::new(scheduler));
+            let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
 
             TestFixture {
                 chainspec_loader,

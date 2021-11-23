@@ -576,28 +576,31 @@ impl FromBytes for BlockHash {
 /// A struct to contain information related to the end of an era and validator weights for the
 /// following era.
 pub struct EraEnd {
-    /// The era end information.
+    /// Equivocation and reward information to be included in the terminal finalized block.
     era_report: EraReport,
-    /// The validator weights for the next era.
+    /// The validators for the upcoming era and their respective weights.
     next_era_validator_weights: BTreeMap<PublicKey, U512>,
 }
 
 impl EraEnd {
-    pub fn new(
-        era_report: EraReport,
-        next_era_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Self {
+    fn new(era_report: EraReport, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
         EraEnd {
             era_report,
             next_era_validator_weights,
         }
     }
 
+    /// Equivocation and reward information to be included in the terminal finalized block.
     pub fn era_report(&self) -> &EraReport {
         &self.era_report
     }
 
-    pub fn hash(&self) -> Digest {
+    /// The validators for the upcoming era and their respective weights.
+    pub fn next_era_validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.next_era_validator_weights
+    }
+
+    pub(crate) fn hash(&self) -> Digest {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let EraEnd {
             next_era_validator_weights,
@@ -606,7 +609,7 @@ impl EraEnd {
         // Sort next era validator weights by descending weight. Assuming the top validators are
         // online, a client can get away with just a few (plus a Merkle proof of the rest)
         // to check finality signatures.
-        let descending_validator_weight_hashed_pairs: Vec<Digest> = next_era_validator_weights
+        let descending_validator_weight_hashed_pairs = next_era_validator_weights
             .iter()
             .sorted_by_key(|(_, weight)| Reverse(**weight))
             .map(|(validator_id, weight)| {
@@ -614,10 +617,9 @@ impl EraEnd {
                     Digest::hash(validator_id.to_bytes().expect("Could not hash validator"));
                 let weight_hash = Digest::hash(weight.to_bytes().expect("Could not hash weight"));
                 Digest::hash_pair(&validator_hash, &weight_hash)
-            })
-            .collect();
+            });
         let hashed_next_era_validator_weights =
-            Digest::hash_vec_merkle_tree(descending_validator_weight_hashed_pairs);
+            Digest::hash_merkle_tree(descending_validator_weight_hashed_pairs);
         let hashed_era_report: Digest = era_report.hash();
         Digest::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
     }
@@ -707,12 +709,9 @@ impl BlockHeader {
         self.accumulated_seed
     }
 
-    /// Returns reward and slashing information if this is the era's last block.
-    pub fn era_end(&self) -> Option<&EraReport> {
-        match &self.era_end {
-            Some(data) => Some(data.era_report()),
-            None => None,
-        }
+    /// Returns the `EraEnd` of a block if it is a switch block.
+    pub fn era_end(&self) -> Option<&EraEnd> {
+        self.era_end.as_ref()
     }
 
     /// The timestamp from when the block was proposed.
@@ -755,7 +754,7 @@ impl BlockHeader {
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
         match &self.era_end {
             Some(era_end) => {
-                let validator_weights = &era_end.next_era_validator_weights;
+                let validator_weights = era_end.next_era_validator_weights();
                 Some(validator_weights)
             }
             None => None,
@@ -1133,15 +1132,13 @@ impl BlockBody {
 
         let transfer_hashes = MerkleBlockBodyPart::new(
             transfer_hashes,
-            Digest::hash_vec_merkle_tree(
-                transfer_hashes.iter().cloned().map(Digest::from).collect(),
-            ),
+            Digest::hash_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from)),
             proposer.merkle_linked_list_node_hash,
         );
 
         let deploy_hashes = MerkleBlockBodyPart::new(
             deploy_hashes,
-            Digest::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
+            Digest::hash_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from)),
             transfer_hashes.merkle_linked_list_node_hash,
         );
 

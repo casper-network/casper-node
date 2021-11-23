@@ -11,8 +11,10 @@ use crate::{
 /// Thresholds that have to be met when executing an action of a certain type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionThresholds {
-    deployment: Weight,
-    key_management: Weight,
+    /// Threshold for deploy execution.
+    pub deployment: Weight,
+    /// Threshold for managing action threshold.
+    pub key_management: Weight,
 }
 
 impl ActionThresholds {

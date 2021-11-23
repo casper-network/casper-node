@@ -161,7 +161,7 @@ async fn validate_block(
 
     // Create the reactor and component.
     let reactor = MockReactor::new();
-    let effect_builder = EffectBuilder::new(EventQueueHandle::new(reactor.scheduler));
+    let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
     let chainspec = Arc::new(Chainspec::from_resources("local"));
     let mut block_validator = BlockValidator::<NodeId>::new(chainspec);
 
