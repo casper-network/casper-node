@@ -639,23 +639,30 @@ pub fn validate_query_proof(
     path: &[String],
     expected_value: &StoredValue,
 ) -> Result<(), ValidationError> {
-    let proofs_len = proofs
-        .iter()
-        .filter(|proof| !matches!(proof.value(), StoredValue::ContractPackage(_)))
-        .count();
+    let proof_len_adjustment = {
+        let mut count = 0;
+        let mut previous_proof_value = None;
 
-    if proofs_len != path.len() + 1 {
+        for proof in proofs {
+            if let StoredValue::Contract(_) = proof.value() {
+                if let Some(StoredValue::ContractPackage(_)) = previous_proof_value {
+                    count += 1usize;
+                }
+            }
+            previous_proof_value = Some(proof.value().to_owned());
+        }
+        count
+    };
+
+    if proofs.len() - proof_len_adjustment != path.len() + 1 {
         return Err(ValidationError::PathLengthDifferentThanProofLessOne);
     }
 
     let mut proofs_iter = proofs.iter();
-    let mut proofs_iter2 = proofs.iter();
     let mut path_iter = path.iter();
 
     // length check above means we are safe to unwrap here
     let first_proof = proofs_iter.next().unwrap();
-    // keeps proofs_iter2 in sync with proofs_iter.
-    proofs_iter2.next();
 
     if first_proof.key() != &expected_first_key.normalize() {
         return Err(ValidationError::UnexpectedKey);
@@ -667,11 +674,10 @@ pub fn validate_query_proof(
 
     let mut proof_value = first_proof.value();
 
-    for proof in proofs_iter {
+    for (index, proof) in proofs_iter.enumerate() {
         if let StoredValue::ContractPackage(_) = proof_value {
-            // Skip ContractPackages because they don't have NamedKeys.
-            proof_value = proofs_iter2
-                .next()
+            proof_value = proofs
+                .get(index + 1)
                 .expect("expected a contract after this contract package.")
                 .value();
             continue;
@@ -701,8 +707,6 @@ pub fn validate_query_proof(
         }
 
         proof_value = proof.value();
-        // advance the iterator to keep both in sync.
-        proofs_iter2.next();
     }
 
     if proof_value != expected_value {
