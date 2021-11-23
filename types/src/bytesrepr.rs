@@ -1203,7 +1203,7 @@ pub(crate) fn write_iter<'a, V: 'a, I: IntoIterator<Item = &'a V>, FV>(
     write_fn: FV,
 ) -> Result<(), self::Error>
 where
-    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
 {
     for element in i {
         write_fn(element, writer)?
