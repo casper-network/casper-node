@@ -28,7 +28,7 @@ use crate::{
 
 /// If the latest known unit from ourselves has not changed for this long, vote even if it doesn't
 /// agree with our unit file.
-const TIMEOUT_TO_VOTE_ANYWAY: TimeDiff = TimeDiff::from_seconds(20 * 60);
+const TIMEOUT_TO_VOTE_ANYWAY: TimeDiff = TimeDiff::from_seconds(11 * 60);
 
 /// An action taken by a validator.
 #[derive(Clone, Eq, PartialEq, Debug)]
