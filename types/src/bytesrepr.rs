@@ -1197,6 +1197,25 @@ where
     Ok(())
 }
 
+pub(crate) fn write_u32(writer: &mut Vec<u8>, u: u32) {
+    writer.extend(u.to_le_bytes());
+}
+
+pub(crate) fn write_set<T, FT>(
+    writer: &mut Vec<u8>,
+    set: &BTreeSet<T>,
+    write_fn: FT,
+) -> Result<(), self::Error>
+where
+    FT: Fn(&T, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    writer.extend((set.len() as u32).to_le_bytes());
+    for element in set.iter() {
+        write_fn(element, writer)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -213,6 +213,10 @@ impl Group {
     pub fn value(&self) -> &str {
         &self.0
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        bytesrepr::write_string(writer, &self.0);
+    }
 }
 
 impl From<Group> for String {
@@ -267,6 +271,11 @@ impl ContractVersionKey {
     /// Returns the contract version within the protocol major version.
     pub fn contract_version(self) -> ContractVersion {
         self.1
+    }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        bytesrepr::write_u32(writer, self.0);
+        bytesrepr::write_u32(writer, self.1);
     }
 }
 
@@ -355,6 +364,10 @@ impl ContractHash {
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractHash(bytes))
+    }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.extend_from_slice(&self.0)
     }
 }
 
@@ -636,6 +649,13 @@ impl ContractPackageStatus {
             ContractPackageStatus::Unlocked
         }
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        match self {
+            ContractPackageStatus::Locked => writer.push(u8::from(true)),
+            ContractPackageStatus::Unlocked => writer.push(u8::from(false)),
+        }
+    }
 }
 
 impl Default for ContractPackageStatus {
@@ -860,12 +880,38 @@ impl ToBytes for ContractPackage {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
 
-        result.append(&mut self.access_key.to_bytes()?);
-        result.append(&mut self.versions.to_bytes()?);
-        result.append(&mut self.disabled_versions.to_bytes()?);
-        result.append(&mut self.groups.to_bytes()?);
-        result.append(&mut self.lock_status.to_bytes()?);
-
+        self.access_key().write_bytes(&mut result);
+        bytesrepr::write_tree(
+            &mut result,
+            self.versions(),
+            |version, writer| {
+                version.write_bytes(writer);
+                Ok(())
+            },
+            |hash, writer| {
+                hash.write_bytes(writer);
+                Ok(())
+            },
+        )?;
+        bytesrepr::write_set(&mut result, self.disabled_versions(), |element, writer| {
+            element.write_bytes(writer);
+            Ok(())
+        })?;
+        bytesrepr::write_tree(
+            &mut result,
+            self.groups(),
+            |group, w| {
+                group.write_bytes(w);
+                Ok(())
+            },
+            |urefs, w| {
+                bytesrepr::write_set(w, urefs, |uref, ww| {
+                    uref.write_bytes(ww);
+                    Ok(())
+                })
+            },
+        )?;
+        (&self.lock_status).write_bytes(&mut result);
         Ok(result)
     }
 
@@ -1296,7 +1342,7 @@ impl EntryPoint {
     pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         bytesrepr::write_string(writer, &self.name);
         bytesrepr::write_vec(writer, &self.args, |v, writer| v.write_bytes(writer))?;
-        self.ret.append_bytes( writer)?;
+        self.ret.append_bytes(writer)?;
         self.access().write_bytes(writer)?;
         self.entry_point_type().write_bytes(writer);
         Ok(())
