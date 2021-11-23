@@ -446,19 +446,9 @@ fn deserialize_u512(b: &mut Bencher) {
     b.iter(|| U512::from_bytes(black_box(&num_u512_bytes)))
 }
 
-fn generate_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
+fn sample_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
     let account_hash = AccountHash::default();
-    let named_keys: NamedKeys = {
-        let mut tmp = BTreeMap::new();
-        (0..named_keys_len).for_each(|i| {
-            let res = tmp.insert(
-                std::str::from_utf8(&[i]).unwrap().to_string(),
-                Key::Account(AccountHash::default()),
-            );
-            assert!(res.is_none());
-        });
-        tmp
-    };
+    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
     let main_purse = URef::default();
     let associated_keys = {
         let mut tmp = AssociatedKeys::new(AccountHash::default(), Weight::new(1));
@@ -482,39 +472,40 @@ fn generate_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
 }
 
 fn serialize_account(b: &mut Bencher) {
-    let account = generate_account(10, 10);
+    let account = sample_account(10, 10);
     b.iter(|| ToBytes::to_bytes(black_box(&account)));
 }
 
 fn deserialize_account(b: &mut Bencher) {
-    let account = generate_account(10, 10);
+    let account = sample_account(10, 10);
     let account_bytes = Account::to_bytes(&account).unwrap();
     b.iter(|| Account::from_bytes(black_box(&account_bytes)).unwrap());
 }
 
 fn serialize_contract(b: &mut Bencher) {
-    let contract = generate_contract(10, 10);
+    let contract = sample_contract(10, 10);
     b.iter(|| ToBytes::to_bytes(black_box(&contract)));
 }
 
 fn deserialize_contract(b: &mut Bencher) {
-    let contract = generate_contract(10, 10);
+    let contract = sample_contract(10, 10);
     let contract_bytes = Contract::to_bytes(&contract).unwrap();
     b.iter(|| Contract::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
-fn generate_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
-    let named_keys: NamedKeys = {
-        let mut tmp = BTreeMap::new();
-        (0..named_keys_len).for_each(|i| {
-            let res = tmp.insert(
-                std::str::from_utf8(&[i]).unwrap().to_string(),
+fn sample_named_keys(len: u8) -> BTreeMap<String, Key> {
+    (0..len)
+        .map(|i| {
+            (
+                format!("named-key-{}", i),
                 Key::Account(AccountHash::default()),
-            );
-            assert!(res.is_none());
-        });
-        tmp
-    };
+            )
+        })
+        .collect()
+}
+
+fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
+    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
 
     let entry_points = {
         let mut tmp = EntryPoints::default();
@@ -574,14 +565,14 @@ where
 }
 
 fn sample_group(i: u8) -> Group {
-    Group::new(format!("group-{}", std::str::from_utf8(&[i]).unwrap()))
+    Group::new(format!("group-{}", i))
 }
 
 fn sample_uref(i: u8) -> URef {
     URef::new([i; UREF_ADDR_LENGTH], AccessRights::all())
 }
 
-fn generate_contract_package(
+fn sample_contract_package(
     contract_versions_len: u8,
     disabled_versions_len: u8,
     groups_len: u8,
@@ -605,12 +596,12 @@ fn generate_contract_package(
 }
 
 fn serialize_contract_package(b: &mut Bencher) {
-    let contract = generate_contract_package(5, 1, 5);
+    let contract = sample_contract_package(5, 1, 5);
     b.iter(|| ContractPackage::to_bytes(black_box(&contract)));
 }
 
 fn deserialize_contract_package(b: &mut Bencher) {
-    let contract_package = generate_contract_package(5, 1, 5);
+    let contract_package = sample_contract_package(5, 1, 5);
     let contract_bytes = ContractPackage::to_bytes(&contract_package).unwrap();
     b.iter(|| ContractPackage::from_bytes(black_box(&contract_bytes)).unwrap());
 }
