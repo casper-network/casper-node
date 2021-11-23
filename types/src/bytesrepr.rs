@@ -1158,10 +1158,11 @@ where
     assert!(*t == deserialized)
 }
 
-pub(crate) fn write_string(writer: &mut Vec<u8>, text: &str) {
+pub(crate) fn write_string(writer: &mut Vec<u8>, text: &str) -> Result<(), self::Error> {
     let text_bytes = text.as_bytes();
     writer.extend((text_bytes.len() as u32).to_le_bytes());
     writer.extend_from_slice(text_bytes);
+    Ok(())
 }
 
 pub(crate) fn write_tree<K, V, FK, FV>(
@@ -1184,7 +1185,7 @@ where
 
 pub(crate) fn write_vec<V, FV>(
     writer: &mut Vec<u8>,
-    v: &Vec<V>,
+    v: &[V],
     write_fn: FV,
 ) -> Result<(), self::Error>
 where
@@ -1211,12 +1212,14 @@ where
     Ok(())
 }
 
-pub(crate) fn write_u32(writer: &mut Vec<u8>, u: u32) {
+pub(crate) fn write_u32(writer: &mut Vec<u8>, u: u32) -> Result<(), self::Error> {
     writer.extend(u.to_le_bytes());
+    Ok(())
 }
 
-pub(crate) fn write_u64(writer: &mut Vec<u8>, u: &u64) {
+pub(crate) fn write_u64(writer: &mut Vec<u8>, u: &u64) -> Result<(), self::Error> {
     writer.extend(u.to_le_bytes());
+    Ok(())
 }
 
 pub(crate) fn write_set<T, FT>(
@@ -1235,15 +1238,18 @@ where
 }
 
 pub(crate) fn write_u512(writer: &mut Vec<u8>, u: &crate::U512) -> Result<(), self::Error> {
-    Ok(writer.extend(u.to_bytes()?))
+    writer.extend(u.to_bytes()?);
+    Ok(())
 }
 
-pub(crate) fn write_u8(writer: &mut Vec<u8>, u: u8) {
+pub(crate) fn write_u8(writer: &mut Vec<u8>, u: u8) -> Result<(), self::Error> {
     writer.push(u);
+    Ok(())
 }
 
-pub(crate) fn write_bool(writer: &mut Vec<u8>, b: bool) {
+pub(crate) fn write_bool(writer: &mut Vec<u8>, b: bool) -> Result<(), self::Error> {
     writer.push(u8::from(b));
+    Ok(())
 }
 
 pub(crate) fn write_option<V, FV>(

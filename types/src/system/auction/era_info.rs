@@ -82,7 +82,7 @@ impl SeigniorageAllocation {
                 validator_public_key,
                 amount,
             } => {
-                validator_public_key.write_bytes(writer);
+                validator_public_key.write_bytes(writer)?;
                 bytesrepr::write_u512(writer, amount)?;
             }
             SeigniorageAllocation::Delegator {
@@ -90,8 +90,8 @@ impl SeigniorageAllocation {
                 validator_public_key,
                 amount,
             } => {
-                delegator_public_key.write_bytes(writer);
-                validator_public_key.write_bytes(writer);
+                delegator_public_key.write_bytes(writer)?;
+                validator_public_key.write_bytes(writer)?;
                 bytesrepr::write_u512(writer, amount)?;
             }
         }

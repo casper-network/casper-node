@@ -250,22 +250,16 @@ impl Account {
 impl ToBytes for Account {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        self.account_hash().write_bytes(&mut result);
+        self.account_hash().write_bytes(&mut result)?;
         bytesrepr::write_tree(
             &mut result,
             self.named_keys(),
-            |name, writer| {
-                bytesrepr::write_string(writer, name);
-                Ok(())
-            },
-            |key, writer| {
-                key.write_bytes(writer);
-                Ok(())
-            },
+            |name, writer| bytesrepr::write_string(writer, name),
+            |key, writer| key.write_bytes(writer),
         )?;
-        self.main_purse.write_bytes(&mut result);
-        self.associated_keys().write_bytes(&mut result);
-        self.action_thresholds().write_bytes(&mut result);
+        self.main_purse.write_bytes(&mut result)?;
+        self.associated_keys().write_bytes(&mut result)?;
+        self.action_thresholds().write_bytes(&mut result)?;
         Ok(result)
     }
 

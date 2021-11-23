@@ -146,10 +146,10 @@ impl Delegator {
     }
 
     pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.delegator_public_key).write_bytes(writer);
+        (&self.delegator_public_key).write_bytes(writer)?;
         bytesrepr::write_u512(writer, &self.staked_amount)?;
-        (&self.bonding_purse).write_bytes(writer);
-        (&self.validator_public_key).write_bytes(writer);
+        (&self.bonding_purse).write_bytes(writer)?;
+        (&self.validator_public_key).write_bytes(writer)?;
         bytesrepr::write_option(writer, &self.vesting_schedule, |schedule, writer| {
             schedule.write_bytes(writer)
         })

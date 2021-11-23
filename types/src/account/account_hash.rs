@@ -95,8 +95,9 @@ impl AccountHash {
         Self::new(digest)
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
         writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 

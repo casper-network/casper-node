@@ -228,7 +228,7 @@ impl PublicKey {
         }
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             PublicKey::System => writer.push(SYSTEM_TAG),
             PublicKey::Ed25519(pk) => {
@@ -240,6 +240,7 @@ impl PublicKey {
                 writer.extend_from_slice(&pk.to_bytes());
             }
         }
+        Ok(())
     }
 }
 

@@ -214,8 +214,8 @@ impl Group {
         &self.0
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
-        bytesrepr::write_string(writer, &self.0);
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        bytesrepr::write_string(writer, &self.0)
     }
 }
 
@@ -273,9 +273,9 @@ impl ContractVersionKey {
         self.1
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
-        bytesrepr::write_u32(writer, self.0);
-        bytesrepr::write_u32(writer, self.1);
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        bytesrepr::write_u32(writer, self.0)?;
+        bytesrepr::write_u32(writer, self.1)
     }
 }
 
@@ -366,8 +366,9 @@ impl ContractHash {
         Ok(ContractHash(bytes))
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
-        writer.extend_from_slice(&self.0)
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 
@@ -880,36 +881,21 @@ impl ToBytes for ContractPackage {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
 
-        self.access_key().write_bytes(&mut result);
+        self.access_key().write_bytes(&mut result)?;
         bytesrepr::write_tree(
             &mut result,
             self.versions(),
-            |version, writer| {
-                version.write_bytes(writer);
-                Ok(())
-            },
-            |hash, writer| {
-                hash.write_bytes(writer);
-                Ok(())
-            },
+            |version, writer| version.write_bytes(writer),
+            |hash, writer| hash.write_bytes(writer),
         )?;
         bytesrepr::write_set(&mut result, self.disabled_versions(), |element, writer| {
-            element.write_bytes(writer);
-            Ok(())
+            element.write_bytes(writer)
         })?;
         bytesrepr::write_tree(
             &mut result,
             self.groups(),
-            |group, w| {
-                group.write_bytes(w);
-                Ok(())
-            },
-            |urefs, w| {
-                bytesrepr::write_set(w, urefs, |uref, ww| {
-                    uref.write_bytes(ww);
-                    Ok(())
-                })
-            },
+            |group, w| group.write_bytes(w),
+            |urefs, w| bytesrepr::write_set(w, urefs, |uref, ww| uref.write_bytes(ww)),
         )?;
         (&self.lock_status).write_bytes(&mut result);
         Ok(result)
@@ -1010,10 +996,7 @@ impl EntryPoints {
         bytesrepr::write_tree(
             writer,
             &self.0,
-            |name, writer| {
-                bytesrepr::write_string(writer, &name);
-                Ok(())
-            },
+            |name, writer| bytesrepr::write_string(writer, name),
             |entry_point, writer| entry_point.write_bytes(writer),
         )
     }
@@ -1159,14 +1142,8 @@ impl ToBytes for Contract {
         bytesrepr::write_tree(
             &mut result,
             self.named_keys(),
-            |name, writer| {
-                bytesrepr::write_string(writer, &name);
-                Ok(())
-            },
-            |key, writer| {
-                key.write_bytes(writer);
-                Ok(())
-            },
+            |name, writer| bytesrepr::write_string(writer, name),
+            |key, writer| key.write_bytes(writer),
         )?;
         self.entry_points().write_bytes(&mut result)?;
         self.protocol_version().write_bytes(&mut result);
@@ -1226,8 +1203,9 @@ pub enum EntryPointType {
 }
 
 impl EntryPointType {
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         writer.push(*self as u8);
+        Ok(())
     }
 }
 
@@ -1340,11 +1318,11 @@ impl EntryPoint {
     }
 
     pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        bytesrepr::write_string(writer, &self.name);
+        bytesrepr::write_string(writer, &self.name)?;
         bytesrepr::write_vec(writer, &self.args, |v, writer| v.write_bytes(writer))?;
         self.ret.append_bytes(writer)?;
         self.access().write_bytes(writer)?;
-        self.entry_point_type().write_bytes(writer);
+        self.entry_point_type().write_bytes(writer)?;
         Ok(())
     }
 }
@@ -1435,8 +1413,7 @@ impl EntryPointAccess {
             EntryPointAccess::Groups(groups) => {
                 writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 bytesrepr::write_vec(writer, groups, |group, writer| {
-                    bytesrepr::write_string(writer, group.value());
-                    Ok(())
+                    bytesrepr::write_string(writer, group.value())
                 })?;
             }
         }
@@ -1512,9 +1489,8 @@ impl Parameter {
     }
 
     pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        bytesrepr::write_string(writer, &self.name);
-        self.cl_type.append_bytes(writer)?;
-        Ok(())
+        bytesrepr::write_string(writer, &self.name)?;
+        self.cl_type.append_bytes(writer)
     }
 }
 

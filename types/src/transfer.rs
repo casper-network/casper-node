@@ -197,15 +197,13 @@ impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         (&self.deploy_hash).write_bytes(&mut result);
-        (&self.from).write_bytes(&mut result);
-        bytesrepr::write_option(&mut result, &self.to, |to, w| Ok(to.write_bytes(w)))?;
-        (&self.source).write_bytes(&mut result);
-        (&self.target).write_bytes(&mut result);
+        (&self.from).write_bytes(&mut result)?;
+        bytesrepr::write_option(&mut result, &self.to, |to, w| to.write_bytes(w))?;
+        (&self.source).write_bytes(&mut result)?;
+        (&self.target).write_bytes(&mut result)?;
         bytesrepr::write_u512(&mut result, &self.amount)?;
         bytesrepr::write_u512(&mut result, &self.gas)?;
-        bytesrepr::write_option(&mut result, &self.id, |id, w| {
-            Ok(bytesrepr::write_u64(w, id))
-        })?;
+        bytesrepr::write_option(&mut result, &self.id, |id, w| bytesrepr::write_u64(w, id))?;
         Ok(result)
     }
 
@@ -297,8 +295,9 @@ impl TransferAddr {
         Ok(TransferAddr(bytes))
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
-        writer.extend_from_slice(&self.0)
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 

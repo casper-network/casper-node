@@ -75,10 +75,10 @@ impl ToBytes for DeployInfo {
         let mut result = bytesrepr::allocate_buffer(self)?;
         (&self.deploy_hash).write_bytes(&mut result);
         bytesrepr::write_vec(&mut result, &self.transfers, |transfer, w| {
-            Ok(transfer.write_bytes(w))
+            transfer.write_bytes(w)
         })?;
-        (&self.from).write_bytes(&mut result);
-        (&self.source).write_bytes(&mut result);
+        (&self.from).write_bytes(&mut result)?;
+        (&self.source).write_bytes(&mut result)?;
         bytesrepr::write_u512(&mut result, &self.gas)?;
         Ok(result)
     }

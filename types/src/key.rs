@@ -445,7 +445,7 @@ impl Key {
         Key::Dictionary(addr)
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
         writer.push(self.tag());
         match self {
             Key::Account(account_hash) => {
@@ -483,6 +483,7 @@ impl Key {
                 writer.extend_from_slice(&[0u8; 32]);
             }
         };
+        Ok(())
     }
 }
 

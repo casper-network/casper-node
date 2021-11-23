@@ -88,9 +88,9 @@ impl ActionThresholds {
         }
     }
 
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
-        self.deployment().write_bytes(writer);
-        self.key_management().write_bytes(writer);
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.deployment().write_bytes(writer)?;
+        self.key_management().write_bytes(writer)
     }
 }
 

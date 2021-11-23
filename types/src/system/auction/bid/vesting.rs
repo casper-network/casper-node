@@ -85,7 +85,7 @@ impl VestingSchedule {
     }
 
     pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        bytesrepr::write_u64(writer, &self.initial_release_timestamp_millis);
+        bytesrepr::write_u64(writer, &self.initial_release_timestamp_millis)?;
         bytesrepr::write_option(writer, &self.locked_amounts(), |locked, w| {
             bytesrepr::write_iter(w, locked, |amount, ww| bytesrepr::write_u512(ww, amount))
         })
