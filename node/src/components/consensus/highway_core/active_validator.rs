@@ -145,11 +145,6 @@ impl<C: Context> ActiveValidator<C> {
     /// cannot start creating new units until its state is fully synchronized, otherwise it will
     /// most likely equivocate.
     fn can_vote(&self, state: &State<C>) -> bool {
-        if let Some((_, t)) = self.last_seen_own_unit {
-            if t.elapsed() > TIMEOUT_TO_VOTE_ANYWAY {
-                return true;
-            }
-        }
         self.own_last_unit
             .as_ref()
             .map_or(true, |swunit| state.has_unit(&swunit.hash()))
@@ -435,6 +430,11 @@ impl<C: Context> ActiveValidator<C> {
                 let seq_number = state.unit(hash).seq_number;
                 if Some(seq_number) != self.last_seen_own_unit.map(|(sn, _)| sn) {
                     self.last_seen_own_unit = Some((seq_number, Timestamp::now()));
+                } else if let Some((_, t)) = self.last_seen_own_unit {
+                    if t.elapsed() > TIMEOUT_TO_VOTE_ANYWAY {
+                        info!("timed out waiting for own units; voting anyway");
+                        self.own_last_unit = None;
+                    }
                 }
                 info!(
                     ?self.own_last_unit, ?self.last_seen_own_unit,
