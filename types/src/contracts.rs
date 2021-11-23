@@ -502,6 +502,10 @@ impl ContractPackageHash {
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractPackageHash(bytes))
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.extend_from_slice(&self.0)
+    }
 }
 
 impl Display for ContractPackageHash {
@@ -955,6 +959,18 @@ impl EntryPoints {
     pub fn take_entry_points(self) -> Vec<EntryPoint> {
         self.0.into_iter().map(|(_name, value)| value).collect()
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        bytesrepr::write_tree(
+            writer,
+            &self.0,
+            |name, writer| {
+                bytesrepr::write_string(writer, &name);
+                Ok(())
+            },
+            |entry_point, writer| entry_point.write_bytes(writer),
+        )
+    }
 }
 
 impl From<Vec<EntryPoint>> for EntryPoints {
@@ -1092,11 +1108,22 @@ impl Contract {
 impl ToBytes for Contract {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.contract_package_hash.to_bytes()?);
-        result.append(&mut self.contract_wasm_hash.to_bytes()?);
-        result.append(&mut self.named_keys.to_bytes()?);
-        result.append(&mut self.entry_points.to_bytes()?);
-        result.append(&mut self.protocol_version.to_bytes()?);
+        self.contract_package_hash().write_bytes(&mut result);
+        self.contract_wasm_hash().write_bytes(&mut result);
+        bytesrepr::write_tree(
+            &mut result,
+            self.named_keys(),
+            |name, writer| {
+                bytesrepr::write_string(writer, &name);
+                Ok(())
+            },
+            |key, writer| {
+                key.write_bytes(writer);
+                Ok(())
+            },
+        )?;
+        self.entry_points().write_bytes(&mut result)?;
+        self.protocol_version().write_bytes(&mut result);
         Ok(result)
     }
 
@@ -1150,6 +1177,12 @@ pub enum EntryPointType {
     Session = 0,
     /// Runs within contract's context
     Contract = 1,
+}
+
+impl EntryPointType {
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.push(*self as u8);
+    }
 }
 
 impl ToBytes for EntryPointType {
@@ -1259,6 +1292,15 @@ impl EntryPoint {
     pub fn entry_point_type(&self) -> EntryPointType {
         self.entry_point_type
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        bytesrepr::write_string(writer, &self.name);
+        bytesrepr::write_vec(writer, &self.args, |v, writer| v.write_bytes(writer))?;
+        self.ret.append_bytes( writer)?;
+        self.access().write_bytes(writer)?;
+        self.entry_point_type().write_bytes(writer);
+        Ok(())
+    }
 }
 
 impl Default for EntryPoint {
@@ -1338,6 +1380,22 @@ impl EntryPointAccess {
         let list: Vec<Group> = labels.iter().map(|s| Group(String::from(*s))).collect();
         EntryPointAccess::Groups(list)
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            EntryPointAccess::Public => {
+                writer.push(ENTRYPOINTACCESS_PUBLIC_TAG);
+            }
+            EntryPointAccess::Groups(groups) => {
+                writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
+                bytesrepr::write_vec(writer, groups, |group, writer| {
+                    bytesrepr::write_string(writer, group.value());
+                    Ok(())
+                })?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl ToBytes for EntryPointAccess {
@@ -1405,6 +1463,12 @@ impl Parameter {
     /// Get a reference to the parameter's name.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        bytesrepr::write_string(writer, &self.name);
+        self.cl_type.append_bytes(writer)?;
+        Ok(())
     }
 }
 

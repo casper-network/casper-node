@@ -1164,16 +1164,37 @@ pub(crate) fn write_string(writer: &mut Vec<u8>, text: &str) {
     writer.extend_from_slice(text_bytes);
 }
 
-pub(crate) fn write_tree<K, V, FK, FV>(writer: &mut Vec<u8>, tree: &BTreeMap<K, V>, key_fn: FK, value_fn: FV)
+pub(crate) fn write_tree<K, V, FK, FV>(
+    writer: &mut Vec<u8>,
+    tree: &BTreeMap<K, V>,
+    write_key_fn: FK,
+    write_value_fn: FV,
+) -> Result<(), self::Error>
 where
-    FK: Fn(&K, &mut Vec<u8>) -> (),
-    FV: Fn(&V, &mut Vec<u8>) -> (),
+    FK: Fn(&K, &mut Vec<u8>) -> Result<(), self::Error>,
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
 {
     writer.extend((tree.len() as u32).to_le_bytes());
     for (k, v) in tree.iter() {
-        key_fn(k, writer);
-        value_fn(v, writer);
+        write_key_fn(k, writer)?;
+        write_value_fn(v, writer)?;
     }
+    Ok(())
+}
+
+pub(crate) fn write_vec<V, FV>(
+    writer: &mut Vec<u8>,
+    v: &Vec<V>,
+    write_fn: FV,
+) -> Result<(), self::Error>
+where
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    writer.extend((v.len() as u32).to_le_bytes());
+    for el in v {
+        write_fn(el, writer)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -117,6 +117,12 @@ impl ProtocolVersion {
     pub fn is_compatible_with(&self, version: &ProtocolVersion) -> bool {
         self.0.major == version.0.major
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.extend(self.0.major.to_le_bytes());
+        writer.extend(self.0.minor.to_le_bytes());
+        writer.extend(self.0.patch.to_le_bytes());
+    }
 }
 
 impl ToBytes for ProtocolVersion {
