@@ -73,11 +73,13 @@ impl FromBytes for DeployInfo {
 impl ToBytes for DeployInfo {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.deploy_hash.to_bytes()?);
-        result.append(&mut self.transfers.to_bytes()?);
-        result.append(&mut self.from.to_bytes()?);
-        result.append(&mut self.source.to_bytes()?);
-        result.append(&mut self.gas.to_bytes()?);
+        (&self.deploy_hash).write_bytes(&mut result);
+        bytesrepr::write_vec(&mut result, &self.transfers, |transfer, w| {
+            Ok(transfer.write_bytes(w))
+        })?;
+        (&self.from).write_bytes(&mut result);
+        (&self.source).write_bytes(&mut result);
+        bytesrepr::write_u512(&mut result, &self.gas)?;
         Ok(result)
     }
 

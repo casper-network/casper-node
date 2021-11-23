@@ -296,6 +296,10 @@ impl TransferAddr {
             <[u8; TRANSFER_ADDR_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(TransferAddr(bytes))
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.extend_from_slice(&self.0)
+    }
 }
 
 #[cfg(feature = "json-schema")]
