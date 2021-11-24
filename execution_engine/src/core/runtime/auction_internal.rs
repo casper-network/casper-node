@@ -216,6 +216,69 @@ where
         cl_value.into_t().map_err(|_| Error::CLValue)
     }
 
+    fn mint_into_existing_purse(
+        &mut self,
+        amount: U512,
+        existing_purse: URef,
+    ) -> Result<(), Error> {
+        if self.context.get_caller() != PublicKey::System.to_account_hash()
+            && self.context.validate_uref(&existing_purse).is_err()
+        {
+            return Err(Error::InvalidCaller);
+        }
+
+        let args_values = RuntimeArgs::try_new(|args| {
+            args.insert(mint::ARG_AMOUNT, amount)?;
+            args.insert(mint::ARG_PURSE, existing_purse)?;
+            Ok(())
+        })
+        .map_err(|_| Error::CLValue)?;
+
+        let gas_counter = self.gas_counter();
+        let mut call_stack = self.call_stack().clone();
+        let call_stack_element = self
+            .get_system_contract_stack_frame(MINT)
+            .map_err(|_| Error::Storage)?;
+        call_stack.push(call_stack_element);
+
+        let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
+            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
+        })?;
+
+        let mint_contract_key: Key = mint_contract_hash.into();
+
+        let mint = match self
+            .context
+            .read_gs(&mint_contract_key)
+            .map_err(|exec_error| {
+                <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
+            })? {
+            Some(StoredValue::Contract(contract)) => contract,
+            Some(_) => {
+                return Err(Error::MissingValue);
+            }
+            None => return Err(Error::MissingKey),
+        };
+
+        let mut mint_named_keys = mint.named_keys().clone();
+
+        let cl_value = self
+            .call_host_mint(
+                self.context.protocol_version(),
+                mint::METHOD_MINT_INTO_EXISTING_PURSE,
+                &mut mint_named_keys,
+                &args_values,
+                &[],
+                call_stack,
+            )
+            .map_err(|error| <Option<Error>>::from(error).unwrap_or(Error::MintError))?;
+        self.set_gas_counter(gas_counter);
+        cl_value
+            .into_t::<Result<(), mint::Error>>()
+            .map_err(|_| Error::CLValue)?
+            .map_err(|error| error.into())
+    }
+
     fn create_purse(&mut self) -> Result<URef, Error> {
         Runtime::create_purse(self).map_err(|exec_error| {
             <Option<Error>>::from(exec_error).unwrap_or(Error::CreatePurseFailed)

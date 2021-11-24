@@ -584,7 +584,7 @@ pub trait Auction:
                 public_key.clone(),
                 delegator_rewards,
             )?;
-            let total_delegator_payout = delegator_payouts
+            let total_delegator_payout: U512 = delegator_payouts
                 .iter()
                 .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
                 .sum();
@@ -597,34 +597,13 @@ pub trait Auction:
                 public_key.clone(),
                 validator_reward,
             )?;
-            // TODO: add "mint into existing purse" facility
-            let tmp_validator_reward_purse =
-                self.mint(validator_reward).map_err(|_| Error::MintReward)?;
 
-            self.mint_transfer_direct(
-                Some(public_key.to_account_hash()),
-                tmp_validator_reward_purse,
-                validator_bonding_purse,
-                validator_reward,
-                None,
-            )
-            .map_err(|_| Error::ValidatorRewardTransfer)?
-            .map_err(|_| Error::ValidatorRewardTransfer)?;
+            self.mint_into_existing_purse(validator_reward, validator_bonding_purse)
+                .map_err(Error::from)?;
 
-            // TODO: add "mint into existing purse" facility
-            let tmp_delegator_reward_purse = self
-                .mint(total_delegator_payout)
-                .map_err(|_| Error::MintReward)?;
-            for (delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
-                self.mint_transfer_direct(
-                    Some(delegator_account_hash),
-                    tmp_delegator_reward_purse,
-                    bonding_purse,
-                    delegator_payout,
-                    None,
-                )
-                .map_err(|_| Error::DelegatorRewardTransfer)?
-                .map_err(|_| Error::DelegatorRewardTransfer)?;
+            for (_delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
+                self.mint_into_existing_purse(delegator_payout, bonding_purse)
+                    .map_err(Error::from)?;
             }
         }
 
