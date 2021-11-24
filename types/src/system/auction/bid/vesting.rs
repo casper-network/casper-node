@@ -83,13 +83,6 @@ impl VestingSchedule {
             }
         })
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        bytesrepr::write_u64(writer, &self.initial_release_timestamp_millis)?;
-        bytesrepr::write_option(writer, &self.locked_amounts(), |locked, w| {
-            bytesrepr::write_iter(w, locked, |amount, ww| bytesrepr::write_u512(ww, amount))
-        })
-    }
 }
 
 impl ToBytes for [U512; LOCKED_AMOUNTS_LENGTH] {
@@ -138,6 +131,12 @@ impl ToBytes for VestingSchedule {
     fn serialized_length(&self) -> usize {
         self.initial_release_timestamp_millis.serialized_length()
             + self.locked_amounts.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.initial_release_timestamp_millis).write_bytes(writer)?;
+        self.locked_amounts().write_bytes(writer)?;
+        Ok(())
     }
 }
 

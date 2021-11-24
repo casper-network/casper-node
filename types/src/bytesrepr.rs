@@ -69,6 +69,12 @@ pub trait ToBytes {
     /// `to_bytes()` or `into_bytes()`.  The data is not actually serialized, so this call is
     /// relatively cheap.
     fn serialized_length(&self) -> usize;
+
+    /// Writes `&self` into a mutable `writer`.
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend(self.to_bytes()?);
+        Ok(())
+    }
 }
 
 /// A type which can be deserialized from a `Vec<u8>`.
@@ -177,6 +183,11 @@ impl ToBytes for bool {
     fn serialized_length(&self) -> usize {
         BOOL_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.push(*self as u8);
+        Ok(())
+    }
 }
 
 impl FromBytes for bool {
@@ -200,6 +211,11 @@ impl ToBytes for u8 {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.push(*self);
+        Ok(())
+    }
 }
 
 impl FromBytes for u8 {
@@ -218,6 +234,11 @@ impl ToBytes for i32 {
 
     fn serialized_length(&self) -> usize {
         I32_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
     }
 }
 
@@ -238,6 +259,11 @@ impl ToBytes for i64 {
     fn serialized_length(&self) -> usize {
         I64_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
 }
 
 impl FromBytes for i64 {
@@ -256,6 +282,11 @@ impl ToBytes for u16 {
 
     fn serialized_length(&self) -> usize {
         U16_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
     }
 }
 
@@ -276,6 +307,11 @@ impl ToBytes for u32 {
     fn serialized_length(&self) -> usize {
         U32_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
 }
 
 impl FromBytes for u32 {
@@ -294,6 +330,11 @@ impl ToBytes for u64 {
 
     fn serialized_length(&self) -> usize {
         U64_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
     }
 }
 
@@ -314,6 +355,11 @@ impl ToBytes for String {
 
     fn serialized_length(&self) -> usize {
         u8_slice_serialized_length(self.as_bytes())
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self.as_bytes(), writer)?;
+        Ok(())
     }
 }
 
@@ -368,6 +414,14 @@ impl<T: ToBytes> ToBytes for Vec<T> {
 
     fn serialized_length(&self) -> usize {
         iterator_serialized_length(self.iter())
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&(self.len() as u32).to_le_bytes());
+        for item in self.iter() {
+            item.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 
@@ -461,6 +515,12 @@ macro_rules! impl_to_from_bytes_for_array {
 
                 #[inline(always)]
                 fn serialized_length(&self) -> usize { $N }
+
+                #[inline(always)]
+                fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+                    writer.extend_from_slice(self);
+                    Ok(())
+                }
             }
 
             impl FromBytes for [u8; $N] {
@@ -502,6 +562,14 @@ impl<V: ToBytes> ToBytes for BTreeSet<V> {
     fn serialized_length(&self) -> usize {
         U32_SERIALIZED_LENGTH + self.iter().map(|v| v.serialized_length()).sum::<usize>()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&(self.len() as u32).to_le_bytes());
+        for value in self.iter() {
+            value.write_bytes(writer)?;
+        }
+        Ok(())
+    }
 }
 
 impl<V: FromBytes + Ord> FromBytes for BTreeSet<V> {
@@ -542,6 +610,15 @@ where
                 .iter()
                 .map(|(key, value)| key.serialized_length() + value.serialized_length())
                 .sum::<usize>()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&(self.len() as u32).to_le_bytes());
+        for (key, value) in self.iter() {
+            key.write_bytes(writer)?;
+            value.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 
@@ -586,6 +663,17 @@ impl<T: ToBytes> ToBytes for Option<T> {
                 None => 0,
             }
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            None => writer.push(OPTION_NONE_TAG),
+            Some(v) => {
+                writer.push(OPTION_SOME_TAG);
+                v.write_bytes(writer)?;
+            }
+        };
+        Ok(())
+    }
 }
 
 impl<T: FromBytes> FromBytes for Option<T> {
@@ -620,6 +708,20 @@ impl<T: ToBytes, E: ToBytes> ToBytes for Result<T, E> {
                 Ok(ok) => ok.serialized_length(),
                 Err(error) => error.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            Err(error) => {
+                writer.push(RESULT_ERR_TAG);
+                error.write_bytes(writer)?;
+            }
+            Ok(result) => {
+                writer.push(RESULT_OK_TAG);
+                result.write_bytes(writer)?;
+            }
+        };
+        Ok(())
     }
 }
 
@@ -1055,6 +1157,12 @@ impl ToBytes for str {
     fn serialized_length(&self) -> usize {
         u8_slice_serialized_length(self.as_bytes())
     }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self.as_bytes(), writer)?;
+        Ok(())
+    }
 }
 
 impl ToBytes for &str {
@@ -1066,6 +1174,12 @@ impl ToBytes for &str {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         (*self).serialized_length()
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self.as_bytes(), writer)?;
+        Ok(())
     }
 }
 
@@ -1114,6 +1228,12 @@ fn u8_slice_to_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(vec)
 }
 
+fn write_u8_slice(bytes: &[u8], writer: &mut Vec<u8>) -> Result<(), Error> {
+    writer.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+    writer.extend_from_slice(bytes);
+    Ok(())
+}
+
 /// Serializes a vector of bytes with a length prefix.
 ///
 /// For efficiency you should avoid serializing Vec<u8>.
@@ -1157,119 +1277,6 @@ where
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
     assert!(*t == deserialized)
 }
-
-pub(crate) fn write_string(writer: &mut Vec<u8>, text: &str) -> Result<(), self::Error> {
-    let text_bytes = text.as_bytes();
-    writer.extend((text_bytes.len() as u32).to_le_bytes());
-    writer.extend_from_slice(text_bytes);
-    Ok(())
-}
-
-pub(crate) fn write_tree<K, V, FK, FV>(
-    writer: &mut Vec<u8>,
-    tree: &BTreeMap<K, V>,
-    write_key_fn: FK,
-    write_value_fn: FV,
-) -> Result<(), self::Error>
-where
-    FK: Fn(&K, &mut Vec<u8>) -> Result<(), self::Error>,
-    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
-{
-    writer.extend((tree.len() as u32).to_le_bytes());
-    for (k, v) in tree.iter() {
-        write_key_fn(k, writer)?;
-        write_value_fn(v, writer)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn write_vec<V, FV>(
-    writer: &mut Vec<u8>,
-    v: &[V],
-    write_fn: FV,
-) -> Result<(), self::Error>
-where
-    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
-{
-    writer.extend((v.len() as u32).to_le_bytes());
-    for el in v {
-        write_fn(el, writer)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn write_iter<'a, V: 'a, I: IntoIterator<Item = &'a V>, FV>(
-    writer: &mut Vec<u8>,
-    i: I,
-    write_fn: FV,
-) -> Result<(), self::Error>
-where
-    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
-{
-    for element in i {
-        write_fn(element, writer)?
-    }
-    Ok(())
-}
-
-pub(crate) fn write_u32(writer: &mut Vec<u8>, u: u32) -> Result<(), self::Error> {
-    writer.extend(u.to_le_bytes());
-    Ok(())
-}
-
-pub(crate) fn write_u64(writer: &mut Vec<u8>, u: &u64) -> Result<(), self::Error> {
-    writer.extend(u.to_le_bytes());
-    Ok(())
-}
-
-pub(crate) fn write_set<T, FT>(
-    writer: &mut Vec<u8>,
-    set: &BTreeSet<T>,
-    write_fn: FT,
-) -> Result<(), self::Error>
-where
-    FT: Fn(&T, &mut Vec<u8>) -> Result<(), self::Error>,
-{
-    writer.extend((set.len() as u32).to_le_bytes());
-    for element in set.iter() {
-        write_fn(element, writer)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn write_u512(writer: &mut Vec<u8>, u: &crate::U512) -> Result<(), self::Error> {
-    writer.extend(u.to_bytes()?);
-    Ok(())
-}
-
-pub(crate) fn write_u8(writer: &mut Vec<u8>, u: u8) -> Result<(), self::Error> {
-    writer.push(u);
-    Ok(())
-}
-
-pub(crate) fn write_bool(writer: &mut Vec<u8>, b: bool) -> Result<(), self::Error> {
-    writer.push(u8::from(b));
-    Ok(())
-}
-
-pub(crate) fn write_option<V, FV>(
-    writer: &mut Vec<u8>,
-    o: &Option<V>,
-    write_fn: FV,
-) -> Result<(), self::Error>
-where
-    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
-{
-    match o {
-        None => writer.push(OPTION_NONE_TAG),
-        Some(value) => {
-            writer.push(OPTION_SOME_TAG);
-            write_fn(value, writer)?;
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

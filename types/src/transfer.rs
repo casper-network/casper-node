@@ -51,10 +51,6 @@ impl DeployHash {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
-        writer.extend_from_slice(&self.0);
-    }
 }
 
 #[cfg(feature = "json-schema")]
@@ -78,6 +74,11 @@ impl ToBytes for DeployHash {
 
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -196,14 +197,14 @@ impl FromBytes for Transfer {
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        (&self.deploy_hash).write_bytes(&mut result);
+        (&self.deploy_hash).write_bytes(&mut result)?;
         (&self.from).write_bytes(&mut result)?;
-        bytesrepr::write_option(&mut result, &self.to, |to, w| to.write_bytes(w))?;
+        (&self.to).write_bytes(&mut result)?;
         (&self.source).write_bytes(&mut result)?;
         (&self.target).write_bytes(&mut result)?;
-        bytesrepr::write_u512(&mut result, &self.amount)?;
-        bytesrepr::write_u512(&mut result, &self.gas)?;
-        bytesrepr::write_option(&mut result, &self.id, |id, w| bytesrepr::write_u64(w, id))?;
+        (&self.amount).write_bytes(&mut result)?;
+        (&self.gas).write_bytes(&mut result)?;
+        (&self.id).write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -216,6 +217,18 @@ impl ToBytes for Transfer {
             + self.amount.serialized_length()
             + self.gas.serialized_length()
             + self.id.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.deploy_hash).write_bytes(writer)?;
+        (&self.from).write_bytes(writer)?;
+        self.to.write_bytes(writer)?;
+        self.source.write_bytes(writer)?;
+        self.target.write_bytes(writer)?;
+        self.amount.write_bytes(writer)?;
+        self.gas.write_bytes(writer)?;
+        self.id.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -293,11 +306,6 @@ impl TransferAddr {
         let bytes =
             <[u8; TRANSFER_ADDR_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(TransferAddr(bytes))
-    }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.extend_from_slice(&self.0);
-        Ok(())
     }
 }
 
@@ -385,6 +393,12 @@ impl ToBytes for TransferAddr {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.0).write_bytes(writer)?;
+        Ok(())
     }
 }
 

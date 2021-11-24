@@ -291,6 +291,12 @@ impl ToBytes for Digest {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
+    }
 }
 
 impl FromBytes for Digest {

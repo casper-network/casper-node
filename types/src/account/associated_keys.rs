@@ -114,15 +114,6 @@ impl AssociatedKeys {
     pub fn total_keys_weight_excluding(&self, account_hash: AccountHash) -> Weight {
         self.calculate_any_keys_weight(self.0.keys().filter(|&&element| element != account_hash))
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.extend_from_slice(&(self.0.len() as u32).to_le_bytes());
-        for (key, weight) in self.0.iter() {
-            key.write_bytes(writer)?;
-            weight.write_bytes(writer)?;
-        }
-        Ok(())
-    }
 }
 
 impl From<BTreeMap<AccountHash, Weight>> for AssociatedKeys {
@@ -138,6 +129,15 @@ impl ToBytes for AssociatedKeys {
 
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&(self.0.len() as u32).to_le_bytes());
+        for (key, weight) in self.0.iter() {
+            key.write_bytes(writer)?;
+            weight.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 
