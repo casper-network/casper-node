@@ -32,7 +32,7 @@ pub trait Store<K, V> {
         match txn.read(handle, &key.to_bytes()?)? {
             None => Ok(None),
             Some(value_bytes) => {
-                let value = bytesrepr::deserialize(value_bytes.into())?;
+                let value = bytesrepr::deserialize_slice(value_bytes)?;
                 Ok(Some(value))
             }
         }

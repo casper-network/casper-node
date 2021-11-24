@@ -139,6 +139,19 @@ pub fn deserialize<T: FromBytes>(bytes: Vec<u8>) -> Result<T, Error> {
     }
 }
 
+/// Deserializes slice of bbytes into an instance of `T`.
+///
+/// Returns an error if the bytes cannot be deserialized into `T` or if not all of the input bytes
+/// are consumed in the operation.
+pub fn deserialize_slice<T: FromBytes>(bytes: &[u8]) -> Result<T, Error> {
+    let (t, remainder) = T::from_bytes(bytes)?;
+    if remainder.is_empty() {
+        Ok(t)
+    } else {
+        Err(Error::LeftOverBytes)
+    }
+}
+
 /// Serializes `t` into a `Vec<u8>`.
 pub fn serialize(t: impl ToBytes) -> Result<Vec<u8>, Error> {
     t.into_bytes()
