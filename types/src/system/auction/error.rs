@@ -8,6 +8,7 @@ use core::{
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    system::mint,
     CLType, CLTyped,
 };
 
@@ -262,6 +263,13 @@ pub enum Error {
     /// assert_eq!(39, Error::ArithmeticOverflow as u8);
     /// ```
     ArithmeticOverflow = 39,
+    /// An error that is raised when there is an error in the mint contract that cannot
+    /// be mapped to a specific auction error.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    ///  assert_eq!(40, Error::MintError as u8);
+    /// ```
+    MintError = 40,
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
@@ -311,6 +319,7 @@ impl Display for Error {
             Error::DelegationRateTooLarge => formatter.write_str("Delegation rate too large"),
             Error::DelegatorFundsLocked => formatter.write_str("Delegator's funds are locked"),
             Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow"),
+            Error::MintError => formatter.write_str("An error in the mint contract execution"),
             Error::GasLimit => formatter.write_str("GasLimit"),
         }
     }
@@ -381,6 +390,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
+            d if d == Error::MintError as u8 => Ok(Error::MintError),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -412,6 +422,21 @@ impl FromBytes for Error {
 impl From<bytesrepr::Error> for Error {
     fn from(_: bytesrepr::Error) -> Self {
         Error::Serialization
+    }
+}
+
+impl From<mint::Error> for Error {
+    fn from(error: mint::Error) -> Self {
+        match error {
+            mint::Error::Storage => Self::Storage,
+            mint::Error::MissingKey => Self::MissingKey,
+            mint::Error::CLValue => Self::CLValue,
+            mint::Error::Serialize => Self::Serialization,
+            mint::Error::ArithmeticOverflow => Self::ArithmeticOverflow,
+            mint::Error::GasLimit => Self::GasLimit,
+            mint::Error::InvalidContext => Self::InvalidContext,
+            _ => Self::MintError,
+        }
     }
 }
 
