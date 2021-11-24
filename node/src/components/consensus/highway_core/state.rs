@@ -37,6 +37,7 @@ use crate::{
             evidence::Evidence,
             highway::{Endorsements, HashedWireUnit, SignedWireUnit, WireUnit},
             validators::{ValidatorIndex, ValidatorMap},
+            ENABLE_ENDORSEMENTS,
         },
         traits::Context,
     },
@@ -51,9 +52,6 @@ use tallies::Tallies;
 // accidentally endorse conflicting votes. Fix this and enable detecting conflicting
 // endorsements again.
 pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
-
-// Disables checking the limited naivete criterion for endorsements.
-const LNC_DISABLED: bool = true;
 
 /// Number of maximum-length rounds after which a validator counts as offline, if we haven't heard
 /// from them.
@@ -818,8 +816,8 @@ impl<C: Context> State<C> {
                 }
             }
         }
-        // All endorsed units from the panorama of this wunit.
-        if !LNC_DISABLED {
+        if ENABLE_ENDORSEMENTS {
+            // All endorsed units from the panorama of this wunit.
             let endorsements_in_panorama = panorama
                 .iter_correct_hashes()
                 .flat_map(|hash| self.unit(hash).claims_endorsed())
@@ -829,6 +827,14 @@ impl<C: Context> State<C> {
                 .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
             {
                 return Err(UnitError::EndorsementsNotMonotonic);
+            }
+            for hash in &wunit.endorsed {
+                if !wunit.panorama.sees(self, hash) {
+                    return Err(UnitError::EndorsedButUnseen {
+                        hash: format!("{:?}", hash),
+                        wire_unit: format!("{:?}", wunit),
+                    });
+                }
             }
         }
         if wunit.value.is_some() {
@@ -844,14 +850,6 @@ impl<C: Context> State<C> {
             let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
             if self.fork_choice(panorama).map_or(false, is_terminal) {
                 return Err(UnitError::ValueAfterTerminalBlock);
-            }
-        }
-        for hash in &wunit.endorsed {
-            if !LNC_DISABLED && !wunit.panorama.sees(self, hash) {
-                return Err(UnitError::EndorsedButUnseen {
-                    hash: format!("{:?}", hash),
-                    wire_unit: format!("{:?}", wunit),
-                });
             }
         }
         match self.validate_lnc(creator, panorama, &wunit.endorsed) {
@@ -940,6 +938,9 @@ impl<C: Context> State<C> {
 
     /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
     pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+        if !ENABLE_ENDORSEMENTS {
+            return Default::default();
+        };
         // First we collect all units that were already seen as endorsed by earlier units.
         let mut result: BTreeSet<C::Hash> = pan
             .iter_correct_hashes()
@@ -969,7 +970,7 @@ impl<C: Context> State<C> {
     }
 
     /// Validates whether a unit with the given panorama and `endorsed` set satisfies the
-    /// Limited Naïveté Criterion (LNC).
+    /// Limited Naivety Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
     fn validate_lnc(
@@ -978,14 +979,12 @@ impl<C: Context> State<C> {
         panorama: &Panorama<C>,
         endorsed: &BTreeSet<C::Hash>,
     ) -> Option<ValidatorIndex> {
-        if LNC_DISABLED {
-            None
-        } else {
-            let violates_lnc = |eq_idx: &ValidatorIndex| {
-                !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx)
-            };
-            panorama.iter_faulty().find(violates_lnc)
+        if !ENABLE_ENDORSEMENTS {
+            return None;
         }
+        let violates_lnc =
+            |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx);
+        panorama.iter_faulty().find(violates_lnc)
     }
 
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
@@ -1147,11 +1146,7 @@ impl<C: Context> State<C> {
                 pan = pan.merge(self, &self.inclusive_panorama(prev_uhash));
             }
         }
-        let endorsed = if LNC_DISABLED {
-            Default::default() // Don't cite any endorsements.
-        } else {
-            self.seen_endorsed(&pan)
-        };
+        let endorsed = self.seen_endorsed(&pan);
         if self.validate_lnc(creator, &pan, &endorsed).is_none() {
             return pan;
         }

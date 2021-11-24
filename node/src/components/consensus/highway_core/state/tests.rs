@@ -329,7 +329,7 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     let mut state = State::new_test(WEIGHTS, 0);
@@ -350,7 +350,7 @@ fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Equivocation cited by one honest validator in the vote's panorama.
@@ -375,7 +375,7 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Equivocation cited by two honest validators in the vote's panorama – their votes need to
@@ -413,7 +413,7 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Multiple equivocators and indirect equivocations.
@@ -457,7 +457,7 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     //           a0'<-----+
@@ -498,7 +498,7 @@ fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Eric's vote should not require an endorsement as his unit e0 cites equivocator Carol before
@@ -543,7 +543,7 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Endorsements should be transitive to descendants.
@@ -580,7 +580,7 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 
 #[test]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // a0 cites a descendant b1 of an equivocation vote (b0 and b0').
@@ -615,7 +615,7 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
 
 #[test]
 fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Diagram of the DAG can be found under
@@ -653,7 +653,7 @@ fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Diagram of the DAG can be found under
@@ -701,7 +701,7 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
-    if LNC_DISABLED {
+    if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
     // Diagram of the DAG can be found under
