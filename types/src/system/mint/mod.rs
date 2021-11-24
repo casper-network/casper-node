@@ -31,10 +31,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         self.write_balance(purse_uref, initial_balance)?;
 
         if !is_empty_purse {
-            // get total supply uref if exists, otherwise create it.
+            // get total supply uref if exists, otherwise error
             let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
                 None => {
-                    // total supply URef should exist due to genesis
+                    // get total supply uref if exists, otherwise error
                     return Err(Error::TotalSupplyNotFound);
                 }
                 Some(Key::URef(uref)) => uref,
@@ -153,9 +153,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::ArithmeticOverflow)
     }
 
-    /// Mint new token with given `initial_balance` balance into
-    /// a existing purse. Returns unit on success, otherwise
-    /// an error.
+    /// Mint `amount` new token into `existing_purse`.
+    /// Returns unit on success, otherwise an error.
     fn mint_into_existing_purse(
         &mut self,
         existing_purse: URef,
@@ -173,7 +172,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::PurseNotFound);
         }
         self.add_balance(existing_purse, amount)?;
-        // get total supply uref if exists, otherwise create it.
+        // get total supply uref if exists, otherwise error.
         let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
             None => {
                 // total supply URef should exist due to genesis
