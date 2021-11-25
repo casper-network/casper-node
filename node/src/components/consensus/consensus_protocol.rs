@@ -136,13 +136,9 @@ impl<VID> EraReport<VID> {
         where
             VID: ToBytes,
         {
-            let hashes = slice_of_validators
-                .iter()
-                .map(|validator| {
-                    Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
-                })
-                .collect();
-            Digest::hash_vec_merkle_tree(hashes)
+            Digest::hash_merkle_tree(slice_of_validators.iter().map(|validator| {
+                Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
+            }))
         }
 
         // Pattern match here leverages compiler to ensure every field is accounted for
