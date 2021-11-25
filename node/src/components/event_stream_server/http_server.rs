@@ -34,7 +34,6 @@ pub(super) async fn run(
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {
-    let mut final_id = Id::default();
     let server_joiner = task::spawn(server_with_shutdown);
 
     // Initialize the index and buffer for the SSEs.
@@ -92,8 +91,6 @@ pub(super) async fn run(
                 maybe_data = data_receiver.recv() => {
                     match maybe_data {
                         Some((event_index, data)) => {
-                            // Save the event_index to be used for sending shutdown.
-                            final_id = event_index;
                             // Buffer the data and broadcast it to subscribed clients.
                             trace!("Event stream server received {:?}", data);
                             let event = ServerSentEvent { id: Some(event_index), data };
@@ -118,14 +115,6 @@ pub(super) async fn run(
     // paired with `data_receiver` is dropped.  `server_joiner` will never return here.
     let _ = future::select(server_joiner, event_stream_fut.boxed()).await;
 
-    let id = final_id + 1;
-
-    let shutdown_event = ServerSentEvent {
-        id: Some(id),
-        data: SseData::Shutdown,
-    };
-    let shutdown_message = BroadcastChannelMessage::ServerSentEvent(shutdown_event);
-    let _ = broadcaster.send(shutdown_message);
     // Kill the event-stream handlers, and shut down the server.
     let _ = broadcaster.send(BroadcastChannelMessage::Shutdown);
     let _ = server_shutdown_sender.send(());

@@ -776,6 +776,20 @@ async fn server_exit_should_gracefully_shut_down_stream() {
     assert!(received_events1.len() < fixture.all_filtered_events(MAIN_PATH).0.len());
     assert!(received_events2.len() < fixture.all_filtered_events(DEPLOYS_PATH).0.len());
     assert!(received_events3.len() < fixture.all_filtered_events(SIGS_PATH).0.len());
+
+    // Ensure all clients received a `Shutdown` event as the final one.
+    assert_eq!(
+        received_events1.last().unwrap().data,
+        serde_json::to_string(&SseData::Shutdown).unwrap()
+    );
+    assert_eq!(
+        received_events2.last().unwrap().data,
+        serde_json::to_string(&SseData::Shutdown).unwrap()
+    );
+    assert_eq!(
+        received_events3.last().unwrap().data,
+        serde_json::to_string(&SseData::Shutdown).unwrap()
+    );
 }
 
 /// Checks that clients which don't consume the events in a timely manner are forcibly disconnected
@@ -986,9 +1000,10 @@ async fn should_persist_event_ids(path: &str) {
     assert!(first_run_final_id > 0);
 
     {
-        // Start a new server with a client barrier set for just before event ID 100.
+        // Start a new server with a client barrier set for just before event ID 100 + 1 (the extra
+        // event being the `Shutdown`).
         let mut server_behavior = ServerBehavior::new();
-        let barrier = server_behavior.add_client_sync_before_event(EVENT_COUNT);
+        let barrier = server_behavior.add_client_sync_before_event(EVENT_COUNT + 1);
         let server_address = fixture.run_server(server_behavior).await;
 
         // Check the test fixture has set the server's first event ID to at least
@@ -997,7 +1012,7 @@ async fn should_persist_event_ids(path: &str) {
 
         // Consume the events and assert their IDs are all >= `first_run_final_id`.
         let url = url(server_address, path, None);
-        let (expected_events, final_id) = fixture.filtered_events(path, EVENT_COUNT);
+        let (expected_events, final_id) = fixture.filtered_events(path, EVENT_COUNT + 1);
         let received_events = subscribe(&url, barrier, final_id, "client 2")
             .await
             .unwrap();
