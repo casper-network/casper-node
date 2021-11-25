@@ -34,7 +34,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // get total supply uref if exists, otherwise error
             let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
                 None => {
-                    // get total supply uref if exists, otherwise error
+                    // total supply URef should exist due to genesis
                     return Err(Error::TotalSupplyNotFound);
                 }
                 Some(Key::URef(uref)) => uref,
