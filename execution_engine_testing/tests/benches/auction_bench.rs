@@ -226,12 +226,18 @@ fn setup_bench_run_auction(
         step_and_run_auction(&mut builder, &validator_keys);
     }
 
-    group.bench_function(format!("run_auction/delegators/{}", delegator_count), |b| {
-        b.iter(|| {
-            era_end_timestamp += TIMESTAMP_INCREMENT_MILLIS;
-            step_and_run_auction(&mut builder, &validator_keys)
-        })
-    });
+    group.bench_function(
+        format!(
+            "run_auction/validators/{}/delegators/{}",
+            validator_count, delegator_count
+        ),
+        |b| {
+            b.iter(|| {
+                era_end_timestamp += TIMESTAMP_INCREMENT_MILLIS;
+                step_and_run_auction(&mut builder, &validator_keys)
+            })
+        },
+    );
 }
 
 fn generate_pks(key_count: usize) -> Vec<PublicKey> {
