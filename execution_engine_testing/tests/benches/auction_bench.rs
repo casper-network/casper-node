@@ -27,6 +27,7 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 const ARG_ID: &str = "id";
 
+const DEFAULT_DELEGATOR_COUNT: usize = 500;
 const DELEGATION_AMOUNT: u64 = 42;
 const DELEGATION_RATE: u8 = 1;
 const DELEGATOR_INITIAL_BALANCE: u64 = 500 * 1_000_000_000u64;
@@ -204,10 +205,8 @@ pub fn auction_bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("auction_bench_group");
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(120));
-    for delegator_count in [250, 500, 1000] {
-        group.throughput(Throughput::Elements(1));
-        setup_bench_run_auction(&mut group, delegator_count as usize);
-    }
+    group.throughput(Throughput::Elements(1));
+    setup_bench_run_auction(&mut group, DEFAULT_DELEGATOR_COUNT);
     group.finish();
 }
 
