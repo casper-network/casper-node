@@ -75,9 +75,6 @@ const DEFAULT_MAX_READERS: u32 = 512;
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
 
-/// Timestamp increment in milliseconds.
-pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
-
 /// Wasm test builder where state is held entirely in memory.
 pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
 /// Wasm test builder where state is held in LMDB.
@@ -107,8 +104,6 @@ pub struct WasmTestBuilder<S> {
     standard_payment_hash: Option<ContractHash>,
     /// Auction contract key
     auction_contract_hash: Option<ContractHash>,
-    /// Current "timestamp" for use with the auction.
-    timestamp: u64,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -139,7 +134,6 @@ impl Default for InMemoryWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
-            timestamp: 0,
         }
     }
 }
@@ -161,7 +155,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             handle_payment_contract_hash: self.handle_payment_contract_hash,
             standard_payment_hash: self.standard_payment_hash,
             auction_contract_hash: self.auction_contract_hash,
-            timestamp: self.timestamp,
         }
     }
 }
@@ -224,7 +217,6 @@ impl LmdbWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
-            timestamp: 0,
         }
     }
 
@@ -289,7 +281,6 @@ impl LmdbWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
-            timestamp: 0,
         }
     }
 
@@ -554,12 +545,6 @@ where
         )
         .build();
         self.exec(run_request).commit().expect_success()
-    }
-
-    /// Advance and return a new "timestamp", used in running the auction.
-    pub fn advance_timestamp(&mut self) -> u64 {
-        self.timestamp += TIMESTAMP_MILLIS_INCREMENT;
-        self.timestamp
     }
 
     /// Increments engine state.

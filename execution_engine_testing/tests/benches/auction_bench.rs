@@ -27,10 +27,12 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 const ARG_ID: &str = "id";
 
-const VALIDATOR_BID_AMOUNT: u64 = 100;
 const DELEGATION_AMOUNT: u64 = 42;
 const DELEGATION_RATE: u8 = 1;
 const DELEGATOR_INITIAL_BALANCE: u64 = 500 * 1_000_000_000u64;
+
+const VALIDATOR_BID_AMOUNT: u64 = 100;
+const TIMESTAMP_INCREMENT_MILLIS: u64 = 30_000;
 
 fn run_genesis_and_create_initial_accounts(
     data_dir: &Path,
@@ -161,6 +163,8 @@ fn setup_bench_run_auction(group: &mut BenchmarkGroup<WallTime>, delegator_count
         builder.commit();
     }
 
+    let mut era_end_timestamp = TIMESTAMP_INCREMENT_MILLIS;
+
     // TODO: use add_bid to add non-genesis validator with stake
 
     // advance the auction past the auction delay so that the added validator will be present in the
@@ -174,16 +178,18 @@ fn setup_bench_run_auction(group: &mut BenchmarkGroup<WallTime>, delegator_count
             .with_reward_item(RewardItem::new(DEFAULT_ACCOUNT_PUBLIC_KEY.clone(), 1))
             .build();
         builder.step(step_request).expect("should step");
-        let timestamp = builder.advance_timestamp();
-        builder.run_auction(timestamp, vec![]);
+        builder.run_auction(era_end_timestamp, vec![]);
     }
 
     group.bench_function(format!("run_auction/delegators/{}", delegator_count), |b| {
-        b.iter(|| step_and_run_auction(&mut builder))
+        b.iter(|| {
+            era_end_timestamp += TIMESTAMP_INCREMENT_MILLIS;
+            step_and_run_auction(&mut builder, era_end_timestamp)
+        })
     });
 }
 
-fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
+fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, timestamp: u64) {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
@@ -191,7 +197,6 @@ fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
         .with_next_era_id(builder.get_era() + 1)
         .build();
     builder.step(step_request).expect("should step");
-    let timestamp = builder.advance_timestamp();
     builder.run_auction(timestamp, vec![]);
 }
 
