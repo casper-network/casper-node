@@ -62,6 +62,15 @@ pub(crate) enum Error {
         prestate_hash: Digest,
         failure: DeployParameterFailure,
     },
+
+    /// The deploy received by the node from the client has expired.
+    #[error("deploy received by the node expired at {deploy_expiry_timestamp} with node's time at {current_node_timestamp}")]
+    ExpiredDeploy {
+        /// The timestamp when the deploy expires.
+        deploy_expiry_timestamp: Timestamp,
+        /// The timestamp when the node validated the expiry timestamp.
+        current_node_timestamp: Timestamp,
+    },
 }
 
 /// A representation of the way in which a deploy failed validation checks.
@@ -196,6 +205,24 @@ impl DeployAcceptor {
                 Error::InvalidDeployConfiguration(error),
                 verification_start_timestamp,
             );
+        }
+
+        // We only perform expiry checks on deploys received from the client.
+        if source.from_client() {
+            let current_node_timestamp = Timestamp::now();
+            if deploy.header().expired(current_node_timestamp) {
+                let time_of_expiry = deploy.header().expires();
+                debug!(%deploy, "deploy has expired");
+                return self.handle_invalid_deploy_result(
+                    effect_builder,
+                    EventMetadata::new(deploy, source, maybe_responder),
+                    Error::ExpiredDeploy {
+                        deploy_expiry_timestamp: time_of_expiry,
+                        current_node_timestamp,
+                    },
+                    verification_start_timestamp,
+                );
+            }
         }
 
         if self.verify_accounts {
@@ -762,8 +789,13 @@ impl DeployAcceptor {
                         }
                     }
                 }
+                // We continue to the next step in None case due to the subjective
+                // nature of global state.
                 None => {
                     if is_payment {
+                        // This function can be used to validate both session and payment
+                        // code. However, there is a call order where payment code must
+                        // be verified first before verifying session code.
                         self.verify_session_logic(
                             effect_builder,
                             event_metadata,

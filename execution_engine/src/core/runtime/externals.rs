@@ -13,7 +13,7 @@ use casper_types::{
     U512,
 };
 
-use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
+use super::{args::Args, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
     shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
@@ -31,7 +31,6 @@ where
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let func = FunctionIndex::try_from(index).expect("unknown function index");
-        let mut scoped_instrumenter = ScopedInstrumenter::new(func);
 
         let host_function_costs = self.config.wasm_config().take_host_function_costs();
 
@@ -57,11 +56,7 @@ where
                     &host_function_costs.load_named_keys,
                     [total_keys_ptr, result_size_ptr],
                 )?;
-                let ret = self.load_named_keys(
-                    total_keys_ptr,
-                    result_size_ptr,
-                    &mut scoped_instrumenter,
-                )?;
+                let ret = self.load_named_keys(total_keys_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
@@ -75,7 +70,6 @@ where
                     &host_function_costs.write,
                     [key_ptr, key_size, value_ptr, value_size],
                 )?;
-                scoped_instrumenter.add_property("value_size", value_size);
                 self.write(key_ptr, key_size, value_ptr, value_size)?;
                 Ok(None)
             }
@@ -103,7 +97,6 @@ where
                     &host_function_costs.new_uref,
                     [uref_ptr, value_ptr, value_size],
                 )?;
-                scoped_instrumenter.add_property("value_size", value_size);
                 self.new_uref(uref_ptr, value_ptr, value_size)?;
                 Ok(None)
             }
@@ -113,8 +106,7 @@ where
                 // args(1) = size of value
                 let (value_ptr, value_size) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.ret, [value_ptr, value_size])?;
-                scoped_instrumenter.add_property("value_size", value_size);
-                Err(self.ret(value_ptr, value_size as usize, &mut scoped_instrumenter))
+                Err(self.ret(value_ptr, value_size as usize))
             }
 
             FunctionIndex::GetKeyFuncIndex => {
@@ -129,7 +121,6 @@ where
                     &host_function_costs.get_key,
                     [name_ptr, name_size, output_ptr, output_size, bytes_written],
                 )?;
-                scoped_instrumenter.add_property("name_size", name_size);
                 let ret = self.load_key(
                     name_ptr,
                     name_size,
@@ -148,7 +139,6 @@ where
                     &host_function_costs.has_key,
                     [name_ptr, name_size],
                 )?;
-                scoped_instrumenter.add_property("name_size", name_size);
                 let result = self.has_key(name_ptr, name_size)?;
                 Ok(Some(RuntimeValue::I32(result)))
             }
@@ -163,7 +153,6 @@ where
                     &host_function_costs.put_key,
                     [name_ptr, name_size, key_ptr, key_size],
                 )?;
-                scoped_instrumenter.add_property("name_size", name_size);
                 self.put_key(name_ptr, name_size, key_ptr, key_size)?;
                 Ok(None)
             }
@@ -176,7 +165,6 @@ where
                     &host_function_costs.remove_key,
                     [name_ptr, name_size],
                 )?;
-                scoped_instrumenter.add_property("name_size", name_size);
                 self.remove_key(name_ptr, name_size)?;
                 Ok(None)
             }
@@ -514,7 +502,6 @@ where
                     &host_function_costs.read_host_buffer,
                     [dest_ptr, dest_size, bytes_written_ptr],
                 )?;
-                scoped_instrumenter.add_property("dest_size", dest_size);
                 let ret = self.read_host_buffer(dest_ptr, dest_size as usize, bytes_written_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
@@ -569,9 +556,6 @@ where
                         output_size_ptr,
                     ],
                 )?;
-                scoped_instrumenter
-                    .add_property("existing_urefs_size", existing_urefs_size.to_string());
-                scoped_instrumenter.add_property("label_size", label_size.to_string());
 
                 let contract_package_hash: ContractPackageHash =
                     self.t_from_mem(package_key_ptr, package_key_size)?;
@@ -626,9 +610,6 @@ where
                         bytes_written_ptr,
                     ],
                 )?;
-                scoped_instrumenter
-                    .add_property("entry_points_size", entry_points_size.to_string());
-                scoped_instrumenter.add_property("named_keys_size", named_keys_size.to_string());
 
                 let contract_package_hash: ContractPackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
@@ -700,9 +681,6 @@ where
                         result_size_ptr,
                     ],
                 )?;
-                scoped_instrumenter
-                    .add_property("entry_point_name_size", entry_point_name_size.to_string());
-                scoped_instrumenter.add_property("args_size", args_size.to_string());
 
                 let contract_hash: ContractHash =
                     self.t_from_mem(contract_hash_ptr, contract_hash_size)?;
@@ -718,7 +696,6 @@ where
                     &entry_point_name,
                     args_bytes,
                     result_size_ptr,
-                    &mut scoped_instrumenter,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
@@ -758,9 +735,6 @@ where
                         result_size_ptr,
                     ],
                 )?;
-                scoped_instrumenter
-                    .add_property("entry_point_name_size", entry_point_name_size.to_string());
-                scoped_instrumenter.add_property("args_size", args_size.to_string());
 
                 let contract_package_hash: ContractPackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
@@ -779,7 +753,6 @@ where
                     entry_point_name,
                     args_bytes,
                     result_size_ptr,
-                    &mut scoped_instrumenter,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
@@ -788,7 +761,6 @@ where
             FunctionIndex::PrintIndex => {
                 let (text_ptr, text_size) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.print, [text_ptr, text_size])?;
-                scoped_instrumenter.add_property("text_size", text_size);
                 self.print(text_ptr, text_size)?;
                 Ok(None)
             }
@@ -802,7 +774,6 @@ where
                     &host_function_costs.get_named_arg_size,
                     [name_ptr, name_size, size_ptr],
                 )?;
-                scoped_instrumenter.add_property("name_size", name_size.to_string());
                 let ret = self.get_named_arg_size(name_ptr, name_size as usize, size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
@@ -817,8 +788,6 @@ where
                     &host_function_costs.get_named_arg,
                     [name_ptr, name_size, dest_ptr, dest_size],
                 )?;
-                scoped_instrumenter.add_property("name_size", name_size.to_string());
-                scoped_instrumenter.add_property("dest_size", dest_size.to_string());
                 let ret =
                     self.get_named_arg(name_ptr, name_size as usize, dest_ptr, dest_size as usize)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -834,7 +803,6 @@ where
                     &host_function_costs.remove_contract_user_group,
                     [package_key_ptr, package_key_size, label_ptr, label_size],
                 )?;
-                scoped_instrumenter.add_property("label_size", label_size.to_string());
                 let package_key = self.t_from_mem(package_key_ptr, package_key_size)?;
                 let label: Group = self.t_from_mem(label_ptr, label_size)?;
 
@@ -860,7 +828,6 @@ where
                         value_size_ptr,
                     ],
                 )?;
-                scoped_instrumenter.add_property("label_size", label_size.to_string());
                 let ret = self.provision_contract_user_group_uref(
                     package_ptr,
                     package_size,
@@ -891,8 +858,6 @@ where
                         urefs_size,
                     ],
                 )?;
-                scoped_instrumenter.add_property("label_size", label_size.to_string());
-                scoped_instrumenter.add_property("urefs_size", urefs_size.to_string());
                 let ret = self.remove_contract_user_group_urefs(
                     package_ptr,
                     package_size,
@@ -910,8 +875,6 @@ where
                     &host_function_costs.blake2b,
                     [in_ptr, in_size, out_ptr, out_size],
                 )?;
-                scoped_instrumenter.add_property("in_size", in_size.to_string());
-                scoped_instrumenter.add_property("out_size", out_size.to_string());
                 let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
                 let digest = account::blake2b(&input);
                 if digest.len() != out_size as usize {
@@ -939,11 +902,6 @@ where
                     id_ptr,
                     id_size,
                 ): (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32) = Args::parse(args)?;
-                scoped_instrumenter.add_property("maybe_to_size", maybe_to_size.to_string());
-                scoped_instrumenter.add_property("source_size", source_size.to_string());
-                scoped_instrumenter.add_property("target_size", target_size.to_string());
-                scoped_instrumenter.add_property("amount_size", amount_size.to_string());
-                scoped_instrumenter.add_property("id_size", id_size.to_string());
                 let maybe_to: Option<AccountHash> = self.t_from_mem(maybe_to_ptr, maybe_to_size)?;
                 let source: URef = self.t_from_mem(source_ptr, source_size)?;
                 let target: URef = self.t_from_mem(target_ptr, target_size)?;
@@ -959,8 +917,6 @@ where
                 // data.
                 let (era_id_ptr, era_id_size, era_info_ptr, era_info_size): (u32, u32, u32, u32) =
                     Args::parse(args)?;
-                scoped_instrumenter.add_property("era_id_size", era_id_size.to_string());
-                scoped_instrumenter.add_property("era_info_size", era_info_size.to_string());
                 let era_id: EraId = self.t_from_mem(era_id_ptr, era_id_size)?;
                 let era_info: EraInfo = self.t_from_mem(era_info_ptr, era_info_size)?;
                 self.record_era_info(era_id, era_info)?;
@@ -994,7 +950,6 @@ where
                     &host_function_costs.dictionary_get,
                     [key_bytes_ptr, key_bytes_size, output_size_ptr],
                 )?;
-                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
                 let ret = self.dictionary_get(
                     uref_ptr,
                     uref_size,
@@ -1016,8 +971,6 @@ where
                     &host_function_costs.dictionary_put,
                     [key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size],
                 )?;
-                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
-                scoped_instrumenter.add_property("value_size", value_ptr_size);
                 let ret = self.dictionary_put(
                     uref_ptr,
                     uref_size,

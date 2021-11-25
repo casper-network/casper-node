@@ -3,8 +3,8 @@ mod args;
 mod auction_internal;
 mod externals;
 mod handle_payment_internal;
+mod host_function_flag;
 mod mint_internal;
-mod scoped_instrumenter;
 mod standard_payment_internal;
 
 use std::{
@@ -45,7 +45,6 @@ use crate::{
         engine_state::EngineConfig,
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
-        runtime::scoped_instrumenter::ScopedInstrumenter,
         runtime_context::{self, RuntimeContext},
         Address,
     },
@@ -56,6 +55,8 @@ use crate::{
     storage::global_state::StateReader,
 };
 
+use self::host_function_flag::HostFunctionFlag;
+
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     config: EngineConfig,
@@ -64,6 +65,7 @@ pub struct Runtime<'a, R> {
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
     call_stack: Vec<CallStackElement>,
+    host_function_flag: HostFunctionFlag,
 }
 
 /// Creates an WASM module instance and a memory instance.
@@ -978,15 +980,47 @@ where
     R::Error: Into<Error>,
 {
     /// Creates a new runtime instance.
-    pub fn new(
+    pub(crate) fn new(
         config: EngineConfig,
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
         call_stack: Vec<CallStackElement>,
     ) -> Self {
-        // Preconditions that would render the system inconsistent if violated. Those are strictly
-        // programming errors.
+        Self::check_preconditions(&call_stack);
+        Runtime {
+            config,
+            memory,
+            module,
+            host_buffer: None,
+            context,
+            call_stack,
+            host_function_flag: HostFunctionFlag::default(),
+        }
+    }
+
+    /// Creates a new runtime instance by cloning the config, memory, module and host function flag
+    /// from `self`.
+    fn new_from_self(
+        &self,
+        context: RuntimeContext<'a, R>,
+        call_stack: Vec<CallStackElement>,
+    ) -> Self {
+        Self::check_preconditions(&call_stack);
+        Runtime {
+            config: self.config,
+            memory: self.memory.clone(),
+            module: self.module.clone(),
+            host_buffer: None,
+            context,
+            call_stack,
+            host_function_flag: self.host_function_flag.clone(),
+        }
+    }
+
+    /// Preconditions that would render the system inconsistent if violated. Those are strictly
+    /// programming errors.
+    fn check_preconditions(call_stack: &[CallStackElement]) {
         if call_stack.is_empty() {
             error!("Call stack should not be empty while creating a new Runtime instance");
             debug_assert!(false);
@@ -995,15 +1029,6 @@ where
         if call_stack.first().unwrap().contract_hash().is_some() {
             error!("First element of the call stack should always represent a Session call");
             debug_assert!(false);
-        }
-
-        Runtime {
-            config,
-            memory,
-            module,
-            host_buffer: None,
-            context,
-            call_stack,
         }
     }
 
@@ -1039,15 +1064,18 @@ where
     /// Charge for a system contract call.
     ///
     /// This method does not charge for system contract calls if the immediate caller is a system
-    /// contract. This avoids misleading gas charges if one system contract calls other system
-    /// contract (i.e. auction contract calls into mint to create new purses).
+    /// contract or if we're currently within the scope of a host function call. This avoids
+    /// misleading gas charges if one system contract calls other system contract (e.g. auction
+    /// contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
         T: Into<Gas>,
     {
-        if self.is_system_immediate_caller()? {
-            // This avoids charging the user in situation where a system contract calls other system
-            // contract.
+        if self.host_function_flag.is_in_host_function_scope()
+            || self.is_system_immediate_caller()?
+        {
+            // This avoids charging the user in situation when the runtime is in the middle of
+            // handling a host function call or a system contract calls other system contract.
             return Ok(());
         }
         self.context.charge_system_contract_call(amount)
@@ -1308,13 +1336,7 @@ where
 
     /// Return some bytes from the memory and terminate the current `sub_call`. Note that the return
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
-    fn ret(
-        &mut self,
-        value_ptr: u32,
-        value_size: usize,
-        scoped_instrumenter: &mut ScopedInstrumenter,
-    ) -> Trap {
-        const UREF_COUNT: &str = "uref_count";
+    fn ret(&mut self, value_ptr: u32, value_size: usize) -> Trap {
         self.host_buffer = None;
         let mem_get = self
             .memory
@@ -1331,20 +1353,11 @@ where
                     None => Ok(vec![]),
                 };
                 match urefs {
-                    Ok(urefs) => {
-                        scoped_instrumenter.add_property(UREF_COUNT, urefs.len());
-                        Error::Ret(urefs).into()
-                    }
-                    Err(e) => {
-                        scoped_instrumenter.add_property(UREF_COUNT, 0);
-                        e.into()
-                    }
+                    Ok(urefs) => Error::Ret(urefs).into(),
+                    Err(e) => e.into(),
                 }
             }
-            Err(e) => {
-                scoped_instrumenter.add_property(UREF_COUNT, 0);
-                e.into()
-            }
+            Err(e) => e.into(),
         }
     }
 
@@ -1443,9 +1456,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let hash_address_generator = self.context.hash_address_generator();
-        let uref_address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1463,9 +1474,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1473,13 +1482,7 @@ where
             transfers,
         );
 
-        let mut mint_runtime = Runtime::new(
-            self.config,
-            self.memory.clone(),
-            self.module.clone(),
-            mint_context,
-            call_stack,
-        );
+        let mut mint_runtime = self.new_from_self(mint_context, call_stack);
 
         let system_config = self.config.system_config();
         let mint_costs = system_config.mint_costs();
@@ -1589,9 +1592,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1609,9 +1610,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1619,13 +1618,7 @@ where
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            self.memory.clone(),
-            self.module.clone(),
-            runtime_context,
-            call_stack,
-        );
+        let mut runtime = self.new_from_self(runtime_context, call_stack);
 
         let system_config = self.config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
@@ -1718,9 +1711,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
 
@@ -1739,9 +1730,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1749,13 +1738,7 @@ where
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            self.memory.clone(),
-            self.module.clone(),
-            runtime_context,
-            call_stack,
-        );
+        let mut runtime = self.new_from_self(runtime_context, call_stack);
 
         let system_config = self.config.system_config();
         let auction_costs = system_config.auction_costs();
@@ -2210,8 +2193,6 @@ where
 
         let config = self.config;
 
-        let host_buffer = None;
-
         let context = RuntimeContext::new(
             self.context.state(),
             entry_point.entry_point_type(),
@@ -2225,9 +2206,7 @@ where
             self.context.get_deploy_hash(),
             self.context.gas_limit(),
             self.context.gas_counter(),
-            self.context.hash_address_generator(),
-            self.context.uref_address_generator(),
-            self.context.transfer_address_generator(),
+            self.context.address_generator(),
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
@@ -2250,14 +2229,7 @@ where
 
         call_stack.push(call_stack_element);
 
-        let mut runtime = Runtime {
-            config,
-            memory,
-            module,
-            host_buffer,
-            context,
-            call_stack,
-        };
+        let mut runtime = Runtime::new(config, memory, module, context, call_stack);
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
 
@@ -2324,16 +2296,13 @@ where
         entry_point_name: &str,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        scoped_instrumenter.pause();
         let result = self.call_contract(contract_hash, entry_point_name, args)?;
-        scoped_instrumenter.unpause();
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -2344,21 +2313,18 @@ where
         entry_point_name: String,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        scoped_instrumenter.pause();
         let result = self.call_versioned_contract(
             contract_package_hash,
             contract_version,
             entry_point_name,
             args,
         )?;
-        scoped_instrumenter.unpause();
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -2396,17 +2362,7 @@ where
         &mut self,
         total_keys_ptr: u32,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Trap> {
-        scoped_instrumenter.add_property(
-            "names_total_length",
-            self.context
-                .named_keys()
-                .keys()
-                .map(|name| name.len())
-                .sum::<usize>(),
-        );
-
         if !self.can_write_to_host_buffer() {
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
@@ -2995,16 +2951,14 @@ where
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
-        let gas_counter = self.gas_counter();
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
-        self.set_gas_counter(gas_counter);
-
         let purse = result?.into_t()?;
         Ok(purse)
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
         self.mint_create(self.get_mint_contract()?)
     }
 
@@ -3122,6 +3076,8 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
+
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
         match self.context.read_account(&target_key)? {

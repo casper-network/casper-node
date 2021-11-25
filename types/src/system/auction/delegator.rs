@@ -61,6 +61,11 @@ impl Delegator {
         }
     }
 
+    /// Returns public key of the delegator.
+    pub fn delegator_public_key(&self) -> &PublicKey {
+        &self.delegator_public_key
+    }
+
     /// Returns the staked amount
     pub fn staked_amount(&self) -> &U512 {
         &self.staked_amount

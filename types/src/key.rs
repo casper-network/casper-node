@@ -55,7 +55,7 @@ pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
 /// The number of bytes in a [`Key::Dictionary`].
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
-pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
+pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 
 const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
@@ -395,6 +395,16 @@ impl Key {
         match self {
             Key::URef(uref) => Some(uref),
             _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `URefAddr` if `self` is of type [`Key::Balance`],
+    /// otherwise returns `None`.
+    pub fn as_balance(&self) -> Option<&URefAddr> {
+        if let Self::Balance(v) = self {
+            Some(v)
+        } else {
+            None
         }
     }
 

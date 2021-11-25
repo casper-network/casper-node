@@ -954,7 +954,7 @@ impl Deploy {
         };
         let secret_key = SecretKey::random(rng);
         Deploy::new(
-            deploy.header.timestamp,
+            Timestamp::now(),
             deploy.header.ttl,
             deploy.header.gas_price,
             deploy.header.dependencies,
@@ -1143,6 +1143,23 @@ impl Deploy {
             args: Default::default(),
         };
         Self::random_transfer_with_session(rng, session)
+    }
+
+    pub(crate) fn random_expired_deploy(rng: &mut TestRng) -> Self {
+        let deploy = Self::random_valid_native_transfer(rng);
+        let secret_key = SecretKey::random(rng);
+
+        Deploy::new(
+            Timestamp::zero(),
+            TimeDiff::from_seconds(1u32),
+            deploy.header.gas_price,
+            deploy.header.dependencies,
+            deploy.header.chain_name,
+            deploy.payment,
+            deploy.session,
+            &secret_key,
+            None,
+        )
     }
 
     /// Creates a deploy with native transfer as payment code.
