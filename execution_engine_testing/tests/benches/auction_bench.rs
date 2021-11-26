@@ -17,14 +17,14 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::engine_state::{
         genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, EngineConfig,
-        ExecConfig, GenesisAccount, RewardItem,
+        ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
     },
     shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
 };
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::auction::{self, Bids},
+    system::auction::{self},
     Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -50,12 +50,8 @@ fn run_genesis_and_create_initial_accounts(
     let mut genesis_accounts = vec![
         GenesisAccount::account(
             DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            Motes::new(U512::MAX), // all the monies
-            Some(GenesisValidator::new(
-                Motes::new(U512::from(VALIDATOR_BID_AMOUNT)),
-                DELEGATION_RATE,
-            )),
-            // None,
+            Motes::new(U512::MAX),
+            None,
         ),
         GenesisAccount::account(
             DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
@@ -66,7 +62,7 @@ fn run_genesis_and_create_initial_accounts(
     for validator in validator_keys {
         genesis_accounts.push(GenesisAccount::account(
             validator.clone(),
-            Motes::new(U512::MAX), // all the monies
+            Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
             Some(GenesisValidator::new(
                 Motes::new(U512::from(VALIDATOR_BID_AMOUNT)),
                 DELEGATION_RATE,
@@ -113,23 +109,16 @@ fn create_run_genesis_request(
     genesis_accounts: Vec<GenesisAccount>,
 ) -> RunGenesisRequest {
     let exec_config = {
-        let wasm_config = *DEFAULT_WASM_CONFIG;
-        let system_config = *DEFAULT_SYSTEM_CONFIG;
-        let auction_delay = DEFAULT_AUCTION_DELAY;
-        let locked_funds_period_millis = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-        let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-        let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-        let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
         ExecConfig::new(
             genesis_accounts,
-            wasm_config,
-            system_config,
+            *DEFAULT_WASM_CONFIG,
+            *DEFAULT_SYSTEM_CONFIG,
             validator_slots,
-            auction_delay,
-            locked_funds_period_millis,
-            round_seigniorage_rate,
-            unbonding_delay,
-            genesis_timestamp_millis,
+            DEFAULT_AUCTION_DELAY,
+            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+            DEFAULT_ROUND_SEIGNIORAGE_RATE,
+            DEFAULT_UNBONDING_DELAY,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         )
     };
     RunGenesisRequest::new(
@@ -145,8 +134,8 @@ fn setup_bench_run_auction(
     delegator_count: usize,
 ) {
     // Setup delegator public keys
-    let delegator_keys = generate_pks(delegator_count);
-    let validator_keys = generate_pks(validator_count);
+    let delegator_keys = generate_public_keys(delegator_count);
+    let validator_keys = generate_public_keys(validator_count);
 
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = run_genesis_and_create_initial_accounts(
@@ -154,23 +143,11 @@ fn setup_bench_run_auction(
         &validator_keys,
         delegator_keys
             .iter()
-            .cloned()
             .map(|pk| pk.to_account_hash())
             .collect::<Vec<_>>(),
     );
 
-    let bids: Bids = builder.get_bids();
-    let active_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY.clone()).unwrap();
-    assert_eq!(
-        builder.get_purse_balance(*active_bid.bonding_purse()),
-        U512::from(VALIDATOR_BID_AMOUNT),
-    );
-    assert_eq!(
-        *active_bid.delegation_rate(),
-        1,
-        "unexpected delegation rate"
-    );
-
+    let contract_hash = builder.get_auction_contract_hash();
     let mut next_validator_iter = validator_keys.iter().cycle();
     for delegator_public_key in delegator_keys {
         let balance = builder
@@ -183,33 +160,16 @@ fn setup_bench_run_auction(
 
         let delegation_amount = U512::from(DELEGATION_AMOUNT);
         let delegator_account_hash = delegator_public_key.to_account_hash();
-        let delegate = {
-            let contract_hash = builder.get_auction_contract_hash();
-            let entry_point = auction::METHOD_DELEGATE;
-            let next_validator_key = next_validator_iter
-                .next()
-                .expect("should produce values forever");
-            let args = runtime_args! {
-                auction::ARG_DELEGATOR => delegator_public_key.clone(),
-                auction::ARG_VALIDATOR => next_validator_key.clone(),
-                auction::ARG_AMOUNT => delegation_amount,
-            };
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
-
-            let deploy = DeployItemBuilder::new()
-                .with_address(delegator_account_hash)
-                .with_stored_session_hash(contract_hash, entry_point, args)
-                .with_empty_payment_bytes(
-                    runtime_args! { ARG_AMOUNT => U512::from(DEFAULT_DELEGATE_COST), },
-                )
-                .with_authorization_keys(&[delegator_account_hash])
-                .with_deploy_hash(deploy_hash)
-                .build();
-
-            ExecuteRequestBuilder::new().push_deploy(deploy)
-        }
-        .build();
+        let next_validator_key = next_validator_iter
+            .next()
+            .expect("should produce values forever");
+        let delegate = create_delegate_request(
+            delegator_public_key,
+            next_validator_key.clone(),
+            delegation_amount,
+            delegator_account_hash,
+            contract_hash,
+        );
         builder.exec(delegate);
         builder.expect_success();
         builder.commit();
@@ -217,14 +177,6 @@ fn setup_bench_run_auction(
     }
 
     let mut era_end_timestamp = TIMESTAMP_INCREMENT_MILLIS;
-
-    // TODO: use add_bid to add non-genesis validator with stake
-
-    // advance the auction past the auction delay so that the added validator will be present in the
-    // auction
-    for _ in 0..DEFAULT_AUCTION_DELAY {
-        step_and_run_auction(&mut builder, &validator_keys);
-    }
 
     group.bench_function(
         format!(
@@ -240,7 +192,34 @@ fn setup_bench_run_auction(
     );
 }
 
-fn generate_pks(key_count: usize) -> Vec<PublicKey> {
+fn create_delegate_request(
+    delegator_public_key: PublicKey,
+    next_validator_key: PublicKey,
+    delegation_amount: U512,
+    delegator_account_hash: AccountHash,
+    contract_hash: casper_types::ContractHash,
+) -> ExecuteRequest {
+    let entry_point = auction::METHOD_DELEGATE;
+    let args = runtime_args! {
+        auction::ARG_DELEGATOR => delegator_public_key,
+        auction::ARG_VALIDATOR => next_validator_key,
+        auction::ARG_AMOUNT => delegation_amount,
+    };
+    let mut rng = rand::thread_rng();
+    let deploy_hash = rng.gen();
+    let deploy = DeployItemBuilder::new()
+        .with_address(delegator_account_hash)
+        .with_stored_session_hash(contract_hash, entry_point, args)
+        .with_empty_payment_bytes(
+            runtime_args! { ARG_AMOUNT => U512::from(DEFAULT_DELEGATE_COST), },
+        )
+        .with_authorization_keys(&[delegator_account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    ExecuteRequestBuilder::new().push_deploy(deploy).build()
+}
+
+fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
     let mut ret = Vec::with_capacity(key_count);
     for _ in 0..key_count {
         let bytes: [u8; SecretKey::ED25519_LENGTH] = rand::random();
@@ -254,8 +233,7 @@ fn generate_pks(key_count: usize) -> Vec<PublicKey> {
 fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &[PublicKey]) {
     let mut step_request_builder = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(DEFAULT_ACCOUNT_PUBLIC_KEY.clone(), 1));
+        .with_protocol_version(ProtocolVersion::V1_0_0);
     for validator in validator_keys {
         step_request_builder =
             step_request_builder.with_reward_item(RewardItem::new(validator.clone(), 1));
@@ -280,8 +258,8 @@ pub fn auction_bench(c: &mut Criterion) {
         (150, 15000),
     ];
     for (validator_count, delegator_count) in VALIDATOR_DELEGATOR_COUNTS {
-        group.sample_size(100);
-        group.measurement_time(Duration::from_secs(120));
+        group.sample_size(10);
+        group.measurement_time(Duration::from_secs(30));
         group.throughput(Throughput::Elements(1));
         println!(
             "Starting bench of {} validators and {} delegators",
