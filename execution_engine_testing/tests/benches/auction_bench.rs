@@ -53,11 +53,7 @@ fn run_genesis_and_create_initial_accounts(
         GenesisAccount::account(
             DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             Motes::new(U512::MAX), // all the monies
-            Some(GenesisValidator::new(
-                Motes::new(U512::from(VALIDATOR_BID_AMOUNT)),
-                DELEGATION_RATE,
-            )),
-            // None,
+            None,
         ),
         GenesisAccount::account(
             DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
