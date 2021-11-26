@@ -117,6 +117,10 @@ impl ContractWasmHash {
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractWasmHash(bytes))
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.extend_from_slice(&self.0)
+    }
 }
 
 impl Display for ContractWasmHash {

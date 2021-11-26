@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLType, CLTyped,
 };
 
@@ -24,6 +24,11 @@ impl Weight {
     /// Returns the value of `self` as a `u8`.
     pub fn value(self) -> u8 {
         self.0
+    }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.0);
+        Ok(())
     }
 }
 

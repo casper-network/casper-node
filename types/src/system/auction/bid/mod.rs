@@ -274,13 +274,20 @@ impl CLTyped for Bid {
 impl ToBytes for Bid {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.extend(self.validator_public_key.to_bytes()?);
-        result.extend(self.bonding_purse.to_bytes()?);
-        result.extend(self.staked_amount.to_bytes()?);
-        result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.vesting_schedule.to_bytes()?);
-        result.extend(self.delegators.to_bytes()?);
-        result.extend(self.inactive.to_bytes()?);
+        (&self.validator_public_key).write_bytes(&mut result)?;
+        (&self.bonding_purse).write_bytes(&mut result)?;
+        bytesrepr::write_u512(&mut result, self.staked_amount())?;
+        bytesrepr::write_u8(&mut result, self.delegation_rate)?;
+        bytesrepr::write_option(&mut result, &self.vesting_schedule, |schedule, writer| {
+            schedule.write_bytes(writer)
+        })?;
+        bytesrepr::write_tree(
+            &mut result,
+            self.delegators(),
+            |pk, writer| pk.write_bytes(writer),
+            |delegator, writer| delegator.write_bytes(writer),
+        )?;
+        bytesrepr::write_bool(&mut result, self.inactive)?;
         Ok(result)
     }
 

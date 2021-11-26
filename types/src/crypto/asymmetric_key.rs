@@ -227,6 +227,21 @@ impl PublicKey {
             PublicKey::Secp256k1(_) => SECP256K1,
         }
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            PublicKey::System => writer.push(SYSTEM_TAG),
+            PublicKey::Ed25519(pk) => {
+                writer.push(ED25519_TAG);
+                writer.extend_from_slice(pk.as_bytes());
+            }
+            PublicKey::Secp256k1(pk) => {
+                writer.push(SECP256K1_TAG);
+                writer.extend_from_slice(&pk.to_bytes());
+            }
+        }
+        Ok(())
+    }
 }
 
 impl AsymmetricType<'_> for PublicKey {

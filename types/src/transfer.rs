@@ -51,6 +51,10 @@ impl DeployHash {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
+        writer.extend_from_slice(&self.0);
+    }
 }
 
 #[cfg(feature = "json-schema")]
@@ -192,14 +196,14 @@ impl FromBytes for Transfer {
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.deploy_hash.to_bytes()?);
-        result.append(&mut self.from.to_bytes()?);
-        result.append(&mut self.to.to_bytes()?);
-        result.append(&mut self.source.to_bytes()?);
-        result.append(&mut self.target.to_bytes()?);
-        result.append(&mut self.amount.to_bytes()?);
-        result.append(&mut self.gas.to_bytes()?);
-        result.append(&mut self.id.to_bytes()?);
+        (&self.deploy_hash).write_bytes(&mut result);
+        (&self.from).write_bytes(&mut result)?;
+        bytesrepr::write_option(&mut result, &self.to, |to, w| to.write_bytes(w))?;
+        (&self.source).write_bytes(&mut result)?;
+        (&self.target).write_bytes(&mut result)?;
+        bytesrepr::write_u512(&mut result, &self.amount)?;
+        bytesrepr::write_u512(&mut result, &self.gas)?;
+        bytesrepr::write_option(&mut result, &self.id, |id, w| bytesrepr::write_u64(w, id))?;
         Ok(result)
     }
 
@@ -289,6 +293,11 @@ impl TransferAddr {
         let bytes =
             <[u8; TRANSFER_ADDR_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(TransferAddr(bytes))
+    }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 

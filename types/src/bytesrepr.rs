@@ -1158,6 +1158,118 @@ where
     assert!(*t == deserialized)
 }
 
+pub(crate) fn write_string(writer: &mut Vec<u8>, text: &str) -> Result<(), self::Error> {
+    let text_bytes = text.as_bytes();
+    writer.extend((text_bytes.len() as u32).to_le_bytes());
+    writer.extend_from_slice(text_bytes);
+    Ok(())
+}
+
+pub(crate) fn write_tree<K, V, FK, FV>(
+    writer: &mut Vec<u8>,
+    tree: &BTreeMap<K, V>,
+    write_key_fn: FK,
+    write_value_fn: FV,
+) -> Result<(), self::Error>
+where
+    FK: Fn(&K, &mut Vec<u8>) -> Result<(), self::Error>,
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    writer.extend((tree.len() as u32).to_le_bytes());
+    for (k, v) in tree.iter() {
+        write_key_fn(k, writer)?;
+        write_value_fn(v, writer)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn write_vec<V, FV>(
+    writer: &mut Vec<u8>,
+    v: &[V],
+    write_fn: FV,
+) -> Result<(), self::Error>
+where
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    writer.extend((v.len() as u32).to_le_bytes());
+    for el in v {
+        write_fn(el, writer)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn write_iter<'a, V: 'a, I: IntoIterator<Item = &'a V>, FV>(
+    writer: &mut Vec<u8>,
+    i: I,
+    write_fn: FV,
+) -> Result<(), self::Error>
+where
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    for element in i {
+        write_fn(element, writer)?
+    }
+    Ok(())
+}
+
+pub(crate) fn write_u32(writer: &mut Vec<u8>, u: u32) -> Result<(), self::Error> {
+    writer.extend(u.to_le_bytes());
+    Ok(())
+}
+
+pub(crate) fn write_u64(writer: &mut Vec<u8>, u: &u64) -> Result<(), self::Error> {
+    writer.extend(u.to_le_bytes());
+    Ok(())
+}
+
+pub(crate) fn write_set<T, FT>(
+    writer: &mut Vec<u8>,
+    set: &BTreeSet<T>,
+    write_fn: FT,
+) -> Result<(), self::Error>
+where
+    FT: Fn(&T, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    writer.extend((set.len() as u32).to_le_bytes());
+    for element in set.iter() {
+        write_fn(element, writer)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn write_u512(writer: &mut Vec<u8>, u: &crate::U512) -> Result<(), self::Error> {
+    writer.extend(u.to_bytes()?);
+    Ok(())
+}
+
+pub(crate) fn write_u8(writer: &mut Vec<u8>, u: u8) -> Result<(), self::Error> {
+    writer.push(u);
+    Ok(())
+}
+
+pub(crate) fn write_bool(writer: &mut Vec<u8>, b: bool) -> Result<(), self::Error> {
+    writer.push(u8::from(b));
+    Ok(())
+}
+
+pub(crate) fn write_option<V, FV>(
+    writer: &mut Vec<u8>,
+    o: &Option<V>,
+    write_fn: FV,
+) -> Result<(), self::Error>
+where
+    FV: Fn(&V, &mut Vec<u8>) -> Result<(), self::Error>,
+{
+    match o {
+        None => writer.push(OPTION_NONE_TAG),
+        Some(value) => {
+            writer.push(OPTION_SOME_TAG);
+            write_fn(value, writer)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

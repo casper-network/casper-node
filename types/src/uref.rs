@@ -197,6 +197,12 @@ impl URef {
             .ok_or(FromStrError::InvalidAccessRights)?;
         Ok(URef(addr, access_rights))
     }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
+        writer.extend_from_slice(&self.0);
+        writer.push(self.1.bits());
+        Ok(())
+    }
 }
 
 #[cfg(feature = "json-schema")]

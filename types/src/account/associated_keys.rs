@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     account::{AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
-    bytesrepr::{Error, FromBytes, ToBytes},
+    bytesrepr::{self, Error, FromBytes, ToBytes},
 };
 
 /// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
@@ -113,6 +113,15 @@ impl AssociatedKeys {
     /// Calculates total weight of all authorization keys excluding a given key
     pub fn total_keys_weight_excluding(&self, account_hash: AccountHash) -> Weight {
         self.calculate_any_keys_weight(self.0.keys().filter(|&&element| element != account_hash))
+    }
+
+    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&(self.0.len() as u32).to_le_bytes());
+        for (key, weight) in self.0.iter() {
+            key.write_bytes(writer)?;
+            weight.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 
