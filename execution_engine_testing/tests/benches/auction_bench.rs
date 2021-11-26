@@ -10,9 +10,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -49,11 +49,22 @@ fn run_genesis_and_create_initial_accounts(
     let engine_config = EngineConfig::default();
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
 
-    let mut genesis_accounts = vec![GenesisAccount::account(
-        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::MAX),
-        None,
-    )];
+    let mut genesis_accounts = vec![
+        GenesisAccount::account(
+            DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            Motes::new(U512::MAX), // all the monies
+            Some(GenesisValidator::new(
+                Motes::new(U512::from(VALIDATOR_BID_AMOUNT)),
+                DELEGATION_RATE,
+            )),
+            // None,
+        ),
+        GenesisAccount::account(
+            DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            None,
+        ),
+    ];
     for validator in validator_keys {
         genesis_accounts.push(GenesisAccount::account(
             validator.clone(),
