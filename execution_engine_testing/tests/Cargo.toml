@@ -48,15 +48,6 @@ harness = false
 name = "auction_bench"
 harness = false
 
-# Commented out for main build, but this binary target is useful for development and debugging
-#   [[bin]]
-#   name = "auction_bench_bin"
-#   path = "benches/auction_bench.rs"
-#   test = false
-#   bench = true 
-#   [dependencies.auction_bench_bin]
-#   criterion = { version = "0.3.5", features = ["html_reports"]}
-
 [[bin]]
 name = "state-initializer"
 path = "src/profiling/state_initializer.rs"
