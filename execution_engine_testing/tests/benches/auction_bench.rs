@@ -39,6 +39,8 @@ const DELEGATOR_INITIAL_BALANCE: u64 = 500 * 1_000_000_000u64;
 const VALIDATOR_BID_AMOUNT: u64 = 100;
 const TIMESTAMP_INCREMENT_MILLIS: u64 = 30_000;
 
+/// Runs genesis, creates system, validator and delegator accounts, and funds the system account and
+/// delegator accounts.
 fn run_genesis_and_create_initial_accounts(
     data_dir: &Path,
     validator_keys: &[PublicKey],
@@ -47,18 +49,11 @@ fn run_genesis_and_create_initial_accounts(
     let engine_config = EngineConfig::default();
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
 
-    let mut genesis_accounts = vec![
-        GenesisAccount::account(
-            DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            Motes::new(U512::MAX),
-            None,
-        ),
-        GenesisAccount::account(
-            DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            None,
-        ),
-    ];
+    let mut genesis_accounts = vec![GenesisAccount::account(
+        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        Motes::new(U512::MAX),
+        None,
+    )];
     for validator in validator_keys {
         genesis_accounts.push(GenesisAccount::account(
             validator.clone(),
@@ -73,20 +68,18 @@ fn run_genesis_and_create_initial_accounts(
         create_run_genesis_request(validator_keys.len() as u32 + 2, genesis_accounts);
     builder.run_genesis(&run_genesis_request);
 
-    {
-        // Setup the system account with enough cspr
-        let transfer = ExecuteRequestBuilder::transfer(
-            *DEFAULT_ACCOUNT_ADDR,
-            runtime_args! {
-                    ARG_TARGET => *SYSTEM_ADDR,
-                    ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
-                    ARG_ID => <Option<u64>>::None,
-            },
-        )
-        .build();
-        builder.exec(transfer);
-        builder.expect_success().commit();
-    }
+    // Setup the system account with enough cspr
+    let transfer = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        runtime_args! {
+                ARG_TARGET => *SYSTEM_ADDR,
+                ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
+                ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+    builder.exec(transfer);
+    builder.expect_success().commit();
 
     for delegator_account in delegator_accounts {
         let transfer = ExecuteRequestBuilder::transfer(
