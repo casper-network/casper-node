@@ -199,7 +199,7 @@ setup-nightly-rs:
 
 .PHONY: setup-as
 setup-as: smart_contracts/contract_as/package.json
-	cd smart_contracts/contract_as && $(NPM) ci
+	cd smart_contracts/contract_as && $(NPM) ci --include=dev
 
 .PHONY: setup
 setup: setup-rs setup-as
