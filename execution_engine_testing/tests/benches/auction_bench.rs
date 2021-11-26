@@ -249,14 +249,8 @@ pub fn auction_bench(c: &mut Criterion) {
 
     /// Total number of validators, total number of delegators. Delegators will be spread
     /// round-robin over the validators.
-    const VALIDATOR_DELEGATOR_COUNTS: [(usize, usize); 6] = [
-        (100, 8000),
-        (150, 8000),
-        (100, 10000),
-        (150, 10000),
-        (100, 15000),
-        (150, 15000),
-    ];
+    const VALIDATOR_DELEGATOR_COUNTS: [(usize, usize); 4] =
+        [(100, 8000), (150, 8000), (100, 10000), (150, 10000)];
     for (validator_count, delegator_count) in VALIDATOR_DELEGATOR_COUNTS {
         group.sample_size(10);
         group.measurement_time(Duration::from_secs(30));
