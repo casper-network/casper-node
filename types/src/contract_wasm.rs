@@ -117,10 +117,6 @@ impl ContractWasmHash {
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractWasmHash(bytes))
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) {
-        writer.extend_from_slice(&self.0)
-    }
 }
 
 impl Display for ContractWasmHash {
@@ -150,6 +146,12 @@ impl ToBytes for ContractWasmHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -275,6 +277,11 @@ impl ToBytes for ContractWasm {
 
     fn serialized_length(&self) -> usize {
         self.bytes.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        (&self.bytes).write_bytes(writer)?;
+        Ok(())
     }
 }
 

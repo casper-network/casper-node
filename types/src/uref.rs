@@ -197,12 +197,6 @@ impl URef {
             .ok_or(FromStrError::InvalidAccessRights)?;
         Ok(URef(addr, access_rights))
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
-        writer.extend_from_slice(&self.0);
-        writer.push(self.1.bits());
-        Ok(())
-    }
 }
 
 #[cfg(feature = "json-schema")]
@@ -249,6 +243,12 @@ impl bytesrepr::ToBytes for URef {
 
     fn serialized_length(&self) -> usize {
         UREF_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
+        writer.extend_from_slice(&self.0);
+        self.1.write_bytes(writer)?;
+        Ok(())
     }
 }
 

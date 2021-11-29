@@ -74,29 +74,6 @@ impl SeigniorageAllocation {
             SeigniorageAllocation::Delegator { .. } => SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG,
         }
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
-        match self {
-            SeigniorageAllocation::Validator {
-                validator_public_key,
-                amount,
-            } => {
-                validator_public_key.write_bytes(writer)?;
-                bytesrepr::write_u512(writer, amount)?;
-            }
-            SeigniorageAllocation::Delegator {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-            } => {
-                delegator_public_key.write_bytes(writer)?;
-                validator_public_key.write_bytes(writer)?;
-                bytesrepr::write_u512(writer, amount)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 impl ToBytes for SeigniorageAllocation {
@@ -123,6 +100,29 @@ impl ToBytes for SeigniorageAllocation {
                         + amount.serialized_length()
                 }
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        match self {
+            SeigniorageAllocation::Validator {
+                validator_public_key,
+                amount,
+            } => {
+                validator_public_key.write_bytes(writer)?;
+                amount.write_bytes(writer)?;
+            }
+            SeigniorageAllocation::Delegator {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+            } => {
+                delegator_public_key.write_bytes(writer)?;
+                validator_public_key.write_bytes(writer)?;
+                amount.write_bytes(writer)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -214,17 +214,17 @@ impl EraInfo {
 impl ToBytes for EraInfo {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-
-        bytesrepr::write_vec(
-            &mut result,
-            self.seigniorage_allocations(),
-            |allocation, w| allocation.write_bytes(w),
-        )?;
+        self.seigniorage_allocations().write_bytes(&mut result)?;
         Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
         self.seigniorage_allocations.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.seigniorage_allocations().write_bytes(writer)?;
+        Ok(())
     }
 }
 

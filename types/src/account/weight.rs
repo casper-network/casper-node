@@ -25,11 +25,6 @@ impl Weight {
     pub fn value(self) -> u8 {
         self.0
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.0);
-        Ok(())
-    }
 }
 
 impl ToBytes for Weight {
@@ -39,6 +34,11 @@ impl ToBytes for Weight {
 
     fn serialized_length(&self) -> usize {
         WEIGHT_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.0);
+        Ok(())
     }
 }
 

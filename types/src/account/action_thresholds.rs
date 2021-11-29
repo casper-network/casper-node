@@ -87,11 +87,6 @@ impl ActionThresholds {
             ActionType::KeyManagement => self.set_key_management_threshold(new_threshold),
         }
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.deployment().write_bytes(writer)?;
-        self.key_management().write_bytes(writer)
-    }
 }
 
 impl Default for ActionThresholds {
@@ -113,6 +108,12 @@ impl ToBytes for ActionThresholds {
 
     fn serialized_length(&self) -> usize {
         2 * WEIGHT_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.deployment().write_bytes(writer)?;
+        self.key_management().write_bytes(writer)?;
+        Ok(())
     }
 }
 

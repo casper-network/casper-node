@@ -94,11 +94,6 @@ impl AccountHash {
         let digest = blake2b_hash_fn(preimage);
         Self::new(digest)
     }
-
-    pub(crate) fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
-        writer.extend_from_slice(&self.0);
-        Ok(())
-    }
 }
 
 #[cfg(feature = "json-schema")]
@@ -191,6 +186,12 @@ impl ToBytes for AccountHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 
