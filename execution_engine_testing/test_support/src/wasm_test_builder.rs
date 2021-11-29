@@ -942,7 +942,7 @@ where
     }
 
     /// Gets all `[Key::Balance]`s in global state.
-    pub fn get_balances(&mut self) -> Vec<Key> {
+    pub fn get_balance_keys(&mut self) -> Vec<Key> {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
@@ -955,7 +955,7 @@ where
         let reader = tracking_copy.reader();
 
         reader
-            .keys_with_prefix(correlation_id, &[KeyTag::Withdraw as u8])
+            .keys_with_prefix(correlation_id, &[KeyTag::Balance as u8])
             .unwrap_or_default()
     }
 

@@ -276,7 +276,7 @@ where
         cl_value
             .into_t::<Result<(), mint::Error>>()
             .map_err(|_| Error::CLValue)?
-            .map_err(|error| error.into())
+            .map_err(|_| Error::MintError)
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
