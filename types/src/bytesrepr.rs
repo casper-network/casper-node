@@ -1274,8 +1274,12 @@ where
         serialized,
         t
     );
+    let mut written_bytes = vec![];
+    t.write_bytes(&mut written_bytes)
+        .expect("Unable to serialize data via write_bytes");
+    assert_eq!(serialized, written_bytes);
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
-    assert!(*t == deserialized)
+    assert!(*t == deserialized);
 }
 #[cfg(test)]
 mod tests {
