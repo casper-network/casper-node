@@ -11,8 +11,10 @@ use crate::{
 /// Thresholds that have to be met when executing an action of a certain type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionThresholds {
-    deployment: Weight,
-    key_management: Weight,
+    /// Threshold for deploy execution.
+    pub deployment: Weight,
+    /// Threshold for managing action threshold.
+    pub key_management: Weight,
 }
 
 impl ActionThresholds {
@@ -106,6 +108,12 @@ impl ToBytes for ActionThresholds {
 
     fn serialized_length(&self) -> usize {
         2 * WEIGHT_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.deployment().write_bytes(writer)?;
+        self.key_management().write_bytes(writer)?;
+        Ok(())
     }
 }
 

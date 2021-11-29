@@ -287,14 +287,35 @@ where
                 responder,
             } => {
                 let result = self.commit_genesis(&chainspec);
-                responder.respond(result).ignore()
+                if let Err(lmdb_error) = self.engine_state.flush_environment() {
+                    fatal!(
+                        effect_builder,
+                        "error flushing lmdb environment {:?}",
+                        lmdb_error
+                    )
+                    .ignore()
+                } else {
+                    trace!(?result, "commit_genesis response");
+                    responder.respond(result).ignore()
+                }
             }
             ContractRuntimeRequest::Upgrade {
                 upgrade_config,
                 responder,
-            } => responder
-                .respond(self.commit_upgrade(*upgrade_config))
-                .ignore(),
+            } => {
+                let result = self.commit_upgrade(*upgrade_config);
+                if let Err(lmdb_error) = self.engine_state.flush_environment() {
+                    fatal!(
+                        effect_builder,
+                        "error flushing lmdb environment {:?}",
+                        lmdb_error
+                    )
+                    .ignore()
+                } else {
+                    trace!(?result, "commit_upgrade response");
+                    responder.respond(result).ignore()
+                }
+            }
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,

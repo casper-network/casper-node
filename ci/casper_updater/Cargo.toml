@@ -2,7 +2,7 @@
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 description = "A tool to update versions of all published CasperLabs packages."
 edition = "2018"
-license-file = "../../LICENSE"
+license = "Apache-2.0"
 name = "casper-updater"
 readme = "README.md"
 version = "0.3.0"

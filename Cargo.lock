@@ -529,8 +529,10 @@ dependencies = [
  "itertools",
  "proptest",
  "proptest-attr-macro",
+ "rand 0.8.4",
  "schemars",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]
@@ -2723,6 +2725,14 @@ dependencies = [
  "safemem",
  "tempfile",
  "twoway",
+]
+
+[[package]]
+name = "named-dictionary-test"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]

@@ -9,7 +9,10 @@ use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
 use crate::storage::{
     store::tests as store_tests,
-    trie::{gens::trie_arb, Trie},
+    trie::{
+        gens::{trie_extension_arb, trie_leaf_arb, trie_node_arb},
+        Trie,
+    },
     DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
@@ -70,12 +73,32 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
 proptest! {
     #[test]
-    fn prop_in_memory_roundtrip_succeeds(v in vec(trie_arb(), get_range())) {
+    fn prop_in_memory_roundtrip_succeeds_leaf(v in vec(trie_leaf_arb(), get_range())) {
         assert!(in_memory_roundtrip_succeeds(v))
     }
 
     #[test]
-    fn prop_lmdb_roundtrip_succeeds(v in vec(trie_arb(), get_range())) {
+    fn prop_in_memory_roundtrip_succeeds_node(v in vec(trie_node_arb(), get_range())) {
+        assert!(in_memory_roundtrip_succeeds(v))
+    }
+
+    #[test]
+    fn prop_in_memory_roundtrip_succeeds_extension(v in vec(trie_extension_arb(), get_range())) {
+        assert!(in_memory_roundtrip_succeeds(v))
+    }
+
+    #[test]
+    fn prop_lmdb_roundtrip_succeeds_leaf(v in vec(trie_leaf_arb(), get_range())) {
+        assert!(lmdb_roundtrip_succeeds(v))
+    }
+
+    #[test]
+    fn prop_lmdb_roundtrip_succeeds_node(v in vec(trie_node_arb(), get_range())) {
+        assert!(lmdb_roundtrip_succeeds(v))
+    }
+
+    #[test]
+    fn prop_lmdb_roundtrip_succeeds_extension(v in vec(trie_extension_arb(), get_range())) {
         assert!(lmdb_roundtrip_succeeds(v))
     }
 }
