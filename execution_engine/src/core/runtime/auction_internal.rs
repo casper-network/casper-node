@@ -235,12 +235,13 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let mut call_stack = self.call_stack().clone();
-        let call_stack_element = self
-            .get_system_contract_stack_frame(MINT)
-            .map_err(|_| Error::Storage)?;
-        call_stack.push(call_stack_element);
-
+        let mut stack = self.stack().clone();
+        stack
+            .push(
+                self.get_system_contract_stack_frame(MINT)
+                    .map_err(|_| Error::Storage)?,
+            )
+            .map_err(|_| Error::RuntimeStackOverflow)?;
         let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
             <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
         })?;
@@ -269,7 +270,7 @@ where
                 &mut mint_named_keys,
                 &args_values,
                 &[],
-                call_stack,
+                stack,
             )
             .map_err(|error| <Option<Error>>::from(error).unwrap_or(Error::MintError))?;
         self.set_gas_counter(gas_counter);
