@@ -1559,6 +1559,16 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
+            mint::METHOD_MINT_INTO_EXISTING_PURSE => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.mint)?;
+
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
+                let existing_purse: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
+
+                let result: Result<(), mint::Error> =
+                    mint_runtime.mint_into_existing_purse(existing_purse, amount);
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };

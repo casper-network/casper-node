@@ -941,6 +941,24 @@ where
         ret
     }
 
+    /// Gets all `[Key::Balance]`s in global state.
+    pub fn get_balance_keys(&mut self) -> Vec<Key> {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+
+        let tracking_copy = self
+            .engine_state
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        let reader = tracking_copy.reader();
+
+        reader
+            .keys_with_prefix(correlation_id, &[KeyTag::Balance as u8])
+            .unwrap_or_default()
+    }
+
     /// Gets a stored value from a contract's named keys.
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
     where
