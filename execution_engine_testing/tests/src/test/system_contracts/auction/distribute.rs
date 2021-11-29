@@ -3737,11 +3737,11 @@ fn should_not_create_purses_during_distribute() {
     )
     .build();
 
-    let number_of_purses_before_distribute = builder.get_balances().len();
+    let number_of_purses_before_distribute = builder.get_balance_keys().len();
 
     builder.exec(distribute_request).commit().expect_success();
 
-    let number_of_purses_after_distribute = builder.get_balances().len();
+    let number_of_purses_after_distribute = builder.get_balance_keys().len();
 
     assert_eq!(
         number_of_purses_after_distribute,
