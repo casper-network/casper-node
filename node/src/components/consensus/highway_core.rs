@@ -45,3 +45,6 @@ mod evidence;
 pub(crate) mod highway_testing;
 
 pub(crate) use state::{State, Weight};
+
+// Enables the endorsement mechanism.
+const ENABLE_ENDORSEMENTS: bool = false;
