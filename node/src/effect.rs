@@ -73,7 +73,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::error;
@@ -109,7 +109,7 @@ use crate::{
         BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
         FinalitySignature, FinalizedBlock, Item, TimeDiff, Timestamp,
     },
-    utils::Source,
+    utils::{SharedFlag, Source},
 };
 use announcements::{
     ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
@@ -144,23 +144,31 @@ pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 /// A responder satisfying a request.
 #[must_use]
 #[derive(DataSize)]
-pub(crate) struct Responder<T>(Option<oneshot::Sender<T>>);
+pub(crate) struct Responder<T> {
+    /// Sender through which the response ultimately should be sent.
+    sender: Option<oneshot::Sender<T>>,
+    /// Reactor flag indicating shutdown.
+    is_shutting_down: SharedFlag,
+}
 
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
     #[inline]
-    fn new(sender: oneshot::Sender<T>) -> Self {
-        Responder(Some(sender))
+    fn new(sender: oneshot::Sender<T>, is_shutting_down: SharedFlag) -> Self {
+        Responder {
+            sender: Some(sender),
+            is_shutting_down,
+        }
     }
 
     /// Helper method for tests.
     ///
-    /// Allows creating a responder manually. This function should not be used, unless you are
-    /// writing alternative infrastructure, e.g. for tests.
+    /// Allows creating a responder manually, without observing the shutdown flag. This function
+    /// should not be used, unless you are writing alternative infrastructure, e.g. for tests.
     #[cfg(test)]
     #[inline]
-    pub(crate) fn create(sender: oneshot::Sender<T>) -> Self {
-        Responder::new(sender)
+    pub(crate) fn without_shutdown(sender: oneshot::Sender<T>) -> Self {
+        Responder::new(sender, SharedFlag::global_shared())
     }
 }
 
@@ -170,12 +178,19 @@ where
 {
     /// Send `data` to the origin of the request.
     pub(crate) async fn respond(mut self, data: T) {
-        if let Some(sender) = self.0.take() {
+        if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
-                error!(
-                    ?data,
-                    "could not send response to request down oneshot channel"
-                );
+                if self.is_shutting_down.is_set() {
+                    debug!(
+                        ?data,
+                        "ignored failure to send response to request down oneshot channel"
+                    );
+                } else {
+                    error!(
+                        ?data,
+                        "could not send response to request down oneshot channel"
+                    );
+                }
             }
         } else {
             error!(
@@ -200,13 +215,19 @@ impl<T> Display for Responder<T> {
 
 impl<T> Drop for Responder<T> {
     fn drop(&mut self) {
-        if self.0.is_some() {
-            // This is usually a very serious error, as another component will now be stuck.
-            error!(
-                responder=?self,
-                "dropped without being responded to --- \
-                 this is always a bug and will likely cause another component to be stuck!"
-            );
+        if self.sender.is_some() {
+            if self.is_shutting_down.is_set() {
+                debug!(
+                    responder=?self,
+                    "ignored dropping of responder during shutdown"
+                );
+            } else {
+                // This is usually a very serious error, as another component will now be stuck.
+                error!(
+                    responder=?self,
+                    "dropped without being responded to outside of shutdown"
+                );
+            }
         }
     }
 }
@@ -379,12 +400,17 @@ where
 /// Provides methods allowing the creation of effects which need to be scheduled
 /// on the reactor's event queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub(crate) struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
+pub(crate) struct EffectBuilder<REv: 'static> {
+    /// A handle to the referenced event queue.
+    event_queue: EventQueueHandle<REv>,
+}
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder(self.0)
+        EffectBuilder {
+            event_queue: self.event_queue,
+        }
     }
 }
 
@@ -392,8 +418,8 @@ impl<REv> Copy for EffectBuilder<REv> {}
 
 impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
-    pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
-        EffectBuilder(event_queue_handle)
+    pub(crate) fn new(event_queue: EventQueueHandle<REv>) -> Self {
+        EffectBuilder { event_queue }
     }
 
     /// Schedules a regular event.
@@ -401,13 +427,13 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<E>,
     {
-        self.0.schedule(event, QueueKind::Regular).await
+        self.event_queue.schedule(event, QueueKind::Regular).await
     }
 
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
-        self.0
+        self.event_queue
     }
 
     /// Performs a request.
@@ -430,19 +456,23 @@ impl<REv> EffectBuilder<REv> {
         let (sender, receiver) = oneshot::channel();
 
         // Create response function.
-        let responder = Responder::new(sender);
+        let responder = Responder::new(sender, self.event_queue.shutdown_flag());
 
         // Now inject the request event into the event loop.
         let request_event = f(responder).into();
-        self.0.schedule(request_event, queue_kind).await;
+        self.event_queue.schedule(request_event, queue_kind).await;
 
         match receiver.await {
             Ok(value) => value,
             Err(err) => {
                 // The channel should never be closed, ever. If it is, we pretend nothing happened
                 // though, instead of crashing.
-                error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
-                       check if a component is stuck from now on ");
+                if self.event_queue.shutdown_flag().is_set() {
+                    debug!(%err, ?queue_kind, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
+                } else {
+                    error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
+                           check if a component is stuck from now on");
+                }
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
@@ -474,7 +504,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ControlAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ControlAnnouncement::FatalError { file, line, msg },
                 QueueKind::Control,
@@ -599,7 +629,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<BlockProposerAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 BlockProposerAnnouncement::DeploysExpired(hashes),
                 QueueKind::Regular,
@@ -612,7 +642,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkAnnouncement<I, P>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 NetworkAnnouncement::MessageReceived { sender, payload },
                 QueueKind::NetworkIncoming,
@@ -625,7 +655,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkAnnouncement<I, P>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 NetworkAnnouncement::GossipOurAddress(our_address),
                 QueueKind::Regular,
@@ -638,7 +668,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkAnnouncement<I, P>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 NetworkAnnouncement::NewPeer(peer_id),
                 QueueKind::NetworkIncoming,
@@ -656,7 +686,7 @@ impl<REv> EffectBuilder<REv> {
             "{} must be an item where the ID _is_ the complete item",
             item
         );
-        self.0
+        self.event_queue
             .schedule(
                 GossiperAnnouncement::NewCompleteItem(item),
                 QueueKind::Regular,
@@ -672,7 +702,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<RpcServerAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 RpcServerAnnouncement::DeployReceived { deploy, responder },
                 QueueKind::Api,
@@ -689,7 +719,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<DeployAcceptorAnnouncement<I>>,
     {
-        self.0.schedule(
+        self.event_queue.schedule(
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             QueueKind::Regular,
         )
@@ -701,7 +731,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<GossiperAnnouncement<T>>,
         T: Item,
     {
-        self.0
+        self.event_queue
             .schedule(
                 GossiperAnnouncement::FinishedGossiping(item_id),
                 QueueKind::Regular,
@@ -718,10 +748,26 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<DeployAcceptorAnnouncement<I>>,
     {
-        self.0.schedule(
+        self.event_queue.schedule(
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
             QueueKind::Regular,
         )
+    }
+
+    /// Announce new block has been created.
+    pub(crate) async fn announce_linear_chain_block(
+        self,
+        block: Block,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
+                QueueKind::Regular,
+            )
+            .await
     }
 
     /// Announce upgrade activation point read.
@@ -729,7 +775,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ChainspecLoaderAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
                 QueueKind::Regular,
@@ -1197,7 +1243,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ContractRuntimeRequest>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
@@ -1232,7 +1278,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ConsensusAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Regular,
@@ -1247,7 +1293,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ConsensusAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ConsensusAnnouncement::CreatedFinalitySignature(Box::new(finality_signature)),
                 QueueKind::Regular,
@@ -1264,7 +1310,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ConsensusAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 ConsensusAnnouncement::Fault {
                     era_id,
@@ -1281,7 +1327,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<BlocklistAnnouncement<I>>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
                 QueueKind::Regular,
@@ -1294,7 +1340,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<LinearChainAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 LinearChainAnnouncement::BlockAdded(block),
                 QueueKind::Regular,
@@ -1307,7 +1353,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<LinearChainAnnouncement>,
     {
-        self.0
+        self.event_queue
             .schedule(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
                 QueueKind::Regular,
@@ -1349,6 +1395,64 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Loads potentially previously stored state from storage.
+    ///
+    /// Key must be a unique key across the the application, as all keys share a common namespace.
+    ///
+    /// If an error occurs during state loading or no data is found, returns `None`.
+    pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
+    where
+        REv: From<StateStoreRequest>,
+        for<'de> T: Deserialize<'de>,
+    {
+        // Due to object safety issues, we cannot ship the actual values around, but only the
+        // serialized bytes. Hence we retrieve raw bytes from storage and then deserialize here.
+        self.make_request(
+            move |responder| StateStoreRequest::Load { key, responder },
+            QueueKind::Regular,
+        )
+        .await
+        .map(|data| bincode::deserialize(&data))
+        .transpose()
+        .unwrap_or_else(|err| {
+            let type_name = type_name::<T>();
+            error!(%type_name, %err, "could not deserialize state from storage");
+            None
+        })
+    }
+
+    /// Save state to storage.
+    ///
+    /// Key must be a unique key across the the application, as all keys share a common namespace.
+    ///
+    /// Returns whether or not storing the state was successful. A component that requires state to
+    /// be successfully stored should check the return value and act accordingly.
+    pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
+    where
+        REv: From<StateStoreRequest>,
+        T: Serialize,
+    {
+        match bincode::serialize(&value) {
+            Ok(data) => {
+                self.make_request(
+                    move |responder| StateStoreRequest::Save {
+                        key,
+                        data,
+                        responder,
+                    },
+                    QueueKind::Regular,
+                )
+                .await;
+                true
+            }
+            Err(err) => {
+                let type_name = type_name::<T>();
+                warn!(%type_name, %err, "error serializing state");
+                false
+            }
+        }
     }
 
     /// Requests a query be executed on the Contract Runtime component.

@@ -1,4 +1,4 @@
-//! Utility types and funcitons for working with execution engine tests.
+//! Utility types and functions for working with execution engine tests.
 
 use std::{
     env, fs,

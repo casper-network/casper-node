@@ -432,18 +432,46 @@ impl Display for StorageRequest {
                     block_height
                 )
             }
-            StorageRequest::PutBlockHeader { block_header, .. } => {
-                write!(formatter, "put block header: {}", block_header)
-            }
-            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                ..
-            } => {
+        }
+    }
+}
+
+/// State store request.
+#[derive(DataSize, Debug, Serialize)]
+#[repr(u8)]
+pub(crate) enum StateStoreRequest {
+    /// Stores a piece of state to storage.
+    Save {
+        /// Key to store under.
+        key: Cow<'static, [u8]>,
+        /// Value to store, already serialized.
+        #[serde(skip_serializing)]
+        data: Vec<u8>,
+        /// Notification when storing is complete.
+        responder: Responder<()>,
+    },
+    /// Loads a piece of state from storage.
+    Load {
+        /// Key to load from.
+        key: Cow<'static, [u8]>,
+        /// Responder for value, if found, returning the previously passed in serialization form.
+        responder: Responder<Option<Vec<u8>>>,
+    },
+}
+
+impl Display for StateStoreRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            StateStoreRequest::Save { key, data, .. } => {
                 write!(
-                    formatter,
-                    "get block and sufficient finality signatures by height: {}",
-                    block_height
+                    f,
+                    "save data under {} ({} bytes)",
+                    checksummed_hex::encode(key),
+                    data.len()
                 )
+            }
+            StateStoreRequest::Load { key, .. } => {
+                write!(f, "load data from key {}", checksummed_hex::encode(key))
             }
         }
     }

@@ -291,6 +291,15 @@ impl CallStackElement {
             CallStackElement::StoredContract { .. } => CallStackElementTag::StoredContract,
         }
     }
+
+    /// Gets the [`ContractHash`] for both stored session and stored contract variants.
+    pub fn contract_hash(&self) -> Option<&ContractHash> {
+        match self {
+            CallStackElement::Session { .. } => None,
+            CallStackElement::StoredSession { contract_hash, .. }
+            | CallStackElement::StoredContract { contract_hash, .. } => Some(contract_hash),
+        }
+    }
 }
 
 impl ToBytes for CallStackElement {

@@ -421,7 +421,9 @@ impl Storage {
                 // We manage our own directory.
                 | EnvironmentFlags::NO_SUB_DIR
                 // Disable thread local storage, strongly suggested for operation with tokio.
-                | EnvironmentFlags::NO_TLS,
+                | EnvironmentFlags::NO_TLS
+                // Disable read-ahead. Our data is not storead/read in sequence that would benefit from the read-ahead.
+                | EnvironmentFlags::NO_READAHEAD,
             )
             .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(MAX_DB_COUNT)
@@ -568,6 +570,66 @@ impl Storage {
             finality_threshold_fraction,
             last_emergency_restart,
         })
+    }
+
+    /// Handles a state store request.
+    fn handle_state_store_request<REv>(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+        req: StateStoreRequest,
+    ) -> Result<Effects<Event>, Error>
+    where
+        Self: Component<REv>,
+    {
+        // Incoming requests are fairly simple database write. Errors are handled one level above on
+        // the call stack, so all we have to do is load or store a value.
+        match req {
+            StateStoreRequest::Save {
+                key,
+                data,
+                responder,
+            } => {
+                let mut txn = self.env.begin_rw_txn()?;
+                txn.put(self.state_store_db, &key, &data, WriteFlags::default())?;
+                txn.commit()?;
+                Ok(responder.respond(()).ignore())
+            }
+            StateStoreRequest::Load { key, responder } => {
+                let bytes = self.read_state_store(&key)?;
+                Ok(responder.respond(bytes).ignore())
+            }
+        }
+    }
+
+    /// Reads from the state storage DB.
+    /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
+    /// May also fail with storage errors.
+    pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let txn = self.env.begin_ro_txn()?;
+        let bytes = match txn.get(self.state_store_db, &key) {
+            Ok(slice) => Some(slice.to_owned()),
+            Err(lmdb::Error::NotFound) => None,
+            Err(err) => return Err(err.into()),
+        };
+        Ok(bytes)
+    }
+
+    /// Deletes value living under the key from the state storage DB.
+    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let mut txn = self.env.begin_rw_txn()?;
+        let result = match txn.del(self.state_store_db, &key, None) {
+            Ok(_) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
+            Err(err) => Err(err),
+        }?;
+        txn.commit()?;
+        Ok(result)
     }
 
     /// Returns the path to the storage folder.
@@ -1318,6 +1380,7 @@ impl Storage {
     ) -> Result<Option<BlockBody>, LmdbExtError> {
         tx.get_value(self.block_body_v1_db, block_body_hash)
     }
+
     /// Retrieves a set of deploys from storage.
     fn get_deploys<Tx: Transaction>(
         &self,
@@ -1486,6 +1549,18 @@ impl Storage {
             .begin_ro_txn()
             .map_err(Into::into)
             .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
+    }
+
+    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
+    fn get_switch_block_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<Block>, Error> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
     }
 }
 
@@ -1677,6 +1752,100 @@ impl Config {
             ..Default::default()
         };
         (config, tempdir)
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::StorageRequest(req) => req.fmt(f),
+            Event::StateStoreRequest(req) => req.fmt(f),
+        }
+    }
+}
+
+// Legacy code follows.
+//
+// The functionality about for requests directly from the incoming network was previously present in
+// the validator reactor's routing code. It is slated for an overhaul, but for the time being the
+// code below provides a backwards-compatible interface for this functionality. DO NOT EXPAND, RELY
+// ON OR BUILD UPON THIS CODE.
+
+impl Storage {
+    /// Retrieves a deploy from the deploy store to handle a legacy network request.
+    fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
+        // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
+        // directly. This caused a dependency of the storage component on networking functionality,
+        // which is highly problematic. For this reason, the code to send a reply has been moved to
+        // the dispatching code (which should be removed anyway) as to not taint the interface.
+        self.env
+            .begin_ro_txn()
+            .map_err(Into::into)
+            .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
+            .expect("legacy direct deploy request failed")
+    }
+
+    /// Retrieves a potentially deduplicated deploy from the deploy store or cache, depending on
+    /// runtime configuration.
+    pub(crate) fn handle_deduplicated_legacy_direct_deploy_request(
+        &mut self,
+        deploy_hash: DeployHash,
+    ) -> Option<SharedObject<Vec<u8>>> {
+        if self.enable_mem_deduplication {
+            // On a cache hit, return directly from the cache.
+            if let Some(serialized) = self.deploy_cache.get(&deploy_hash) {
+                return Some(SharedObject::shared(serialized));
+            }
+        }
+
+        let deploy = self.handle_legacy_direct_deploy_request(deploy_hash)?;
+
+        match bincode::serialize(&deploy) {
+            Ok(serialized) => {
+                if self.enable_mem_deduplication {
+                    // We found a deploy, ensure it gets added to the cache.
+                    let arc = Arc::new(serialized);
+                    self.deploy_cache.put(deploy_hash, Arc::downgrade(&arc));
+                    Some(SharedObject::shared(arc))
+                } else {
+                    Some(SharedObject::owned(serialized))
+                }
+            }
+            Err(err) => {
+                // We failed to serialize a stored deploy, which is a serious issue. There is no
+                // good recovery from this, so we just pretend we don't have it, logging an error.
+                error!(
+                    err = display_error(&err),
+                    "failed to create (shared) get-response"
+                );
+                None
+            }
+        }
+    }
+
+    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn transactional_get_switch_block_by_era_id(
+        &self,
+        switch_block_era_num: u64,
+    ) -> Option<Block> {
+        let mut read_only_lmdb_transaction = self
+            .env
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let switch_block = self
+            .get_switch_block_by_era_id(
+                &mut read_only_lmdb_transaction,
+                EraId::from(switch_block_era_num),
+            )
+            .expect("LMDB panicked trying to get switch block");
+        read_only_lmdb_transaction
+            .commit()
+            .expect("Could not commit transaction");
+        switch_block
     }
 }
 
@@ -2108,30 +2277,33 @@ fn initialize_deploy_metadata_db(
     deleted_block_hashes: &HashSet<BlockHash>,
 ) -> Result<(), LmdbExtError> {
     info!("initializing deploy metadata database");
-    let mut txn = env.begin_rw_txn()?;
-    let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
-        let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
-        let len_before = deploy_metadata.execution_results.len();
+    if !deleted_block_hashes.is_empty() {
+        let mut txn = env.begin_rw_txn()?;
+        let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-        deploy_metadata.execution_results = deploy_metadata
-            .execution_results
-            .drain()
-            .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
-            .collect();
+        for (raw_key, raw_val) in cursor.iter() {
+            let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
+            let len_before = deploy_metadata.execution_results.len();
 
-        // If the deploy's execution results are now empty, we just remove them entirely.
-        if deploy_metadata.execution_results.is_empty() {
-            cursor.del(WriteFlags::empty())?;
-        } else if len_before != deploy_metadata.execution_results.len() {
-            let buffer = lmdb_ext::serialize(&deploy_metadata)?;
-            cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            deploy_metadata.execution_results = deploy_metadata
+                .execution_results
+                .drain()
+                .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
+                .collect();
+
+            // If the deploy's execution results are now empty, we just remove them entirely.
+            if deploy_metadata.execution_results.is_empty() {
+                cursor.del(WriteFlags::empty())?;
+            } else if len_before != deploy_metadata.execution_results.len() {
+                let buffer = lmdb_ext::serialize(&deploy_metadata)?;
+                cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            }
         }
-    }
 
-    drop(cursor);
-    txn.commit()?;
+        drop(cursor);
+        txn.commit()?;
+    }
 
     info!("deploy metadata database initialized");
     Ok(())

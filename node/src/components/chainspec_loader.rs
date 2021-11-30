@@ -662,4 +662,391 @@ mod tests {
         fs::remove_file(&path_v1_0_0).unwrap();
         assert!(maybe_next_point(&current).is_none());
     }
+
+    struct TestFixture {
+        chainspec_loader: ChainspecLoader,
+        effect_builder: EffectBuilder<ParticipatingEvent>,
+    }
+
+    impl TestFixture {
+        fn new() -> Self {
+            let _ = logging::init();
+
+            // By default the local chainspec is a genesis one.  We don't want that for most tests,
+            // so set it to V1.5.0 activated at era 300.
+            let mut chainspec = Chainspec::from_resources("local");
+            chainspec.protocol_config.version = ProtocolVersion::from_parts(1, 5, 0);
+            chainspec.protocol_config.activation_point = ActivationPoint::EraId(EraId::new(300));
+
+            let chainspec_loader = ChainspecLoader {
+                chainspec: Arc::new(chainspec),
+                root_dir: PathBuf::from("."),
+                reactor_exit: None,
+                next_upgrade: None,
+            };
+
+            let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+            let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+
+            TestFixture {
+                chainspec_loader,
+                effect_builder,
+            }
+        }
+
+        /// Returns the current chainspec's activation point.
+        fn current_activation_point(&self) -> EraId {
+            self.chainspec_loader
+                .chainspec
+                .protocol_config
+                .activation_point
+                .era_id()
+        }
+
+        /// Returns the current chainspec's protocol version.
+        fn current_protocol_version(&self) -> ProtocolVersion {
+            self.chainspec_loader.chainspec.protocol_config.version
+        }
+
+        /// Returns a protocol version earlier than the current chainspec's version.
+        fn earlier_protocol_version(&self) -> ProtocolVersion {
+            ProtocolVersion::from_parts(
+                self.current_protocol_version().value().major,
+                self.current_protocol_version().value().minor - 1,
+                0,
+            )
+        }
+
+        /// Returns a protocol version later than the current chainspec's version.
+        fn later_protocol_version(&self) -> ProtocolVersion {
+            ProtocolVersion::from_parts(
+                self.current_protocol_version().value().major,
+                self.current_protocol_version().value().minor + 1,
+                0,
+            )
+        }
+
+        /// Sets a valid value for the next upgrade in the chainspec loader.
+        fn set_next_upgrade(&mut self, era_diff: u64) {
+            self.chainspec_loader.next_upgrade = Some(NextUpgrade {
+                activation_point: ActivationPoint::EraId(
+                    self.current_activation_point() + era_diff,
+                ),
+                protocol_version: self.later_protocol_version(),
+            });
+        }
+
+        /// Calls `handle_initialize()` on the chainspec loader, asserting the provided block has
+        /// been recorded and that the expected number of effects were returned.
+        fn assert_handle_initialize(
+            &mut self,
+            maybe_highest_block: Option<Block>,
+            expected_effect_count: usize,
+        ) {
+            let effects = self.chainspec_loader.handle_initialize(
+                self.effect_builder,
+                maybe_highest_block.clone().map(Box::new),
+            );
+
+            assert_eq!(self.chainspec_loader.initial_block, maybe_highest_block);
+            assert_eq!(effects.len(), expected_effect_count);
+        }
+
+        /// Asserts that the chainspec loader indicates initialization is ongoing, i.e. that
+        /// `chainspec_loader.reactor_exit` is `None`.
+        fn assert_initialization_incomplete(&self) {
+            assert!(self.chainspec_loader.reactor_exit.is_none())
+        }
+
+        /// Asserts that the chainspec loader indicates initialization is complete and the node
+        /// process should not stop.
+        fn assert_process_should_continue(&self) {
+            assert_eq!(
+                self.chainspec_loader.reactor_exit,
+                Some(ReactorExit::ProcessShouldContinue)
+            )
+        }
+
+        /// Asserts that the chainspec loader indicates the process should stop to downgrade.
+        fn assert_process_should_downgrade(&self) {
+            assert_eq!(
+                self.chainspec_loader.reactor_exit,
+                Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion))
+            )
+        }
+
+        /// Asserts that the chainspec loader indicates the process should stop to upgrade.
+        fn assert_process_should_upgrade(&self) {
+            assert_eq!(
+                self.chainspec_loader.reactor_exit,
+                Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
+            )
+        }
+
+        /// Asserts that the chainspec loader indicates the process should stop with an error.
+        fn assert_process_should_abort(&self) {
+            assert_eq!(
+                self.chainspec_loader.reactor_exit,
+                Some(ReactorExit::ProcessShouldExit(ExitCode::Abort))
+            )
+        }
+    }
+
+    /// Simulates an initial run of the node where no blocks have been stored previously and the
+    /// chainspec is the genesis one.
+    #[test]
+    fn should_keep_running_if_first_run_at_genesis() {
+        let mut fixture = TestFixture::new();
+        fixture.chainspec_loader.chainspec = Arc::new(Chainspec::from_resources("local"));
+        assert!(fixture.chainspec_loader.chainspec.is_genesis());
+
+        // Should return a single effect (commit genesis).
+        fixture.assert_handle_initialize(None, 1);
+
+        // We're still waiting for the result of the commit genesis event.
+        fixture.assert_initialization_incomplete();
+    }
+
+    /// Simulates an initial run of the node where no blocks have been stored previously but the
+    /// chainspec is not the genesis one.
+    #[test]
+    fn should_downgrade_if_first_run_not_genesis() {
+        let mut fixture = TestFixture::new();
+        assert!(!fixture.chainspec_loader.chainspec.is_genesis());
+
+        fixture.assert_handle_initialize(None, 0);
+        fixture.assert_process_should_downgrade();
+    }
+
+    /// Simulates a valid run immediately after an upgrade.
+    #[test]
+    fn should_keep_running_after_upgrade() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Immediately after an upgrade, the highest block will be the switch block from the era
+        // immediately before the upgrade.
+        let previous_era = fixture.current_activation_point() - 1;
+        let height = rng.gen();
+        let earlier_version = fixture.earlier_protocol_version();
+        let highest_block =
+            Block::random_with_specifics(&mut rng, previous_era, height, earlier_version, true);
+
+        // Should return a single effect (commit upgrade).
+        fixture.assert_handle_initialize(Some(highest_block), 1);
+
+        // We're still waiting for the result of the commit upgrade event.
+        fixture.assert_initialization_incomplete();
+    }
+
+    /// Simulates an invalid run where the highest block is from the previous era, but isn't the
+    /// switch block.
+    ///
+    /// This is unlikely to happen unless a user modifies the launcher's config file to force the
+    /// wrong version of node to be executed, or somehow manually removes the last (switch) block
+    /// from storage as the node upgraded.
+    #[test]
+    fn should_downgrade_if_highest_block_is_from_previous_era_but_is_not_switch() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Make the highest block a non-switch block from the era immediately before the upgrade.
+        let previous_era = fixture.current_activation_point() - 1;
+        let height = rng.gen();
+        let earlier_version = fixture.earlier_protocol_version();
+        let highest_block =
+            Block::random_with_specifics(&mut rng, previous_era, height, earlier_version, false);
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_downgrade();
+    }
+
+    /// Simulates an invalid run where the highest block is from an era before the previous era, and
+    /// may or may not be a switch block.
+    ///
+    /// This is unlikely to happen unless a user modifies the launcher's config file to force the
+    /// wrong version of node to be executed, or somehow manually removes later blocks from storage.
+    #[test]
+    fn should_downgrade_if_highest_block_is_from_earlier_era() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Make the highest block from an era before the one immediately before the upgrade.
+        let current_era = fixture.current_activation_point().value();
+        let previous_era = fixture.current_activation_point() - rng.gen_range(2..current_era);
+        let height = rng.gen();
+        let earlier_version = fixture.earlier_protocol_version();
+        let is_switch = rng.gen();
+        let highest_block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            height,
+            earlier_version,
+            is_switch,
+        );
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_downgrade();
+    }
+
+    /// Simulates a valid run where the highest block is from an era the same or newer than the
+    /// current chainspec activation point, and there is no scheduled upcoming upgrade.
+    ///
+    /// This would happen in the case of an unplanned shutdown of the node.
+    #[test]
+    fn should_keep_running_if_unplanned_shutdown_and_no_upgrade_scheduled() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Make the highest block from an era the same or newer than the current chainspec one.
+        let future_era = fixture.current_activation_point() + rng.gen_range(0..3);
+        let height = rng.gen();
+        let current_version = fixture.current_protocol_version();
+        let is_switch = rng.gen();
+        let highest_block =
+            Block::random_with_specifics(&mut rng, future_era, height, current_version, is_switch);
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_continue();
+    }
+
+    /// Simulates a valid run where the highest block is from an era the same or newer than the
+    /// current chainspec activation point, but older than a scheduled upgrade's activation point.
+    ///
+    /// This would happen in the case of an unplanned shutdown of the node.
+    #[test]
+    fn should_keep_running_if_unplanned_shutdown_and_future_upgrade_scheduled() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Set an upgrade for 10 eras after the current chainspec activation point.
+        let era_diff = 10;
+        fixture.set_next_upgrade(era_diff);
+
+        // Make the highest block from an era the same or newer than the current chainspec one.
+        let highest_block_era_diff = rng.gen_range(0..era_diff);
+        let future_era = fixture.current_activation_point() + highest_block_era_diff;
+        let height = rng.gen();
+        let current_version = fixture.current_protocol_version();
+        let is_switch = if highest_block_era_diff == era_diff - 1 {
+            // If the highest block is in the era immediately before the upgrade, ensure it's not a
+            // switch block, as in that case, the chainspec loader would indicate the node process
+            // should upgrade.
+            false
+        } else {
+            rng.gen()
+        };
+        let highest_block =
+            Block::random_with_specifics(&mut rng, future_era, height, current_version, is_switch);
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_continue();
+    }
+
+    /// Simulates a valid run where the highest block is the switch block from the era immediately
+    /// before a scheduled upgrade's activation point.
+    ///
+    /// This would happen in the case of an unplanned shutdown of the node, probably due to not
+    /// staging the upgraded software in time for the upgrade.
+    #[test]
+    fn should_upgrade_if_unplanned_shutdown_and_future_upgrade_scheduled_with_all_blocks_stored() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Set an upgrade for 10 eras after the current chainspec activation point.
+        let era_diff = 10;
+        fixture.set_next_upgrade(era_diff);
+
+        // Make the highest block from the last era before the upgrade.
+        let future_era = fixture.current_activation_point() + era_diff - 1;
+        let height = rng.gen();
+        let current_version = fixture.current_protocol_version();
+        let is_switch = true;
+        let highest_block =
+            Block::random_with_specifics(&mut rng, future_era, height, current_version, is_switch);
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_upgrade();
+    }
+
+    /// Simulates an invalid run where:
+    /// * the highest block is from an era the same or newer than the current chainspec activation
+    ///   point,
+    /// * there is no scheduled upcoming upgrade,
+    /// * and the protocol version of the highest block doesn't match the current chainspec version.
+    ///
+    /// This would happen in the case of an unplanned shutdown of the node after e.g. forking.
+    #[test]
+    fn should_abort_if_unplanned_shutdown_after_fork_and_no_upgrade_scheduled() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Make the highest block from an era the same or newer than the current chainspec one, but
+        // with an old protocol version.
+        let future_era = fixture.current_activation_point() + rng.gen_range(0..3);
+        let height = rng.gen();
+        let earlier_version = fixture.earlier_protocol_version();
+        let is_switch = rng.gen();
+        let highest_block =
+            Block::random_with_specifics(&mut rng, future_era, height, earlier_version, is_switch);
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_abort();
+    }
+
+    /// Simulates an invalid run where:
+    /// * the highest block is from an era the same or newer than the current chainspec activation
+    ///   point,
+    /// * but older than a scheduled upgrade's activation point,
+    /// * and the protocol version of the highest block doesn't match the current chainspec version.
+    ///
+    /// This would happen in the case of an unplanned shutdown of the node after e.g. forking.
+    #[test]
+    fn should_abort_if_unplanned_shutdown_after_fork_and_future_upgrade_scheduled() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Set an upgrade for 10 eras after the current chainspec activation point.
+        let era_diff = 10;
+        fixture.set_next_upgrade(era_diff);
+
+        // Make the highest block from an era the same or newer than the current chainspec one, but
+        // with an old protocol version.
+        let future_era = fixture.current_activation_point() + rng.gen_range(0..era_diff);
+        let height = rng.gen();
+        let earlier_version = fixture.earlier_protocol_version();
+        let is_switch = rng.gen();
+        let highest_block =
+            Block::random_with_specifics(&mut rng, future_era, height, earlier_version, is_switch);
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_abort();
+    }
+
+    /// Simulates an invalid run where the highest block is from an era the same or newer than the
+    /// than a scheduled upgrade's activation point.
+    ///
+    /// This is unlikely to happen unless a user modifies the launcher's config file to force the
+    /// wrong version of node to be executed.
+    #[test]
+    fn should_upgrade_if_highest_block_from_after_future_upgrade_activation_point() {
+        let mut fixture = TestFixture::new();
+        let mut rng = TestRng::new();
+
+        // Set an upgrade for 10 eras after the current chainspec activation point.
+        let era_diff = 10;
+        fixture.set_next_upgrade(era_diff);
+
+        // Make the highest block from an era the same or later than the upgrade activation point.
+        let future_era =
+            fixture.current_activation_point() + rng.gen_range(era_diff..(era_diff + 10));
+        let height = rng.gen();
+        let later_version = fixture.later_protocol_version();
+        let is_switch = rng.gen();
+        let highest_block =
+            Block::random_with_specifics(&mut rng, future_era, height, later_version, is_switch);
+
+        fixture.assert_handle_initialize(Some(highest_block), 0);
+        fixture.assert_process_should_upgrade();
+    }
 }

@@ -76,7 +76,6 @@ function makeTransferredTo(value: u32): Ref<TransferredTo> | null {
 /**
  * Creates a new empty purse and returns its [[URef]], or a null in case a
  * purse couldn't be created.
- * @hidden
  */
 export function createPurse(): URef {
     let bytes = new Uint8Array(UREF_SERIALIZED_LENGTH);
@@ -141,7 +140,6 @@ export function getBalance(): U512 | null {
  * @returns This function will return a [[TransferredTo.TransferError]] in
  * case of transfer error, in case of any other variant the transfer itself
  * can be considered successful.
- * @hidden
  */
 export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512, id: Ref<u64> | null = null): TransferResult {
     let purseBytes = sourcePurse.toBytes();
@@ -191,7 +189,6 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
  * the transfer fails.
  *
  * @returns This function returns non-zero value on error.
- * @hidden
  */
 export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, amount: U512, id: Ref<u64> | null = null): Error | null {
     let sourceBytes = sourcePurse.toBytes();

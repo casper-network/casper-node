@@ -64,6 +64,10 @@ use crate::{
         ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitCode, FinalizedBlock,
         Item, NodeId, Tag,
     },
+    reactor::{
+        self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, Reactor as _, ReactorExit,
+    },
+    types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag},
     utils::{Source, WithDir},
     NodeRng,
 };
