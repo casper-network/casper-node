@@ -52,6 +52,9 @@ use tallies::Tallies;
 // endorsements again.
 pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 
+// Disables checking the limited naivete criterion for endorsements.
+const LNC_DISABLED: bool = true;
+
 /// Number of maximum-length rounds after which a validator counts as offline, if we haven't heard
 /// from them.
 const PING_TIMEOUT: u64 = 3;
@@ -840,15 +843,17 @@ impl<C: Context> State<C> {
             }
         }
         // All endorsed units from the panorama of this wunit.
-        let endorsements_in_panorama = panorama
-            .iter_correct_hashes()
-            .flat_map(|hash| self.unit(hash).claims_endorsed())
-            .collect::<HashSet<_>>();
-        if endorsements_in_panorama
-            .iter()
-            .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
-        {
-            return Err(UnitError::EndorsementsNotMonotonic);
+        if !LNC_DISABLED {
+            let endorsements_in_panorama = panorama
+                .iter_correct_hashes()
+                .flat_map(|hash| self.unit(hash).claims_endorsed())
+                .collect::<HashSet<_>>();
+            if endorsements_in_panorama
+                .iter()
+                .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
+            {
+                return Err(UnitError::EndorsementsNotMonotonic);
+            }
         }
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
@@ -866,7 +871,7 @@ impl<C: Context> State<C> {
             }
         }
         for hash in &wunit.endorsed {
-            if !wunit.panorama.sees(self, hash) {
+            if !LNC_DISABLED && !wunit.panorama.sees(self, hash) {
                 return Err(UnitError::EndorsedButUnseen {
                     hash: format!("{:?}", hash),
                     wire_unit: format!("{:?}", wunit),
@@ -993,9 +998,14 @@ impl<C: Context> State<C> {
         panorama: &Panorama<C>,
         endorsed: &BTreeSet<C::Hash>,
     ) -> Option<ValidatorIndex> {
-        let violates_lnc =
-            |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx);
-        panorama.iter_faulty().find(violates_lnc)
+        if LNC_DISABLED {
+            None
+        } else {
+            let violates_lnc = |eq_idx: &ValidatorIndex| {
+                !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx)
+            };
+            panorama.iter_faulty().find(violates_lnc)
+        }
     }
 
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
@@ -1157,7 +1167,11 @@ impl<C: Context> State<C> {
                 pan = pan.merge(self, &self.inclusive_panorama(prev_uhash));
             }
         }
-        let endorsed = self.seen_endorsed(&pan);
+        let endorsed = if LNC_DISABLED {
+            Default::default() // Don't cite any endorsements.
+        } else {
+            self.seen_endorsed(&pan)
+        };
         if self.validate_lnc(creator, &pan, &endorsed).is_none() {
             return pan;
         }
