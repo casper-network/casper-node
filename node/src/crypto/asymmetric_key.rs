@@ -267,6 +267,82 @@ mod tests {
         assert_eq!(Some(Ordering::Equal), low.partial_cmp(&low_copy));
     }
 
+    mod system {
+        use super::{sign, verify};
+        use crate::crypto::asymmetric_key_ext::AsymmetricKeyExt;
+        use casper_types::crypto::{AsymmetricType, PublicKey, SecretKey, Signature};
+        use std::path::Path;
+
+        #[test]
+        fn secret_key_to_der_should_error() {
+            assert!(SecretKey::system().to_der().is_err());
+        }
+
+        #[test]
+        fn secret_key_to_pem_should_error() {
+            assert!(SecretKey::system().to_pem().is_err());
+        }
+
+        #[test]
+        fn secret_key_to_file_should_error() {
+            assert!(SecretKey::system().to_file(Path::new("/dev/null")).is_err());
+        }
+
+        #[test]
+        fn public_key_serialization_roundtrip() {
+            super::public_key_serialization_roundtrip(PublicKey::system());
+        }
+
+        #[test]
+        fn public_key_to_der_should_error() {
+            assert!(PublicKey::system().to_der().is_err());
+        }
+
+        #[test]
+        fn public_key_to_pem_should_error() {
+            assert!(PublicKey::system().to_pem().is_err());
+        }
+
+        #[test]
+        fn public_key_to_file_should_error() {
+            assert!(PublicKey::system().to_file(Path::new("/dev/null")).is_err());
+        }
+
+        #[test]
+        fn public_key_to_and_from_hex() {
+            super::public_key_hex_roundtrip(PublicKey::system());
+        }
+
+        #[test]
+        #[should_panic]
+        fn sign_should_panic() {
+            sign([], &SecretKey::system(), &PublicKey::system());
+        }
+
+        #[test]
+        fn signature_to_and_from_hex() {
+            super::signature_hex_roundtrip(Signature::system());
+        }
+
+        #[test]
+        fn public_key_to_account_hash() {
+            assert_ne!(
+                PublicKey::system().to_account_hash().as_ref(),
+                Into::<Vec<u8>>::into(PublicKey::system())
+            );
+        }
+
+        #[test]
+        fn verify_should_error() {
+            assert!(verify([], &Signature::system(), &PublicKey::system()).is_err());
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_signature() {
+            casper_types::bytesrepr::test_serialization_roundtrip(&Signature::system());
+        }
+    }
+
     mod ed25519 {
         use rand::Rng;
 
@@ -742,17 +818,23 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 
     #[test]
     fn public_key_traits() {
+        let system_key = PublicKey::system();
         let mut rng = crate::new_rng();
         let ed25519_public_key = PublicKey::random_ed25519(&mut rng);
         let secp256k1_public_key = PublicKey::random_secp256k1(&mut rng);
-        check_ord_and_hash(ed25519_public_key, secp256k1_public_key);
+        check_ord_and_hash(ed25519_public_key.clone(), secp256k1_public_key.clone());
+        check_ord_and_hash(system_key.clone(), ed25519_public_key);
+        check_ord_and_hash(system_key, secp256k1_public_key);
     }
 
     #[test]
     fn signature_traits() {
-        let signature_low = Signature::ed25519([3; Signature::ED25519_LENGTH]).unwrap();
-        let signature_high = Signature::secp256k1([1; Signature::SECP256K1_LENGTH]).unwrap();
-        check_ord_and_hash(signature_low, signature_high)
+        let system_sig = Signature::system();
+        let ed25519_sig = Signature::ed25519([3; Signature::ED25519_LENGTH]).unwrap();
+        let secp256k1_sig = Signature::secp256k1([1; Signature::SECP256K1_LENGTH]).unwrap();
+        check_ord_and_hash(ed25519_sig, secp256k1_sig);
+        check_ord_and_hash(system_sig, ed25519_sig);
+        check_ord_and_hash(system_sig, secp256k1_sig);
     }
 
     #[test]

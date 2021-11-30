@@ -103,9 +103,7 @@ pub enum SseData {
         execution_result: Box<ExecutionResult>,
     },
     /// The given deploy has expired.
-    DeployExpired {
-        deploy_hash: DeployHash,
-    },
+    DeployExpired { deploy_hash: DeployHash },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
@@ -119,6 +117,7 @@ pub enum SseData {
         #[data_size(skip)]
         execution_effect: ExecutionEffect,
     },
+    /// The node is about to shut down.
     Shutdown,
 }
 

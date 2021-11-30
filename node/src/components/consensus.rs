@@ -286,30 +286,35 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut NodeRng,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
             Event::Timer {
                 era_id,
                 timestamp,
                 timer_id,
-            } => handling_es.handle_timer(era_id, timestamp, timer_id),
-            Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
-            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewBlockPayload(new_block_payload) => {
-                handling_es.handle_new_block_payload(new_block_payload)
+            } => self.handle_timer(effect_builder, rng, era_id, timestamp, timer_id),
+            Event::Action { era_id, action_id } => {
+                self.handle_action(effect_builder, rng, era_id, action_id)
             }
-            Event::BlockAdded(block_header) => handling_es.handle_block_added(*block_header),
+            Event::MessageReceived { sender, msg } => {
+                self.handle_message(effect_builder, rng, sender, msg)
+            }
+            Event::NewBlockPayload(new_block_payload) => {
+                self.handle_new_block_payload(effect_builder, rng, new_block_payload)
+            }
+            Event::BlockAdded(block_header) => {
+                self.handle_block_added(effect_builder, *block_header)
+            }
             Event::ResolveValidity(resolve_validity) => {
-                handling_es.resolve_validity(resolve_validity)
+                self.resolve_validity(effect_builder, rng, resolve_validity)
             }
             Event::DeactivateEra {
                 era_id,
                 faulty_num,
                 delay,
-            } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
+            } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
             Event::CreateNewEra {
                 switch_block_header,
                 booking_block_hash,
@@ -322,26 +327,32 @@ where
                             era_id,
                             switch_block_header.era_id().successor()
                         );
-                        return fatal!(
-                            handling_es.effect_builder,
-                            "couldn't get the booking block hash"
-                        )
-                        .ignore();
+                        return fatal!(effect_builder, "couldn't get the booking block hash")
+                            .ignore();
                     }
                 };
-                handling_es.handle_create_new_era(*switch_block_header, booking_block_hash)
+                self.handle_create_new_era(
+                    effect_builder,
+                    rng,
+                    *switch_block_header,
+                    booking_block_hash,
+                )
             }
             Event::InitializeEras {
                 key_blocks,
                 booking_blocks,
                 validators,
-            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
+            } => self.handle_initialize_eras(
+                effect_builder,
+                rng,
+                key_blocks,
+                booking_blocks,
+                validators,
+            ),
             Event::GotUpgradeActivationPoint(activation_point) => {
-                handling_es.got_upgrade_activation_point(activation_point)
+                self.got_upgrade_activation_point(activation_point)
             }
-            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
-                handling_es.status(responder)
-            }
+            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => self.status(responder),
             Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 let validator_changes = self.get_validator_changes();
                 responder.respond(validator_changes).ignore()
