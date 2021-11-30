@@ -97,7 +97,7 @@ native_transfer_minimum_motes = 2_500_000_000
 # Amount of free memory (in 64kB pages) each contract can use for stack.
 max_memory = 64
 # Max stack height (native WebAssembly stack limiter).
-max_stack_height = 128
+max_stack_height = 178
 
 [wasm.storage_costs]
 # Gas charged per byte stored in the global state.
