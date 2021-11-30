@@ -83,7 +83,7 @@ fn should_verify_interpreter_stack_limit() {
     // GetGlobal(0)(@16386): Stack: exceeded stack limit 16384 But due to the default being
     // small it fails with Unreachable from within the stack height limiter.
     assert!(
-        matches!(&error, Error::Exec(ExecError::Interpreter(s)) if s.contains("")),
+        matches!(&error, Error::Exec(ExecError::Interpreter(s)) if s.contains("Unreachable")),
         "{:?}",
         error
     );
