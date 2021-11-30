@@ -731,12 +731,12 @@ impl ContractRuntime {
                 .ignore();
 
         if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_effect,
+            step_execution_journal,
             upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
             effects.extend(
-                announcements::step_success(effect_builder, current_era_id, step_execution_effect)
+                announcements::step_success(effect_builder, current_era_id, step_execution_journal)
                     .ignore(),
             );
             effects.extend(

@@ -45,11 +45,13 @@ use std::collections::BTreeSet;
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
+    fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
@@ -77,7 +79,7 @@ use crate::effect::requests::StorageRequest;
 use crate::{
     components::{consensus, consensus::error::FinalitySignatureError, Component},
     crypto,
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{requests::StateStoreRequest, EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::ReactorEvent,
     types::{
@@ -131,6 +133,17 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
+
+#[derive(Debug, From, Serialize)]
+#[repr(u8)]
+pub(crate) enum Event {
+    /// Incoming storage request.
+    #[from]
+    StorageRequest(StorageRequest),
+    /// Incoming state storage request.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
+}
 
 /// A storage component error.
 #[derive(Debug, Error)]
@@ -357,7 +370,7 @@ impl<REv> Component<REv> for Storage
 where
     REv: ReactorEvent,
 {
-    type Event = StorageRequest;
+    type Event = Event;
     type ConstructionError = Error;
 
     fn handle_event(
@@ -366,10 +379,17 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        let result = match event {
+            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
+            Event::StateStoreRequest(req) => {
+                self.handle_state_store_request::<REv>(effect_builder, req)
+            }
+        };
+
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
         // we are dropping a lot of responders this way, but since we are crashing with fatal
         // anyway, it should not matter.
-        match self.handle_storage_request::<REv>(event) {
+        match result {
             Ok(effects) => effects,
             Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
@@ -617,31 +637,13 @@ impl Storage {
         Ok(bytes)
     }
 
-    /// Deletes value living under the key from the state storage DB.
-    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
-    where
-        K: AsRef<[u8]>,
-    {
-        let mut txn = self.env.begin_rw_txn()?;
-        let result = match txn.del(self.state_store_db, &key, None) {
-            Ok(_) => Ok(true),
-            Err(lmdb::Error::NotFound) => Ok(false),
-            Err(err) => Err(err),
-        }?;
-        txn.commit()?;
-        Ok(result)
-    }
-
     /// Returns the path to the storage folder.
     pub(crate) fn root_path(&self) -> &Path {
         &self.root
     }
 
     /// Handles a storage request.
-    fn handle_storage_request<REv>(
-        &mut self,
-        req: StorageRequest,
-    ) -> Result<Effects<StorageRequest>, Error>
+    fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
     where
         Self: Component<REv>,
     {
@@ -1550,18 +1552,6 @@ impl Storage {
             .map_err(Into::into)
             .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
     }
-
-    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        era_id: EraId,
-    ) -> Result<Option<Block>, Error> {
-        self.switch_block_era_id_index
-            .get(&era_id)
-            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
-            .transpose()
-    }
 }
 
 /// Inserts the relevant entries to the two indices.
@@ -1761,91 +1751,6 @@ impl Display for Event {
             Event::StorageRequest(req) => req.fmt(f),
             Event::StateStoreRequest(req) => req.fmt(f),
         }
-    }
-}
-
-// Legacy code follows.
-//
-// The functionality about for requests directly from the incoming network was previously present in
-// the validator reactor's routing code. It is slated for an overhaul, but for the time being the
-// code below provides a backwards-compatible interface for this functionality. DO NOT EXPAND, RELY
-// ON OR BUILD UPON THIS CODE.
-
-impl Storage {
-    /// Retrieves a deploy from the deploy store to handle a legacy network request.
-    fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
-        // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
-        // directly. This caused a dependency of the storage component on networking functionality,
-        // which is highly problematic. For this reason, the code to send a reply has been moved to
-        // the dispatching code (which should be removed anyway) as to not taint the interface.
-        self.env
-            .begin_ro_txn()
-            .map_err(Into::into)
-            .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
-            .expect("legacy direct deploy request failed")
-    }
-
-    /// Retrieves a potentially deduplicated deploy from the deploy store or cache, depending on
-    /// runtime configuration.
-    pub(crate) fn handle_deduplicated_legacy_direct_deploy_request(
-        &mut self,
-        deploy_hash: DeployHash,
-    ) -> Option<SharedObject<Vec<u8>>> {
-        if self.enable_mem_deduplication {
-            // On a cache hit, return directly from the cache.
-            if let Some(serialized) = self.deploy_cache.get(&deploy_hash) {
-                return Some(SharedObject::shared(serialized));
-            }
-        }
-
-        let deploy = self.handle_legacy_direct_deploy_request(deploy_hash)?;
-
-        match bincode::serialize(&deploy) {
-            Ok(serialized) => {
-                if self.enable_mem_deduplication {
-                    // We found a deploy, ensure it gets added to the cache.
-                    let arc = Arc::new(serialized);
-                    self.deploy_cache.put(deploy_hash, Arc::downgrade(&arc));
-                    Some(SharedObject::shared(arc))
-                } else {
-                    Some(SharedObject::owned(serialized))
-                }
-            }
-            Err(err) => {
-                // We failed to serialize a stored deploy, which is a serious issue. There is no
-                // good recovery from this, so we just pretend we don't have it, logging an error.
-                error!(
-                    err = display_error(&err),
-                    "failed to create (shared) get-response"
-                );
-                None
-            }
-        }
-    }
-
-    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics on any IO or db corruption error.
-    pub fn transactional_get_switch_block_by_era_id(
-        &self,
-        switch_block_era_num: u64,
-    ) -> Option<Block> {
-        let mut read_only_lmdb_transaction = self
-            .env
-            .begin_ro_txn()
-            .expect("Could not start read only transaction for lmdb");
-        let switch_block = self
-            .get_switch_block_by_era_id(
-                &mut read_only_lmdb_transaction,
-                EraId::from(switch_block_era_num),
-            )
-            .expect("LMDB panicked trying to get switch block");
-        read_only_lmdb_transaction
-            .commit()
-            .expect("Could not commit transaction");
-        switch_block
     }
 }
 

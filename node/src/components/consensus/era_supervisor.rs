@@ -11,7 +11,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
-    fs,
+    fs, io,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -491,7 +491,7 @@ where
             } else {
                 info!(era = era_id.value(), %our_id, "start voting");
                 let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
-                let unit_hash_file = self.unit_hash_file(&instance_id);
+                let unit_hash_file = self.unit_file(&instance_id);
                 outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
                     our_id,
                     secret,
@@ -528,7 +528,7 @@ where
             if let Some(obsolete_era_id) = evidence_only_era_id.checked_sub(1) {
                 if let Some(era) = self.open_eras.remove(&obsolete_era_id) {
                     trace!(era = obsolete_era_id.value(), "removing obsolete era");
-                    match fs::remove_file(self.unit_hash_file(era.consensus.instance_id())) {
+                    match fs::remove_file(self.unit_file(era.consensus.instance_id())) {
                         Ok(_) => {}
                         Err(err) => match err.kind() {
                             io::ErrorKind::NotFound => {}

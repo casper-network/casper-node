@@ -63,6 +63,7 @@ pub(crate) mod requests;
 
 use std::{
     any::type_name,
+    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
@@ -76,7 +77,9 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-use tracing::error;
+#[cfg(not(feature = "fast-sync"))]
+use tracing::warn;
+use tracing::{debug, error};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -122,7 +125,10 @@ use requests::{
     NetworkRequest, StorageRequest,
 };
 
-use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
+use self::{
+    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
+    requests::StateStoreRequest,
+};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -752,22 +758,6 @@ impl<REv> EffectBuilder<REv> {
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
             QueueKind::Regular,
         )
-    }
-
-    /// Announce new block has been created.
-    pub(crate) async fn announce_linear_chain_block(
-        self,
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
-                QueueKind::Regular,
-            )
-            .await
     }
 
     /// Announce upgrade activation point read.

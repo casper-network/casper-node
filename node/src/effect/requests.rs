@@ -4,6 +4,7 @@
 //! top-level module documentation for details.
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     mem,
@@ -26,8 +27,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, URef,
+    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, StoredValue, Transfer, URef,
 };
 
 use crate::{
@@ -429,6 +430,19 @@ impl Display for StorageRequest {
                 write!(
                     formatter,
                     "get block and metadata for block by height: {}",
+                    block_height
+                )
+            }
+            StorageRequest::PutBlockHeader { block_header, .. } => {
+                write!(formatter, "put block header: {}", block_header)
+            }
+            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get block and sufficient finality signatures by height: {}",
                     block_height
                 )
             }

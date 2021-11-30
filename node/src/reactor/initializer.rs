@@ -25,9 +25,7 @@ use crate::{
         announcements::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
-        requests::{
-            ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest, StorageRequest,
-        },
+        requests::{ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest},
         EffectBuilder, Effects,
     },
     protocol::Message,
@@ -48,7 +46,7 @@ pub(crate) enum Event {
     /// Storage event.
 
     #[from]
-    Storage(#[serde(skip_serializing)] StorageRequest),
+    Storage(#[serde(skip_serializing)] storage::Event),
 
     /// Contract runtime event.
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),

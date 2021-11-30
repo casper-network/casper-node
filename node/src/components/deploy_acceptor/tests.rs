@@ -51,7 +51,7 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 #[must_use]
 enum Event {
     #[from]
-    Storage(#[serde(skip_serializing)] StorageRequest),
+    Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] super::Event),
     #[from]
@@ -69,6 +69,12 @@ impl ReactorEvent for Event {
         } else {
             None
         }
+    }
+}
+
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(storage::Event::from(request))
     }
 }
 
