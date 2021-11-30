@@ -379,11 +379,11 @@ mod tests {
         let inputs_and_digests = [
             (
                 "",
-                "0E5751C026E543B2E8aB2eb06099dAA1d1e5dF47778F7787fAAB45Cdf12fE3A8",
+                "0e5751c026E543B2E8AB2eB06099daA1d1e5df47778F7787FAaB45CDF12fe3A8",
             ),
             (
                 "abc",
-                "BddD813c634239723171ef3feE98579b94964e3Bb1cB3E427262C8C068d52319",
+                "bDDd813C634239723171EF3FEE98579B94964e3bB1Cb3e427262c8C068D52319",
             ),
             (
                 "0123456789",
@@ -395,7 +395,7 @@ mod tests {
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "01718CeC35Cd3D796Dd00020e0bFECB473Ad23457d063b75eFF29c0FFa2E58a9",
+                "01718CeC35cD3d796Dd00020E0bFeCB473ad23457d063b75EFf29c0fFA2E58A9",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {
