@@ -287,6 +287,18 @@ impl DeployHash {
     }
 }
 
+impl From<DeployHash> for casper_types::DeployHash {
+    fn from(deploy_hash: DeployHash) -> casper_types::DeployHash {
+        casper_types::DeployHash::new(deploy_hash.inner().value())
+    }
+}
+
+impl From<casper_types::DeployHash> for DeployHash {
+    fn from(deploy_hash: casper_types::DeployHash) -> DeployHash {
+        DeployHash::new(deploy_hash.value().into())
+    }
+}
+
 impl From<DeployHash> for Digest {
     fn from(deploy_hash: DeployHash) -> Self {
         deploy_hash.0

@@ -1,0 +1,131 @@
+use once_cell::sync::Lazy;
+
+use casper_engine_test_support::{
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_RUN_GENESIS_REQUEST,
+};
+use casper_execution_engine::core::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
+use casper_types::{account::AccountHash, runtime_args, PublicKey, RuntimeArgs, SecretKey, U512};
+use rand::Rng;
+use tempfile::TempDir;
+
+static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
+
+static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
+static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SECRET_KEY));
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PUBLIC_KEY.to_account_hash());
+
+static ACCOUNT_2_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[210u8; 32]).unwrap());
+static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
+
+const ARG_TARGET: &str = "target";
+const ARG_AMOUNT: &str = "amount";
+const ARG_ID: &str = "id";
+
+const TRANSFER_COST: usize = 100_000_000;
+
+#[ignore]
+#[test]
+fn should_transfer_to_account() {
+    let data_dir = TempDir::new().expect("should create temp dir");
+    let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let pre_state_hash = builder.get_post_state_hash();
+
+    // Default account to account 1
+    {
+        let mut exec_builder = ExecuteRequestBuilder::new();
+        exec_builder = exec_builder.push_deploy(transfer(
+            *DEFAULT_ACCOUNT_ADDR,
+            runtime_args! {
+               ARG_TARGET => *ACCOUNT_1_ADDR,
+               ARG_AMOUNT => *TRANSFER_AMOUNT + TRANSFER_COST,
+               ARG_ID => <Option<u64>>::None,
+            },
+        ));
+        builder
+            .scratch_execute_and_commit(exec_builder.build())
+            .expect_success();
+    }
+
+    // Account 1 to account 2
+    {
+        let mut exec_builder = ExecuteRequestBuilder::new();
+        exec_builder = exec_builder.push_deploy(transfer(
+            *DEFAULT_ACCOUNT_ADDR,
+            runtime_args! {
+               ARG_TARGET => *ACCOUNT_1_ADDR,
+               ARG_AMOUNT => *TRANSFER_AMOUNT + TRANSFER_COST,
+               ARG_ID => <Option<u64>>::None,
+            },
+        ));
+        builder
+            .scratch_execute_and_commit(exec_builder.build())
+            .expect_success();
+    }
+
+    // Double spend test for account 1
+    {
+        let mut exec_builder = ExecuteRequestBuilder::new();
+        exec_builder = exec_builder.push_deploy(transfer(
+            *ACCOUNT_1_ADDR,
+            runtime_args! {
+                ARG_TARGET => *ACCOUNT_2_ADDR,
+                ARG_AMOUNT => *TRANSFER_AMOUNT,
+                ARG_ID => <Option<u64>>::None,
+            },
+        ));
+
+        builder
+            .scratch_execute_and_commit(exec_builder.build())
+            .expect_failure();
+    }
+
+    builder.scratch_put_values_into_lmdb();
+    builder.flush_environment();
+
+    assert!(
+        pre_state_hash != builder.get_post_state_hash(),
+        "post state hash didn't change... {:?}",
+        builder.exec_results(),
+    );
+
+    let account1 = builder
+        .get_account(*ACCOUNT_1_ADDR)
+        .expect("should get account 1");
+
+    let account2 = builder
+        .get_account(*ACCOUNT_2_ADDR)
+        .expect("should get account 2");
+
+    let account_1_balance = builder.get_purse_balance(account1.main_purse());
+    let account_2_balance = builder.get_purse_balance(account2.main_purse());
+    assert_eq!(
+        account_2_balance, *TRANSFER_AMOUNT,
+        "account 2 balance should have changed"
+    );
+    assert_eq!(
+        account_1_balance,
+        U512::zero(),
+        "account 1 balance should have changed"
+    );
+}
+
+fn transfer(sender: AccountHash, transfer_args: RuntimeArgs) -> DeployItem {
+    let mut rng = rand::thread_rng();
+    let deploy_hash = rng.gen();
+    DeployItemBuilder::new()
+        .with_address(sender)
+        .with_empty_payment_bytes(runtime_args! {})
+        .with_transfer_args(transfer_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build()
+}

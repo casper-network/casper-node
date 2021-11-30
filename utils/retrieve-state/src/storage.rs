@@ -4,6 +4,8 @@ use std::{
     sync::Arc,
 };
 
+use lmdb::DatabaseFlags;
+
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineState},
     storage::{
@@ -18,9 +20,9 @@ use casper_node::{
     StorageConfig, WithDir,
 };
 
-use crate::DEFAULT_MAX_READERS;
 use casper_types::ProtocolVersion;
-use lmdb::DatabaseFlags;
+
+use crate::DEFAULT_MAX_READERS;
 
 /// Gets many deploys by hash.
 pub fn get_many_deploys_by_hash(

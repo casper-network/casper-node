@@ -59,7 +59,7 @@ pub use self::{
     executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
-    execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
+    execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
@@ -83,7 +83,9 @@ use crate::{
         wasm_prep::Preprocessor,
     },
     storage::{
-        global_state::{lmdb::LmdbGlobalState, StateProvider},
+        global_state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+        },
         trie::Trie,
     },
 };
@@ -101,6 +103,13 @@ pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT)
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 
+/// Return type from run_execute
+#[derive(Debug)]
+pub struct Execution {
+    /// Execution results, stored by deploy hash.
+    pub exec_results: Vec<(DeployHash, ExecutionResult)>,
+}
+
 /// Main implementation of an execution engine state.
 ///
 /// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
@@ -112,6 +121,13 @@ pub struct EngineState<S> {
     state: S,
 }
 
+impl EngineState<ScratchGlobalState> {
+    /// Returns the inner state
+    pub fn into_inner(self) -> ScratchGlobalState {
+        self.state
+    }
+}
+
 impl EngineState<LmdbGlobalState> {
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
@@ -120,11 +136,31 @@ impl EngineState<LmdbGlobalState> {
         }
         Ok(())
     }
+
+    /// Provide a local cached-only version of engine-state.
+    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
+        EngineState {
+            config: self.config,
+            state: self.state.create_scratch(),
+        }
+    }
+
+    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
+    pub fn write_scratch_to_lmdb(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, Error> {
+        let stored_values = scratch_global_state.into_inner();
+        self.state
+            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .map_err(Into::into)
+    }
 }
 
 impl<S> EngineState<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
     /// Creates new engine state.
@@ -460,19 +496,20 @@ where
     ///
     /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
     ///
-    /// Return execution results which contains results from each deploy ran.
+    /// Returns an `Execution` which contains results from each deploy executed.
     pub fn run_execute(
         &self,
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, Error> {
+    ) -> Result<Execution, Error> {
         let executor = Executor::new(*self.config());
 
-        let deploys = exec_request.take_deploys();
-        let mut results = ExecutionResults::with_capacity(deploys.len());
+        let deploy_items = exec_request.take_deploys();
+        let mut exec_results = Vec::new();
 
-        for deploy_item in deploys {
-            let result = match deploy_item.session {
+        for deploy_item in deploy_items {
+            let deploy_hash = deploy_item.deploy_hash;
+            let execution_result = match deploy_item.session {
                 ExecutableDeployItem::Transfer { .. } => self.transfer(
                     correlation_id,
                     &executor,
@@ -481,7 +518,7 @@ where
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
                     exec_request.proposer.clone(),
-                ),
+                )?,
                 _ => self.deploy(
                     correlation_id,
                     &executor,
@@ -490,17 +527,11 @@ where
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
                     exec_request.proposer.clone(),
-                ),
+                )?,
             };
-            match result {
-                Ok(result) => results.push_back(result),
-                Err(error) => {
-                    return Err(error);
-                }
-            };
+            exec_results.push((deploy_hash, execution_result));
         }
-
-        Ok(results)
+        Ok(Execution { exec_results })
     }
 
     fn get_authorized_account(
@@ -592,7 +623,7 @@ where
 
         let base_key = Key::Account(deploy_item.address);
 
-        let account_public_key = match base_key.into_account() {
+        let account_hash = match base_key.into_account() {
             Some(account_addr) => account_addr,
             None => {
                 return Ok(ExecutionResult::precondition_failure(
@@ -605,7 +636,7 @@ where
 
         let account = match self.get_authorized_account(
             correlation_id,
-            account_public_key,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -1706,7 +1737,7 @@ where
 
     /// Apply effects of the execution.
     ///
-    /// This is also refered to as "committing" the effects into the global state. This method has
+    /// This is also referred to as "committing" the effects into the global state. This method has
     /// to be run after an execution has been made to persists the effects of it.
     ///
     /// Returns new state root hash.
@@ -1715,13 +1746,10 @@ where
         correlation_id: CorrelationId,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Error>
-    where
-        Error: From<S::Error>,
-    {
+    ) -> Result<Digest, Error> {
         self.state
             .commit(correlation_id, pre_state_hash, effects)
-            .map_err(Error::from)
+            .map_err(|err| Error::Exec(err.into()))
     }
 
     /// Gets a trie object for given state root hash.

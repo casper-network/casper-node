@@ -77,6 +77,7 @@ fn should_raise_auth_failure_with_invalid_key() {
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
+        .cloned()
         .expect("should have at least one deploy result");
 
     assert!(
@@ -126,6 +127,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
+        .cloned()
         .expect("should have at least one deploy result");
 
     assert!(deploy_result.has_precondition_failure());
@@ -221,6 +223,7 @@ fn should_raise_deploy_authorization_failure() {
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
+            .cloned()
             .expect("should have at least one deploy result");
 
         assert!(deploy_result.has_precondition_failure());
@@ -282,6 +285,7 @@ fn should_raise_deploy_authorization_failure() {
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
+            .cloned()
             .expect("should have at least one deploy result");
 
         assert!(deploy_result.has_precondition_failure());
@@ -434,6 +438,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
+        .cloned()
         .expect("should have at least one deploy result");
 
     assert!(
@@ -521,6 +526,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         .get_exec_result(3)
         .expect("should have response")
         .first()
+        .cloned()
         .expect("should have first result");
     let error = response.as_error().expect("should have error");
     assert!(matches!(

@@ -25,10 +25,6 @@ pub(crate) enum ConfigError {
 /// An error raised by a contract runtime variant.
 #[derive(Debug, thiserror::Error)]
 pub enum BlockExecutionError {
-    /// Currently the contract runtime can only execute one commit at a time, so we cannot handle
-    /// more than one execution result.
-    #[error("More than one execution result")]
-    MoreThanOneExecutionResult,
     /// Both the block to be executed and the execution pre-state specify the height of the next
     /// block. These must agree and this error will be thrown if they do not.
     #[error(

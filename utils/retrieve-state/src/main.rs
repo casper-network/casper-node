@@ -35,7 +35,7 @@ struct Opts {
     server_host: String,
 
     #[structopt(
-        short,
+        short = "d",
         long,
         about = "Specifies the block from which to start downloading state."
     )]
@@ -85,7 +85,11 @@ struct Opts {
     )]
     block_file_download_path: Option<PathBuf>,
 
-    #[structopt(short, long, about = "Enable manual syncing after each block to LMDB")]
+    #[structopt(
+        short = "s",
+        long,
+        about = "Enable manual syncing after each block to LMDB"
+    )]
     manual_sync_enabled: bool,
 }
 

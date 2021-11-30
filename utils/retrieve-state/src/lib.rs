@@ -26,6 +26,7 @@ pub mod storage;
 pub const LMDB_PATH: &str = "lmdb-data";
 pub const CHAIN_DOWNLOAD_PATH: &str = "chain-download";
 pub const DEFAULT_MAX_DB_SIZE: usize = 483_183_820_800; // 450 gb
+pub const VALGRIND_MAX_DB_SIZE: usize = 483_183_820; // .4 gb
 pub const DEFAULT_MAX_READERS: u32 = 512;
 
 /// Specific representations of  errors from `get_block`.

@@ -44,7 +44,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let precondition_failure = utils::get_precondition_failure(response);
+    let precondition_failure = utils::get_precondition_failure(&response);
     assert_matches!(precondition_failure, Error::Authorization);
 }
 
@@ -75,7 +75,7 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let precondition_failure = utils::get_precondition_failure(response);
+    let precondition_failure = utils::get_precondition_failure(&response);
     assert_matches!(precondition_failure, Error::Authorization);
 }
 
@@ -113,6 +113,6 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let precondition_failure = utils::get_precondition_failure(response);
+    let precondition_failure = utils::get_precondition_failure(&response);
     assert_matches!(precondition_failure, Error::Authorization);
 }
