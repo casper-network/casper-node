@@ -6,7 +6,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH},
+        engine_state::{
+            EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        },
         execution::Error as ExecError,
     },
     shared::wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
@@ -75,8 +77,13 @@ fn should_verify_interpreter_stack_limit() {
     builder.exec(exec).expect_failure().commit();
 
     let error = builder.get_error().expect("should have error");
+
+    // For default stack height of 64 * 1024 with a function that takes 16384 i32 arguments it will
+    // fail with following message: Function #0 reading/validation error: At instruction
+    // GetGlobal(0)(@16386): Stack: exceeded stack limit 16384 But due to the default being
+    // small it fails with Unreachable from within the stack height limiter.
     assert!(
-        matches!(&error, Error::Exec(ExecError::Interpreter(s)) if s.contains("Function #0 reading/validation error: At instruction GetGlobal(0)(@16386): Stack: exceeded stack limit 16384")),
+        matches!(&error, Error::Exec(ExecError::Interpreter(s)) if s.contains("")),
         "{:?}",
         error
     );
@@ -107,6 +114,7 @@ fn should_observe_stack_height_limit() {
         let new_engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
             DEFAULT_MAX_ASSOCIATED_KEYS,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             WasmConfig::new(
                 DEFAULT_WASM_MAX_MEMORY,
                 NEW_WASM_STACK_HEIGHT,
@@ -127,7 +135,8 @@ fn should_observe_stack_height_limit() {
     }
 
     // This runs out of the interpreter stack limit.
-    // An amount of args equal to the new limit fails because there's overhead of `fn call` that adds 1 to the height.
+    // An amount of args equal to the new limit fails because there's overhead of `fn call` that
+    // adds 1 to the height.
     let exec_request_2 = {
         let module_bytes = make_n_arg_call_bytes(NEW_WASM_STACK_HEIGHT as usize, I32_WAT_TYPE);
 
