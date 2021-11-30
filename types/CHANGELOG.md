@@ -13,11 +13,17 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* Change checksummed hex implementation to use 32 byte rather than 64 byte blake2b digests. 
+
 
 
 ## [1.4.4] - 2021-11-18
+
 ### Fixed
 * Revert the accidental change to the `std` feature causing a broken build when this feature is enabled.
+
+
 
 ## [1.4.3] - 2021-11-17 [YANKED]
 
