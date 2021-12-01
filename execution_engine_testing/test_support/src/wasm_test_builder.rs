@@ -169,10 +169,6 @@ impl<S> Clone for WasmTestBuilder<S> {
     }
 }
 
-/// A wrapper type to disambiguate builder from an actual result
-#[derive(Clone)]
-pub struct WasmTestResult<S>(WasmTestBuilder<S>);
-
 impl InMemoryWasmTestBuilder {
     /// Returns an [`InMemoryWasmTestBuilder`].
     pub fn new(
