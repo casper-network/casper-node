@@ -51,6 +51,9 @@ impl<T> SharedObject<T> {
     }
 
     /// Creates a new shared instance of the object.
+    #[allow(unused)] // TODO[RC]: Used only in the mem deduplication feature (via ` fn
+                     // handle_deduplicated_legacy_direct_deploy_request(deploy_hash)`), which is not merged from
+                     // `dev` to `feat-fast-sync` (?)
     pub(crate) fn shared(inner: Arc<T>) -> Self {
         SharedObject::Shared(inner)
     }
@@ -104,7 +107,9 @@ mod tests {
 
     use serde::{de::DeserializeOwned, Serialize};
 
-    use crate::types::{Deploy, SharedObject};
+    use crate::types::Deploy;
+
+    use super::SharedObject;
 
     impl<T> SharedObject<T>
     where
