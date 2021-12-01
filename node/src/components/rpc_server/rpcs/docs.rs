@@ -36,7 +36,7 @@ use crate::{
 };
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 3, 2);
+    ProtocolVersion::from_parts(1, 4, 2);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 

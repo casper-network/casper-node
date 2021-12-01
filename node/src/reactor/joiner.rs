@@ -56,6 +56,7 @@ use crate::{
         participating::{self, Error, ParticipatingInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
+    storage,
     types::{
         Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
         Tag, Timestamp,
@@ -83,7 +84,7 @@ pub(crate) enum JoinerEvent {
 
     /// Storage event.
     #[from]
-    Storage(#[serde(skip_serializing)] StorageRequest),
+    Storage(#[serde(skip_serializing)] storage::Event),
 
     #[from]
     /// REST server event.
@@ -210,6 +211,12 @@ pub(crate) enum JoinerEvent {
     /// Consensus request.
     #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
+}
+
+impl From<StorageRequest> for JoinerEvent {
+    fn from(request: StorageRequest) -> Self {
+        JoinerEvent::Storage(request.into())
+    }
 }
 
 impl ReactorEvent for JoinerEvent {
@@ -628,7 +635,7 @@ impl reactor::Reactor for Reactor {
             }) => match payload {
                 Message::GetResponse {
                     tag: Tag::Block,
-                    serialized_item,
+                    serialized_item
                 } => {
                     match fetcher::Event::<Block>::from_get_response_serialized_item(
                         sender,
