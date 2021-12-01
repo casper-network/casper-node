@@ -51,7 +51,8 @@ impl Config {
     }
 
     pub(crate) fn manual_sync_enabled(&self) -> bool {
-        self.enable_manual_sync.unwrap_or(DEFAULT_MANUAL_SYNC_ENABLED)
+        self.enable_manual_sync
+            .unwrap_or(DEFAULT_MANUAL_SYNC_ENABLED)
     }
 }
 
