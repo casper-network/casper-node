@@ -171,9 +171,12 @@ fn get_block(
     storage: &mut Storage,
     block_hash: BlockHash,
 ) -> Option<Block> {
-    let response = harness.send_request(storage, move |responder| StorageRequest::GetBlock {
-        block_hash,
-        responder,
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetBlock {
+            block_hash,
+            responder,
+        }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -190,6 +193,7 @@ fn get_block_signatures(
             block_hash,
             responder,
         }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -201,9 +205,12 @@ fn get_deploys(
     storage: &mut Storage,
     deploy_hashes: Multiple<DeployHash>,
 ) -> Vec<Option<Deploy>> {
-    let response = harness.send_request(storage, move |responder| StorageRequest::GetDeploys {
-        deploy_hashes: deploy_hashes.to_vec(),
-        responder,
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetDeploys {
+            deploy_hashes: deploy_hashes.to_vec(),
+            responder,
+        }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -215,11 +222,13 @@ fn get_deploy_and_metadata(
     storage: &mut Storage,
     deploy_hash: DeployHash,
 ) -> Option<(Deploy, DeployMetadata)> {
-    let response =
-        harness.send_request(storage, |responder| StorageRequest::GetDeployAndMetadata {
+    let response = harness.send_request(storage, |responder| {
+        StorageRequest::GetDeployAndMetadata {
             deploy_hash,
             responder,
-        });
+        }
+        .into()
+    });
     assert!(harness.is_idle());
     response
 }
@@ -229,8 +238,8 @@ fn get_highest_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
 ) -> Option<Block> {
-    let response = harness.send_request(storage, |responder| StorageRequest::GetHighestBlock {
-        responder,
+    let response = harness.send_request(storage, |responder| {
+        StorageRequest::GetHighestBlock { responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -242,9 +251,8 @@ fn put_block(
     storage: &mut Storage,
     block: Box<Block>,
 ) -> bool {
-    let response = harness.send_request(storage, move |responder| StorageRequest::PutBlock {
-        block,
-        responder,
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::PutBlock { block, responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -261,6 +269,7 @@ fn put_block_signatures(
             signatures,
             responder,
         }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -272,9 +281,8 @@ fn put_deploy(
     storage: &mut Storage,
     deploy: Box<Deploy>,
 ) -> bool {
-    let response = harness.send_request(storage, move |responder| StorageRequest::PutDeploy {
-        deploy,
-        responder,
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::PutDeploy { deploy, responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -293,6 +301,7 @@ fn put_execution_results(
             execution_results,
             responder,
         }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -332,9 +341,12 @@ fn can_put_and_get_block() {
     assert_eq!(response.as_ref(), Some(&*block));
 
     // Also ensure we can retrieve just the header.
-    let response = harness.send_request(&mut storage, |responder| StorageRequest::GetBlockHeader {
-        block_hash: *block.hash(),
-        responder,
+    let response = harness.send_request(&mut storage, |responder| {
+        StorageRequest::GetBlockHeader {
+            block_hash: *block.hash(),
+            responder,
+        }
+        .into()
     });
 
     assert_eq!(response.as_ref(), Some(block.header()));
@@ -691,6 +703,7 @@ fn can_retrieve_store_and_load_deploys() {
                 deploy_hash: *deploy.id(),
                 responder,
             }
+            .into()
         })
         .expect("no deploy with metadata returned");
 

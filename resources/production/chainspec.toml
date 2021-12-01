@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.3.2'
+version = '1.4.2'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 1605
+activation_point = 3000
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
 
@@ -178,9 +178,9 @@ remove_key = { cost = 61_000, arguments = [0, 3_200] }
 ret = { cost = 23_000, arguments = [0, 420_000] }
 revert = { cost = 500, arguments = [0] }
 set_action_threshold = { cost = 74_000, arguments = [0, 0] }
-transfer_from_purse_to_account = { cost = 160_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
+transfer_from_purse_to_account = { cost = 2_500_000_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
 transfer_from_purse_to_purse = { cost = 82_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
-transfer_to_account = { cost = 24_000, arguments = [0, 0, 0, 0, 0, 0, 0] }
+transfer_to_account = { cost = 2_500_000_000, arguments = [0, 0, 0, 0, 0, 0, 0] }
 update_associated_key = { cost = 4_200, arguments = [0, 0, 0] }
 write = { cost = 14_000, arguments = [0, 0, 0, 980] }
 write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }

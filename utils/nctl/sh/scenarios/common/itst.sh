@@ -18,27 +18,23 @@ function clean_up() {
         rm -f "$DEPLOY_LOG"
     fi
 
-    # Prints stderr of nodes on failures
-    for i in $(seq 1 $(get_count_of_nodes)); do
-        STDOUT=$(tail "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null) || true
-        STDERR=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stderr.log 2>/dev/null) || true
-        if [ ! -z "$STDERR" ]; then
-            echo ""
-            log "##############################################"
-            log " Node-$i Error Outputs "
-            log "##############################################"
-            # true to ignore "No such file" error from cat
-            echo ""
-            log "STDERR:"
-            echo "$STDERR"
-            echo ""
-            log "Tailed STDOUT:"
-            echo "$STDOUT"
-            echo ""
-        fi
-    done
-
     log "Test exited with exit code $EXIT_CODE"
+
+    # On failure dump the logs
+    if [ "$EXIT_CODE" == '1' ]; then
+        log "Dumping logs..."
+        nctl-assets-dump
+        # If CI, upload to s3
+        if [ ! -z "$AWS_ACCESS_KEY_ID" ] && [ ! -z "$AWS_SECRET_ACCESS_KEY" ] && [ "$DRONE" == 'true' ]; then
+            log "Uploading dump to s3..."
+            pushd $(get_path_to_net_dump)
+            tar -cvzf "${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz * > /dev/null 2>&1
+            aws s3 cp ./"${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz s3://nctl.casperlabs.io/nightly-logs/ > /dev/null 2>&1
+            log "Download the dump file: curl -O https://s3.us-east-2.amazonaws.com/nctl.casperlabs.io/nightly-logs/${DRONE_BUILD_NUMBER}_nctl_dump.tar.gz"
+            popd
+        fi
+    fi
+
     exit $EXIT_CODE
 }
 

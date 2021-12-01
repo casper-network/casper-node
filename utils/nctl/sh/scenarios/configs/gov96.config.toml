@@ -43,9 +43,6 @@ secret_key_path = 'secret_key.pem'
 # ===========================================
 [consensus.highway]
 
-# The folder in which the files with per-era latest unit hashes will be stored.
-unit_hashes_folder = "../node-storage"
-
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '1min'
 

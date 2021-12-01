@@ -6,6 +6,7 @@ mod error;
 mod operations;
 mod types;
 
+use once_cell::sync::Lazy;
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Formatter},
@@ -50,6 +51,32 @@ pub(crate) use error::{BlockExecutionError, ConfigError};
 pub use operations::execute_finalized_block;
 pub use types::BlockAndExecutionEffects;
 pub(crate) use types::EraValidatorsRequest;
+
+/// Maximum number of resource intensive tasks that can be run in parallel.
+///
+/// TODO: Fine tune this constant to the machine executing the node.
+const MAX_PARALLEL_INTENSIVE_TASKS: usize = 4;
+
+/// Semaphore enforcing maximum number of parallel resource intensive tasks.
+static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
+    Lazy::new(|| tokio::sync::Semaphore::new(MAX_PARALLEL_INTENSIVE_TASKS));
+
+/// Asynchronously runs a resource intensive task.
+/// At most `MAX_PARALLEL_INTENSIVE_TASKS` are being run in parallel at any time.
+///
+/// The task is a closure that takes no arguments and returns a value.
+/// This function returns a future for that value.
+async fn run_intensive_task<T, V>(task: T) -> V
+where
+    T: 'static + Send + FnOnce() -> V,
+    V: 'static + Send,
+{
+    // This will never panic since the semaphore is never closed.
+    let _permit = INTENSIVE_TASKS_SEMAPHORE.acquire().await.unwrap();
+    tokio::task::spawn_blocking(task)
+        .await
+        .expect("task panicked")
+}
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
@@ -400,19 +427,22 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                tokio::task::unconstrained(async move {
-                    let result = execute_finalized_block(
-                        engine_state.as_ref(),
-                        Some(metrics),
-                        protocol_version,
-                        execution_pre_state,
-                        finalized_block,
-                        deploys,
-                        transfers,
-                    );
+                async move {
+                    let result = run_intensive_task(move || {
+                        execute_finalized_block(
+                            engine_state.as_ref(),
+                            Some(metrics),
+                            protocol_version,
+                            execution_pre_state,
+                            finalized_block,
+                            deploys,
+                            transfers,
+                        )
+                    })
+                    .await;
                     trace!(?result, "execute block response");
                     responder.respond(result).await
-                })
+                }
                 .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
@@ -614,7 +644,7 @@ impl ContractRuntime {
             block,
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
-        } = match tokio::task::unconstrained(async move {
+        } = match run_intensive_task(move || {
             execute_finalized_block(
                 engine_state.as_ref(),
                 Some(metrics),
@@ -639,11 +669,11 @@ impl ContractRuntime {
         announcements::linear_chain_block(effect_builder, block, execution_results).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_effect,
+            step_execution_journal,
             upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
-            announcements::step_success(effect_builder, current_era_id, step_execution_effect)
+            announcements::step_success(effect_builder, current_era_id, step_execution_journal)
                 .await;
 
             announcements::upcoming_era_validators(
@@ -707,12 +737,12 @@ impl ContractRuntime {
                 .ignore();
 
         if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_effect,
+            step_execution_journal,
             upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
             effects.extend(
-                announcements::step_success(effect_builder, current_era_id, step_execution_effect)
+                announcements::step_success(effect_builder, current_era_id, step_execution_journal)
                     .ignore(),
             );
             effects.extend(
