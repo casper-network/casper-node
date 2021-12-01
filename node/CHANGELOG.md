@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* `enable_manual_sync` configuration parameter defaults to `true`.
 
 ## [1.4.2] - 2021-11-11
 
