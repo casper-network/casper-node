@@ -34,7 +34,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .exec(exec_request);
 
     let transforms = builder.get_transforms();
-    let transform = &transforms[0];
+    let (_deploy_hash, transform) = transforms[0].clone();
 
     let add_keys = if let Some(Transform::AddKeys(keys)) =
         transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))

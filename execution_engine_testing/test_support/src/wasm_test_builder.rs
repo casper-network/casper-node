@@ -133,15 +133,6 @@ impl<S> WasmTestBuilder<S> {
             })
             .collect()
     }
-
-    /// Returns transforms.
-    pub fn transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
-        self.transforms
-            .iter()
-            .cloned()
-            .map(|(_deploy_hash, transforms)| transforms)
-            .collect()
-    }
 }
 
 impl Default for InMemoryWasmTestBuilder {
@@ -717,8 +708,8 @@ where
     }
 
     /// Gets the transform map that's cached between runs
-    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
-        self.transforms()
+    pub fn get_transforms(&self) -> &[(DeployHash, AdditiveMap<Key, Transform>)] {
+        &self.transforms
     }
 
     /// Gets genesis account (if present)

@@ -27,7 +27,7 @@ fn should_run_ee_584_no_errored_session_transforms() {
 
     let transforms = builder.get_transforms();
 
-    assert!(!transforms[0].iter().any(|(_, t)| {
+    assert!(!transforms[0].1.iter().any(|(_, t)| {
         if let Transform::Write(StoredValue::CLValue(cl_value)) = t {
             cl_value.to_owned().into_t::<String>().unwrap_or_default() == "Hello, World!"
         } else {
