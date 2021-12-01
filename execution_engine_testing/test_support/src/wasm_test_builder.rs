@@ -687,7 +687,7 @@ where
             .get(0)
             .expect("Unable to get first deploy result");
 
-        if exec_result.is_failure() {
+        if exec_result.is_success() {
             panic!(
                 "Expected failed execution result, but instead got: {:?}",
                 exec_result,
