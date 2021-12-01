@@ -372,7 +372,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
         stored_value.insert(
             "Withdraw".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Withdraw(vec![
+            ABITestCase::from_inputs(vec![StoredValue::Unbonding(vec![
                 unbonding_purse_1,
                 unbonding_purse_2,
             ])

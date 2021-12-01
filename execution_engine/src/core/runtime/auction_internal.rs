@@ -77,8 +77,8 @@ where
     }
 
     fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
-        match self.context.read_gs(&Key::Withdraw(*account_hash)) {
-            Ok(Some(StoredValue::Withdraw(unbonding_purses))) => Ok(unbonding_purses),
+        match self.context.read_gs(&Key::Unbond(*account_hash)) {
+            Ok(Some(StoredValue::Unbonding(unbonding_purses))) => Ok(unbonding_purses),
             Ok(Some(_)) => Err(Error::Storage),
             Ok(None) => Ok(Vec::new()),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
@@ -96,8 +96,8 @@ where
     ) -> Result<(), Error> {
         self.context
             .metered_write_gs_unsafe(
-                Key::Withdraw(account_hash),
-                StoredValue::Withdraw(unbonding_purses),
+                Key::Unbond(account_hash),
+                StoredValue::Unbonding(unbonding_purses),
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }

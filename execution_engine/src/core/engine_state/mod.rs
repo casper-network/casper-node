@@ -37,8 +37,8 @@ use casper_types::{
     contracts::NamedKeys,
     system::{
         auction::{
-            EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            EraValidators, UnbondingPurse, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY,
             LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
@@ -46,8 +46,8 @@ use casper_types::{
         CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef,
-    U512,
+    EraId, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    URef, U512,
 };
 
 pub use self::{
@@ -399,36 +399,75 @@ where
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
-        // Run through global state and process the unbonding purses.
+        // Run through global state and process the withdraw purses
         {
-            println!("Attempting to get all withdraws");
             let withdraw_keys = tracking_copy
                 .borrow_mut()
                 .get_keys(correlation_id, &KeyTag::Withdraw)
                 .map_err(|_| Error::FailedToGetWithdrawsKeys)?;
 
-            println!("{}", withdraw_keys.len());
+            let (unbonding_delay, current_era_id) = {
+                let auction_contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, *auction_hash)?;
 
-            // The deserialization logic for unbonding purses during the read will assess
-            // if the purse lacks the `new_validator_public_key` field and will implicitly
-            // mark the field as `None` if the field is absent.
+                let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+                let delay = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &unbonding_delay_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
+                    .clone()
+                    .into_t::<u64>()
+                    .map_err(execution::Error::from)?;
+
+                let era_id_key = auction_contract.named_keys()[ERA_ID_KEY];
+
+                let era_id = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &era_id_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveEraId)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
+                    .clone()
+                    .into_t::<EraId>()
+                    .map_err(execution::Error::from)?;
+
+                (delay, era_id)
+            };
 
             for key in withdraw_keys {
                 // Deserialize to the new representation of unbonding purses
                 // and the write the value back to global state.
-                let unbonding_purses = tracking_copy
+                let withdraw_purses = tracking_copy
                     .borrow_mut()
                     .read(correlation_id, &key)
                     .map_err(|_| Error::FailedToGetWithdrawsKeys)?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
-                    .ok_or(Error::FailedToGetUnbondingPurses)?
+                    .ok_or(Error::FailedToGetWithdrawPurses)?
                     .to_owned();
 
-                // Write the new structure of unbonding purses back to global state.
+                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
+                    .into_iter()
+                    .filter_map(|purse| {
+                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
+                            return Some(UnbondingPurse::from(purse));
+                        }
+                        None
+                    })
+                    .collect();
+
+                let unbonding_key = key
+                    .withdraw_to_unbond()
+                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
+
                 tracking_copy
                     .borrow_mut()
-                    .write(key, StoredValue::Withdraw(unbonding_purses))
+                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses))
             }
         }
 

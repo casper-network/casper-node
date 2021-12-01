@@ -275,6 +275,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Unbond(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
             Key::Dictionary(_) => {
                 self.named_keys.remove(name);
                 Ok(())
@@ -637,6 +641,7 @@ where
             StoredValue::EraInfo(_) => Ok(()),
             StoredValue::Bid(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
+            StoredValue::Unbonding(_) => Ok(()),
         }
     }
 
@@ -721,6 +726,7 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
+            Key::Unbond(_) => true,
             Key::Dictionary(_) => {
                 // Dictionary is a special case that will not be readable by default, but the access
                 // bits are verified from within API call.
@@ -741,6 +747,7 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
+            Key::Unbond(_) => false,
             Key::Dictionary(_) => {
                 // Dictionary is a special case that will not be readable by default, but the access
                 // bits are verified from within API call.
@@ -761,6 +768,7 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
+            Key::Unbond(_) => false,
             Key::Dictionary(_) => {
                 // Dictionary is a special case that will not be readable by default, but the access
                 // bits are verified from within API call.

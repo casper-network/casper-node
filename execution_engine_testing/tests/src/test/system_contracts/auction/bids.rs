@@ -5,16 +5,17 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
-    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::{
     engine_state::{
         self,
         genesis::{GenesisAccount, GenesisValidator},
+        RewardItem,
     },
     execution,
 };
@@ -27,16 +28,15 @@ use casper_types::{
         self,
         auction::{
             self, Bids, DelegationRate, EraValidators, UnbondingPurses, ValidatorWeights,
-            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR_PUBLIC_KEY,
-            ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
+            WithdrawPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+            ARG_NEW_VALIDATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY,
+            INITIAL_ERA_ID,
         },
     },
     EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 use crate::lmdb_fixture;
-
-const RELEASE_1_4_2: &str = "release_1_4_2";
 
 const ARG_TARGET: &str = "target";
 
@@ -93,6 +93,16 @@ static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PK));
 const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
+
+static GENESIS_VALIDATOR_ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+
+static GENESIS_VALIDATOR_ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 
 static BID_ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH]).unwrap();
@@ -308,7 +318,7 @@ fn should_decrease_existing_bid() {
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
         U512::from(ADD_BID_AMOUNT_1)
     );
-    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
+    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
     let unbond_list = unbonding_purses
         .get(&BID_ACCOUNT_1_ADDR)
         .expect("should have unbonded");
@@ -464,7 +474,7 @@ fn should_run_delegate_and_undelegate() {
         U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2 - UNDELEGATE_AMOUNT_1)
     );
 
-    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
+    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbonding_purses.len(), 1);
 
     let unbond_list = unbonding_purses
@@ -1524,7 +1534,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     );
 
     // Validator partially unbonds and only one entry is present
-    let unbonding_purses_before: UnbondingPurses = builder.get_withdraws();
+    let unbonding_purses_before: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbonding_purses_before[&*VALIDATOR_1_ADDR].len(), 1);
     assert_eq!(
         unbonding_purses_before[&*VALIDATOR_1_ADDR][0].unbonder_public_key(),
@@ -1551,7 +1561,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbonding_purses_after: UnbondingPurses = builder.get_withdraws();
+    let unbonding_purses_after: UnbondingPurses = builder.get_unbonds();
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
 
     let validator_1_unbonding_purse = unbonding_purses_after
@@ -1763,7 +1773,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbonding_purses_before: UnbondingPurses = builder.get_withdraws();
+    let unbonding_purses_before: UnbondingPurses = builder.get_unbonds();
 
     let validator_1_unbonding_purse = unbonding_purses_before
         .get(&VALIDATOR_1_ADDR)
@@ -3232,7 +3242,7 @@ fn should_delegate_and_redelegate() {
 #[test]
 fn should_upgrade_ubonding_purses_from_rel_1_4_2() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(RELEASE_1_4_2);
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_2);
 
     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
@@ -3254,7 +3264,7 @@ fn should_upgrade_ubonding_purses_from_rel_1_4_2() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
+    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbonding_purses.len(), 1);
 
     let unbond_list = unbonding_purses
@@ -3266,4 +3276,80 @@ fn should_upgrade_ubonding_purses_from_rel_1_4_2() {
         &*NON_FOUNDER_VALIDATOR_1_PK
     );
     assert!(unbond_list[0].new_validator_public_key().is_none())
+}
+
+#[ignore]
+#[test]
+fn should_continue_auction_state_from_release_1_4_x() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
+
+    let withdraw_purses: WithdrawPurses = builder.get_withdraws();
+
+    assert_eq!(withdraw_purses.len(), 1);
+
+    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version = ProtocolVersion::from_parts(
+        previous_protocol_version.value().major,
+        previous_protocol_version.value().minor + 1,
+        0,
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(previous_protocol_version)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(EraId::new(20u64))
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .expect_upgrade_success();
+
+    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
+    assert_eq!(unbonding_purses.len(), 1);
+
+    let unbond_list = unbonding_purses
+        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
+        .expect("should have unbonding purse for non founding validator");
+    assert_eq!(unbond_list.len(), 3);
+    assert_eq!(
+        unbond_list[0].validator_public_key(),
+        &*NON_FOUNDER_VALIDATOR_1_PK
+    );
+    assert!(unbond_list[0].new_validator_public_key().is_none());
+    assert!(unbond_list[1].new_validator_public_key().is_none());
+    assert!(unbond_list[2].new_validator_public_key().is_none());
+
+    let delegator_1_undelegate_purse = builder
+        .get_account(*BID_ACCOUNT_1_ADDR)
+        .expect("should have default account")
+        .main_purse();
+
+    let delegator_1_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_1_undelegate_purse);
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute first step request post upgrade");
+
+    let delegator_1_purse_balance_post_step =
+        builder.get_purse_balance(delegator_1_undelegate_purse);
+
+    assert_eq!(
+        delegator_1_purse_balance_post_step,
+        delegator_1_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
+    );
 }

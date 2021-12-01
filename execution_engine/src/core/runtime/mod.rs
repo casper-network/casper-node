@@ -110,6 +110,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
+        Key::Unbond(_) => None,
         Key::Dictionary(_) => None,
         Key::SystemContractRegistry => None,
     }

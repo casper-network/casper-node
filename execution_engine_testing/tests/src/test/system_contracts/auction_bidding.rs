@@ -97,7 +97,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -124,7 +124,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let account_balance_before = builder.get_purse_balance(unbonding_purse);
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -145,7 +145,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
         Vec::new(),
     );
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -181,7 +181,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_5).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert!(unbond_purses
         .get(&*DEFAULT_ACCOUNT_ADDR)
         .unwrap()
@@ -449,7 +449,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -475,7 +475,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -496,7 +496,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -533,7 +533,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         account_balance_before_auction + unbond_amount
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert!(unbond_purses
         .get(&*DEFAULT_ACCOUNT_ADDR)
         .unwrap()
@@ -626,7 +626,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -655,7 +655,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     let account_balance_before_auction = builder.get_purse_balance(unbonding_purse);
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -674,7 +674,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     builder.run_auction(timestamp_millis, Vec::new());
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -726,7 +726,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         account_balance_before_auction + unbond_amount
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert!(unbond_purses
         .get(&*DEFAULT_ACCOUNT_ADDR)
         .unwrap()

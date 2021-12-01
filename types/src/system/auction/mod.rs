@@ -25,7 +25,7 @@ pub use era_info::*;
 pub use error::Error;
 pub use providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
-pub use unbonding_purse::UnbondingPurse;
+pub use unbonding_purse::{UnbondingPurse, WithdrawPurse};
 
 /// Representation of delegation rate of tokens. Range from 0..=100.
 pub type DelegationRate = u8;
@@ -47,6 +47,9 @@ pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 
 /// Validators and delegators mapped to their unbonding purses.
 pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
+
+/// Validators and delegators mapped to their withdraw purses.
+pub type WithdrawPurses = BTreeMap<AccountHash, Vec<WithdrawPurse>>;
 
 /// Bonding auction contract interface
 pub trait Auction:
