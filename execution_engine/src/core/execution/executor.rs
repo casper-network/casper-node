@@ -176,10 +176,39 @@ impl Executor {
         let call_stack = runtime.call_stack().to_owned();
 
         if runtime.is_mint(base_key) {
+            let mint_contract_hash = match runtime.context().get_system_contract(MINT) {
+                Ok(contract_hash) => contract_hash,
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        execution_journal,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    }
+                }
+            };
+            let correlation_id = runtime.context().correlation_id();
+            let mint_contract = match runtime
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, mint_contract_hash)
+            {
+                Ok(contract) => contract,
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        execution_journal,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    }
+                }
+            };
+
             match runtime.call_host_mint(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
+                mint_contract,
                 &args,
                 Default::default(),
                 call_stack,
@@ -201,10 +230,40 @@ impl Executor {
                 }
             }
         } else if runtime.is_handle_payment(base_key) {
+            let handle_payment_contract_hash =
+                match runtime.context().get_system_contract(HANDLE_PAYMENT) {
+                    Ok(contract_hash) => contract_hash,
+                    Err(error) => {
+                        return ExecutionResult::Failure {
+                            error: error.into(),
+                            execution_journal,
+                            transfers: runtime.context().transfers().to_owned(),
+                            cost: runtime.context().gas_counter(),
+                        }
+                    }
+                };
+            let correlation_id = runtime.context().correlation_id();
+            let handle_payment_contract = match runtime
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, handle_payment_contract_hash)
+            {
+                Ok(contract) => contract,
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        execution_journal,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    }
+                }
+            };
+
             match runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
+                handle_payment_contract,
                 &args,
                 Default::default(),
                 call_stack,
@@ -226,10 +285,39 @@ impl Executor {
                 }
             }
         } else if runtime.is_auction(base_key) {
+            let auction_contract_hash = match runtime.context().get_system_contract(AUCTION) {
+                Ok(contract_hash) => contract_hash,
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        transfers: runtime.context().transfers().to_owned(),
+                        execution_journal,
+                        cost: runtime.context().gas_counter(),
+                    }
+                }
+            };
+            let correlation_id = runtime.context().correlation_id();
+            let auction_contract = match runtime
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, auction_contract_hash)
+            {
+                Ok(contract) => contract,
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        transfers: runtime.context().transfers().to_owned(),
+                        execution_journal,
+                        cost: runtime.context().gas_counter(),
+                    }
+                }
+            };
+
             match runtime.call_host_auction(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
+                auction_contract,
                 &args,
                 Default::default(),
                 call_stack,
@@ -676,7 +764,7 @@ impl DirectSystemContractCall {
         &self,
         mut runtime: Runtime<R>,
         protocol_version: ProtocolVersion,
-        named_keys: &mut NamedKeys,
+        _named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         execution_journal: ExecutionJournal,
@@ -693,48 +781,234 @@ impl DirectSystemContractCall {
         let result = match self {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
-            | DirectSystemContractCall::DistributeRewards => runtime.call_host_auction(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                call_stack,
-            ),
-            DirectSystemContractCall::FinalizePayment => runtime.call_host_handle_payment(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                call_stack,
-            ),
-            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => runtime
-                .call_host_mint(
+            | DirectSystemContractCall::DistributeRewards => {
+                let auction_contract_hash = match runtime.context().get_system_contract(AUCTION) {
+                    Ok(contract_hash) => contract_hash,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                execution_journal,
+                                transfers: runtime.context().transfers().to_owned(),
+                                cost: runtime.context().gas_counter(),
+                            },
+                        );
+                    }
+                };
+                let correlation_id = runtime.context().correlation_id();
+                let auction_contract = match runtime
+                    .context()
+                    .state()
+                    .borrow_mut()
+                    .get_contract(correlation_id, auction_contract_hash)
+                {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                execution_journal,
+                                transfers: runtime.context().transfers().to_owned(),
+                                cost: runtime.context().gas_counter(),
+                            },
+                        )
+                    }
+                };
+
+                runtime.call_host_auction(
                     protocol_version,
                     entry_point_name,
-                    named_keys,
+                    auction_contract,
                     runtime_args,
                     extra_keys,
                     call_stack,
-                ),
-            DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                call_stack,
-            ),
+                )
+            }
+            DirectSystemContractCall::FinalizePayment => {
+                let handle_payment_contract_hash =
+                    match runtime.context().get_system_contract(HANDLE_PAYMENT) {
+                        Ok(contract_hash) => contract_hash,
+                        Err(error) => {
+                            return (
+                                None,
+                                ExecutionResult::Failure {
+                                    error: error.into(),
+                                    execution_journal,
+                                    transfers: runtime.context().transfers().to_owned(),
+                                    cost: runtime.context().gas_counter(),
+                                },
+                            );
+                        }
+                    };
+                let correlation_id = runtime.context().correlation_id();
+                let handle_payment_contract = match runtime
+                    .context()
+                    .state()
+                    .borrow_mut()
+                    .get_contract(correlation_id, handle_payment_contract_hash)
+                {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                execution_journal,
+                                transfers: runtime.context().transfers().to_owned(),
+                                cost: runtime.context().gas_counter(),
+                            },
+                        )
+                    }
+                };
 
-            DirectSystemContractCall::GetPaymentPurse => runtime.call_host_handle_payment(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                call_stack,
-            ),
+                runtime.call_host_handle_payment(
+                    protocol_version,
+                    entry_point_name,
+                    handle_payment_contract,
+                    runtime_args,
+                    extra_keys,
+                    call_stack,
+                )
+            }
+            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
+                let mint_contract_hash = match runtime.context().get_system_contract(MINT) {
+                    Ok(contract_hash) => contract_hash,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                transfers: runtime.context().transfers().to_owned(),
+                                execution_journal,
+                                cost: runtime.context().gas_counter(),
+                            },
+                        )
+                    }
+                };
+                let correlation_id = runtime.context().correlation_id();
+                let mint_contract = match runtime
+                    .context()
+                    .state()
+                    .borrow_mut()
+                    .get_contract(correlation_id, mint_contract_hash)
+                {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                transfers: runtime.context().transfers().to_owned(),
+                                execution_journal,
+                                cost: runtime.context().gas_counter(),
+                            },
+                        )
+                    }
+                };
+
+                runtime.call_host_mint(
+                    protocol_version,
+                    entry_point_name,
+                    mint_contract,
+                    runtime_args,
+                    extra_keys,
+                    call_stack,
+                )
+            }
+            DirectSystemContractCall::GetEraValidators => {
+                let auction_contract_hash = match runtime.context().get_system_contract(AUCTION) {
+                    Ok(contract_hash) => contract_hash,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                execution_journal,
+                                transfers: runtime.context().transfers().to_owned(),
+                                cost: runtime.context().gas_counter(),
+                            },
+                        );
+                    }
+                };
+                let correlation_id = runtime.context().correlation_id();
+                let auction_contract = match runtime
+                    .context()
+                    .state()
+                    .borrow_mut()
+                    .get_contract(correlation_id, auction_contract_hash)
+                {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                execution_journal,
+                                transfers: runtime.context().transfers().to_owned(),
+                                cost: runtime.context().gas_counter(),
+                            },
+                        )
+                    }
+                };
+
+                runtime.call_host_auction(
+                    protocol_version,
+                    entry_point_name,
+                    auction_contract,
+                    runtime_args,
+                    extra_keys,
+                    call_stack,
+                )
+            }
+
+            DirectSystemContractCall::GetPaymentPurse => {
+                let handle_payment_contract_hash =
+                    match runtime.context().get_system_contract(HANDLE_PAYMENT) {
+                        Ok(contract_hash) => contract_hash,
+                        Err(error) => {
+                            return (
+                                None,
+                                ExecutionResult::Failure {
+                                    error: error.into(),
+                                    execution_journal,
+                                    transfers: runtime.context().transfers().to_owned(),
+                                    cost: runtime.context().gas_counter(),
+                                },
+                            );
+                        }
+                    };
+                let correlation_id = runtime.context().correlation_id();
+                let handle_payment_contract = match runtime
+                    .context()
+                    .state()
+                    .borrow_mut()
+                    .get_contract(correlation_id, handle_payment_contract_hash)
+                {
+                    Ok(contract) => contract,
+                    Err(error) => {
+                        return (
+                            None,
+                            ExecutionResult::Failure {
+                                error: error.into(),
+                                execution_journal,
+                                transfers: runtime.context().transfers().to_owned(),
+                                cost: runtime.context().gas_counter(),
+                            },
+                        )
+                    }
+                };
+
+                runtime.call_host_handle_payment(
+                    protocol_version,
+                    entry_point_name,
+                    handle_payment_contract,
+                    runtime_args,
+                    extra_keys,
+                    call_stack,
+                )
+            }
         };
 
         match result {
