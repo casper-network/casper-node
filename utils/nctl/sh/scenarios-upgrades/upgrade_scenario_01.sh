@@ -271,7 +271,7 @@ function _step_08()
 # Step 09: Terminate.
 function _step_09()
 {
-    log_step_upgrades 7 "test successful - tidying up"
+    log_step_upgrades 9 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
