@@ -41,11 +41,12 @@ fn make_n_arg_call_bytes(arity: usize, arg_type: &str) -> Vec<u8> {
         func_params.push_str(&format!("(param $arg{} {}) ", i, arg_type));
     }
 
+    // This wasm module contains a function with a specified amount of arguments in it.
     let wat = format!(
         r#"(module
         (func $call (call $func {call_args}) (return))
         (func $func {func_params} (return))
-        (export "add" (func $func))
+        (export "func" (func $func))
         (export "call" (func $call))
         (memory $memory 1)
       )"#,
@@ -111,6 +112,7 @@ fn should_observe_stack_height_limit() {
     builder.exec(exec_request_1).expect_success().commit();
 
     {
+        // We need to perform an upgrade to be able to observe new max wasm stack height.
         let new_engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
             DEFAULT_MAX_ASSOCIATED_KEYS,
