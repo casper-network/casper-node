@@ -170,6 +170,15 @@ impl ToBytes for Delegator {
             + self.validator_public_key.serialized_length()
             + self.vesting_schedule.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.delegator_public_key.write_bytes(writer)?;
+        self.staked_amount.write_bytes(writer)?;
+        self.bonding_purse.write_bytes(writer)?;
+        self.validator_public_key.write_bytes(writer)?;
+        self.vesting_schedule.write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for Delegator {

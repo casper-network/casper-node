@@ -274,13 +274,13 @@ impl CLTyped for Bid {
 impl ToBytes for Bid {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.extend(self.validator_public_key.to_bytes()?);
-        result.extend(self.bonding_purse.to_bytes()?);
-        result.extend(self.staked_amount.to_bytes()?);
-        result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.vesting_schedule.to_bytes()?);
-        result.extend(self.delegators.to_bytes()?);
-        result.extend(self.inactive.to_bytes()?);
+        (&self.validator_public_key).write_bytes(&mut result)?;
+        (&self.bonding_purse).write_bytes(&mut result)?;
+        self.staked_amount.write_bytes(&mut result)?;
+        self.delegation_rate.write_bytes(&mut result)?;
+        self.vesting_schedule.write_bytes(&mut result)?;
+        self.delegators().write_bytes(&mut result)?;
+        self.inactive.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -292,6 +292,17 @@ impl ToBytes for Bid {
             + self.vesting_schedule.serialized_length()
             + self.delegators.serialized_length()
             + self.inactive.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.validator_public_key).write_bytes(writer)?;
+        (&self.bonding_purse).write_bytes(writer)?;
+        self.staked_amount.write_bytes(writer)?;
+        self.delegation_rate.write_bytes(writer)?;
+        self.vesting_schedule.write_bytes(writer)?;
+        self.delegators().write_bytes(writer)?;
+        self.inactive.write_bytes(writer)?;
+        Ok(())
     }
 }
 

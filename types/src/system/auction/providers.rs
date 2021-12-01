@@ -72,6 +72,11 @@ pub trait MintProvider {
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error>;
 
+    /// Mint `amount` new token into `existing_purse`.
+    /// Returns unit on success, otherwise an error.
+    fn mint_into_existing_purse(&mut self, amount: U512, existing_purse: URef)
+        -> Result<(), Error>;
+
     /// Creates new purse.
     fn create_purse(&mut self) -> Result<URef, Error>;
 
