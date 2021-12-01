@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use futures::stream::FuturesUnordered;
 use futures_util::{future::Either, stream::StreamExt, FutureExt};
 pub use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ use casper_node::{
     },
     storage::Storage,
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
+    work_queue::WorkQueue,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes},
@@ -35,7 +37,12 @@ use casper_types::{
 };
 use futures_channel::{mpsc::UnboundedSender, oneshot};
 use futures_util::SinkExt;
-use tokio::{task::JoinHandle, time::error::Elapsed};
+use tokio::{
+    sync::{mpsc, Mutex},
+    task::JoinHandle,
+    time::error::Elapsed,
+};
+use tracing::{error, info, trace, warn};
 
 pub mod rpc;
 pub mod storage;
@@ -381,7 +388,7 @@ pub enum PeerMsg {
 }
 
 /// Download the trie from a node to the provided lmdb path.
-pub async fn download_trie(
+pub async fn download_trie_channels(
     client: &Client,
     peers: &[SocketAddr],
     engine_state: Arc<EngineState<LmdbGlobalState>>,
@@ -399,7 +406,7 @@ pub async fn download_trie(
                     Ok(peer) => Some(peer),
                     Err(_err) => {
                         // just skip those that can't be communicated with
-                        // println!("error constructing peer with address {:?} {:?}", peer,
+                        // info!("error constructing peer with address {:?} {:?}", peer,
                         // err);
                         None
                     }
@@ -415,7 +422,7 @@ pub async fn download_trie(
         .map(|peer: Peer| (peer.address, peer))
         .collect::<HashMap<SocketAddr, Peer>>();
 
-    println!("got {}/{} valid peers", peer_map.len(), peers.len());
+    info!("got {}/{} valid peers", peer_map.len(), peers.len());
 
     let mut total_tries_count = 0;
 
@@ -478,7 +485,7 @@ pub async fn download_trie(
                     tries_downloaded += 1;
                 }
                 Ok(PeerMsg::NoBytes { trie_key, peer }) => {
-                    println!(
+                    info!(
                         "got no bytes for key {} from peer {} (will query for it again...)",
                         trie_key, peer
                     );
@@ -489,7 +496,7 @@ pub async fn download_trie(
                     peer_address,
                     error,
                 }) => {
-                    println!(
+                    info!(
                         "got bad data at key {} from peer from peer {} error {:?}",
                         trie_key, peer_address, error
                     );
@@ -500,7 +507,7 @@ pub async fn download_trie(
                     peer_address,
                     error,
                 }) => {
-                    println!(
+                    info!(
                         "timed out asking for trie at key {} from peer {} error {:?}",
                         trie_key, peer_address, error
                     );
@@ -511,7 +518,7 @@ pub async fn download_trie(
                     peer_address,
                     error,
                 }) => {
-                    println!(
+                    info!(
                         "rpc failed to get key {} from peer {} error {:?}",
                         trie_key, peer_address, error
                     );
@@ -532,7 +539,7 @@ pub async fn download_trie(
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis();
-            println!(
+            info!(
                 "({timestamp}) tries: {downloaded}/{total} - {kbytes_per_sec} kbps",
                 downloaded = tries_downloaded,
                 total = total_tries_count,
@@ -553,8 +560,8 @@ pub async fn download_trie(
             )?;
 
             if missing.is_empty() {
-                println!("state root has no missing descendants.");
-                println!(
+                info!("state root has no missing descendants.");
+                info!(
                     "tries downloaded: {downloaded}/{total} in {total_time} seconds",
                     downloaded = tries_downloaded,
                     total = total_tries_count,
@@ -562,7 +569,7 @@ pub async fn download_trie(
                 );
                 break;
             } else {
-                println!(
+                info!(
                     "state root still has {} missing descendants. {:#?}",
                     missing.len(),
                     in_flight_counters,
@@ -592,7 +599,7 @@ async fn maybe_construct_peer(
     client: &Client,
     state_root_hash: Digest,
 ) -> Result<Peer, PeerError> {
-    let url = format!("http://{}:{}/rpc", address.ip(), address.port());
+    let url = address_to_url(address);
     let base_send = base_send.clone();
     let client = client.clone();
     let read_future = get_trie(
@@ -640,7 +647,7 @@ fn spawn_peer(
         {
             let start = Instant::now();
             let mut base_send = base_send.clone();
-            let url = format!("http://{}:{}/rpc", address.ip(), address.port());
+            let url = address_to_url(address);
             match get_trie(
                 &client,
                 &url,
@@ -713,4 +720,228 @@ fn spawn_peer(
         join_handle,
         shutdown,
     }
+}
+
+/// Download the trie from a node to the provided lmdb path.
+pub async fn download_trie_work_queue(
+    client: &Client,
+    peers: &[SocketAddr],
+    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    state_root_hash: Digest,
+    peer_mailbox_size: usize,
+) -> Result<(), anyhow::Error> {
+    let tested_peers = check_peers_for_get_trie_endpoint(client, peers, state_root_hash).await;
+    info!("{} valid peers", tested_peers.len());
+    sync_trie_store(
+        engine_state,
+        state_root_hash,
+        client.clone(),
+        &tested_peers,
+        peer_mailbox_size,
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn check_peers_for_get_trie_endpoint(
+    client: &Client,
+    peers: &[SocketAddr],
+    state_root_hash: Digest,
+) -> Vec<SocketAddr> {
+    let mut peer_futures = Vec::new();
+    for peer in peers {
+        let peer_future = async move {
+            let url = address_to_url(*peer);
+            let req_or_timeout = tokio::time::timeout(
+                Duration::from_secs(1),
+                get_trie(
+                    client,
+                    &url,
+                    GetTrieParams {
+                        trie_key: state_root_hash,
+                    },
+                ),
+            )
+            .await;
+            match req_or_timeout {
+                Ok(Ok(_)) => Some(*peer),
+                err => {
+                    trace!("problem contacting peer {} {:?}", peer, err);
+                    None
+                }
+            }
+        };
+        peer_futures.push(peer_future);
+    }
+    let tested_peers: Vec<SocketAddr> = futures::future::join_all(peer_futures)
+        .await
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    tested_peers
+}
+
+// worker pool related
+async fn sync_trie_store(
+    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    state_root_hash: Digest,
+    client: Client,
+    peers: &[SocketAddr],
+    max_parallel_trie_fetches: usize,
+) -> Result<(), anyhow::Error> {
+    // Counter for calculating bytes per second transfer rate.
+    let bps_counter = Arc::new(Mutex::new((Instant::now(), 0usize)));
+
+    // Channel for a worker thread to send an error.
+    let (err_tx, mut err_rx) = mpsc::channel(1);
+
+    let queue = Arc::new(WorkQueue::default());
+    queue.push_job(state_root_hash);
+    let max_parallel_trie_fetches = max_parallel_trie_fetches.min(peers.len());
+    info!(
+        "using {}/{} valid peers",
+        max_parallel_trie_fetches,
+        peers.len()
+    );
+    let workers: FuturesUnordered<_> = peers[0..max_parallel_trie_fetches]
+        .iter()
+        .enumerate()
+        .map(|(worker_id, address)| {
+            info!("spawning worker {} for {:?}", worker_id, address);
+            tokio::spawn(sync_trie_store_worker(
+                worker_id,
+                err_tx.clone(),
+                queue.clone(),
+                engine_state.clone(),
+                client.clone(),
+                *address,
+                Arc::clone(&bps_counter),
+            ))
+        })
+        .collect();
+    drop(err_tx);
+    workers.for_each(|_| async move {}).await;
+    if let Some(err) = err_rx.recv().await {
+        return Err(err); // At least one download failed: return the error.
+    }
+
+    Ok(())
+}
+
+/// A worker task that takes trie keys from a queue and downloads the trie.
+async fn sync_trie_store_worker(
+    worker_id: usize,
+    err_tx: mpsc::Sender<anyhow::Error>,
+    queue: Arc<WorkQueue<Digest>>,
+    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    client: Client,
+    address: SocketAddr,
+    bps_counter: Arc<Mutex<(Instant, usize)>>,
+) {
+    while let Some(job) = queue.next_job().await {
+        if err_tx.capacity() < 1 {
+            return; // Another task failed and sent an error.
+        }
+        // Calculate global (all workers) total of trie bytes decoded per second.
+        {
+            let (last_update, total_bytes_since_update) = &mut *bps_counter.lock().await;
+            let elapsed = last_update.elapsed().as_millis();
+            if elapsed >= 1000 {
+                let scaled = *total_bytes_since_update as f32 * (elapsed as f32 / 1000f32);
+                info!("throughput rate: {} kbps", scaled / 1024f32);
+                *total_bytes_since_update = 0;
+                *last_update = Instant::now();
+            }
+        }
+        trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
+        match fetch_and_store_trie(
+            engine_state.clone(),
+            &client,
+            address,
+            *job.inner(),
+            bps_counter.clone(),
+        )
+        .await
+        {
+            Ok(Some(child_jobs)) => {
+                for child_job in child_jobs {
+                    queue.push_job(child_job);
+                }
+            }
+            Ok(None) => {
+                warn!(
+                    "got no bytes back for trie, requeuing job and killing worker {}",
+                    worker_id
+                );
+                queue.push_job(*job.inner());
+                return;
+            }
+            Err(err) => {
+                match err_tx.try_send(err) {
+                    Err(mpsc::error::TrySendError::Full(err)) => {
+                        error!(?err, "could not send error; another task also failed");
+                    }
+                    // Should be unreachable since we own one of the receivers.
+                    Err(mpsc::error::TrySendError::Closed(err)) => {
+                        error!(?err, "mpsc channel closed unexpectedly");
+                    }
+                    Ok(()) => {}
+                }
+                return;
+            }
+        }
+    }
+}
+
+// fetch a trie, store it, and if we didn't get any bytes then return None
+async fn fetch_and_store_trie(
+    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    client: &Client,
+    address: SocketAddr,
+    trie_key: Digest,
+    bps_counter: Arc<Mutex<(Instant, usize)>>,
+) -> Result<Option<Vec<Digest>>, anyhow::Error> {
+    let url = address_to_url(address);
+    let maybe_trie = get_trie(client, &url, GetTrieParams { trie_key }).await;
+    let missing_descendants = match maybe_trie {
+        Ok(GetTrieResult {
+            maybe_trie_bytes: Some(blob),
+            ..
+        }) => {
+            let bytes: Vec<u8> = blob.into();
+
+            // total -trie bytes- per second
+            {
+                let (_, total_bytes_since_last_update) = &mut *bps_counter.lock().await;
+                *total_bytes_since_last_update += bytes.len();
+            }
+
+            // similar to how the contract-runtime does related operations, spawn in a blocking task
+            tokio::task::spawn_blocking(move || {
+                let (trie, _rest) = FromBytes::from_bytes(&bytes)?;
+                engine_state
+                    .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)
+            })
+            .await??
+        }
+        Ok(GetTrieResult {
+            maybe_trie_bytes: None,
+            ..
+        }) => {
+            warn!(
+                "got None for trie at key {:?} in peer {:?}, will retry with another peer",
+                trie_key, address
+            );
+            return Ok(None);
+        }
+        Err(err) => {
+            return Err(anyhow::anyhow!("error in get_trie {:?}", err));
+        }
+    };
+    Ok(Some(missing_descendants))
+}
+
+pub fn address_to_url(address: SocketAddr) -> String {
+    format!("http://{}:{}/rpc", address.ip(), address.port())
 }

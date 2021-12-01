@@ -17,6 +17,7 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
+use tracing::info;
 
 use crate::DEFAULT_MAX_READERS;
 use casper_types::ProtocolVersion;
@@ -92,7 +93,7 @@ pub fn create_execution_engine(
     manual_sync_enabled: bool,
 ) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
     if !ee_lmdb_path.as_ref().exists() {
-        println!(
+        info!(
             "creating new lmdb data dir {}",
             ee_lmdb_path.as_ref().display()
         );

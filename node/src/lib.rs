@@ -44,6 +44,7 @@ pub use components::{
     storage::{self, Config as StorageConfig},
 };
 pub use utils::WithDir;
+pub use utils::work_queue;
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},

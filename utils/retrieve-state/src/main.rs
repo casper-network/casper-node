@@ -15,11 +15,13 @@ use casper_node::{
     types::JsonBlock,
 };
 
-use retrieve_state::storage::create_storage;
+use retrieve_state::{address_to_url, storage::create_storage};
+use tracing::info;
 
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";
 const CONVERT_BLOCK_FILES: &str = "convert-block-files";
+const DEFAULT_PEER_MAILBOX_SIZE: usize = 1;
 
 #[derive(Debug, StructOpt)]
 struct Opts {
@@ -94,10 +96,16 @@ struct Opts {
 
     #[structopt(
         long,
-        about = "Max number of requests requests to queue per peer.",
-        default_value = "1"
+        about = "Max number of peers to download tries from in parallel.",
+        default_value = "25"
     )]
-    peer_mailbox_size: usize,
+    max_workers: usize,
+
+    #[structopt(
+        long,
+        about = "Use channels-based download-tries method, defaults to false (work_queue)."
+    )]
+    use_download_trie_channels: bool,
 }
 
 #[derive(Debug)]
@@ -143,16 +151,14 @@ impl Display for Action {
 async fn main() -> Result<(), anyhow::Error> {
     let opts = Opts::from_args();
 
+    env_logger::init();
+
     let chain_download_path = env::current_dir()?.join(&opts.chain_download_path);
 
     // port used for peers as well as initial target node
     let port = opts.port.unwrap_or(7777);
     let initial_server_address = SocketAddr::V4(SocketAddrV4::new(opts.server_ip, port));
-    let url = format!(
-        "http://{}:{}/rpc",
-        initial_server_address.ip(),
-        initial_server_address.port()
-    );
+    let url = address_to_url(initial_server_address);
 
     let maybe_highest_block = opts.highest_block;
     let maybe_download_block = opts
@@ -168,7 +174,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 .build()
                 .unwrap();
             if !chain_download_path.exists() {
-                println!(
+                info!(
                     "creating new chain download data dir {}",
                     chain_download_path.display()
                 );
@@ -176,7 +182,7 @@ async fn main() -> Result<(), anyhow::Error> {
             }
 
             let mut storage = create_storage(&chain_download_path).expect("should create storage");
-            println!("Downloading all blocks to genesis...");
+            info!("Downloading all blocks to genesis...");
             let (downloaded, read_from_disk) = retrieve_state::download_or_read_blocks(
                 &client,
                 &mut storage,
@@ -184,7 +190,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 maybe_highest_block.as_ref(),
             )
             .await?;
-            println!(
+            info!(
                 "Downloaded {} blocks, read {} already-downloaded blocks from disk.",
                 downloaded, read_from_disk
             );
@@ -226,7 +232,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     .block
                     .expect("unable to download highest block");
 
-            eprintln!(
+            info!(
                 "retrieving global state at height {}...",
                 highest_block.header.height
             );
@@ -238,16 +244,28 @@ async fn main() -> Result<(), anyhow::Error> {
                 !opts.disable_manual_sync,
             )
             .expect("unable to create execution engine");
-            retrieve_state::download_trie(
-                &client,
-                &peers_list,
-                engine_state,
-                highest_block.header.state_root_hash,
-                opts.peer_mailbox_size,
-            )
-            .await
-            .expect("should download trie");
-            eprintln!("Finished downloading global state.");
+            if !opts.use_download_trie_channels {
+                retrieve_state::download_trie_work_queue(
+                    &client,
+                    &peers_list,
+                    engine_state,
+                    highest_block.header.state_root_hash,
+                    opts.max_workers,
+                )
+                .await
+                .expect("should download trie");
+            } else {
+                retrieve_state::download_trie_channels(
+                    &client,
+                    &peers_list,
+                    engine_state,
+                    highest_block.header.state_root_hash,
+                    DEFAULT_PEER_MAILBOX_SIZE,
+                )
+                .await
+                .expect("should download trie");
+            }
+            info!("Finished downloading global state.");
         }
     }
     Ok(())
