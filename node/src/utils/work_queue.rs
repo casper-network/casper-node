@@ -32,7 +32,7 @@ use tokio::sync::Notify;
 ///
 /// /// Job processing function.
 /// ///
-/// /// For a given job `(name, n)`, returns two jobs with `n = n -1`, unless `n == 0`.
+/// /// For a given job `(name, n)`, returns two jobs with `n = n - 1`, unless `n == 0`.
 /// async fn process_job(job: DemoJob) -> Vec<DemoJob> {
 ///     tokio::time::sleep(Duration::from_millis(25)).await;
 ///
@@ -124,6 +124,11 @@ impl<T> WorkQueue<T> {
                 }
             }
 
+            // Note: Any notification sent while executing this segment (after the guard has been
+            // dropped, but before `waiting.await` has been entered) will still be picked up by
+            // `waiting.await`, as the call to `notified()` marks the beginning of the waiting
+            // period, not `waiting.await`.
+
             // After freeing the lock, wait for a new job to arrive or be finished.
             waiting.await;
         }
@@ -157,7 +162,9 @@ impl<T> WorkQueue<T> {
     /// decreases the in-progress count by one.
     fn complete_job(&self) {
         // We need to lock the queue to prevent someone adding a job while we are notifying workers
-        // about the completion of what might appear to be the last job.
+        // about the completion of what might appear to be the last job. This also prevents workers
+        // starving in the case of the last job being completed while they are checking for more
+        // work.
         let _guard = self.jobs.lock().expect("lock poisoned");
 
         self.in_progress.fetch_sub(1, Ordering::SeqCst);
