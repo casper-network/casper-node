@@ -1,13 +1,10 @@
-use std::{
-    collections::{BTreeMap, VecDeque},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use futures::StreamExt;
+use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
 use num::rational::Ratio;
-use tracing::{info, trace, warn};
+use tokio::sync::mpsc;
+use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
@@ -27,6 +24,7 @@ use crate::{
         BlockValidationError, BlockWithMetadata, Chainspec, Deploy, DeployHash, FinalizedBlock,
         Item, NodeConfig, NodeId, TimeDiff, Timestamp,
     },
+    utils::work_queue::WorkQueue,
 };
 
 const SLEEP_DURATION_SO_WE_DONT_SPAM: Duration = Duration::from_millis(100);
@@ -478,6 +476,41 @@ async fn fetch_and_store_block_by_hash(
     }
 }
 
+/// A worker task that takes trie keys from a queue and downloads the trie.
+async fn sync_trie_store_worker(
+    worker_id: usize,
+    effect_builder: EffectBuilder<JoinerEvent>,
+    err_tx: mpsc::Sender<LinearChainSyncError>,
+    queue: Arc<WorkQueue<Digest>>,
+) {
+    while let Some(job) = queue.next_job().await {
+        if err_tx.capacity() < 1 {
+            return; // Another task failed and sent an error.
+        }
+        trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
+        match fetch_and_store_trie(effect_builder, *job.inner()).await {
+            Ok(child_jobs) => {
+                for child_job in child_jobs {
+                    queue.push_job(child_job);
+                }
+            }
+            Err(err) => {
+                match err_tx.try_send(err) {
+                    Err(mpsc::error::TrySendError::Full(err)) => {
+                        error!(?err, "could not send error; another task also failed");
+                    }
+                    // Should be unreachable since we own one of the receivers.
+                    Err(mpsc::error::TrySendError::Closed(err)) => {
+                        error!(?err, "mpsc channel closed unexpectedly");
+                    }
+                    Ok(()) => {}
+                }
+                return;
+            }
+        }
+    }
+}
+
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
@@ -485,19 +518,21 @@ async fn sync_trie_store(
     max_parallel_trie_fetches: usize,
 ) -> Result<(), LinearChainSyncError> {
     info!(?state_root_hash, "syncing trie store",);
-    // TODO: This implementation works like a stream with ordered buffering. Use an actual stream
-    //       with unordered buffering instead.
-    let mut outstanding_trie_keys = vec![state_root_hash];
-    let mut fetches_in_progress = VecDeque::with_capacity(max_parallel_trie_fetches);
-    while !fetches_in_progress.is_empty() || !outstanding_trie_keys.is_empty() {
-        let fetches_to_start = max_parallel_trie_fetches.saturating_sub(fetches_in_progress.len());
-        let new_fetches = outstanding_trie_keys
-            .drain(outstanding_trie_keys.len().saturating_sub(fetches_to_start)..)
-            .map(|trie_key| tokio::spawn(fetch_and_store_trie(effect_builder, trie_key)));
-        fetches_in_progress.extend(new_fetches);
-        if let Some(join_handle) = fetches_in_progress.pop_front() {
-            outstanding_trie_keys.extend(join_handle.await??);
-        }
+
+    // Channel for a worker thread to send an error.
+    let (err_tx, mut err_rx) = mpsc::channel(1);
+
+    let queue = Arc::new(WorkQueue::default());
+    queue.push_job(state_root_hash);
+    let workers: FuturesUnordered<_> = (0..max_parallel_trie_fetches)
+        .map(|worker_id| {
+            sync_trie_store_worker(worker_id, effect_builder, err_tx.clone(), queue.clone())
+        })
+        .collect();
+    drop(err_tx);
+    workers.for_each(|_| async move {}).await;
+    if let Some(err) = err_rx.recv().await {
+        return Err(err); // At least one download failed: return the error.
     }
     Ok(())
 }
