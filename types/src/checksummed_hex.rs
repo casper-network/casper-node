@@ -7,7 +7,7 @@ use core::ops::RangeInclusive;
 
 use base16;
 
-use crate::account;
+use crate::crypto;
 
 /// The number of input bytes, at or below which [`encode`] will checksum-encode the output.
 pub const SMALL_BYTES_COUNT: usize = 75;
@@ -55,7 +55,7 @@ pub fn encode<T: AsRef<[u8]>>(input: T) -> String {
 /// `encode` but it returns an iterator.
 fn encode_iter<'a, T: 'a + AsRef<[u8]>>(input: &'a T) -> impl Iterator<Item = char> + 'a {
     let nibbles = bytes_to_nibbles(input);
-    let mut hash_bits = bytes_to_bits_cycle(account::blake2b(input.as_ref()).to_vec());
+    let mut hash_bits = bytes_to_bits_cycle(crypto::blake2b(input.as_ref()).to_vec());
     nibbles.map(move |mut nibble| {
         // Base 16 numbers greater than 10 are represented by the ascii characters a through f.
         if nibble >= 10 && hash_bits.next().unwrap_or(true) {

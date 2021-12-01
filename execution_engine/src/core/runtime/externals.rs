@@ -3,11 +3,11 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_types::{
-    account,
     account::AccountHash,
     api_error,
     bytesrepr::{self, ToBytes},
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
+    crypto,
     system::auction::EraInfo,
     ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, Key, StoredValue, URef,
     U512,
@@ -876,7 +876,7 @@ where
                     [in_ptr, in_size, out_ptr, out_size],
                 )?;
                 let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
-                let digest = account::blake2b(&input);
+                let digest = crypto::blake2b(&input);
                 if digest.len() != out_size as usize {
                     let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
                     return Ok(Some(RuntimeValue::I32(err_value)));
