@@ -245,7 +245,7 @@ mod gens {
     use crate::storage::trie::{
         gens::trie_pointer_arb,
         merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-        RADIX,
+        pointer_block::RADIX,
     };
 
     const POINTERS_SIZE: usize = RADIX / 8;
