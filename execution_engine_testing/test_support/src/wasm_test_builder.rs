@@ -119,20 +119,6 @@ impl<S> WasmTestBuilder<S> {
         let log_settings = Settings::new(LevelFilter::Error).with_style(Style::HumanReadable);
         let _ = logging::initialize(log_settings);
     }
-
-    /// Returns execution results.
-    pub fn exec_results(&self) -> Vec<Vec<Rc<ExecutionResult>>> {
-        self.exec_results
-            .iter()
-            .map(|entry| {
-                entry
-                    .iter()
-                    .cloned()
-                    .map(|(_deploy_hash, result)| result)
-                    .collect()
-            })
-            .collect()
-    }
 }
 
 impl Default for InMemoryWasmTestBuilder {
@@ -959,10 +945,8 @@ where
     /// Returns the `Gas` const of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
         let exec_results = self
-            .exec_results()
-            .last()
-            .expect("Expected to be called after run()")
-            .clone();
+            .get_last_exec_results()
+            .expect("Expected to be called after run()");
         let exec_result = exec_results.get(0).expect("should have result");
         exec_result.cost()
     }

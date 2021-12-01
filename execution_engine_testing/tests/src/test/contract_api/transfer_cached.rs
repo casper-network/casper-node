@@ -58,8 +58,7 @@ fn should_transfer_to_account_with_correct_balances() {
 
     assert!(
         pre_state_hash != builder.get_post_state_hash(),
-        "post state hash didn't change... {:?}",
-        builder.exec_results(),
+        "post state hash didn't change...",
     );
 
     let default_account = builder
@@ -146,8 +145,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
 
     assert!(
         pre_state_hash != builder.get_post_state_hash(),
-        "post state hash didn't change... {:?}",
-        builder.exec_results(),
+        "post state hash didn't change...",
     );
 
     let default_account = builder
