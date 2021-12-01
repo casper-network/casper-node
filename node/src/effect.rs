@@ -77,9 +77,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-#[cfg(not(feature = "fast-sync"))]
-use tracing::warn;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
