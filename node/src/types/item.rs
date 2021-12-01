@@ -1,5 +1,5 @@
-use std::convert::Infallible;
 use std::{
+    convert::Infallible,
     fmt::{Debug, Display},
     hash::Hash,
 };

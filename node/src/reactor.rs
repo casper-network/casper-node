@@ -59,13 +59,13 @@ use tracing_futures::Instrument;
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
-use crate::components::fetcher;
-use crate::effect::announcements::BlocklistAnnouncement;
-use crate::effect::EffectExt;
-use crate::types::{Item, NodeId};
 use crate::{
-    effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
-    types::{ExitCode, Timestamp},
+    components::fetcher,
+    effect::{
+        announcements::{BlocklistAnnouncement, ControlAnnouncement},
+        Effect, EffectBuilder, EffectExt, Effects,
+    },
+    types::{ExitCode, Item, NodeId, Timestamp},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,

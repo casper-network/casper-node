@@ -1,5 +1,5 @@
-use std::convert::Infallible;
 use std::{
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     net::SocketAddr,
 };
