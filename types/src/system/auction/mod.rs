@@ -230,7 +230,7 @@ pub trait Auction:
     /// is missing, the function call returns an error and does nothing.
     ///
     /// The function transfers motes from the source purse to the delegator's bonding purse.
-    ///    
+    ///
     /// This entry point returns the number of tokens currently delegated to a given validator.
     fn delegate(
         &mut self,

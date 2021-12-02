@@ -16,8 +16,6 @@ const TEST_CLOCK_LEEWAY: Duration = Duration::from_secs(315_569_520);
 /// A rewindable and forwardable clock for testing that does not tick on its own.
 #[derive(Debug)]
 pub struct TestClock {
-    /// The earliest moment of the `TestClock`.
-    epoch: Instant,
     /// The current time set on the clock.
     now: Instant,
 }
@@ -33,10 +31,8 @@ impl TestClock {
     ///
     /// Testing clocks will not advance unless prompted to do so.
     pub fn new() -> Self {
-        let epoch = Instant::now();
         Self {
-            epoch,
-            now: epoch + TEST_CLOCK_LEEWAY,
+            now: Instant::now() + TEST_CLOCK_LEEWAY,
         }
     }
 
