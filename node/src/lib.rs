@@ -43,8 +43,7 @@ pub use components::{
     rpc_server::rpcs,
     storage::{self, Config as StorageConfig},
 };
-pub use utils::WithDir;
-pub use utils::work_queue;
+pub use utils::{work_queue, WithDir};
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
