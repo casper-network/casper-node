@@ -507,7 +507,7 @@ where
                                 self.signal(id, Ok(FetchedData::FromPeer { item, peer }), peer)
                             }
                             Err(err) => {
-                                warn!(?peer, ?err, ?item, "Peer sent invalid item, banning");
+                                warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
                                 effect_builder.announce_disconnect_from_peer(peer).ignore()
                             }
                         }

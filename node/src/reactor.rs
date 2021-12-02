@@ -948,7 +948,7 @@ where
         }
         None => {
             info!(
-                "{} sent us a {:?} item we couldn't parse! Banning",
+                "{} sent us a {:?} item we couldn't parse, banning peer",
                 sender,
                 T::TAG
             );
