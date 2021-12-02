@@ -243,6 +243,7 @@ impl ServerSentEvent {
 
 /// The messages sent via the tokio broadcast channel to the handler of each client's SSE stream.
 #[derive(Clone, PartialEq, Eq, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub(super) enum BroadcastChannelMessage {
     /// The message should be sent to the client as an SSE with an optional ID.  The ID should only
     /// be `None` where the `data` is `SseData::ApiVersion`.
