@@ -382,20 +382,11 @@ pub enum ExecutionResultBuilderError {
 
 /// Builder object that will construct a final [`ExecutionResult`] given payment, session and
 /// finalize [`ExecutionResult`]s.
+#[derive(Default)]
 pub struct ExecutionResultBuilder {
     payment_execution_result: Option<ExecutionResult>,
     session_execution_result: Option<ExecutionResult>,
     finalize_execution_result: Option<ExecutionResult>,
-}
-
-impl Default for ExecutionResultBuilder {
-    fn default() -> Self {
-        ExecutionResultBuilder {
-            payment_execution_result: None,
-            session_execution_result: None,
-            finalize_execution_result: None,
-        }
-    }
 }
 
 impl ExecutionResultBuilder {

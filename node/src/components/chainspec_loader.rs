@@ -150,7 +150,6 @@ impl Display for NextUpgrade {
 /// Basic information about the current run of the node software.
 #[derive(Clone, Debug)]
 pub(crate) struct CurrentRunInfo {
-    pub(crate) activation_point: ActivationPoint,
     pub(crate) protocol_version: ProtocolVersion,
     pub(crate) initial_state_root_hash: Digest,
     pub(crate) last_emergency_restart: Option<EraId>,
@@ -608,7 +607,6 @@ impl ChainspecLoader {
 
     fn get_current_run_info(&self) -> CurrentRunInfo {
         CurrentRunInfo {
-            activation_point: self.chainspec.protocol_config.activation_point,
             protocol_version: self.chainspec.protocol_config.version,
             initial_state_root_hash: self.initial_state_root_hash,
             last_emergency_restart: self.chainspec.protocol_config.last_emergency_restart,
