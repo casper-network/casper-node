@@ -5,6 +5,7 @@ use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, Gas, RuntimeArgs,
     SecretKey,
 };
+use core::convert::TryInto;
 use itertools::Itertools;
 
 use super::*;
@@ -600,7 +601,7 @@ fn test_proposer_with(
     config.block_max_transfer_count = max_transfer_count;
     config.block_gas_limit = block_gas_limit;
     if let Some(max_block_size) = max_block_size {
-        config.max_block_size = max_block_size as u32;
+        config.max_block_size = max_block_size.try_into().unwrap();
     }
 
     for _ in 0..deploy_count {

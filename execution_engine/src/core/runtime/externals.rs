@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, convert::TryFrom};
+use std::{
+    collections::BTreeSet,
+    convert::{TryFrom, TryInto},
+};
 
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
@@ -282,7 +285,11 @@ where
                 )?;
                 let purse = self.create_purse()?;
                 let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-                assert_eq!(dest_size, purse_bytes.len() as u32);
+                assert_eq!(
+                    dest_size,
+                    TryInto::<u32>::try_into(purse_bytes.len())
+                        .expect("Purse encoding should be small")
+                );
                 self.memory
                     .set(dest_ptr, &purse_bytes)
                     .map_err(|e| Error::Interpreter(e.into()))?;

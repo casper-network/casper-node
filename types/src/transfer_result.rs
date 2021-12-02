@@ -6,6 +6,7 @@ use crate::ApiError;
 pub type TransferResult = Result<TransferredTo, ApiError>;
 
 /// The result of a successful transfer between purses.
+/// NOTE: The variants of this type should not correspond to negative integers.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(i32)]
 pub enum TransferredTo {

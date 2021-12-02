@@ -10,7 +10,7 @@ mod standard_payment_internal;
 use std::{
     cmp,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     iter::IntoIterator,
 };
 
@@ -1187,8 +1187,10 @@ where
             return Err(Error::Interpreter(error.into()).into());
         }
 
-        // For all practical purposes following cast is assumed to be safe
-        let bytes_size = key_bytes.len() as u32;
+        let bytes_size: u32 = key_bytes
+            .len()
+            .try_into()
+            .expect("Keys should not serialize to many bytes");
         let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.memory.set(bytes_written_ptr, &size_bytes) {
             return Err(Error::Interpreter(error.into()).into());
@@ -1304,7 +1306,10 @@ where
             return Ok(Err(ApiError::HostBufferFull));
         }
         let call_stack = self.call_stack();
-        let call_stack_len = call_stack.len() as u32;
+        let call_stack_len: u32 = call_stack
+            .len()
+            .try_into()
+            .expect("The call stack should not be very deep");
         let call_stack_len_bytes = call_stack_len.to_le_bytes();
 
         if let Err(error) = self.memory.set(call_stack_len_ptr, &call_stack_len_bytes) {
@@ -1317,7 +1322,11 @@ where
 
         let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
 
-        let call_stack_cl_value_bytes_len = call_stack_cl_value.inner_bytes().len() as u32;
+        let call_stack_cl_value_bytes_len: u32 = call_stack_cl_value
+            .inner_bytes()
+            .len()
+            .try_into()
+            .expect("The call stack should not be very deep");
         if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
             return Ok(Err(error));
         }
@@ -2351,7 +2360,10 @@ where
         result_size_ptr: u32,
         result: CLValue,
     ) -> Result<Result<(), ApiError>, Error> {
-        let result_size = result.inner_bytes().len() as u32; // considered to be safe
+        // It is okay to truncate this as, even if somehow Wasm manages to produce a result this
+        // large, the truncation would only result in incorrect feedback to the offending,
+        // probably malicious, contract.
+        let result_size = result.inner_bytes().len() as u32;
 
         // leave the host buffer set to `None` if there's nothing to write there
         if result_size != 0 {
@@ -2378,7 +2390,12 @@ where
             return Ok(Err(ApiError::HostBufferFull));
         }
 
-        let total_keys = self.context.named_keys().len() as u32;
+        let total_keys: u32 = self
+            .context
+            .named_keys()
+            .len()
+            .try_into()
+            .map_err(|_| Trap::new(TrapKind::InvalidConversionToInt))?;
         let total_keys_bytes = total_keys.to_le_bytes();
         if let Err(error) = self.memory.set(total_keys_ptr, &total_keys_bytes) {
             return Err(Error::Interpreter(error.into()).into());
@@ -2392,7 +2409,11 @@ where
         let named_keys =
             CLValue::from_t(self.context.named_keys().clone()).map_err(Error::CLValue)?;
 
-        let length = named_keys.inner_bytes().len() as u32;
+        let length: u32 = named_keys
+            .inner_bytes()
+            .len()
+            .try_into()
+            .map_err(|_| Trap::new(TrapKind::InvalidConversionToInt))?;
         if let Err(error) = self.write_host_buffer(named_keys) {
             return Ok(Err(error));
         }
@@ -2582,8 +2603,10 @@ where
                 return Err(Error::Interpreter(error.into()));
             }
 
-            // Following cast is assumed to be safe
-            let bytes_size = key_bytes.len() as u32;
+            let bytes_size: u32 = key_bytes
+                .len()
+                .try_into()
+                .expect("Contract hashes have small byte representations");
             let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
             if let Err(error) = self.memory.set(bytes_written_ptr, &size_bytes) {
                 return Err(Error::Interpreter(error.into()));
@@ -2744,7 +2767,11 @@ where
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
-        let value_size = cl_value.inner_bytes().len() as u32;
+        let value_size: u32 = cl_value
+            .inner_bytes()
+            .len()
+            .try_into()
+            .map_err(|_| Trap::new(TrapKind::InvalidConversionToInt))?;
         if let Err(error) = self.write_host_buffer(cl_value) {
             return Ok(Err(error));
         }
@@ -3273,7 +3300,8 @@ where
             return Err(Error::Interpreter(error.into()));
         }
 
-        let bytes_written = sliced_buf.len() as u32;
+        // Never panics because we check that `serialized_value.len()` fits in `u32`.
+        let bytes_written: u32 = sliced_buf.len().try_into().unwrap();
         let bytes_written_data = bytes_written.to_le_bytes();
 
         if let Err(error) = self.memory.set(bytes_written_ptr, &bytes_written_data) {
@@ -3582,7 +3610,11 @@ where
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
-        let value_size = cl_value.inner_bytes().len() as u32;
+        let value_size: u32 = cl_value
+            .inner_bytes()
+            .len()
+            .try_into()
+            .map_err(|_| Trap::new(TrapKind::InvalidConversionToInt))?;
         if let Err(error) = self.write_host_buffer(cl_value) {
             return Ok(Err(error));
         }
