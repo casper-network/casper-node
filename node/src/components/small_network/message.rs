@@ -26,6 +26,7 @@ fn default_protocol_version() -> ProtocolVersion {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
     Handshake {
         /// Network we are connected to.
