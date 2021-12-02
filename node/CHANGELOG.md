@@ -29,8 +29,30 @@ All notable changes to this project will be documented in this file.  The format
 ## [1.4.0] - 2021-10-04
 
 ### Added
-* Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+
+### Changed
+* `enable_manual_sync` configuration parameter defaults to `true`.
+
+
+## [1.4.2] - 2021-11-11
+
+### Changed
+* There are now less false warnings/errors regarding dropped responders or closed channels during a shutdown, where they are expected and harmless.
+* Execution transforms are ordered by insertion order.
+
+### Removed
+* The config option `consensus.highway.unit_hashes_folder` has been removed.
+
+### Fixed
+* The block proposer component now retains pending deploys and transfers across a restart.
+
+
+## [1.4.0] - 2021-10-04
+
+### Added
+* Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
 * Add `contract_runtime_execute_block` histogram tracking execution time of a whole block.
 * Long-running events now log their event type.
 * Individual weights for traffic throttling can now be set through the configuration value `network.estimator_weights`.

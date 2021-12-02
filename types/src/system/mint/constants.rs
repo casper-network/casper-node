@@ -25,6 +25,8 @@ pub const METHOD_BALANCE: &str = "balance";
 pub const METHOD_TRANSFER: &str = "transfer";
 /// Named constant for method `read_base_round_reward`.
 pub const METHOD_READ_BASE_ROUND_REWARD: &str = "read_base_round_reward";
+/// Named constant for method `mint_into_existing_purse`.
+pub const METHOD_MINT_INTO_EXISTING_PURSE: &str = "mint_into_existing_purse";
 
 /// Storage for mint contract hash.
 pub const HASH_KEY: &str = "mint_hash";

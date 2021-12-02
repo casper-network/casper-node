@@ -187,6 +187,12 @@ impl ToBytes for AccountHash {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
+    }
 }
 
 impl FromBytes for AccountHash {
