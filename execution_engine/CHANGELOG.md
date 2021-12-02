@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+* Fixed some integer casts.
 
 ## [1.4.2] - 2021-11-11
 
