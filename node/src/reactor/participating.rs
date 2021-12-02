@@ -710,35 +710,17 @@ impl reactor::Reactor for Reactor {
                         Default::default(),
                         Default::default(),
                     );
-                    let finalized_block = FinalizedBlock::new(
-                        BlockPayload::default(),
-                        Some(EraReport::default()),
+                    let (new_header, new_effects) = create_immediate_switch_block(
+                        &mut contract_runtime,
+                        &mut storage,
+                        effect_builder,
+                        chainspec,
+                        initial_pre_state,
                         genesis_timestamp,
                         EraId::from(0u64),
-                        0,
-                        PublicKey::System,
-                    );
-                    // Execute the finalized block, creating a new switch block.
-                    let (new_switch_block, new_effects) = contract_runtime
-                        .execute_finalized_block(
-                            effect_builder,
-                            chainspec.protocol_version(),
-                            initial_pre_state,
-                            finalized_block,
-                            vec![],
-                            vec![],
-                        )?;
-                    // Make sure the new block really is a switch block
-                    if !new_switch_block.header().is_switch_block() {
-                        return Err(Error::FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
-                            new_bad_block: Box::new(new_switch_block),
-                        });
-                    }
-                    // Write the block to storage so the era supervisor can be initialized properly.
-                    storage.write_block(&new_switch_block)?;
-                    // Effects inform other components to make finality signatures, etc.
+                    )?;
                     effects.extend(reactor::wrap_effects(Into::into, new_effects));
-                    new_switch_block.take_header()
+                    new_header
                 }
                 ActivationPoint::EraId(upgrade_era_id) => {
                     return Err(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id });
