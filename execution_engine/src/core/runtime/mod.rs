@@ -57,6 +57,8 @@ use crate::{
 
 use self::host_function_flag::HostFunctionFlag;
 
+use super::tracking_copy::TrackingCopyExt;
+
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     config: EngineConfig,
@@ -1437,11 +1439,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(MINT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1464,7 +1476,7 @@ where
         let mint_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1583,11 +1595,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1610,7 +1632,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1702,11 +1724,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         call_stack: Vec<CallStackElement>,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(AUCTION)?;
+            let contract = self
+                .context
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1730,7 +1762,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -2134,7 +2166,6 @@ where
                 return self.call_host_mint(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     call_stack,
@@ -2150,7 +2181,6 @@ where
                 return self.call_host_handle_payment(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     call_stack,
@@ -2166,7 +2196,6 @@ where
                 return self.call_host_auction(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     call_stack,

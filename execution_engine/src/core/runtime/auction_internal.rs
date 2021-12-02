@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use casper_types::{
     account::{self, AccountHash},
     bytesrepr::{FromBytes, ToBytes},
-    contracts::NamedKeys,
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
@@ -205,7 +204,6 @@ where
             .call_host_mint(
                 self.context.protocol_version(),
                 mint::METHOD_TRANSFER,
-                &mut NamedKeys::default(),
                 &args_values,
                 &[],
                 call_stack,
@@ -240,32 +238,10 @@ where
             .map_err(|_| Error::Storage)?;
         call_stack.push(call_stack_element);
 
-        let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
-            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
-        })?;
-
-        let mint_contract_key: Key = mint_contract_hash.into();
-
-        let mint = match self
-            .context
-            .read_gs(&mint_contract_key)
-            .map_err(|exec_error| {
-                <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
-            })? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::MissingValue);
-            }
-            None => return Err(Error::MissingKey),
-        };
-
-        let mut mint_named_keys = mint.named_keys().clone();
-
         let cl_value = self
             .call_host_mint(
                 self.context.protocol_version(),
                 mint::METHOD_MINT_INTO_EXISTING_PURSE,
-                &mut mint_named_keys,
                 &args_values,
                 &[],
                 call_stack,
