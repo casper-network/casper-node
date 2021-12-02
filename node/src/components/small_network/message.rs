@@ -524,7 +524,8 @@ mod tests {
                 assert_eq!(
                     signature,
                     Signature::from_hex(
-                        "02cdfa333c18893d9f36035a3b7702348acff0fd5a2ae9cbc0e48e59dd085581a60159b7fccc54dd0fa9443d2e3573378d61ea16e659d16d0009a40b7750bcceae"
+                        "02cdfa333c18893d9f36035a3b7702348acff0fd5a2ae9cbc0e48e59dd085581a6015\
+                        9b7fccc54dd0fa9443d2e3573378d61ea16e659d16d0009a40b7750bcceae"
                     )
                     .unwrap()
                 );
