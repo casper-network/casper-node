@@ -54,12 +54,13 @@ use crate::{
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, RpcRequest, StorageRequest,
+            NetworkRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    storage,
     types::{
         ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitCode, FinalizedBlock,
         Item, NodeId, Tag,
@@ -86,6 +87,9 @@ pub(crate) enum ParticipatingEvent {
     /// Block proposer event.
     #[from]
     BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
+    #[from]
+    /// Storage event.
+    Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     /// RPC server event.
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
@@ -147,6 +151,9 @@ pub(crate) enum ParticipatingEvent {
     /// Storage request.
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Control announcement.
@@ -200,6 +207,7 @@ impl ReactorEvent for ParticipatingEvent {
         match self {
             ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
             ParticipatingEvent::BlockProposer(_) => "BlockProposer",
+            ParticipatingEvent::Storage(_) => "Storage",
             ParticipatingEvent::RpcServer(_) => "RpcServer",
             ParticipatingEvent::RestServer(_) => "RestServer",
             ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
@@ -220,6 +228,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
@@ -283,6 +292,7 @@ impl Display for ParticipatingEvent {
         match self {
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
+            ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             ParticipatingEvent::RestServer(event) => write!(f, "rest server: {}", event),
             ParticipatingEvent::EventStreamServer(event) => {
@@ -307,6 +317,7 @@ impl Display for ParticipatingEvent {
                 write!(f, "chainspec loader request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
+            ParticipatingEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             ParticipatingEvent::DeployFetcherRequest(req) => {
                 write!(f, "deploy fetcher request: {}", req)
             }
@@ -749,6 +760,7 @@ impl reactor::Reactor for Reactor {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),
+            storage.root_path(),
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().clone(),
@@ -772,6 +784,11 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
+            chainspec_loader
+                .chainspec()
+                .highway_config
+                .finality_threshold_fraction,
+            maybe_next_activation_point,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -824,6 +841,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockProposer(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockProposer,
                 self.block_proposer.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::RpcServer(event) => reactor::wrap_effects(
                 ParticipatingEvent::RpcServer,
@@ -914,10 +935,12 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::ChainspecLoader(req.into()),
             ),
-            ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(
-                ParticipatingEvent::StorageRequest,
-                self.storage.handle_event(effect_builder, rng, req),
-            ),
+            ParticipatingEvent::StorageRequest(req) => {
+                self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
+            }
+            ParticipatingEvent::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
+            }
 
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
@@ -1264,6 +1287,10 @@ impl reactor::Reactor for Reactor {
                     consensus::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
                 );
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event = ParticipatingEvent::LinearChain(
+                    linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => self.dispatch_event(
@@ -1286,7 +1313,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.consensus
+        self.linear_chain
             .stop_for_upgrade()
             .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }

@@ -5,7 +5,7 @@ use std::{
 
 use casper_types::ExecutionResult;
 
-use crate::types::{Block, BlockSignatures, DeployHash, FinalitySignature};
+use crate::types::{ActivationPoint, Block, BlockSignatures, DeployHash, FinalitySignature};
 
 #[derive(Debug)]
 pub(crate) enum Event {
@@ -28,6 +28,10 @@ pub(crate) enum Event {
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
     /// Result of testing if creator of the finality signature is bonded validator.
     IsBonded(Option<Box<BlockSignatures>>, Box<FinalitySignature>, bool),
+    /// We stored the last block before the next upgrade, with a complete set of signatures.
+    Upgrade,
+    /// Got the result of checking for an upgrade activation point.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Display for Event {
@@ -57,6 +61,12 @@ impl Display for Event {
                     fs.era_id, fs.public_key, is_bonded
                 )
             }
+            Event::Upgrade => write!(f, "linear chain: shut down for upgrade"),
+            Event::GotUpgradeActivationPoint(activation_point) => write!(
+                f,
+                "linear chain got upgrade activation point {}",
+                activation_point
+            ),
         }
     }
 }

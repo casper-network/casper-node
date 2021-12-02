@@ -12,6 +12,22 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+
+## [1.4.2] - 2021-11-11
+
+### Changed
+* There are now less false warnings/errors regarding dropped responders or closed channels during a shutdown, where they are expected and harmless.
+* Execution transforms are ordered by insertion order.
+
+### Removed
+* The config option `consensus.highway.unit_hashes_folder` has been removed.
+
+### Fixed
+* The block proposer component now retains pending deploys and transfers across a restart.
+
+
+## [1.4.0] - 2021-10-04
+
 ### Added
 * Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
@@ -229,7 +245,9 @@ All notable changes to this project will be documented in this file.  The format
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/37d561634adf73dab40fffa7f1f1ee47e80bf8a1...dev
+[1.4.2]: https://github.com/casper-network/casper-node/compare/v1.4.0...37d561634adf73dab40fffa7f1f1ee47e80bf8a1
+[1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1

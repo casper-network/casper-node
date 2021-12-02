@@ -8,6 +8,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use datasize::DataSize;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
 use num::rational::Ratio;
 use tracing::{info, trace, warn};
@@ -49,7 +50,7 @@ where
     loop {
         for peer in effect_builder.get_peers_in_random_order().await {
             trace!(
-                "Attempting to fetch {:?} with id {:?} from {:?}",
+                "attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
                 id,
                 peer
@@ -57,7 +58,7 @@ where
             match effect_builder.fetch::<T, NodeId>(id, peer).await {
                 Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                     trace!(
-                        "Did not get {:?} with id {:?} from {:?}, got from storage instead",
+                        "did not get {:?} with id {:?} from {:?}, got from storage instead",
                         T::TAG,
                         id,
                         peer
@@ -65,7 +66,7 @@ where
                     return Ok(fetched_data);
                 }
                 Ok(fetched_data @ FetchedData::FromPeer { .. }) => {
-                    trace!("Fetched {:?} with id {:?} from {:?}", T::TAG, id, peer);
+                    trace!("fetched {:?} with id {:?} from {:?}", T::TAG, id, peer);
                     return Ok(fetched_data);
                 }
                 Err(FetcherError::Absent { .. }) => {
@@ -73,7 +74,7 @@ where
                         ?id,
                         tag = ?T::TAG,
                         ?peer,
-                        "Fast sync could not fetch; trying next peer",
+                        "fast sync could not fetch; trying next peer",
                     )
                 }
                 Err(FetcherError::TimedOut { .. }) => {
@@ -81,7 +82,7 @@ where
                         ?id,
                         tag = ?T::TAG,
                         ?peer,
-                        "Peer timed out",
+                        "peer timed out",
                     );
                 }
                 Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
@@ -178,7 +179,7 @@ fn validate_finality_signatures(
 ///
 /// If the data was scraped from genesis, then `era_id` is 0.
 /// Otherwise if it came from a switch block it is that switch block's `era_id + 1`.
-#[derive(Clone, Debug)]
+#[derive(DataSize, Clone, Debug)]
 pub(crate) struct KeyBlockInfo {
     /// The block hash of the key block
     key_block_hash: BlockHash,
@@ -193,16 +194,33 @@ pub(crate) struct KeyBlockInfo {
 }
 
 impl KeyBlockInfo {
-    fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
+    pub(crate) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
-            .map(|next_era_validator_weights| KeyBlockInfo {
-                key_block_hash: block_header.hash(),
-                validator_weights: next_era_validator_weights.clone(),
-                era_start: block_header.timestamp(),
-                height: block_header.height(),
-                era_id: block_header.era_id() + 1,
+            .and_then(|next_era_validator_weights| {
+                Some(KeyBlockInfo {
+                    key_block_hash: block_header.hash(),
+                    validator_weights: next_era_validator_weights.clone(),
+                    era_start: block_header.timestamp(),
+                    height: block_header.height(),
+                    era_id: block_header.era_id().checked_add(1)?,
+                })
             })
+    }
+
+    /// Returns the era in which the validators are operating
+    pub(crate) fn era_id(&self) -> EraId {
+        self.era_id
+    }
+
+    /// Returns the hash of the key block, i.e. the last block before `era_id`.
+    pub(crate) fn block_hash(&self) -> &BlockHash {
+        &self.key_block_hash
+    }
+
+    /// Returns the validator weights for this era.
+    pub(crate) fn validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.validator_weights
     }
 }
 
@@ -365,7 +383,7 @@ where
                     warn!(
                         ?error,
                         ?peer,
-                        "Error validating block from peer; banning peer.",
+                        "error validating block from peer; banning peer.",
                     );
                     effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
@@ -439,6 +457,8 @@ fn check_block_version(
 
     if is_current_era(header, trusted_key_block_info, chainspec)
         && header.protocol_version() < current_version
+        && (header.next_block_era_id() != chainspec.protocol_config.activation_point.era_id()
+            || !header.is_switch_block())
     {
         return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
             current_version,
@@ -576,18 +596,16 @@ async fn fast_sync_to_most_recent(
                     trusted_key_block_info = key_block_info;
                 }
             }
-            // If we could not fetch, we can stop when the most recent header is in the current
-            // era.
-            None if is_current_era(
-                &most_recent_block_header,
-                &trusted_key_block_info,
-                chainspec,
-            ) =>
-            {
-                break
-            }
-            // Otherwise keep trying to fetch until we get a block with our version
-            None => tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await,
+            // If we timed out, consider syncing done.
+            None => break,
+        }
+        // If we synced up to the current era, we can also consider syncing done.
+        if is_current_era(
+            &most_recent_block_header,
+            &trusted_key_block_info,
+            chainspec,
+        ) {
+            break;
         }
     }
 
@@ -765,7 +783,7 @@ pub(crate) async fn run_fast_sync_task(
     {
         warn!(
             ?trusted_block_header,
-            "Timestamp of trusted hash is older than \
+            "timestamp of trusted hash is older than \
              era_duration * (unbonding_delay - auction_delay)"
         );
     }
@@ -839,7 +857,7 @@ pub(crate) async fn run_fast_sync_task(
         height = most_recent_block_header.height(),
         now = %Timestamp::now(),
         block_timestamp = %most_recent_block_header.timestamp(),
-        "Fetching and executing blocks to synchronize to current",
+        "fetching and executing blocks to synchronize to current",
     );
     loop {
         let block = match fetch_and_store_next::<BlockWithMetadata>(
@@ -851,22 +869,13 @@ pub(crate) async fn run_fast_sync_task(
         .await?
         {
             None => {
-                if is_current_era(
-                    &most_recent_block_header,
-                    &trusted_key_block_info,
-                    &chainspec,
-                ) {
-                    info!(
-                        era = most_recent_block_header.era_id().value(),
-                        height = most_recent_block_header.height(),
-                        timestamp = %most_recent_block_header.timestamp(),
-                        "Finished executing blocks; synchronized to current era",
-                    );
-                    break;
-                } else {
-                    tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await;
-                    continue;
-                }
+                info!(
+                    era = most_recent_block_header.era_id().value(),
+                    height = most_recent_block_header.height(),
+                    timestamp = %most_recent_block_header.timestamp(),
+                    "couldn't download a more recent block; finishing syncing",
+                );
+                break;
             }
             Some(block_with_metadata) => block_with_metadata.block,
         };
@@ -885,7 +894,7 @@ pub(crate) async fn run_fast_sync_task(
             height = block.height(),
             now = %Timestamp::now(),
             block_timestamp = %block.timestamp(),
-            "Executing block",
+            "executing block",
         );
         let block_and_execution_effects = effect_builder
             .execute_finalized_block(
@@ -914,6 +923,22 @@ pub(crate) async fn run_fast_sync_task(
         {
             trusted_key_block_info = key_block_info;
         }
+
+        // If we managed to sync up to the current era, stop - we'll have to sync the consensus
+        // protocol state, anyway.
+        if is_current_era(
+            &most_recent_block_header,
+            &trusted_key_block_info,
+            &chainspec,
+        ) {
+            info!(
+                era = most_recent_block_header.era_id().value(),
+                height = most_recent_block_header.height(),
+                timestamp = %most_recent_block_header.timestamp(),
+                "synchronized up to the current era; finishing syncing",
+            );
+            break;
+        }
     }
 
     info!(
@@ -921,7 +946,7 @@ pub(crate) async fn run_fast_sync_task(
         height = most_recent_block_header.height(),
         now = %Timestamp::now(),
         block_timestamp = %most_recent_block_header.timestamp(),
-        "Finished synchronizing",
+        "finished synchronizing",
     );
 
     Ok(most_recent_block_header)

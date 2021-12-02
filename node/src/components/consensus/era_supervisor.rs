@@ -12,7 +12,7 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     fs, io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -123,14 +123,12 @@ pub struct EraSupervisor<I> {
     next_executed_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
-    /// The path to the folder where unit hash files will be stored.
-    unit_hashes_folder: PathBuf,
+    /// The path to the folder where unit files will be stored.
+    unit_files_folder: PathBuf,
     /// The next upgrade activation point. When the era immediately before the activation point is
     /// deactivated, the era supervisor indicates that the node should stop running to allow an
     /// upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
-    /// If true, the process should stop execution to allow an upgrade to proceed.
-    stop_for_upgrade: bool,
     /// The era that was current when this node joined the network.
     era_where_we_joined: EraId,
 }
@@ -150,6 +148,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
         current_era: EraId,
+        storage_dir: &Path,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         chainspec: Arc<Chainspec>,
@@ -168,7 +167,7 @@ where
                 chainspec.activation_era()
             );
         }
-        let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
+        let unit_files_folder = storage_dir.join("unit_files");
         let (root, config) = config.into_parts();
         let (secret_signing_key, public_signing_key) = config.load_keys(root)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
@@ -187,9 +186,8 @@ where
             new_consensus,
             next_block_height: next_height,
             metrics,
-            unit_hashes_folder,
+            unit_files_folder,
             next_upgrade_activation_point,
-            stop_for_upgrade: false,
             next_executed_height: next_height,
             era_where_we_joined: current_era,
         };
@@ -303,10 +301,6 @@ where
     fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
         let has_validator = |era: &Era<I>| era.validators().contains_key(pub_key);
         self.open_eras.get(&era_id).map_or(false, has_validator)
-    }
-
-    pub(crate) fn stop_for_upgrade(&self) -> bool {
-        self.stop_for_upgrade
     }
 
     /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
@@ -497,7 +491,7 @@ where
             } else {
                 info!(era = era_id.value(), %our_id, "start voting");
                 let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
-                let unit_hash_file = self.unit_hash_file(&instance_id);
+                let unit_hash_file = self.unit_file(&instance_id);
                 outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
                     our_id,
                     secret,
@@ -534,7 +528,7 @@ where
             if let Some(obsolete_era_id) = evidence_only_era_id.checked_sub(1) {
                 if let Some(era) = self.open_eras.remove(&obsolete_era_id) {
                     trace!(era = obsolete_era_id.value(), "removing obsolete era");
-                    match fs::remove_file(self.unit_hash_file(era.consensus.instance_id())) {
+                    match fs::remove_file(self.unit_file(era.consensus.instance_id())) {
                         Ok(_) => {}
                         Err(err) => match err.kind() {
                             io::ErrorKind::NotFound => {}
@@ -548,10 +542,10 @@ where
         Ok((era_id, outcomes))
     }
 
-    /// Returns the path to the era's unit hash file.
-    fn unit_hash_file(&self, instance_id: &Digest) -> PathBuf {
-        self.unit_hashes_folder.join(format!(
-            "unit_hash_{:?}_{}.dat",
+    /// Returns the path to the era's unit file.
+    fn unit_file(&self, instance_id: &Digest) -> PathBuf {
+        self.unit_files_folder.join(format!(
+            "unit_{:?}_{}.dat",
             instance_id,
             self.public_signing_key.to_hex()
         ))
@@ -738,11 +732,6 @@ where
         if faulty_num == old_faulty_num {
             info!(era = era_id.value(), "stop voting in era");
             era.consensus.deactivate_validator();
-            if self.should_upgrade_after(&era_id) {
-                // If the next era is at or after the upgrade activation point, stop the node.
-                info!(era = era_id.value(), "shutting down for upgrade");
-                self.stop_for_upgrade = true;
-            }
             Effects::new()
         } else {
             let deactivate_era = move |_| Event::DeactivateEra {

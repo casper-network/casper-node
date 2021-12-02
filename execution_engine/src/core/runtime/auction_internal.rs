@@ -9,7 +9,7 @@ use casper_types::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
             StorageProvider, UnbondingPurse,
         },
-        mint,
+        mint, MINT,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
@@ -195,7 +195,12 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let call_stack = self.call_stack().clone();
+        let mut call_stack = self.call_stack().clone();
+        let call_stack_element = self
+            .get_system_contract_stack_frame(MINT)
+            .map_err(|_| Error::Storage)?;
+        call_stack.push(call_stack_element);
+
         let cl_value = self
             .call_host_mint(
                 self.context.protocol_version(),

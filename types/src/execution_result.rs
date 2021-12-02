@@ -169,10 +169,7 @@ impl Distribution<ExecutionResult> for Standard {
             });
         }
 
-        let execution_effect = ExecutionEffect {
-            operations,
-            transforms,
-        };
+        let execution_effect = ExecutionEffect::new(transforms);
 
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
@@ -287,15 +284,25 @@ impl FromBytes for ExecutionResult {
     }
 }
 
-/// The effect of executing a single deploy.
+/// The journal of execution transforms from a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionEffect {
     /// The resulting operations.
     pub operations: Vec<Operation>,
-    /// The resulting transformations.
+    /// The journal of execution transforms.
     pub transforms: Vec<TransformEntry>,
+}
+
+impl ExecutionEffect {
+    /// Constructor for [`ExecutionEffect`].
+    pub fn new(transforms: Vec<TransformEntry>) -> Self {
+        Self {
+            transforms,
+            operations: Default::default(),
+        }
+    }
 }
 
 impl ToBytes for ExecutionEffect {
@@ -315,11 +322,11 @@ impl FromBytes for ExecutionEffect {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (operations, remainder) = Vec::<Operation>::from_bytes(bytes)?;
         let (transforms, remainder) = Vec::<TransformEntry>::from_bytes(remainder)?;
-        let execution_effect = ExecutionEffect {
+        let json_execution_journal = ExecutionEffect {
             operations,
             transforms,
         };
-        Ok((execution_effect, remainder))
+        Ok((json_execution_journal, remainder))
     }
 }
 

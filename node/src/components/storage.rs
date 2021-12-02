@@ -45,11 +45,13 @@ use std::collections::BTreeSet;
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
+    fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
@@ -77,7 +79,7 @@ use crate::effect::requests::StorageRequest;
 use crate::{
     components::{consensus, consensus::error::FinalitySignatureError, Component},
     crypto,
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{requests::StateStoreRequest, EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::ReactorEvent,
     types::{
@@ -131,6 +133,17 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
+
+#[derive(Debug, From, Serialize)]
+#[repr(u8)]
+pub(crate) enum Event {
+    /// Incoming storage request.
+    #[from]
+    StorageRequest(StorageRequest),
+    /// Incoming state storage request.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
+}
 
 /// A storage component error.
 #[derive(Debug, Error)]
@@ -357,7 +370,7 @@ impl<REv> Component<REv> for Storage
 where
     REv: ReactorEvent,
 {
-    type Event = StorageRequest;
+    type Event = Event;
     type ConstructionError = Error;
 
     fn handle_event(
@@ -366,10 +379,17 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        let result = match event {
+            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
+            Event::StateStoreRequest(req) => {
+                self.handle_state_store_request::<REv>(effect_builder, req)
+            }
+        };
+
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
         // we are dropping a lot of responders this way, but since we are crashing with fatal
         // anyway, it should not matter.
-        match self.handle_storage_request::<REv>(event) {
+        match result {
             Ok(effects) => effects,
             Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
@@ -421,7 +441,9 @@ impl Storage {
                 // We manage our own directory.
                 | EnvironmentFlags::NO_SUB_DIR
                 // Disable thread local storage, strongly suggested for operation with tokio.
-                | EnvironmentFlags::NO_TLS,
+                | EnvironmentFlags::NO_TLS
+                // Disable read-ahead. Our data is not storead/read in sequence that would benefit from the read-ahead.
+                | EnvironmentFlags::NO_READAHEAD,
             )
             .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(MAX_DB_COUNT)
@@ -570,16 +592,58 @@ impl Storage {
         })
     }
 
+    /// Handles a state store request.
+    fn handle_state_store_request<REv>(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+        req: StateStoreRequest,
+    ) -> Result<Effects<Event>, Error>
+    where
+        Self: Component<REv>,
+    {
+        // Incoming requests are fairly simple database write. Errors are handled one level above on
+        // the call stack, so all we have to do is load or store a value.
+        match req {
+            StateStoreRequest::Save {
+                key,
+                data,
+                responder,
+            } => {
+                let mut txn = self.env.begin_rw_txn()?;
+                txn.put(self.state_store_db, &key, &data, WriteFlags::default())?;
+                txn.commit()?;
+                Ok(responder.respond(()).ignore())
+            }
+            StateStoreRequest::Load { key, responder } => {
+                let bytes = self.read_state_store(&key)?;
+                Ok(responder.respond(bytes).ignore())
+            }
+        }
+    }
+
+    /// Reads from the state storage DB.
+    /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
+    /// May also fail with storage errors.
+    pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let txn = self.env.begin_ro_txn()?;
+        let bytes = match txn.get(self.state_store_db, &key) {
+            Ok(slice) => Some(slice.to_owned()),
+            Err(lmdb::Error::NotFound) => None,
+            Err(err) => return Err(err.into()),
+        };
+        Ok(bytes)
+    }
+
     /// Returns the path to the storage folder.
     pub(crate) fn root_path(&self) -> &Path {
         &self.root
     }
 
     /// Handles a storage request.
-    fn handle_storage_request<REv>(
-        &mut self,
-        req: StorageRequest,
-    ) -> Result<Effects<StorageRequest>, Error>
+    fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
     where
         Self: Component<REv>,
     {
@@ -1318,6 +1382,7 @@ impl Storage {
     ) -> Result<Option<BlockBody>, LmdbExtError> {
         tx.get_value(self.block_body_v1_db, block_body_hash)
     }
+
     /// Retrieves a set of deploys from storage.
     fn get_deploys<Tx: Transaction>(
         &self,
@@ -1677,6 +1742,15 @@ impl Config {
             ..Default::default()
         };
         (config, tempdir)
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::StorageRequest(req) => req.fmt(f),
+            Event::StateStoreRequest(req) => req.fmt(f),
+        }
     }
 }
 
@@ -2108,30 +2182,33 @@ fn initialize_deploy_metadata_db(
     deleted_block_hashes: &HashSet<BlockHash>,
 ) -> Result<(), LmdbExtError> {
     info!("initializing deploy metadata database");
-    let mut txn = env.begin_rw_txn()?;
-    let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
-        let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
-        let len_before = deploy_metadata.execution_results.len();
+    if !deleted_block_hashes.is_empty() {
+        let mut txn = env.begin_rw_txn()?;
+        let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
-        deploy_metadata.execution_results = deploy_metadata
-            .execution_results
-            .drain()
-            .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
-            .collect();
+        for (raw_key, raw_val) in cursor.iter() {
+            let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
+            let len_before = deploy_metadata.execution_results.len();
 
-        // If the deploy's execution results are now empty, we just remove them entirely.
-        if deploy_metadata.execution_results.is_empty() {
-            cursor.del(WriteFlags::empty())?;
-        } else if len_before != deploy_metadata.execution_results.len() {
-            let buffer = lmdb_ext::serialize(&deploy_metadata)?;
-            cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            deploy_metadata.execution_results = deploy_metadata
+                .execution_results
+                .drain()
+                .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
+                .collect();
+
+            // If the deploy's execution results are now empty, we just remove them entirely.
+            if deploy_metadata.execution_results.is_empty() {
+                cursor.del(WriteFlags::empty())?;
+            } else if len_before != deploy_metadata.execution_results.len() {
+                let buffer = lmdb_ext::serialize(&deploy_metadata)?;
+                cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+            }
         }
-    }
 
-    drop(cursor);
-    txn.commit()?;
+        drop(cursor);
+        txn.commit()?;
+    }
 
     info!("deploy metadata database initialized");
     Ok(())
