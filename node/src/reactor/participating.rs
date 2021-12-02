@@ -616,10 +616,9 @@ impl reactor::Reactor for Reactor {
         let latest_block_header = if let Some(latest_block_header) = maybe_latest_block_header {
             if latest_block_header.protocol_version() == chainspec.protocol_config.version {
                 latest_block_header
-            } else if latest_block_header.protocol_version() < chainspec.protocol_config.version
-                && latest_block_header.is_switch_block()
-                && ActivationPoint::EraId(latest_block_header.next_block_era_id())
-                    == chainspec.protocol_config.activation_point
+            } else if chainspec
+                .protocol_config
+                .is_last_block_before_activation(&latest_block_header)
             {
                 let upgrade_block_header = latest_block_header;
                 let upgrade_era_id = upgrade_block_header.next_block_era_id();
