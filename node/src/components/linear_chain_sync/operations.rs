@@ -1,10 +1,16 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        atomic::{self, AtomicBool},
+        Arc,
+    },
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
 use num::rational::Ratio;
-use tokio::sync::mpsc;
-use tracing::{error, info, trace, warn};
+use tracing::{info, trace, warn};
 
 use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
@@ -480,35 +486,28 @@ async fn fetch_and_store_block_by_hash(
 async fn sync_trie_store_worker(
     worker_id: usize,
     effect_builder: EffectBuilder<JoinerEvent>,
-    err_tx: mpsc::Sender<LinearChainSyncError>,
+    abort: Arc<AtomicBool>,
     queue: Arc<WorkQueue<Digest>>,
-) {
+) -> Result<(), LinearChainSyncError> {
     while let Some(job) = queue.next_job().await {
-        if err_tx.capacity() < 1 {
-            return; // Another task failed and sent an error.
-        }
         trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
-        match fetch_and_store_trie(effect_builder, *job.inner()).await {
-            Ok(child_jobs) => {
-                for child_job in child_jobs {
-                    queue.push_job(child_job);
-                }
-            }
-            Err(err) => {
-                match err_tx.try_send(err) {
-                    Err(mpsc::error::TrySendError::Full(err)) => {
-                        error!(?err, "could not send error; another task also failed");
-                    }
-                    // Should be unreachable since we own one of the receivers.
-                    Err(mpsc::error::TrySendError::Closed(err)) => {
-                        error!(?err, "mpsc channel closed unexpectedly");
-                    }
-                    Ok(()) => {}
-                }
-                return;
-            }
+        let child_jobs = fetch_and_store_trie(effect_builder, *job.inner())
+            .await
+            .map_err(|err| {
+                abort.store(true, atomic::Ordering::Relaxed);
+                warn!(?err, trie_key = %job.inner(), "failed to download trie");
+                err
+            })?;
+        trace!(?child_jobs, trie_key = %job.inner(), "downloaded trie node");
+        if abort.load(atomic::Ordering::Relaxed) {
+            return Ok(()); // Another task failed and sent an error.
         }
+        for child_job in child_jobs {
+            queue.push_job(child_job);
+        }
+        drop(job); // Make sure the job gets dropped only when the children are in the queue.
     }
+    Ok(())
 }
 
 /// Synchronizes the trie store under a given state root hash.
@@ -519,20 +518,18 @@ async fn sync_trie_store(
 ) -> Result<(), LinearChainSyncError> {
     info!(?state_root_hash, "syncing trie store",);
 
-    // Channel for a worker thread to send an error.
-    let (err_tx, mut err_rx) = mpsc::channel(1);
+    // Flag set by a worker when it encounters an error.
+    let abort = Arc::new(AtomicBool::new(false));
 
     let queue = Arc::new(WorkQueue::default());
     queue.push_job(state_root_hash);
-    let workers: FuturesUnordered<_> = (0..max_parallel_trie_fetches)
+    let mut workers: FuturesUnordered<_> = (0..max_parallel_trie_fetches)
         .map(|worker_id| {
-            sync_trie_store_worker(worker_id, effect_builder, err_tx.clone(), queue.clone())
+            sync_trie_store_worker(worker_id, effect_builder, abort.clone(), queue.clone())
         })
         .collect();
-    drop(err_tx);
-    workers.for_each(|_| async move {}).await;
-    if let Some(err) = err_rx.recv().await {
-        return Err(err); // At least one download failed: return the error.
+    while let Some(result) = workers.next().await {
+        result?; // Return the error if a download failed.
     }
     Ok(())
 }
