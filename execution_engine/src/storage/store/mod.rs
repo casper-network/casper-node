@@ -24,12 +24,12 @@ pub trait Store<K, V> {
     fn get<T>(&self, txn: &T, key: &K) -> Result<Option<V>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
-        K: ToBytes,
+        K: AsRef<[u8]>,
         V: FromBytes,
         Self::Error: From<T::Error>,
     {
         let handle = self.handle();
-        match txn.read(handle, &key.to_bytes()?)? {
+        match txn.read(handle, key.as_ref())? {
             None => Ok(None),
             Some(value_bytes) => {
                 let value = bytesrepr::deserialize(value_bytes.into())?;
@@ -43,12 +43,12 @@ pub trait Store<K, V> {
     fn put<T>(&self, txn: &mut T, key: &K, value: &V) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
-        K: ToBytes,
+        K: AsRef<[u8]>,
         V: ToBytes,
         Self::Error: From<T::Error>,
     {
         let handle = self.handle();
-        txn.write(handle, &key.to_bytes()?, &value.to_bytes()?)
+        txn.write(handle, key.as_ref(), &value.to_bytes()?)
             .map_err(Into::into)
     }
 }
