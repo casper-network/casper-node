@@ -85,6 +85,10 @@ impl ConsensusKeyPair {
 }
 
 /// Certificate used to indicate that the peer is a validator using the specified public key.
+///
+/// Note that this type has custom `Serialize` and `Deserialize` implementations to allow the
+/// `public_key` and `signature` fields to be encoded to all-lowercase hex, hence circumventing the
+/// checksummed-hex encoding used by `PublicKey` and `Signature` normally.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConsensusCertificate {
     public_key: PublicKey,
@@ -125,8 +129,9 @@ impl Display for ConsensusCertificate {
     }
 }
 
-/// This type and the `NonHumanReadableCertificate` are to allow handshaking between nodes running
-/// the casper-node v1.4.2 software and later versions.
+/// This type and the `NonHumanReadableCertificate` are helper structs only used in the `Serialize`
+/// and `Deserialize` implementations of `ConsensusCertificate` to allow handshaking between nodes
+/// running the casper-node v1.4.2 software and later versions.
 ///
 /// Checksummed-hex encoding was introduced in 1.4.2 and is applied to `PublicKey` and `Signature`
 /// types, affecting the encoding of `ConsensusCertificate` since handshaking uses a human-readable
@@ -536,7 +541,7 @@ mod tests {
         }
     }
 
-    fn roundtrip(use_human_readable: bool) {
+    fn roundtrip_certificate(use_human_readable: bool) {
         let mut rng = crate::new_rng();
         let certificate = ConsensusCertificate::random(&mut rng);
 
@@ -551,12 +556,12 @@ mod tests {
     }
 
     #[test]
-    fn serde_json_roundtrip() {
-        roundtrip(true)
+    fn serde_json_roundtrip_certificate() {
+        roundtrip_certificate(true)
     }
 
     #[test]
-    fn bincode_roundtrip() {
-        roundtrip(false)
+    fn bincode_roundtrip_certificate() {
+        roundtrip_certificate(false)
     }
 }
