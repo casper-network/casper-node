@@ -40,7 +40,6 @@ use casper_execution_engine::{
             in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider, StateReader,
         },
         transaction_source::lmdb::LmdbEnvironment,
-        trie::merkle_proof::TrieMerkleProof,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
@@ -400,13 +399,13 @@ where
         self.query(maybe_post_state, dictionary_address, &empty_path)
     }
 
-    /// Queries for a [`StoredValue`] and returns the [`StoredValue`] and a Merkle proof.
+    /// Queries for a [`StoredValue`] and returns the [`StoredValue`] and validates aMerkle proof.
     pub fn query_with_proof(
         &self,
         maybe_post_state: Option<Digest>,
         base_key: Key,
         path: &[String],
-    ) -> Result<(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>), String> {
+    ) -> Result<StoredValue, String> {
         let post_state = maybe_post_state
             .or(self.post_state_hash)
             .expect("builder must have a post-state hash");
@@ -421,10 +420,20 @@ where
             .expect("should get query response");
 
         if let QueryResult::Success { value, proofs } = query_result {
-            return Ok((value.deref().clone(), proofs));
+            // Verify Merkle proof
+            let computed_state_hash: Result<Vec<Digest>, _> = proofs
+                .into_iter()
+                .map(|step| step.compute_state_hash())
+                .collect();
+            assert_eq!(
+                computed_state_hash.unwrap(),
+                vec![self.get_post_state_hash()]
+            );
+
+            return Ok(*value);
         }
 
-        panic! {"{:?}", query_result};
+        Err(format!("{:?}", query_result))
     }
 
     /// Queries for the total supply of token.
@@ -788,7 +797,7 @@ where
 
     /// Queries for an `Account`.
     pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
-        match self.query(None, Key::Account(account_hash), &[]) {
+        match self.query_with_proof(None, Key::Account(account_hash), &[]) {
             Ok(account_value) => match account_value {
                 StoredValue::Account(account) => Some(account),
                 _ => None,
