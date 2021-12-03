@@ -26,6 +26,7 @@ const HOST_FUNCTION_METRICS_MAX_GAS_COST: u64 = HOST_FUNCTION_METRICS_STANDARD_G
 const ACCOUNT0_ADDR: AccountHash = AccountHash::new([42; ACCOUNT_HASH_LENGTH]);
 const ACCOUNT1_ADDR: AccountHash = AccountHash::new([43; ACCOUNT_HASH_LENGTH]);
 
+#[ignore]
 #[test]
 fn host_function_metrics_has_acceptable_size() {
     let size = utils::read_wasm_file_bytes(CONTRACT_HOST_FUNCTION_METRICS).len();
@@ -54,6 +55,7 @@ fn create_account_exec_request(address: AccountHash) -> ExecuteRequest {
     .build()
 }
 
+#[ignore]
 #[test]
 fn host_function_metrics_has_acceptable_gas_cost() {
     let rng: &mut StdRng = &mut SeedableRng::seed_from_u64(0);
