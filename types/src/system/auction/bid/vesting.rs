@@ -132,6 +132,12 @@ impl ToBytes for VestingSchedule {
         self.initial_release_timestamp_millis.serialized_length()
             + self.locked_amounts.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.initial_release_timestamp_millis).write_bytes(writer)?;
+        self.locked_amounts().write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for VestingSchedule {

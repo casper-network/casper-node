@@ -15,6 +15,7 @@ use super::{
     highway::{Ping, ValidVertex, Vertex, WireUnit},
     state::{self, Panorama, State, Unit, Weight},
     validators::ValidatorIndex,
+    ENABLE_ENDORSEMENTS,
 };
 
 use crate::{
@@ -281,6 +282,9 @@ impl<C: Context> ActiveValidator<C> {
         evidence: &Evidence<C>,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
+        if !ENABLE_ENDORSEMENTS {
+            return Vec::new();
+        }
         let vidx = evidence.perpetrator();
         state
             .iter_correct_hashes()
@@ -545,6 +549,9 @@ impl<C: Context> ActiveValidator<C> {
     /// We should endorse unit from honest validator that cites _an_ equivocator
     /// as honest and it cites some new message by that validator.
     fn should_endorse(&self, vhash: &C::Hash, state: &State<C>) -> bool {
+        if !ENABLE_ENDORSEMENTS {
+            return false;
+        }
         let unit = state.unit(vhash);
         !state.is_faulty(unit.creator)
             && unit

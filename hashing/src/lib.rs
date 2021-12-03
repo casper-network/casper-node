@@ -1,5 +1,4 @@
 //! A library providing hashing functionality including Merkle Proof utilities.
-
 #![doc(html_root_url = "https://docs.rs/casper-hashing/1.4.2")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
@@ -7,6 +6,10 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
+
+mod chunk_with_proof;
+mod error;
+mod indexed_merkle_proof;
 
 use std::{
     array::TryFromSliceError,
@@ -21,6 +24,8 @@ use blake2::{
 };
 use datasize::DataSize;
 use itertools::Itertools;
+#[cfg(test)]
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -28,6 +33,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
 };
+pub use chunk_with_proof::ChunkWithProof;
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]
@@ -44,7 +50,7 @@ pub enum Error {
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
-pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
+pub struct Digest(#[schemars(skip, with = "String")] pub(crate) [u8; Digest::LENGTH]);
 
 impl Digest {
     /// The number of bytes in a `Digest`.
@@ -54,17 +60,45 @@ impl Digest {
     pub const SENTINEL_NONE: Digest = Digest([0u8; Digest::LENGTH]);
     /// Sentinel hash to be used by `hash_slice_rfold`. Terminates the fold.
     pub const SENTINEL_RFOLD: Digest = Digest([1u8; Digest::LENGTH]);
-    /// Sentinel hash to be used by `hash_vec_merkle_tree` in the case of an empty list.
+    /// Sentinel hash to be used by `hash_merkle_tree` in the case of an empty list.
     pub const SENTINEL_MERKLE_TREE: Digest = Digest([2u8; Digest::LENGTH]);
 
-    /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
+    /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data.
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
+        // TODO:
+        // Temporarily, to avoid potential regression, we always use the original hashing method.
+        // After the `ChunkWithProof` is thoroughly tested we should replace
+        // the current implementation with the commented one.
+        // This change may require updating the hashes in the `test_hash_btreemap'
+        // and `hash_known` tests.
+        //
+        // if Self::should_hash_with_chunks(&data) {
+        //     Self::hash_merkle_tree(
+        //         data.as_ref()
+        //             .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+        //             .map(Self::blake2b_hash),
+        //     )
+        // } else {
+        //     Self::blake2b_hash(data)
+        // }
+        Self::blake2b_hash(data)
+    }
+
+    /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
+    pub(crate) fn blake2b_hash<T: AsRef<[u8]>>(data: T) -> Digest {
         let mut ret = [0u8; Digest::LENGTH];
         // NOTE: Safe to unwrap here because our digest length is constant and valid
         let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
         hasher.update(data);
         hasher.finalize_variable(|hash| ret.clone_from_slice(hash));
         Digest(ret)
+    }
+
+    // Temporarily unused, see comments inside `Digest::hash()` for details.
+    #[allow(unused)]
+    #[inline(always)]
+    fn should_hash_with_chunks<T: AsRef<[u8]>>(data: T) -> bool {
+        data.as_ref().len() > ChunkWithProof::CHUNK_SIZE_BYTES
     }
 
     /// Hashes a pair of byte slices.
@@ -89,32 +123,41 @@ impl Digest {
         self.0.to_vec()
     }
 
-    /// Hashes a `Vec` of `Digest`s into a single `Digest` by constructing a [Merkle tree][1].
-    /// Reduces pairs of elements in the `Vec` by repeatedly calling [`Digest::hash_pair`]. This
-    /// hash procedure is suited to hashing `BTree`s.
+    /// Hashes an `impl IntoIterator` of [`Digest`]s into a single [`Digest`] by
+    /// constructing a [Merkle tree][1]. Reduces pairs of elements in the collection by repeatedly
+    /// calling [Digest::hash_pair].
     ///
-    /// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
+    /// The pattern of hashing is as follows. It is akin to [graph reduction][2]:
     ///
     /// ```text
-    /// a b c d e f
-    /// |/  |/  |/
-    /// g   h   i
-    /// | /   /
-    /// |/   /
-    /// j   k
-    /// | /
-    /// |/
-    /// l
+    /// 1 2 4 5 8 9
+    /// │ │ │ │ │ │
+    /// └─3 └─6 └─10
+    ///    │   │   │
+    ///    └───7   │
+    ///        │   │
+    ///        └───11
     /// ```
+    ///
+    /// Finally hashes the number of elements with the resulting hash. In the example above the
+    /// final output would be `hash_pair(6_u64.to_le_bytes(), l)`.
     ///
     /// Returns [`Digest::SENTINEL_MERKLE_TREE`] when the input is empty.
     ///
     /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
     /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
-    pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
-        vec.into_iter()
-            .tree_fold1(|x, y| Digest::hash_pair(&x, &y))
-            .unwrap_or(Self::SENTINEL_MERKLE_TREE)
+    pub fn hash_merkle_tree<I>(leaves: I) -> Digest
+    where
+        I: IntoIterator<Item = Digest>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let leaves = leaves.into_iter();
+        let leaf_count_bytes = (leaves.len() as u64).to_le_bytes();
+
+        leaves.tree_fold1(Digest::hash_pair).map_or_else(
+            || Digest::SENTINEL_MERKLE_TREE,
+            |raw_root| Digest::hash_pair(leaf_count_bytes, raw_root),
+        )
     }
 
     /// Hashes a `BTreeMap`.
@@ -130,7 +173,7 @@ impl Digest {
                 &Digest::hash(value.to_bytes()?),
             ))
         }
-        Ok(Self::hash_vec_merkle_tree(kv_hashes))
+        Ok(Self::hash_merkle_tree(kv_hashes))
     }
 
     /// Hashes a `&[Digest]` using a [right fold][1].
@@ -168,6 +211,13 @@ impl Digest {
             .try_into()
             .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
         Ok(Digest(slice))
+    }
+}
+
+#[cfg(test)]
+impl Distribution<Digest> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Digest {
+        Digest(rng.gen::<[u8; Digest::LENGTH]>())
     }
 }
 
@@ -241,6 +291,12 @@ impl ToBytes for Digest {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
+    }
 }
 
 impl FromBytes for Digest {
@@ -279,12 +335,14 @@ impl<'de> Deserialize<'de> for Digest {
 }
 
 #[cfg(test)]
-mod test {
-    use std::iter;
+mod tests {
+    use std::{collections::BTreeMap, iter};
 
     use proptest_attr_macro::proptest;
 
-    use super::*;
+    use casper_types::bytesrepr;
+
+    use crate::{ChunkWithProof, Digest};
 
     #[proptest]
     fn bytesrepr_roundtrip(data: [u8; Digest::LENGTH]) {
@@ -292,8 +350,32 @@ mod test {
         bytesrepr::test_serialization_roundtrip(&hash);
     }
 
+    #[proptest]
+    fn serde_roundtrip(data: [u8; Digest::LENGTH]) {
+        let original_hash = Digest(data);
+        let serialized = serde_json::to_string(&original_hash).unwrap();
+        let deserialized_hash: Digest = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(original_hash, deserialized_hash);
+    }
+
     #[test]
-    fn blake2b_hash_known() {
+    fn serde_custom_serialization() {
+        let serialized = serde_json::to_string(&Digest::SENTINEL_RFOLD).unwrap();
+        let expected = format!("\"{}\"", Digest::SENTINEL_RFOLD);
+        assert_eq!(expected, serialized);
+    }
+
+    #[test]
+    fn hash_known() {
+        // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE_BYTES]
+        // are hashed using Blake2B algorithm.
+        // Larger data are chunked and merkle tree hash is calculated.
+        //
+        // Please note that [ChunkWithProof::CHUNK_SIZE_BYTES] is `test` configuration
+        // is smaller than in production, to allow testing with more chunks
+        // with still reasonable time and memory consumption.
+        //
+        // See: [Digest::hash]
         let inputs_and_digests = [
             (
                 "",
@@ -302,6 +384,14 @@ mod test {
             (
                 "abc",
                 "BddD813c634239723171ef3feE98579b94964e3Bb1cB3E427262C8C068d52319",
+            ),
+            (
+                "0123456789",
+                "7b6CB8D374484e221785288b035Dc53fC9dDf000607F473fc2a3258D89A70398",
+            ),
+            (
+                "01234567890",
+                "3D199478C18B7fE3ca1F4F2a9B3E07f708FF66ED52Eb345dB258ABE8a812eD5C",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
@@ -426,12 +516,12 @@ mod test {
             Digest([5u8; 32]),
         ];
 
-        let hash = Digest::hash_vec_merkle_tree(hashes);
+        let hash = Digest::hash_merkle_tree(hashes);
         let hash_lower_hex = format!("{:x}", hash);
 
         assert_eq!(
             hash_lower_hex,
-            "c18aaf359f7b4643991f68fbfa8c503eb460da497399cdff7d8a2b1bc4399589"
+            "9ba070a55c7f72600d7f3fee2c0a6e52ec89237d97a8677eb0612132fb34df60"
         );
     }
 
@@ -446,12 +536,12 @@ mod test {
             Digest([6u8; 32]),
         ];
 
-        let hash = Digest::hash_vec_merkle_tree(hashes);
+        let hash = Digest::hash_merkle_tree(hashes);
         let hash_lower_hex = format!("{:x}", hash);
 
         assert_eq!(
             hash_lower_hex,
-            "0470ecc8abdcd6ecd3a4c574431b80bb8751c7a43337d5966dadf07899f8804b"
+            "8768e1ca1b86ed3d722fb1b7d7a0228349c7d448058d0ce1e314f99dbd1c8573"
         );
     }
 
@@ -469,8 +559,19 @@ mod test {
 
         assert_eq!(
             hash_lower_hex,
-            "f3bc94beb2470d5c09f575b439d5f238bdc943233774c7aa59e597cc2579e148"
+            "aae1660ca492ed9af6b2ead22f88b390aeb2ec0719654824d084aa6c6553ceeb"
         );
+    }
+
+    #[test]
+    fn picks_correct_hashing_method() {
+        let data_smaller_than_chunk_size = vec![];
+        assert!(!Digest::should_hash_with_chunks(
+            data_smaller_than_chunk_size
+        ));
+
+        let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE_BYTES * 2];
+        assert!(Digest::should_hash_with_chunks(data_bigger_than_chunk_size));
     }
 
     #[test]

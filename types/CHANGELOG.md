@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+* Increased `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
+
 
 ## [1.4.0] - 2021-10-04
 
