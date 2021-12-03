@@ -518,8 +518,8 @@ impl reactor::Reactor for Reactor {
                                 block_header_with_old_version,
                             }) => {
                                 let old_version = block_header_with_old_version.protocol_version();
-                                info!(%current_version, %old_version, "restarting for downgrade");
-                                Some(JoinerEvent::Shutdown(ExitCode::DowngradeVersion))
+                                error!(%current_version, %old_version, "downgrade is not allowed, exiting");
+                                panic!("downgrade is not allowed");
                             }
                             Err(error) => {
                                 fatal!(effect_builder, "{:?}", error).await;
