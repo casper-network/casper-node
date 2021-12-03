@@ -518,7 +518,13 @@ impl reactor::Reactor for Reactor {
                                 block_header_with_old_version,
                             }) => {
                                 let old_version = block_header_with_old_version.protocol_version();
-                                fatal!(effect_builder, "downgrade is not allowed, exiting; current_version={}; old_version={}", current_version, old_version).await;
+                                fatal!(
+                                    effect_builder,
+                                    "network is still running an older version, exiting; current_version={}; old_version={}",
+                                    current_version,
+                                    old_version
+                                )
+                                .await;
                                 None
                             }
                             Err(error) => {
