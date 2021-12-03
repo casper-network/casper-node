@@ -9,7 +9,7 @@ source "$NCTL"/sh/utils/main.sh
 #   Withdrawal amount.
 #   Flag indicating whether to emit log messages.
 #######################################
-function main() 
+function main()
 {
     local BIDDER_ID=${1}
     local AMOUNT=${2}
@@ -32,8 +32,8 @@ function main()
     PATH_TO_CONTRACT=$(get_path_to_contract "auction/withdraw_bid.wasm")
 
     BIDDER_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")
-    BIDDER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")
-    BIDDER_MAIN_PURSE_UREF=$(get_main_purse_uref "$BIDDER_ACCOUNT_KEY")
+    BIDDER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID" | tr '[:upper:]' '[:lower:]')
+    BIDDER_MAIN_PURSE_UREF=$(get_main_purse_uref "$BIDDER_ACCOUNT_KEY" | tr '[:upper:]' '[:lower:]')
 
     if [ "$QUIET" != "TRUE" ]; then
         log "dispatching deploy -> withdraw_bid.wasm"
