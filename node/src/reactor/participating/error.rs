@@ -89,6 +89,10 @@ pub(crate) enum Error {
         new_bad_block: Box<Block>,
     },
 
+    /// Failed to transition to participating reactor, still syncing.
+    #[error("Failed to transition to participating reactor, still syncing.")]
+    StillSyncing,
+
     /// Unexpected latest block header: not our version and not the previous upgrade point.
     #[error(
         "Unexpected latest block header: not our version and not the previous upgrade point. \
@@ -97,6 +101,10 @@ pub(crate) enum Error {
     UnexpectedLatestBlockHeader {
         latest_block_header: Box<BlockHeader>,
     },
+
+    /// Unexpectedly can't take ownership of storage.
+    #[error("unable to take ownership of storage")]
+    StorageOwnership,
 }
 
 impl From<bytesrepr::Error> for Error {

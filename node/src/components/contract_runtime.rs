@@ -140,6 +140,18 @@ pub(crate) struct ContractRuntime {
     exec_queue: ExecQueue,
 }
 
+impl Clone for ContractRuntime {
+    fn clone(&self) -> Self {
+        Self {
+            execution_pre_state: Arc::clone(&self.execution_pre_state),
+            engine_state: Arc::clone(&self.engine_state),
+            metrics: Arc::clone(&self.metrics),
+            exec_queue: Arc::clone(&self.exec_queue),
+            protocol_version: self.protocol_version,
+        }
+    }
+}
+
 impl Debug for ContractRuntime {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ContractRuntime").finish()
@@ -430,7 +442,7 @@ where
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
-                            engine_state.as_ref(),
+                            &engine_state,
                             Some(metrics),
                             protocol_version,
                             execution_pre_state,
@@ -457,8 +469,7 @@ where
                 let exec_queue = Arc::clone(&self.exec_queue);
                 let execution_pre_state = Arc::clone(&self.execution_pre_state);
                 let protocol_version = self.protocol_version;
-                if self.execution_pre_state.lock().unwrap().next_block_height
-                    == finalized_block.height()
+                if execution_pre_state.lock().unwrap().next_block_height == finalized_block.height()
                 {
                     effects.extend(
                         Self::execute_finalized_block_or_requeue(
@@ -628,6 +639,34 @@ impl ContractRuntime {
         *self.execution_pre_state.lock().unwrap() = sequential_block_state;
     }
 
+    pub(crate) async fn execute_finalized_block<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        protocol_version: ProtocolVersion,
+        finalized_block: FinalizedBlock,
+        deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
+    ) -> Result<Block, BlockExecutionError>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<ContractRuntimeAnnouncement>
+            + From<ControlAnnouncement>
+            + Send,
+    {
+        Self::execute_finalized_block_or_requeue(
+            Arc::clone(&self.engine_state),
+            Arc::clone(&self.metrics),
+            Arc::clone(&self.exec_queue),
+            Arc::clone(&self.execution_pre_state),
+            effect_builder,
+            protocol_version,
+            finalized_block,
+            deploys,
+            transfers,
+        )
+        .await
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
         engine_state: Arc<EngineState<LmdbGlobalState>>,
@@ -639,40 +678,37 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-    ) where
+    ) -> Result<Block, BlockExecutionError>
+    where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
             + Send,
     {
-        let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
+        let current_exec_prestate = execution_pre_state.lock().unwrap().clone();
         let BlockAndExecutionEffects {
             block,
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
-        } = match run_intensive_task(move || {
+        } = run_intensive_task(move || {
             execute_finalized_block(
                 engine_state.as_ref(),
                 Some(metrics),
                 protocol_version,
-                current_execution_pre_state,
+                current_exec_prestate,
                 finalized_block,
                 deploys,
                 transfers,
             )
         })
-        .await
-        {
-            Ok(block_and_execution_effects) => block_and_execution_effects,
-            Err(error) => return fatal!(effect_builder, "{}", error).await,
-        };
+        .await?;
 
         let new_execution_pre_state = ExecutionPreState::from(block.header());
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
         let current_era_id = block.header().era_id();
 
-        announcements::linear_chain_block(effect_builder, block, execution_results).await;
+        announcements::linear_chain_block(effect_builder, block.clone(), execution_results).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_journal,
@@ -701,80 +737,7 @@ impl ContractRuntime {
                 .enqueue_block_for_execution(finalized_block, deploys, transfers)
                 .await
         }
-    }
-
-    // TODO: Deduplicate this and execute_finalized_block_or_requeue.
-    pub(crate) fn execute_finalized_block<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        protocol_version: ProtocolVersion,
-        current_execution_pre_state: ExecutionPreState,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
-        transfers: Vec<Deploy>,
-    ) -> Result<(Block, Effects<ContractRuntimeRequest>), BlockExecutionError>
-    where
-        REv: From<ContractRuntimeRequest>
-            + From<ContractRuntimeAnnouncement>
-            + From<ControlAnnouncement>
-            + Send,
-    {
-        let BlockAndExecutionEffects {
-            block,
-            execution_results,
-            maybe_step_effect_and_upcoming_era_validators,
-        } = execute_finalized_block(
-            self.engine_state.as_ref(),
-            Some(Arc::clone(&self.metrics)),
-            protocol_version,
-            current_execution_pre_state,
-            finalized_block,
-            deploys,
-            transfers,
-        )?;
-
-        let new_execution_pre_state = ExecutionPreState::from(block.header());
-        *self.execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
-
-        let current_era_id = block.header().era_id();
-
-        let mut effects =
-            announcements::linear_chain_block(effect_builder, block.clone(), execution_results)
-                .ignore();
-
-        if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_journal,
-            upcoming_era_validators,
-        }) = maybe_step_effect_and_upcoming_era_validators
-        {
-            effects.extend(
-                announcements::step_success(effect_builder, current_era_id, step_execution_journal)
-                    .ignore(),
-            );
-            effects.extend(
-                announcements::upcoming_era_validators(
-                    effect_builder,
-                    current_era_id,
-                    upcoming_era_validators,
-                )
-                .ignore(),
-            );
-        }
-
-        // If the child is already finalized, start execution.
-        let next_block = {
-            // needed to help this async block impl Send (the MutexGuard lives too long)
-            let queue = &mut *self.exec_queue.lock().expect("mutex poisoned");
-            queue.remove(&new_execution_pre_state.next_block_height)
-        };
-        if let Some((finalized_block, deploys, transfers)) = next_block {
-            effects.extend(
-                effect_builder
-                    .enqueue_block_for_execution(finalized_block, deploys, transfers)
-                    .ignore(),
-            );
-        }
-        Ok((block, effects))
+        Ok(block)
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.

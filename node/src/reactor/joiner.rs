@@ -6,6 +6,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -15,13 +16,14 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
+        consensus::EraReport,
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -35,6 +37,7 @@ use crate::{
         storage::Storage,
         Component,
     },
+    contract_runtime::ExecutionPreState,
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
@@ -58,14 +61,17 @@ use crate::{
     },
     storage,
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
-        Tag, Timestamp,
+        ActivationPoint, Block, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        BlockWithMetadata, Chainspec, Deploy, ExitCode, FinalizedBlock, NodeId, Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
 };
-use casper_execution_engine::storage::trie::Trie;
-use casper_types::{Key, StoredValue};
+use casper_execution_engine::{
+    core::engine_state::{GenesisSuccess, UpgradeConfig, UpgradeSuccess},
+    storage::trie::Trie,
+};
+use casper_types::{EraId, Key, ProtocolVersion, PublicKey, StoredValue};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -73,7 +79,14 @@ use casper_types::{Key, StoredValue};
 #[must_use]
 pub(crate) enum JoinerEvent {
     /// Finished joining event.
-    FinishedJoining { block_header: Box<BlockHeader> },
+    FinishedJoining {
+        switch_block_header: Box<BlockHeader>,
+    },
+
+    /// Finished genesis event.
+    FinishedGenesis {
+        switch_block_header: Box<BlockHeader>,
+    },
 
     /// Shut down with the given exit code.
     Shutdown(#[serde(skip_serializing)] ExitCode),
@@ -265,6 +278,9 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::FinishedJoining { .. } => "FinishedJoining",
             JoinerEvent::Shutdown(_) => "Shutdown",
             JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            JoinerEvent::FinishedGenesis {
+                switch_block_header: _,
+            } => "FinishedGenesis",
         }
     }
 }
@@ -362,12 +378,21 @@ impl Display for JoinerEvent {
             JoinerEvent::BlockHeaderByHeightFetcherRequest(req) => {
                 write!(f, "block header by height fetcher request: {}", req)
             }
-            JoinerEvent::FinishedJoining { block_header } => {
+            JoinerEvent::FinishedJoining {
+                switch_block_header: block_header,
+            } => {
                 write!(f, "finished joining with block header: {}", block_header)
             }
             JoinerEvent::Shutdown(exit_code) => {
                 write!(f, "shutting down with exit code: {:?}", exit_code)
             }
+            JoinerEvent::FinishedGenesis {
+                switch_block_header,
+            } => write!(
+                f,
+                "finished genesis with switch block: {}",
+                switch_block_header
+            ),
         }
     }
 }
@@ -381,7 +406,7 @@ pub(crate) struct Reactor {
     address_gossiper: Gossiper<GossipedAddress, JoinerEvent>,
     config: participating::Config,
     chainspec_loader: ChainspecLoader,
-    storage: Storage,
+    storage: Arc<Mutex<Storage>>,
     contract_runtime: ContractRuntime,
     linear_chain_sync: LinearChainSyncState,
     deploy_fetcher: Fetcher<Deploy>,
@@ -432,6 +457,9 @@ impl reactor::Reactor for Reactor {
             small_network_identity,
         } = initializer;
 
+        let storage_root_path = storage.root_path().to_path_buf();
+        let storage = Arc::new(Mutex::new(storage));
+
         // We don't need to be super precise about the startup time, i.e.
         // we can skip the time spent in `initializer` for the sake of code simplicity.
         let node_startup_instant = Instant::now();
@@ -463,6 +491,8 @@ impl reactor::Reactor for Reactor {
         let maybe_trusted_hash = match config.node.trusted_hash {
             Some(trusted_hash) => Some(trusted_hash),
             None => storage
+                .lock()
+                .expect("mutex poisoned")
                 .read_highest_block_header()
                 .expect("Could not read highest block header")
                 .map(|block_header| block_header.hash()),
@@ -485,25 +515,69 @@ impl reactor::Reactor for Reactor {
                              the genesis era! Please specify a trusted hash and restart.");
                         panic!("should have trusted hash after genesis era")
                     }
-                }
-                LinearChainSyncState::NotGoingToSync
+                };
+                let chainspec = Arc::clone(chainspec_loader.chainspec());
+                let contract_runtime = contract_runtime.clone();
+                let storage_wrapper = Arc::clone(&storage);
+                effects.extend(
+                    (async move {
+                        match Self::commit_upgrade_or_genesis_switch_block(
+                            None,
+                            chainspec,
+                            storage_wrapper,
+                            &contract_runtime,
+                            effect_builder,
+                        )
+                        .await
+                        {
+                            Ok(switch_block_header) => Some(JoinerEvent::FinishedGenesis {
+                                switch_block_header: Box::new(switch_block_header),
+                            }),
+                            Err(error) => {
+                                fatal!(effect_builder, "{:?}", error).await;
+                                None
+                            }
+                        }
+                    })
+                    .map_some(std::convert::identity),
+                );
+                LinearChainSyncState::Syncing
             }
             Some(hash) => {
                 let node_config = config.node.clone();
+                let contract_runtime = contract_runtime.clone();
+                let storage_wrapper = Arc::clone(&storage);
                 effects.extend(
                     (async move {
                         info!(trusted_hash=%hash, "synchronizing linear chain");
                         match linear_chain_sync::run_fast_sync_task(
                             effect_builder,
                             hash,
-                            chainspec,
+                            Arc::clone(&chainspec),
                             node_config,
                         )
                         .await
                         {
-                            Ok(block_header) => Some(JoinerEvent::FinishedJoining {
-                                block_header: Box::new(block_header),
-                            }),
+                            Ok(latest_block_header) => {
+                                match Self::commit_upgrade_or_genesis_switch_block(
+                                    Some(latest_block_header),
+                                    chainspec,
+                                    storage_wrapper,
+                                    &contract_runtime,
+                                    effect_builder,
+                                )
+                                .await
+                                {
+                                    Ok(switch_block_header) => Some(JoinerEvent::FinishedJoining {
+                                        switch_block_header: Box::new(switch_block_header),
+                                    }),
+                                    Err(error) => {
+                                        fatal!(effect_builder, "{:?}", error).await;
+                                        None
+                                    }
+                                }
+                            }
+
                             Err(LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
                                 current_version,
                                 block_header_with_future_version,
@@ -543,7 +617,7 @@ impl reactor::Reactor for Reactor {
 
         let event_stream_server = EventStreamServer::new(
             config.event_stream_server.clone(),
-            storage.root_path().to_path_buf(),
+            storage_root_path,
             *protocol_version,
             DeployGetter::new(effect_builder),
         )?;
@@ -780,7 +854,7 @@ impl reactor::Reactor for Reactor {
             }
             JoinerEvent::Storage(event) => reactor::wrap_effects(
                 JoinerEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, event),
+                self.storage.lock().expect("mutex poisoned").handle_event(effect_builder, rng, event)
             ),
             JoinerEvent::BlockFetcherRequest(request) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(request.into()))
@@ -929,8 +1003,12 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::BlockHeaderByHeightFetcher(request.into()),
             ),
-            JoinerEvent::FinishedJoining { block_header } => {
-                self.linear_chain_sync = LinearChainSyncState::Done(block_header);
+            JoinerEvent::FinishedJoining { switch_block_header } => {
+                self.linear_chain_sync = LinearChainSyncState::Done{ switch_block_header };
+                Effects::new()
+            }
+            JoinerEvent::FinishedGenesis { switch_block_header } => {
+                self.linear_chain_sync = LinearChainSyncState::NotGoingToSync{ switch_block_header };
                 Effects::new()
             }
             JoinerEvent::Shutdown(exit_code) => {
@@ -962,14 +1040,24 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub(crate) async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
-        let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
+        let latest_switch_block_header = match self.linear_chain_sync {
+            LinearChainSyncState::Syncing => return Err(Error::StillSyncing),
+            LinearChainSyncState::Done {
+                switch_block_header,
+            }
+            | LinearChainSyncState::NotGoingToSync {
+                switch_block_header,
+            } => *switch_block_header,
+        };
+        let storage = Arc::try_unwrap(self.storage).map_err(|_| Error::StorageOwnership)?;
+        let storage = Mutex::into_inner(storage).map_err(|_| Error::StorageOwnership)?;
         let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,
             contract_runtime: self.contract_runtime,
-            storage: self.storage,
-            maybe_latest_block_header,
+            storage,
+            latest_switch_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             node_startup_instant: self.node_startup_instant,
@@ -977,6 +1065,210 @@ impl Reactor {
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
         Ok(config)
+    }
+
+    // If we have a latest block header, we joined via the joiner reactor.
+    //
+    // If not, run genesis or upgrade and construct a switch block, and use that for the latest
+    // block header.
+    async fn commit_upgrade_or_genesis_switch_block(
+        maybe_latest_block_header: Option<BlockHeader>,
+        chainspec: Arc<Chainspec>,
+        storage: Arc<Mutex<Storage>>,
+        contract_runtime: &ContractRuntime,
+        effect_builder: EffectBuilder<JoinerEvent>,
+    ) -> Result<BlockHeader, Error> {
+        let block_header = match maybe_latest_block_header {
+            Some(latest_block_header)
+                if latest_block_header.protocol_version() == chainspec.protocol_config.version =>
+            {
+                latest_block_header
+            }
+            Some(latest_block_header)
+                if chainspec
+                    .protocol_config
+                    .is_last_block_before_activation(&latest_block_header) =>
+            {
+                Self::commit_upgrade_switch_block(
+                    latest_block_header,
+                    chainspec,
+                    storage,
+                    contract_runtime,
+                    effect_builder,
+                )
+                .await?
+            }
+            Some(latest_block_header) => {
+                return Err(Error::UnexpectedLatestBlockHeader {
+                    latest_block_header: Box::new(latest_block_header),
+                });
+            }
+            None => match chainspec.protocol_config.activation_point {
+                ActivationPoint::EraId(upgrade_era_id) => {
+                    return Err(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id });
+                }
+                ActivationPoint::Genesis(genesis_timestamp) => {
+                    // Do not run genesis on a node which is not protocol version 1.0.0
+                    Self::commit_genesis_switch_block(
+                        chainspec,
+                        storage,
+                        contract_runtime,
+                        effect_builder,
+                        genesis_timestamp,
+                    )
+                    .await?
+                }
+            },
+        };
+        Ok(block_header)
+    }
+
+    async fn commit_genesis_switch_block(
+        chainspec: Arc<Chainspec>,
+        storage: Arc<Mutex<Storage>>,
+        contract_runtime: &ContractRuntime,
+        effect_builder: EffectBuilder<JoinerEvent>,
+        genesis_timestamp: Timestamp,
+    ) -> Result<BlockHeader, Error> {
+        if chainspec.protocol_config.version != ProtocolVersion::V1_0_0 {
+            return Err(Error::GenesisNeedsProtocolVersion1_0_0 {
+                chainspec_protocol_version: chainspec.protocol_config.version,
+            });
+        }
+        if let Some(highest_block_header) = storage
+            .lock()
+            .expect("mutex poisoned")
+            .read_highest_block_header()?
+        {
+            return Err(Error::CannotRunGenesisOnPreExistingBlockchain {
+                highest_block_header: Box::new(highest_block_header),
+            });
+        }
+        let GenesisSuccess {
+            post_state_hash,
+            execution_effect,
+        } = contract_runtime.commit_genesis(&chainspec)?;
+        info!("genesis chainspec name {}", chainspec.network_config.name);
+        info!("genesis state root hash {}", post_state_hash);
+        trace!(%post_state_hash, ?execution_effect);
+        let initial_pre_state =
+            ExecutionPreState::new(0, post_state_hash, Default::default(), Default::default());
+        let new_header = Self::create_immediate_switch_block(
+            contract_runtime,
+            storage,
+            effect_builder,
+            &chainspec,
+            initial_pre_state,
+            genesis_timestamp,
+            EraId::from(0u64),
+        )
+        .await?;
+        Ok(new_header)
+    }
+
+    async fn commit_upgrade_switch_block(
+        latest_block_header: BlockHeader,
+        chainspec: Arc<Chainspec>,
+        storage_wrapper: Arc<Mutex<Storage>>,
+        contract_runtime: &ContractRuntime,
+        effect_builder: EffectBuilder<JoinerEvent>,
+    ) -> Result<BlockHeader, Error> {
+        let upgrade_block_header = latest_block_header;
+        let upgrade_era_id = upgrade_block_header.next_block_era_id();
+        if chainspec.protocol_config.last_emergency_restart != Some(upgrade_block_header.era_id()) {
+            if let Some(preexisting_block_header) = storage_wrapper
+                .lock()
+                .expect("mutex poisoned")
+                .read_block_header_by_height(upgrade_block_header.height() + 1)?
+            {
+                return Err(Error::NonEmergencyUpgradeWillClobberExistingBlockChain {
+                    preexisting_block_header: Box::new(preexisting_block_header),
+                });
+            }
+        }
+        let global_state_update = chainspec.protocol_config.get_update_mapping()?;
+        let UpgradeSuccess {
+            post_state_hash,
+            execution_effect,
+        } = contract_runtime.commit_upgrade(UpgradeConfig::new(
+            *upgrade_block_header.state_root_hash(),
+            upgrade_block_header.protocol_version(),
+            chainspec.protocol_version(),
+            Some(chainspec.protocol_config.activation_point.era_id()),
+            Some(chainspec.core_config.validator_slots),
+            Some(chainspec.core_config.auction_delay),
+            Some(chainspec.core_config.locked_funds_period.millis()),
+            Some(chainspec.core_config.round_seigniorage_rate),
+            Some(chainspec.core_config.unbonding_delay),
+            global_state_update,
+        ))?;
+        info!(
+            network_name = %chainspec.network_config.name,
+            %post_state_hash,
+            "upgrade committed"
+        );
+        trace!(%post_state_hash, ?execution_effect);
+        let initial_pre_state = ExecutionPreState::new(
+            upgrade_block_header.height() + 1,
+            post_state_hash,
+            upgrade_block_header.hash(),
+            upgrade_block_header.accumulated_seed(),
+        );
+        let new_header = Self::create_immediate_switch_block(
+            contract_runtime,
+            storage_wrapper,
+            effect_builder,
+            &chainspec,
+            initial_pre_state,
+            upgrade_block_header.timestamp(),
+            upgrade_era_id,
+        )
+        .await?;
+        Ok(new_header)
+    }
+
+    /// Creates a switch block after an upgrade or genesis. This block has the system public key as
+    /// a proposer and doesn't contain any deploys or transfers. It is the only block in its
+    /// era, and no consensus instance is run for era 0 or an upgrade point era.
+    async fn create_immediate_switch_block(
+        contract_runtime: &ContractRuntime,
+        storage: Arc<Mutex<Storage>>,
+        effect_builder: EffectBuilder<JoinerEvent>,
+        chainspec: &Chainspec,
+        pre_state: ExecutionPreState,
+        timestamp: Timestamp,
+        era_id: EraId,
+    ) -> Result<BlockHeader, Error> {
+        let finalized_block = FinalizedBlock::new(
+            BlockPayload::default(),
+            Some(EraReport::default()),
+            timestamp,
+            era_id,
+            pre_state.next_block_height(),
+            PublicKey::System,
+        );
+        // Execute the finalized block, creating a new switch block.
+        let new_switch_block = contract_runtime
+            .execute_finalized_block(
+                effect_builder,
+                chainspec.protocol_version(),
+                finalized_block,
+                vec![],
+                vec![],
+            )
+            .await?;
+        // Make sure the new block really is a switch block
+        if !new_switch_block.header().is_switch_block() {
+            return Err(Error::FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
+                new_bad_block: Box::new(new_switch_block),
+            });
+        }
+        // Write the block to storage so the era supervisor can be initialized properly.
+        storage
+            .lock()
+            .expect("mutex poisoned")
+            .write_block(&new_switch_block)?;
+        Ok(new_switch_block.take_header())
     }
 }
 

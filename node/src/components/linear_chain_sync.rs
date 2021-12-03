@@ -11,22 +11,21 @@ pub(crate) use error::LinearChainSyncError;
 pub(crate) use operations::{run_fast_sync_task, KeyBlockInfo};
 
 #[derive(DataSize, Debug)]
+/// Both NotGoingToSync and Done pass onwards the header of the switch block created during those
+/// states.
 pub(crate) enum LinearChainSyncState {
-    NotGoingToSync,
+    NotGoingToSync {
+        switch_block_header: Box<BlockHeader>,
+    },
+    Done {
+        switch_block_header: Box<BlockHeader>,
+    },
     Syncing,
-    Done(Box<BlockHeader>),
 }
 
 impl LinearChainSyncState {
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
         !matches!(self, Self::Syncing)
-    }
-
-    pub fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
-        match self {
-            Self::Done(latest_block_header) => Some(*latest_block_header),
-            Self::NotGoingToSync | Self::Syncing => None,
-        }
     }
 }
