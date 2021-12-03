@@ -1873,6 +1873,17 @@
               "$ref": "#/definitions/U512"
             }
           ]
+        },
+        "new_validator_public_key": {
+          "description": "The validator public key to re-delegate to.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false

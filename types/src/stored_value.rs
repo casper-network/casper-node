@@ -175,6 +175,7 @@ impl StoredValue {
             StoredValue::EraInfo(_) => Tag::EraInfo,
             StoredValue::Bid(_) => Tag::Bid,
             StoredValue::Withdraw(_) => Tag::Withdraw,
+            StoredValue::Unbonding(_) => Tag::Unbonding,
         }
     }
 }
@@ -377,6 +378,7 @@ impl ToBytes for StoredValue {
             StoredValue::EraInfo(era_info) => era_info.write_bytes(writer)?,
             StoredValue::Bid(bid) => bid.write_bytes(writer)?,
             StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
+            StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
         };
         Ok(())
     }

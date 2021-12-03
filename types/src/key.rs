@@ -674,6 +674,9 @@ impl ToBytes for Key {
             Key::Withdraw(account_hash) => {
                 writer.extend_from_slice(account_hash.as_bytes());
             }
+            Key::Unbond(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
             Key::Dictionary(addr) => {
                 writer.extend_from_slice(addr);
             }
@@ -1216,12 +1219,12 @@ mod tests {
             format!(r#"{{"Balance":"balance-{}"}}"#, HEX_STRING),
             format!(r#"{{"Bid":"bid-{}"}}"#, HEX_STRING),
             format!(r#"{{"Withdraw":"withdraw-{}"}}"#, HEX_STRING),
-            format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
             format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
                 checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
+            format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
         ];
 
         assert_eq!(

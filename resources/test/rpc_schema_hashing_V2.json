@@ -41,7 +41,7 @@
             "type": "object"
           },
           "AccountHash": {
-            "description": "Hex-encoded account hash.",
+            "description": "Checksummed hex-encoded account hash.",
             "type": "string"
           },
           "ActionThresholds": {
@@ -834,7 +834,7 @@
             "description": "Options for dictionary item lookups."
           },
           "Digest": {
-            "description": "Hex-encoded hash digest.",
+            "description": "Checksummed hex-encoded hash digest.",
             "type": "string"
           },
           "DisabledVersion": {
@@ -1048,7 +1048,7 @@
                         "type": "string"
                       },
                       "hash": {
-                        "description": "Hex-encoded hash.",
+                        "description": "Checksummed hex-encoded hash.",
                         "type": "string"
                       }
                     },
@@ -1122,7 +1122,7 @@
                         "type": "string"
                       },
                       "hash": {
-                        "description": "Hex-encoded hash.",
+                        "description": "Checksummed hex-encoded hash.",
                         "type": "string"
                       },
                       "version": {
@@ -1226,7 +1226,7 @@
           },
           "ExecutionEffect": {
             "additionalProperties": false,
-            "description": "The effect of executing a single deploy.",
+            "description": "The journal of execution transforms from a single deploy.",
             "properties": {
               "operations": {
                 "description": "The resulting operations.",
@@ -1236,7 +1236,7 @@
                 "type": "array"
               },
               "transforms": {
-                "description": "The resulting transformations.",
+                "description": "The journal of execution transforms.",
                 "items": {
                   "$ref": "#/components/schemas/TransformEntry"
                 },
@@ -1655,33 +1655,6 @@
             ],
             "type": "object"
           },
-          "JsonValidatorStatusChange": {
-            "additionalProperties": false,
-            "description": "A single change to a validator's status in the given era.",
-            "properties": {
-              "era_id": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/EraId"
-                  }
-                ],
-                "description": "The era in which the change occurred."
-              },
-              "validator_change": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ValidatorChange"
-                  }
-                ],
-                "description": "The change in validator status."
-              }
-            },
-            "required": [
-              "era_id",
-              "validator_change"
-            ],
-            "type": "object"
-          },
           "JsonEraEnd": {
             "additionalProperties": false,
             "properties": {
@@ -1818,6 +1791,33 @@
             "required": [
               "public_key",
               "status_changes"
+            ],
+            "type": "object"
+          },
+          "JsonValidatorStatusChange": {
+            "additionalProperties": false,
+            "description": "A single change to a validator's status in the given era.",
+            "properties": {
+              "era_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The era in which the change occurred."
+              },
+              "validator_change": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidatorChange"
+                  }
+                ],
+                "description": "The change in validator status."
+              }
+            },
+            "required": [
+              "era_id",
+              "validator_change"
             ],
             "type": "object"
           },
@@ -1999,7 +1999,7 @@
             "type": "string"
           },
           "PublicKey": {
-            "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+            "description": "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix.",
             "type": "string"
           },
           "Reward": {
@@ -2114,7 +2114,7 @@
             "description": "Information about a seigniorage allocation"
           },
           "Signature": {
-            "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
+            "description": "Checksummed hex-encoded cryptographic signature, including the algorithm tag prefix.",
             "type": "string"
           },
           "StoredValue": {
@@ -2242,13 +2242,29 @@
                 "properties": {
                   "Withdraw": {
                     "items": {
-                      "$ref": "#/components/schemas/UnbondingPurse"
+                      "$ref": "#/components/schemas/WithdrawPurse"
                     },
                     "type": "array"
                   }
                 },
                 "required": [
                   "Withdraw"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A collection of unbonding purses",
+                "properties": {
+                  "Unbonding": {
+                    "items": {
+                      "$ref": "#/components/schemas/UnbondingPurse"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Unbonding"
                 ],
                 "type": "object"
               }
@@ -2351,7 +2367,7 @@
             "type": "object"
           },
           "TransferAddr": {
-            "description": "Hex-encoded transfer address.",
+            "description": "Checksummed hex-encoded transfer address.",
             "type": "string"
           },
           "Transform": {
@@ -2595,7 +2611,7 @@
             "type": "string"
           },
           "URef": {
-            "description": "Hex-encoded, formatted URef.",
+            "description": "Checksummed hex-encoded, formatted URef.",
             "type": "string"
           },
           "UnbondingPurse": {
@@ -2625,6 +2641,17 @@
                   }
                 ],
                 "description": "Era in which this unbonding request was created."
+              },
+              "new_validator_public_key": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The validator public key to re-delegate to."
               },
               "unbonder_public_key": {
                 "allOf": [
@@ -2703,6 +2730,60 @@
               "initial_release_timestamp_millis"
             ],
             "type": "object"
+          },
+          "WithdrawPurse": {
+            "additionalProperties": false,
+            "description": "A withdraw purse, a legacy structure.",
+            "properties": {
+              "amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Unbonding Amount."
+              },
+              "bonding_purse": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Bonding Purse"
+              },
+              "era_of_creation": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "Era in which this unbonding request was created."
+              },
+              "unbonder_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Unbonders public key."
+              },
+              "validator_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Validators public key."
+              }
+            },
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
+            ],
+            "type": "object"
           }
         }
       },
@@ -2730,14 +2811,14 @@
                   "value": {
                     "approvals": [
                       {
-                        "signature": "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d9761185c961daee1adab0649912a6477bcd2e69bd91bd08",
-                        "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                        "signature": "012dbF03817a51794A8E19E0724884075E6d1FbeC326b766ecfa6658b41f81290Da85e23B24e88b1c8d9761185C961daEe1adAB0649912a6477BCD2e69Bd91bD08",
+                        "signer": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c"
                       }
                     ],
-                    "hash": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa",
+                    "hash": "5C9B3B099c1378aa8E4A5F07F59Ff1fCdC69A83179427C7e67AE0377d94D93Fa",
                     "header": {
-                      "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "body_hash": "d53cf72d17278fd47d399013ca389c50d589352f1a12593c0b8e01872a641b50",
+                      "account": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
+                      "body_hash": "d53cf72D17278fD47d399013cA389c50d589352f1a12593c0B8E01872a641B50",
                       "chain_name": "casper-example",
                       "dependencies": [
                         "0101010101010101010101010101010101010101010101010101010101010101"
@@ -2752,7 +2833,7 @@
                           [
                             "amount",
                             {
-                              "bytes": "e8030000",
+                              "bytes": "E8030000",
                               "cl_type": "I32",
                               "parsed": 1000
                             }
@@ -2768,7 +2849,7 @@
                           [
                             "amount",
                             {
-                              "bytes": "e8030000",
+                              "bytes": "E8030000",
                               "cl_type": "I32",
                               "parsed": 1000
                             }
@@ -2783,7 +2864,7 @@
                 "name": "account_put_deploy_example_result",
                 "value": {
                   "api_version": "1.4.2",
-                  "deploy_hash": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                  "deploy_hash": "5C9B3B099c1378aa8E4A5F07F59Ff1fCdC69A83179427C7e67AE0377d94D93Fa"
                 }
               }
             }
@@ -2830,7 +2911,7 @@
               "params": [
                 {
                   "name": "deploy_hash",
-                  "value": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                  "value": "5C9B3B099c1378aa8E4A5F07F59Ff1fCdC69A83179427C7e67AE0377d94D93Fa"
                 }
               ],
               "result": {
@@ -2840,14 +2921,14 @@
                   "deploy": {
                     "approvals": [
                       {
-                        "signature": "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d9761185c961daee1adab0649912a6477bcd2e69bd91bd08",
-                        "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                        "signature": "012dbF03817a51794A8E19E0724884075E6d1FbeC326b766ecfa6658b41f81290Da85e23B24e88b1c8d9761185C961daEe1adAB0649912a6477BCD2e69Bd91bD08",
+                        "signer": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c"
                       }
                     ],
-                    "hash": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa",
+                    "hash": "5C9B3B099c1378aa8E4A5F07F59Ff1fCdC69A83179427C7e67AE0377d94D93Fa",
                     "header": {
-                      "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "body_hash": "d53cf72d17278fd47d399013ca389c50d589352f1a12593c0b8e01872a641b50",
+                      "account": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
+                      "body_hash": "d53cf72D17278fD47d399013cA389c50d589352f1a12593c0B8E01872a641B50",
                       "chain_name": "casper-example",
                       "dependencies": [
                         "0101010101010101010101010101010101010101010101010101010101010101"
@@ -2862,7 +2943,7 @@
                           [
                             "amount",
                             {
-                              "bytes": "e8030000",
+                              "bytes": "E8030000",
                               "cl_type": "I32",
                               "parsed": 1000
                             }
@@ -2878,7 +2959,7 @@
                           [
                             "amount",
                             {
-                              "bytes": "e8030000",
+                              "bytes": "E8030000",
                               "cl_type": "I32",
                               "parsed": 1000
                             }
@@ -2889,7 +2970,7 @@
                   },
                   "execution_results": [
                     {
-                      "block_hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                      "block_hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb",
                       "result": {
                         "Success": {
                           "cost": "123456",
@@ -2980,30 +3061,30 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb"
                   }
                 },
                 {
                   "name": "public_key",
-                  "value": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                  "value": "013b6a27bcCeb6a42d62a3A8d02A6f0D73653215771De243A63aC048A18b59da29"
                 }
               ],
               "result": {
                 "name": "state_get_account_info_example_result",
                 "value": {
                   "account": {
-                    "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                    "account_hash": "account-hash-e94daAFf79C2ab8D9C31D9c3058d7D0A0dd31204A5638DC1451Fa67b2E3Fb88C",
                     "action_thresholds": {
                       "deployment": 1,
                       "key_management": 1
                     },
                     "associated_keys": [
                       {
-                        "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                        "account_hash": "account-hash-e94daAFf79C2ab8D9C31D9c3058d7D0A0dd31204A5638DC1451Fa67b2E3Fb88C",
                         "weight": 1
                       }
                     ],
-                    "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                    "main_purse": "uref-09480c3248ef76B603d386f3F4f8a5F87F597D4EAffd475433f861aF187AB5Db-007",
                     "named_keys": []
                   },
                   "api_version": "1.4.2",
@@ -3172,7 +3253,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "BlockHash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb"
                   }
                 }
               ],
@@ -3181,34 +3262,34 @@
                 "value": {
                   "api_version": "1.4.2",
                   "block_header": {
-                    "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
-                    "body_hash": "8472b18539dc204cf7cb0520bb5c3a91c1551a5c258189a61a15d3a2a35f1763",
+                    "accumulated_seed": "AC979f51525CFD979b14aA7Dc0737c5154eABE0db9280EcEaa8DC8D2905B20D5",
+                    "body_hash": "cD502c5393a3C8b66d6979ad7857507c9bAf5a8Ba16bA99c28378d3A970FFf42",
                     "era_end": {
                       "era_report": {
                         "equivocators": [
-                          "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                          "013b6a27bcCeb6a42d62a3A8d02A6f0D73653215771De243A63aC048A18b59da29"
                         ],
                         "inactive_validators": [
-                          "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+                          "018139770ea87d175f56A35466c34c7EcCcb8D8a91b4eE37a25Df60f5b8fc9b394"
                         ],
                         "rewards": [
                           {
                             "amount": 1000,
-                            "validator": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+                            "validator": "018a88e3DD7409f195fD52DB2D3CbA5D72CA6709bf1D94121BF3748801B40F6f5c"
                           }
                         ]
                       },
                       "next_era_validator_weights": [
                         {
-                          "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                          "validator": "016e7a1cDD29b0b78fd13af4c5598fEfF4Ef2a97166e3Ca6F2E4FbfCcd80505BF1",
                           "weight": "456"
                         },
                         {
-                          "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+                          "validator": "018A875FfF1Eb38451577acd5AFEe405456568DD7c89e090863A0557BC7Af49F17",
                           "weight": "789"
                         },
                         {
-                          "validator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                          "validator": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
                           "weight": "123"
                         }
                       ]
@@ -3224,18 +3305,18 @@
                   "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
                   "stored_value": {
                     "Account": {
-                      "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                      "account_hash": "account-hash-e94daAFf79C2ab8D9C31D9c3058d7D0A0dd31204A5638DC1451Fa67b2E3Fb88C",
                       "action_thresholds": {
                         "deployment": 1,
                         "key_management": 1
                       },
                       "associated_keys": [
                         {
-                          "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                          "account_hash": "account-hash-e94daAFf79C2ab8D9C31D9c3058d7D0A0dd31204A5638DC1451Fa67b2E3Fb88C",
                           "weight": 1
                         }
                       ],
-                      "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                      "main_purse": "uref-09480c3248ef76B603d386f3F4f8a5F87F597D4EAffd475433f861aF187AB5Db-007",
                       "named_keys": []
                     }
                   }
@@ -3371,9 +3452,9 @@
                   "build_version": "1.0.0-xxxxxxxxx@DEBUG",
                   "chainspec_name": "casper-example",
                   "last_added_block_info": {
-                    "creator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                    "creator": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
                     "era_id": 1,
-                    "hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                    "hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb",
                     "height": 10,
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
                     "timestamp": "2020-11-17T00:39:24.072Z"
@@ -3382,7 +3463,7 @@
                     "activation_point": 42,
                     "protocol_version": "2.0.1"
                   },
-                  "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                  "our_public_signing_key": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
                   "peers": [
                     {
                       "address": "127.0.0.1:54321",
@@ -3497,7 +3578,7 @@
                   "api_version": "1.4.2",
                   "changes": [
                     {
-                      "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "public_key": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
                       "status_changes": [
                         {
                           "era_id": 1,
@@ -3547,7 +3628,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb"
                   }
                 }
               ],
@@ -3557,42 +3638,42 @@
                   "api_version": "1.4.2",
                   "block": {
                     "body": {
-                      "deploy_hashes": [
-                        "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
-                      ],
-                      "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "transfer_hashes": []
+                      "deploy_hashes": [],
+                      "proposer": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
+                      "transfer_hashes": [
+                        "5C9B3B099c1378aa8E4A5F07F59Ff1fCdC69A83179427C7e67AE0377d94D93Fa"
+                      ]
                     },
-                    "hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                    "hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb",
                     "header": {
-                      "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
-                      "body_hash": "8472b18539dc204cf7cb0520bb5c3a91c1551a5c258189a61a15d3a2a35f1763",
+                      "accumulated_seed": "AC979f51525CFD979b14aA7Dc0737c5154eABE0db9280EcEaa8DC8D2905B20D5",
+                      "body_hash": "cD502c5393a3C8b66d6979ad7857507c9bAf5a8Ba16bA99c28378d3A970FFf42",
                       "era_end": {
                         "era_report": {
                           "equivocators": [
-                            "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                            "013b6a27bcCeb6a42d62a3A8d02A6f0D73653215771De243A63aC048A18b59da29"
                           ],
                           "inactive_validators": [
-                            "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+                            "018139770ea87d175f56A35466c34c7EcCcb8D8a91b4eE37a25Df60f5b8fc9b394"
                           ],
                           "rewards": [
                             {
                               "amount": 1000,
-                              "validator": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+                              "validator": "018a88e3DD7409f195fD52DB2D3CbA5D72CA6709bf1D94121BF3748801B40F6f5c"
                             }
                           ]
                         },
                         "next_era_validator_weights": [
                           {
-                            "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                            "validator": "016e7a1cDD29b0b78fd13af4c5598fEfF4Ef2a97166e3Ca6F2E4FbfCcd80505BF1",
                             "weight": "456"
                           },
                           {
-                            "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+                            "validator": "018A875FfF1Eb38451577acd5AFEe405456568DD7c89e090863A0557BC7Af49F17",
                             "weight": "789"
                           },
                           {
-                            "validator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                            "validator": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
                             "weight": "123"
                           }
                         ]
@@ -3607,8 +3688,8 @@
                     },
                     "proofs": [
                       {
-                        "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                        "signature": "016674d7b8c8534c72cab425590593595883c4ebb88397a6fc035768abfd8b8864cbdbf1310d66c5d0f65a70054a81a5cad1366a6511856e1e7036814dbd34a309"
+                        "public_key": "01D9BF2148748a85C89DA5aAd8ee0b0fC2D105fD39D41a4C796536354F0Ae2900c",
+                        "signature": "016291A7B2689E2eDCC6e79030BE50edd02F9BD7d809921ae2654012F808c7b9a0f125bC32d6aa610CBD012395A9832ccFAA9262023339F1DB71ca073a13Bb9707"
                       }
                     ]
                   }
@@ -3665,7 +3746,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb"
                   }
                 }
               ],
@@ -3673,7 +3754,7 @@
                 "name": "chain_get_block_transfers_example_result",
                 "value": {
                   "api_version": "1.4.2",
-                  "block_hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                  "block_hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb",
                   "transfers": [
                     {
                       "amount": "0",
@@ -3979,7 +4060,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb"
                   }
                 }
               ],
@@ -3988,7 +4069,7 @@
                 "value": {
                   "api_version": "1.4.2",
                   "era_summary": {
-                    "block_hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                    "block_hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb",
                     "era_id": 42,
                     "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
@@ -3998,14 +4079,14 @@
                           {
                             "Delegator": {
                               "amount": "1000",
-                              "delegator_public_key": "01e1b46a25baa8a5c28beb3c9cfb79b572effa04076f00befa57eb70b016153f18",
-                              "validator_public_key": "012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876"
+                              "delegator_public_key": "01e1b46a25bAA8a5C28bEB3c9CFb79b572EffA04076F00beFa57eB70B016153F18",
+                              "validator_public_key": "012a1732ADDc639Ea43a89e25D3AD912E40232156DCAA4B9edFC709F43d2Fb0876"
                             }
                           },
                           {
                             "Validator": {
                               "amount": "2000",
-                              "validator_public_key": "012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876"
+                              "validator_public_key": "012a1732ADDc639Ea43a89e25D3AD912E40232156DCAA4B9edFC709F43d2Fb0876"
                             }
                           }
                         ]
@@ -4065,7 +4146,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7A68EcDd4B74bf4393C88915c836C863fC4bF11D7f2bD930A1BBCCAcdcb"
                   }
                 }
               ],
@@ -4077,13 +4158,13 @@
                     "bids": [
                       {
                         "bid": {
-                          "bonding_purse": "uref-fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa-007",
+                          "bonding_purse": "uref-FaFafafaFAfaFafafAfaFAFAFaFafaFAFaFaFAfAfAfafaFAfafaFafafAFafaFa-007",
                           "delegation_rate": 0,
                           "delegators": [],
                           "inactive": false,
                           "staked_amount": "10"
                         },
-                        "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61"
+                        "public_key": "01197F6B23e16c8532C6abC838FaCD5ea789Be0C76B2920334039BfA8b3D368d61"
                       }
                     ],
                     "block_height": 10,
@@ -4092,13 +4173,13 @@
                         "era_id": 10,
                         "validator_weights": [
                           {
-                            "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                            "public_key": "01197F6B23e16c8532C6abC838FaCD5ea789Be0C76B2920334039BfA8b3D368d61",
                             "weight": "10"
                           }
                         ]
                       }
                     ],
-                    "state_root_hash": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+                    "state_root_hash": "0B0B0B0b0B0b0B0b0B0b0b0b0b0b0B0b0b0B0B0b0b0b0b0b0b0b0b0b0b0B0b0b"
                   }
                 }
               }

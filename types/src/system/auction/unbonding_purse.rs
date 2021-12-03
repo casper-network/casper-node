@@ -118,6 +118,7 @@ impl ToBytes for UnbondingPurse {
         self.unbonder_public_key.write_bytes(writer)?;
         self.era_of_creation.write_bytes(writer)?;
         self.amount.write_bytes(writer)?;
+        self.new_validator_public_key.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -129,7 +130,7 @@ impl FromBytes for UnbondingPurse {
         let (unbonder_public_key, remainder) = FromBytes::from_bytes(remainder)?;
         let (era_of_creation, remainder) = FromBytes::from_bytes(remainder)?;
         let (amount, remainder) = FromBytes::from_bytes(remainder)?;
-        let (new_validator_public_key, remainder) = FromBytes::from_bytes(remainder)?;
+        let (new_validator_public_key, remainder) = Option::<PublicKey>::from_bytes(remainder)?;
 
         Ok((
             UnbondingPurse {
