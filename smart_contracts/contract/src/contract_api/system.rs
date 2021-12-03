@@ -35,6 +35,7 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
             api_error::result_from(value).map(|_| hash_data_raw)
         };
         // Revert for any possible error that happened on host side
+        #[allow(clippy::redundant_closure)] // false positive
         let contract_hash_bytes = result.unwrap_or_else(|e| runtime::revert(e));
         // Deserializes a valid URef passed from the host side
         bytesrepr::deserialize(contract_hash_bytes.to_vec()).unwrap_or_revert()

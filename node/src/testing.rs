@@ -333,9 +333,9 @@ pub(crate) fn create_test_deploy(
     created_ago: TimeDiff,
     ttl: TimeDiff,
     now: Timestamp,
-    mut test_rng: &mut TestRng,
+    test_rng: &mut TestRng,
 ) -> Deploy {
-    Deploy::random_with_timestamp_and_ttl(&mut test_rng, now - created_ago, ttl)
+    Deploy::random_with_timestamp_and_ttl(test_rng, now - created_ago, ttl)
 }
 
 /// Creates a random deploy that is considered expired.
