@@ -302,6 +302,7 @@ async fn run_participating_network() {
 }
 
 #[tokio::test]
+#[ignore = "This test fails randomly - it'll be reenabled after this issue is fixed: https://github.com/casper-network/casper-node/issues/1859"]
 async fn run_equivocator_network() {
     testing::init_logging();
 
