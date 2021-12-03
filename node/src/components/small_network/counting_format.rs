@@ -271,6 +271,16 @@ impl ConnectionId {
     pub(crate) fn from_connection(ssl: &SslRef, our_id: NodeId, their_id: NodeId) -> Self {
         Self::create(TlsRandomData::collect(ssl), our_id, their_id)
     }
+
+    /// Creates a random `ConnectionId`.
+    #[cfg(test)]
+    pub(super) fn random(rng: &mut TestRng) -> Self {
+        ConnectionId::create(
+            TlsRandomData::random(rng),
+            NodeId::random(rng),
+            NodeId::random(rng),
+        )
+    }
 }
 
 /// Message sending direction.

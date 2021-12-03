@@ -286,10 +286,10 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut NodeRng,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
+        let mut handling_es = self.handling_wrapper(effect_builder, rng);
         match event {
             Event::Timer {
                 era_id,

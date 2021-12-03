@@ -867,7 +867,7 @@ mod tests {
         DICTIONARY_KEY,
         REGISTRY_KEY,
     ];
-    const HEX_STRING: &str = "2a2A2a2a2A2A2a2A2A2a2A2a2a2a2a2a2a2A2A2A2A2A2a2a2a2A2a2A2A2a2A2a";
+    const HEX_STRING: &str = "2a2a2A2A2a2a2a2A2a2A2A2A2a2A2a2a2A2a2A2A2a2A2A2a2a2A2a2a2A2A2a2a";
 
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)

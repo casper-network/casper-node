@@ -25,7 +25,7 @@ pub(crate) struct PidFile {
     /// The pidfile.
     ///
     /// The file will be locked for the lifetime of `PidFile`.
-    pidfile: File,
+    _pidfile: File,
     /// The pidfile location.
     path: PathBuf,
     /// Previous pidfile contents.
@@ -147,7 +147,7 @@ impl PidFile {
         pidfile.flush().map_err(PidFileError::WriteFailed)?;
 
         Ok(PidFile {
-            pidfile,
+            _pidfile: pidfile,
             path: path.as_ref().to_owned(),
             previous,
         })
