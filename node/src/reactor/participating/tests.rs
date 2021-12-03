@@ -16,9 +16,13 @@ use casper_types::{
 };
 
 use crate::{
-    components::{chainspec_loader::NextUpgrade, consensus, gossiper, small_network, storage},
+    components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    effect::{requests::ContractRuntimeRequest, EffectExt},
+    effect::{
+        requests::{ContractRuntimeRequest, NetworkRequest},
+        EffectExt,
+    },
+    protocol::Message,
     reactor::{
         initializer, joiner,
         participating::{self, ParticipatingEvent},
@@ -145,7 +149,6 @@ impl TestChain {
                 .expect("could not write secret key");
             cfg.consensus.secret_key_path = External::Path(secret_key_path);
         }
-        cfg.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
 
@@ -334,18 +337,16 @@ async fn run_equivocator_network() {
         .unwrap()
         .set_filter(move |event| {
             let now = Timestamp::now();
-            let first_message_time = match (&event, maybe_first_message_time) {
-                (
-                    ParticipatingEvent::NetworkRequest(_)
-                    | ParticipatingEvent::Consensus(consensus::Event::Incoming { .. }),
-                    Some(first_message_time),
-                ) => first_message_time,
-                (ParticipatingEvent::Consensus(consensus::Event::Incoming { .. }), None) => {
-                    maybe_first_message_time = Some(now);
-                    now
-                }
+            match &event {
+                ParticipatingEvent::ConsensusMessageIncoming { .. } => {}
+                ParticipatingEvent::NetworkRequest(
+                    NetworkRequest::SendMessage { payload, .. }
+                    | NetworkRequest::Broadcast { payload, .. }
+                    | NetworkRequest::Gossip { payload, .. },
+                ) if matches!(**payload, Message::Consensus(_)) => {}
                 _ => return Either::Right(event),
             };
+            let first_message_time = *maybe_first_message_time.get_or_insert(now);
             if now < first_message_time + min_round_len * 3 {
                 return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
             }

@@ -80,7 +80,6 @@ impl StepRequestBuilder {
             self.slash_items,
             self.reward_items,
             self.evict_items,
-            self.run_auction,
             self.next_era_id,
             self.era_end_timestamp_millis,
         )

@@ -60,7 +60,7 @@ use crate::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
-            StorageRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -159,6 +159,9 @@ pub(crate) enum ParticipatingEvent {
     /// Address gossip request.
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Control announcement.
@@ -233,6 +236,7 @@ impl ReactorEvent for ParticipatingEvent {
         match self {
             ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
             ParticipatingEvent::BlockProposer(_) => "BlockProposer",
+            ParticipatingEvent::Storage(_) => "Storage",
             ParticipatingEvent::RpcServer(_) => "RpcServer",
             ParticipatingEvent::RestServer(_) => "RestServer",
             ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
@@ -253,6 +257,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
@@ -326,6 +331,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
+            ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             ParticipatingEvent::RestServer(event) => write!(f, "rest server: {}", event),
             ParticipatingEvent::EventStreamServer(event) => {
@@ -350,7 +356,7 @@ impl Display for ParticipatingEvent {
                 write!(f, "chainspec loader request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
-
+            ParticipatingEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             ParticipatingEvent::DeployFetcherRequest(req) => {
                 write!(f, "deploy fetcher request: {}", req)
             }
@@ -769,6 +775,7 @@ impl reactor::Reactor for Reactor {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),
+            storage.root_path(),
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().clone(),
@@ -853,6 +860,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockProposer(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockProposer,
                 self.block_proposer.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::RpcServer(event) => reactor::wrap_effects(
                 ParticipatingEvent::RpcServer,
@@ -951,6 +962,10 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::AddressGossiper,
                 self.address_gossiper
                     .handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
             ),
 
             // Announcements:

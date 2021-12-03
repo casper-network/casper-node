@@ -100,9 +100,11 @@ reactor!(Reactor {
     }
 
     requests: {
+        // This test contains no linear chain requests, so we panic if we receive any.
         NetworkRequest<NodeId, Message> -> network;
-        FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
         StorageRequest -> storage;
+        StateStoreRequest -> storage;
+        FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
 
         // The only contract runtime request will be the commit of genesis, which we discard.
         ContractRuntimeRequest -> #;

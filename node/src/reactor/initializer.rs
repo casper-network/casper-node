@@ -315,7 +315,7 @@ impl reactor::Reactor for Reactor {
 }
 
 #[cfg(test)]
-pub(crate) mod test {
+pub(crate) mod tests {
     use super::*;
     use crate::{testing::network::NetworkedReactor, types::Chainspec};
     use std::sync::Arc;

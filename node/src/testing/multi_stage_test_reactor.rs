@@ -215,7 +215,7 @@ impl Reactor for MultiStageTestReactor {
         let initializer_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
         let initializer_event_queue_handle: EventQueueHandle<
             <InitializerReactor as Reactor>::Event,
-        > = EventQueueHandle::new(initializer_scheduler);
+        > = EventQueueHandle::without_shutdown(initializer_scheduler);
 
         tokio::spawn(forward_to_queue(initializer_scheduler, event_queue));
 
@@ -392,7 +392,8 @@ impl Reactor for MultiStageTestReactor {
                     );
 
                     let joiner_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-                    let joiner_event_queue_handle = EventQueueHandle::new(joiner_scheduler);
+                    let joiner_event_queue_handle =
+                        EventQueueHandle::without_shutdown(joiner_scheduler);
 
                     tokio::spawn(forward_to_queue(
                         joiner_scheduler,
@@ -468,8 +469,9 @@ impl Reactor for MultiStageTestReactor {
 
                     // JoinerFinalizing transitions into a participating.
                     let participating_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+
                     let participating_event_queue_handle =
-                        EventQueueHandle::new(participating_scheduler);
+                        EventQueueHandle::without_shutdown(participating_scheduler);
 
                     tokio::spawn(forward_to_queue(
                         participating_scheduler,

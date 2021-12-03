@@ -147,6 +147,8 @@ enum TestScenario {
     DeployWithoutTransferTarget,
     DeployWithoutTransferAmount,
     BalanceCheckForDeploySentByPeer,
+    ShouldNotAcceptExpiredDeploySentByClient,
+    ShouldAcceptExpiredDeploySentByPeer,
 }
 
 impl TestScenario {
@@ -158,7 +160,8 @@ impl TestScenario {
             | TestScenario::BalanceCheckForDeploySentByPeer
             | TestScenario::FromPeerMissingAccount
             | TestScenario::FromPeerAccountWithInsufficientWeight
-            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys => {
+            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys
+            | TestScenario::ShouldAcceptExpiredDeploySentByPeer => {
                 Source::Peer(NodeId::random(rng))
             }
             TestScenario::FromClientInvalidDeploy
@@ -179,7 +182,8 @@ impl TestScenario {
             | TestScenario::DeployWithSessionContract(_)
             | TestScenario::DeployWithSessionContractPackage(_)
             | TestScenario::DeployWithEmptySessionModuleBytes
-            | TestScenario::DeployWithNativeTransferInPayment => Source::Client,
+            | TestScenario::DeployWithNativeTransferInPayment
+            | TestScenario::ShouldNotAcceptExpiredDeploySentByClient => Source::Client,
         }
     }
 
@@ -277,6 +281,10 @@ impl TestScenario {
             TestScenario::DeployWithNativeTransferInPayment => {
                 Deploy::random_with_native_transfer_in_payment_logic(rng)
             }
+            TestScenario::ShouldAcceptExpiredDeploySentByPeer
+            | TestScenario::ShouldNotAcceptExpiredDeploySentByClient => {
+                Deploy::random_expired_deploy(rng)
+            }
         }
     }
 
@@ -288,7 +296,8 @@ impl TestScenario {
             | TestScenario::FromPeerAccountWithInsufficientWeight // account check skipped if from peer
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys // account check skipped if from peer
             | TestScenario::FromClientRepeatedValidDeploy
-            | TestScenario::FromClientValidDeploy => true,
+            | TestScenario::FromClientValidDeploy
+            | TestScenario::ShouldAcceptExpiredDeploySentByPeer=> true,
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientMissingAccount
@@ -303,7 +312,8 @@ impl TestScenario {
             | TestScenario::DeployWithMangledTransferAmount
             | TestScenario::DeployWithoutTransferAmount
             | TestScenario::DeployWithoutTransferTarget
-            | TestScenario::BalanceCheckForDeploySentByPeer => false,
+            | TestScenario::BalanceCheckForDeploySentByPeer
+            | TestScenario::ShouldNotAcceptExpiredDeploySentByClient => false,
             TestScenario::DeployWithCustomPaymentContract(contract_scenario)
             | TestScenario::DeployWithSessionContract(contract_scenario) => match contract_scenario
             {
@@ -647,7 +657,7 @@ async fn run_deploy_acceptor_without_timeout(
     let block = Box::new(Block::random(&mut rng));
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
-    let block_responder = Responder::create(block_sender);
+    let block_responder = Responder::without_shutdown(block_sender);
 
     runner
         .process_injected_effects(put_block_to_storage(block, block_responder))
@@ -662,7 +672,7 @@ async fn run_deploy_acceptor_without_timeout(
 
     // Create a responder to assert the validity of the deploy
     let (deploy_sender, deploy_receiver) = oneshot::channel();
-    let deploy_responder = Responder::create(deploy_sender);
+    let deploy_responder = Responder::without_shutdown(deploy_sender);
 
     // Create a deploy specific to the test scenario
     let deploy = test_scenario.deploy(&mut rng);
@@ -674,7 +684,7 @@ async fn run_deploy_acceptor_without_timeout(
         if test_scenario.is_repeated_deploy_case() {
             let injected_deploy = Box::new(deploy.clone());
             let (injected_sender, injected_receiver) = oneshot::channel();
-            let injected_responder = Responder::create(injected_sender);
+            let injected_responder = Responder::without_shutdown(injected_sender);
             runner
                 .process_injected_effects(put_deploy_to_storage(
                     injected_deploy,
@@ -691,7 +701,7 @@ async fn run_deploy_acceptor_without_timeout(
         if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {
             let fatal_deploy = Box::new(deploy.clone());
             let (deploy_sender, _) = oneshot::channel();
-            let deploy_responder = Responder::create(deploy_sender);
+            let deploy_responder = Responder::without_shutdown(deploy_sender);
             runner
                 .process_injected_effects(inject_balance_check_for_peer(
                     fatal_deploy,
@@ -731,7 +741,8 @@ async fn run_deploy_acceptor_without_timeout(
             | TestScenario::DeployWithMangledPaymentAmount
             | TestScenario::DeployWithMangledTransferAmount
             | TestScenario::DeployWithoutTransferTarget
-            | TestScenario::DeployWithoutTransferAmount => {
+            | TestScenario::DeployWithoutTransferAmount
+            | TestScenario::ShouldNotAcceptExpiredDeploySentByClient => {
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
@@ -799,7 +810,8 @@ async fn run_deploy_acceptor_without_timeout(
             TestScenario::FromPeerValidDeploy
             | TestScenario::FromPeerMissingAccount
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys
-            | TestScenario::FromPeerAccountWithInsufficientWeight => {
+            | TestScenario::FromPeerAccountWithInsufficientWeight
+            | TestScenario::ShouldAcceptExpiredDeploySentByPeer => {
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(
@@ -1286,6 +1298,20 @@ async fn should_reject_deploy_with_mangled_transfer_amount() {
             DeployConfigurationFailure::FailedToParseTransferAmount
         ))
     ))
+}
+
+#[tokio::test]
+async fn should_reject_expired_deploy_from_client() {
+    let test_scenario = TestScenario::ShouldNotAcceptExpiredDeploySentByClient;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(matches!(result, Err(super::Error::ExpiredDeploy { .. })))
+}
+
+#[tokio::test]
+async fn should_accept_expired_deploy_from_peer() {
+    let test_scenario = TestScenario::ShouldAcceptExpiredDeploySentByPeer;
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(result.is_ok())
 }
 
 #[tokio::test]

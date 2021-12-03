@@ -191,7 +191,6 @@ impl TestChain {
                 .expect("could not write secret key");
             participating_config.consensus.secret_key_path = External::Path(secret_key_path);
         }
-        participating_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         participating_config.storage = storage_config;
 

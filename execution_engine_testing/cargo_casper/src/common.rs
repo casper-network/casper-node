@@ -6,8 +6,8 @@ use once_cell::sync::Lazy;
 use crate::{dependency::Dependency, ARGS, FAILURE_EXIT_CODE};
 
 pub static CL_CONTRACT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-contract", "1.0.0"));
-pub static CL_TYPES: Lazy<Dependency> = Lazy::new(|| Dependency::new("casper-types", "1.0.0"));
+    Lazy::new(|| Dependency::new("casper-contract", "1.4.2"));
+pub static CL_TYPES: Lazy<Dependency> = Lazy::new(|| Dependency::new("casper-types", "1.4.2"));
 pub static CL_ENGINE_TEST_SUPPORT: Lazy<Dependency> =
     Lazy::new(|| Dependency::new("casper-engine-test-support", "1.0.0"));
 pub static PATCH_SECTION: Lazy<String> = Lazy::new(|| match ARGS.workspace_path() {
@@ -115,6 +115,8 @@ pub mod tests {
         check_package_version(&*CL_TYPES, CL_TYPES_TOML_PATH);
     }
 
+    // TODO - revert the `#[ignore]` once cargo casper is updated.
+    #[ignore]
     #[test]
     fn check_cl_engine_test_support_version() {
         check_package_version(&*CL_ENGINE_TEST_SUPPORT, CL_ENGINE_TEST_SUPPORT_TOML_PATH);

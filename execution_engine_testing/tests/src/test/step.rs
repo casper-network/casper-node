@@ -115,7 +115,7 @@ fn should_step() {
         bids_before_slashing
     );
 
-    builder.step(step_request);
+    builder.step(step_request).unwrap();
 
     let bids_after_slashing: Bids = builder.get_bids();
     let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
@@ -173,7 +173,7 @@ fn should_adjust_total_supply() {
         .with_next_era_id(EraId::from(1))
         .build();
 
-    builder.step(step_request);
+    builder.step(step_request).unwrap();
     let maybe_post_state_hash = Some(builder.get_post_state_hash());
 
     // should check total supply after step
