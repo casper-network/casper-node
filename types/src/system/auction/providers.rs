@@ -7,7 +7,7 @@ use crate::{
         auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, KeyTag, PublicKey, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -88,6 +88,16 @@ pub trait MintProvider {
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error>;
+
+    /// Transfers token from a given source URef to a bonding purse.
+    /// Returns the number of tokens currently delegated to a given validator.
+    fn handle_delegation(
+        &mut self,
+        delegator_public_key: PublicKey,
+        validator_public_key: PublicKey,
+        source: URef,
+        amount: U512,
+    ) -> Result<U512, Error>;
 }
 
 /// Provider of an account related functionality.

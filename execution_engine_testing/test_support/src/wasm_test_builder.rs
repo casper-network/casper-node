@@ -515,38 +515,33 @@ where
 
         let empty_path: Vec<String> = vec![];
 
-        let registry = match self.query(
+        if let Ok(StoredValue::CLValue(cl_registry)) = self.query(
             self.post_state_hash,
             Key::SystemContractRegistry,
             &empty_path,
         ) {
-            Ok(StoredValue::CLValue(cl_registry)) => {
-                CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap()
+            let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+            if self.mint_contract_hash.is_none() {
+                self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"))
+            };
+            if self.handle_payment_contract_hash.is_none() {
+                self.handle_payment_contract_hash = Some(
+                    *registry
+                        .get(HANDLE_PAYMENT)
+                        .expect("should have handle payment hash"),
+                )
             }
-            Ok(_) => panic!("Failed to get system registry"),
-            Err(err) => panic!("{}", err),
-        };
-
-        if self.mint_contract_hash.is_none() {
-            self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"))
-        };
-        if self.handle_payment_contract_hash.is_none() {
-            self.handle_payment_contract_hash = Some(
-                *registry
-                    .get(HANDLE_PAYMENT)
-                    .expect("should have handle payment hash"),
-            )
-        }
-        if self.standard_payment_hash.is_none() {
-            self.standard_payment_hash = Some(
-                *registry
-                    .get(STANDARD_PAYMENT)
-                    .expect("should have standard payment hash"),
-            )
-        }
-        if self.auction_contract_hash.is_none() {
-            self.auction_contract_hash =
-                Some(*registry.get(AUCTION).expect("should have auction hash"))
+            if self.standard_payment_hash.is_none() {
+                self.standard_payment_hash = Some(
+                    *registry
+                        .get(STANDARD_PAYMENT)
+                        .expect("should have standard payment hash"),
+                )
+            }
+            if self.auction_contract_hash.is_none() {
+                self.auction_contract_hash =
+                    Some(*registry.get(AUCTION).expect("should have auction hash"))
+            }
         }
 
         let result = self

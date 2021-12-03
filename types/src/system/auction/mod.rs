@@ -256,57 +256,7 @@ pub trait Auction:
 
         let source = self.get_main_purse()?;
 
-        let validator_account_hash = AccountHash::from(&validator_public_key);
-
-        let mut bid = match self.read_bid(&validator_account_hash)? {
-            Some(bid) => bid,
-            None => {
-                // Return early if target validator is not in `bids`
-                return Err(Error::ValidatorNotFound);
-            }
-        };
-
-        let delegators = bid.delegators_mut();
-
-        let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
-            Some(delegator) => {
-                self.mint_transfer_direct(
-                    Some(PublicKey::System.to_account_hash()),
-                    source,
-                    *delegator.bonding_purse(),
-                    amount,
-                    None,
-                )
-                .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|_| Error::TransferToDelegatorPurse)?;
-                delegator.increase_stake(amount)?;
-                *delegator.staked_amount()
-            }
-            None => {
-                let bonding_purse = self.create_purse()?;
-                self.mint_transfer_direct(
-                    Some(PublicKey::System.to_account_hash()),
-                    source,
-                    bonding_purse,
-                    amount,
-                    None,
-                )
-                .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|_| Error::TransferToDelegatorPurse)?;
-                let delegator = Delegator::unlocked(
-                    delegator_public_key.clone(),
-                    amount,
-                    bonding_purse,
-                    validator_public_key,
-                );
-                delegators.insert(delegator_public_key.clone(), delegator);
-                amount
-            }
-        };
-
-        self.write_bid(validator_account_hash, bid)?;
-
-        Ok(new_delegation_amount)
+        self.handle_delegation(delegator_public_key, validator_public_key, source, amount)
     }
 
     /// Removes specified amount of motes (or the value from the collection altogether, if the

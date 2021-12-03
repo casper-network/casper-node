@@ -127,7 +127,7 @@ static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
     PublicKey::from(&secret_key)
 });
 static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
+    let secret_key = SecretKey::ed25519_from_bytes([207; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
@@ -3167,15 +3167,25 @@ fn should_delegate_and_redelegate() {
         delegator_1_validator_1_delegate_request,
     ];
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..=DEFAULT_AUCTION_DELAY {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute third step request post upgrade");
     }
 
     let delegator_1_undelegate_purse = builder
@@ -3200,6 +3210,14 @@ fn should_delegate_and_redelegate() {
         .commit()
         .expect_success();
 
+    let after_redelegation = builder
+        .get_unbonds()
+        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
+        .expect("must have purses")
+        .len();
+
+    assert_eq!(1, after_redelegation);
+
     let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
 
     for _ in 0..=DEFAULT_UNBONDING_DELAY {
@@ -3210,8 +3228,18 @@ fn should_delegate_and_redelegate() {
             delegator_1_redelegate_purse_balance
         );
 
-        builder.run_auction(timestamp_millis, Vec::new());
-        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+            .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1))
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step request");
     }
 
     // Since a redelegation has been processed no funds should have transferred back to the purse.
@@ -3233,6 +3261,7 @@ fn should_delegate_and_redelegate() {
     );
 
     let delegators = bids[&NON_FOUNDER_VALIDATOR_2_PK].delegators();
+    println!("{:?}", delegators);
     assert_eq!(delegators.len(), 1);
     let redelegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
     assert_eq!(redelegated_amount_1, U512::from(UNDELEGATE_AMOUNT_1));
@@ -3351,5 +3380,428 @@ fn should_continue_auction_state_from_release_1_4_x() {
     assert_eq!(
         delegator_1_purse_balance_post_step,
         delegator_1_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegator_2_undelegate_purse = builder
+        .get_account(*BID_ACCOUNT_2_ADDR)
+        .expect("should have default account")
+        .main_purse();
+
+    let delegator_2_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_2_undelegate_purse);
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute second step request post upgrade");
+
+    let delegator_2_purse_balance_post_step =
+        builder.get_purse_balance(delegator_2_undelegate_purse);
+
+    assert_eq!(
+        delegator_2_purse_balance_post_step,
+        delegator_2_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegator_3_undelegate_purse = builder
+        .get_account(*DELEGATOR_1_ADDR)
+        .expect("should have default account")
+        .main_purse();
+
+    let delegator_3_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_3_undelegate_purse);
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute third step request post upgrade");
+
+    let delegator_3_purse_balance_post_step =
+        builder.get_purse_balance(delegator_3_undelegate_purse);
+
+    assert_eq!(
+        delegator_3_purse_balance_post_step,
+        delegator_3_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegator_4_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_4_fund_request)
+        .expect_success()
+        .commit();
+
+    let delegator_4_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_4_validator_1_delegate_request)
+        .expect_success()
+        .commit();
+
+    let delegator_4_redelegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+            ARG_NEW_VALIDATOR_PUBLIC_KEY => Some(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone())
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_4_redelegate_request)
+        .expect_success()
+        .commit();
+
+    let delegator_4_purse = builder
+        .get_account(*DELEGATOR_2_ADDR)
+        .expect("must have account")
+        .main_purse();
+
+    let delegator_4_purse_balance_before = builder.get_purse_balance(delegator_4_purse);
+
+    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+        let delegator_4_redelegate_purse_balance = builder.get_purse_balance(delegator_4_purse);
+        assert_eq!(
+            delegator_4_redelegate_purse_balance,
+            delegator_4_purse_balance_before
+        );
+
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+            .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+            .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step successfully");
+    }
+
+    let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
+
+    // redelegation will not transfer funds back to the user
+    // therefore the balance must remain the same
+    assert_eq!(
+        delegator_4_purse_balance_before,
+        delegator_4_purse_balance_after
+    );
+
+    let bids: Bids = builder.get_bids();
+    assert_eq!(bids.len(), 3);
+
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
+    assert_eq!(delegators.len(), 4);
+    let delegated_amount_1 = *delegators[&DELEGATOR_2].staked_amount();
+    assert_eq!(
+        delegated_amount_1,
+        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegators = bids[&GENESIS_VALIDATOR_ACCOUNT_1_PK].delegators();
+    assert_eq!(delegators.len(), 1);
+    let redelegated_amount_1 = *delegators[&DELEGATOR_2].staked_amount();
+    assert_eq!(redelegated_amount_1, U512::from(UNDELEGATE_AMOUNT_1));
+}
+
+#[ignore]
+#[test]
+fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
+
+    let withdraw_purses: WithdrawPurses = builder.get_withdraws();
+
+    assert_eq!(withdraw_purses.len(), 1);
+
+    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version = ProtocolVersion::from_parts(
+        previous_protocol_version.value().major,
+        previous_protocol_version.value().minor + 1,
+        0,
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(previous_protocol_version)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(EraId::new(20u64))
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .expect_upgrade_success();
+
+    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
+    assert_eq!(unbonding_purses.len(), 1);
+
+    let unbond_list = unbonding_purses
+        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
+        .expect("should have unbonding purse for non founding validator");
+    assert_eq!(unbond_list.len(), 3);
+    assert_eq!(
+        unbond_list[0].validator_public_key(),
+        &*NON_FOUNDER_VALIDATOR_1_PK
+    );
+    assert!(unbond_list[0].new_validator_public_key().is_none());
+    assert!(unbond_list[1].new_validator_public_key().is_none());
+    assert!(unbond_list[2].new_validator_public_key().is_none());
+
+    let delegator_1_undelegate_purse = builder
+        .get_account(*BID_ACCOUNT_1_ADDR)
+        .expect("should have default account")
+        .main_purse();
+
+    let delegator_1_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_1_undelegate_purse);
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute first step request post upgrade");
+
+    let delegator_1_purse_balance_post_step =
+        builder.get_purse_balance(delegator_1_undelegate_purse);
+
+    assert_eq!(
+        delegator_1_purse_balance_post_step,
+        delegator_1_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegator_2_undelegate_purse = builder
+        .get_account(*BID_ACCOUNT_2_ADDR)
+        .expect("should have default account")
+        .main_purse();
+
+    let delegator_2_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_2_undelegate_purse);
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute second step request post upgrade");
+
+    let delegator_2_purse_balance_post_step =
+        builder.get_purse_balance(delegator_2_undelegate_purse);
+
+    assert_eq!(
+        delegator_2_purse_balance_post_step,
+        delegator_2_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegator_3_undelegate_purse = builder
+        .get_account(*DELEGATOR_1_ADDR)
+        .expect("should have default account")
+        .main_purse();
+
+    let delegator_3_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_3_undelegate_purse);
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+        .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute third step request post upgrade");
+
+    let delegator_3_purse_balance_post_step =
+        builder.get_purse_balance(delegator_3_undelegate_purse);
+
+    assert_eq!(
+        delegator_3_purse_balance_post_step,
+        delegator_3_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
+    );
+
+    let delegator_4_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_4_fund_request)
+        .expect_success()
+        .commit();
+
+    let delegator_4_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_4_validator_1_delegate_request)
+        .expect_success()
+        .commit();
+
+    let delegator_4_redelegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+            ARG_NEW_VALIDATOR_PUBLIC_KEY => Some(NON_FOUNDER_VALIDATOR_1_PK.clone())
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_4_redelegate_request)
+        .expect_success()
+        .commit();
+
+    let withdraw_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_WITHDRAW_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+        },
+    )
+    .build();
+
+    builder.exec(withdraw_request).expect_success().commit();
+
+    for _ in 0..=(DEFAULT_AUCTION_DELAY) {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+            .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+            .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute third step request post upgrade");
+    }
+
+    let delegator_4_purse = builder
+        .get_account(*DELEGATOR_2_ADDR)
+        .expect("must have account")
+        .main_purse();
+
+    let delegator_4_purse_balance_before = builder.get_purse_balance(delegator_4_purse);
+
+    for _ in 0..(DEFAULT_UNBONDING_DELAY - DEFAULT_AUCTION_DELAY) {
+        let delegator_4_redelegate_purse_balance = builder.get_purse_balance(delegator_4_purse);
+        assert_eq!(
+            delegator_4_redelegate_purse_balance,
+            delegator_4_purse_balance_before
+        );
+
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PK.clone(), 0))
+            .with_reward_item(RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PK.clone(), 0))
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step successfully");
+    }
+
+    let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
+
+    let bids: Bids = builder.get_bids();
+
+    assert!(bids[&NON_FOUNDER_VALIDATOR_1_PK].inactive());
+
+    // Since we have re-delegated to an inactive validator,
+    // the funds should cycle back to the delegator.
+    assert_eq!(
+        delegator_4_purse_balance_before + UNDELEGATE_AMOUNT_1,
+        delegator_4_purse_balance_after
+    );
+
+    let delegators = bids[&GENESIS_VALIDATOR_ACCOUNT_1_PK].delegators();
+    assert_eq!(delegators.len(), 1);
+    let delegated_amount_1 = *delegators[&DELEGATOR_2].staked_amount();
+    assert_eq!(
+        delegated_amount_1,
+        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1)
     );
 }

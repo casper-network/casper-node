@@ -73,13 +73,13 @@ pub fn get_unbonding_purses<P>(provider: &mut P) -> Result<UnbondingPurses, Erro
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let withdraws_keys = provider.get_keys(&KeyTag::Withdraw)?;
+    let withdraws_keys = provider.get_keys(&KeyTag::Unbond)?;
 
     let mut ret = BTreeMap::new();
 
     for key in withdraws_keys {
         let account_hash = match key {
-            Key::Withdraw(account_ash) => account_ash,
+            Key::Unbond(account_hash) => account_hash,
             _ => return Err(Error::InvalidKeyVariant),
         };
         let unbonding_purses = provider.read_withdraw(&account_hash)?;
@@ -206,13 +206,26 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
                 match unbonding_purse.new_validator_public_key() {
-                    Some(public_key) => provider
-                        .delegate(
-                            unbonding_purse.unbonder_public_key().clone(),
-                            public_key.clone(),
-                            *unbonding_purse.amount(),
-                        )
-                        .map(|_| ())?,
+                    Some(public_key) => {
+                        let bid = provider
+                            .read_bid(&public_key.to_account_hash())?
+                            .ok_or(Error::ValidatorNotFound)?;
+                        if !bid.inactive() {
+                            provider
+                                .handle_delegation(
+                                    unbonding_purse.unbonder_public_key().clone(),
+                                    public_key.clone(),
+                                    *unbonding_purse.bonding_purse(),
+                                    *unbonding_purse.amount(),
+                                )
+                                .map(|_| ())?
+                        } else {
+                            // Move funds from bid purse to unbonding purse
+                            provider
+                                .unbond(unbonding_purse)
+                                .map_err(|_| Error::TransferToUnbondingPurse)?
+                        }
+                    }
                     None => {
                         // Move funds from bid purse to unbonding purse
                         provider
