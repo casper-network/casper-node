@@ -10,6 +10,7 @@ mod get_phase;
 mod list_named_keys;
 mod main_purse;
 mod mint_purse;
+mod named_dictionaries;
 mod revert;
 mod subcall;
 mod transfer;

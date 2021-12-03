@@ -56,7 +56,7 @@ pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
 /// The number of bytes in a [`Key::Dictionary`].
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
-pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
+pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 
 const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
@@ -641,6 +641,47 @@ impl ToBytes for Key {
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
         }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        match self {
+            Key::Account(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Hash(hash) => {
+                writer.extend_from_slice(hash);
+            }
+            Key::URef(uref) => {
+                writer.extend_from_slice(&uref.addr());
+                writer.push(uref.access_rights().bits());
+            }
+            Key::Transfer(addr) => {
+                writer.extend_from_slice(addr.as_bytes());
+            }
+            Key::DeployInfo(addr) => {
+                writer.extend_from_slice(addr.as_bytes());
+            }
+            Key::EraInfo(era_id) => {
+                writer.extend_from_slice(&era_id.to_le_bytes());
+            }
+            Key::Balance(uref_addr) => {
+                writer.extend_from_slice(uref_addr);
+            }
+            Key::Bid(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Withdraw(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Dictionary(addr) => {
+                writer.extend_from_slice(addr);
+            }
+            Key::SystemContractRegistry => {
+                writer.extend_from_slice(&[0u8; 32]);
+            }
+        };
+        Ok(())
     }
 }
 

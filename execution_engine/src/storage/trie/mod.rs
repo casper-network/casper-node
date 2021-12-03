@@ -75,14 +75,20 @@ impl Pointer {
 impl ToBytes for Pointer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
-        ret.push(self.tag());
-        ret.extend_from_slice(self.hash().as_ref());
+        self.write_bytes(&mut ret)?;
         Ok(ret)
     }
 
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH + Digest::LENGTH
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        writer.extend_from_slice(self.hash().as_ref());
+        Ok(())
     }
 }
 
@@ -234,6 +240,13 @@ impl ToBytes for PointerBlock {
 
     fn serialized_length(&self) -> usize {
         self.0.iter().map(ToBytes::serialized_length).sum()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        for pointer in self.0.iter() {
+            pointer.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 
@@ -412,21 +425,7 @@ where
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::allocate_buffer(self)?;
-        ret.push(self.tag());
-
-        match self {
-            Trie::Leaf { key, value } => {
-                ret.append(&mut key.to_bytes()?);
-                ret.append(&mut value.to_bytes()?);
-            }
-            Trie::Node { pointer_block } => {
-                ret.append(&mut pointer_block.to_bytes()?);
-            }
-            Trie::Extension { affix, pointer } => {
-                ret.append(&mut affix.to_bytes()?);
-                ret.append(&mut pointer.to_bytes()?);
-            }
-        }
+        self.write_bytes(&mut ret)?;
         Ok(ret)
     }
 
@@ -439,6 +438,22 @@ where
                     affix.serialized_length() + pointer.serialized_length()
                 }
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        match self {
+            Trie::Leaf { key, value } => {
+                key.write_bytes(writer)?;
+                value.write_bytes(writer)?;
+            }
+            Trie::Node { pointer_block } => pointer_block.write_bytes(writer)?,
+            Trie::Extension { affix, pointer } => {
+                affix.write_bytes(writer)?;
+                pointer.write_bytes(writer)?;
+            }
+        }
+        Ok(())
     }
 }
 

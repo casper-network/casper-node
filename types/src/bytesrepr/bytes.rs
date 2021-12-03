@@ -96,6 +96,11 @@ impl ToBytes for Bytes {
     fn serialized_length(&self) -> usize {
         super::vec_u8_serialized_length(&self.0)
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        super::write_u8_slice(self.as_slice(), writer)
+    }
 }
 
 impl FromBytes for Bytes {

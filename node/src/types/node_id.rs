@@ -108,7 +108,7 @@ impl From<[u8; KeyFingerprint::LENGTH]> for NodeId {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     const EXAMPLE_HASH_RAW: [u8; 64] = [

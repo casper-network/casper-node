@@ -800,7 +800,7 @@ impl Hash for Sha512 {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::{generate_node_cert, mkname, name_to_string, validate_cert, TlsCert};
 
     #[test]

@@ -235,7 +235,7 @@ pub trait Auction:
     /// is missing, the function call returns an error and does nothing.
     ///
     /// The function transfers motes from the source purse to the delegator's bonding purse.
-    ///    
+    ///
     /// This entry point returns the number of tokens currently delegated to a given validator.
     fn delegate(
         &mut self,
@@ -485,7 +485,7 @@ pub trait Auction:
         }
 
         let mut era_info = EraInfo::new();
-        let mut seigniorage_allocations = era_info.seigniorage_allocations_mut();
+        let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
             let recipient = seigniorage_recipients
@@ -537,11 +537,11 @@ pub trait Auction:
                     });
             let delegator_payouts = detail::reinvest_delegator_rewards(
                 self,
-                &mut seigniorage_allocations,
+                seigniorage_allocations,
                 public_key.clone(),
                 delegator_rewards,
             )?;
-            let total_delegator_payout = delegator_payouts
+            let total_delegator_payout: U512 = delegator_payouts
                 .iter()
                 .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
                 .sum();
@@ -550,38 +550,17 @@ pub trait Auction:
             let validator_reward = validators_part.to_integer();
             let validator_bonding_purse = detail::reinvest_validator_reward(
                 self,
-                &mut seigniorage_allocations,
+                seigniorage_allocations,
                 public_key.clone(),
                 validator_reward,
             )?;
-            // TODO: add "mint into existing purse" facility
-            let tmp_validator_reward_purse =
-                self.mint(validator_reward).map_err(|_| Error::MintReward)?;
 
-            self.mint_transfer_direct(
-                Some(public_key.to_account_hash()),
-                tmp_validator_reward_purse,
-                validator_bonding_purse,
-                validator_reward,
-                None,
-            )
-            .map_err(|_| Error::ValidatorRewardTransfer)?
-            .map_err(|_| Error::ValidatorRewardTransfer)?;
+            self.mint_into_existing_purse(validator_reward, validator_bonding_purse)
+                .map_err(Error::from)?;
 
-            // TODO: add "mint into existing purse" facility
-            let tmp_delegator_reward_purse = self
-                .mint(total_delegator_payout)
-                .map_err(|_| Error::MintReward)?;
-            for (delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
-                self.mint_transfer_direct(
-                    Some(delegator_account_hash),
-                    tmp_delegator_reward_purse,
-                    bonding_purse,
-                    delegator_payout,
-                    None,
-                )
-                .map_err(|_| Error::DelegatorRewardTransfer)?
-                .map_err(|_| Error::DelegatorRewardTransfer)?;
+            for (_delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
+                self.mint_into_existing_purse(delegator_payout, bonding_purse)
+                    .map_err(Error::from)?;
             }
         }
 

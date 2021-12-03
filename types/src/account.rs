@@ -250,11 +250,11 @@ impl Account {
 impl ToBytes for Account {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.account_hash.to_bytes()?);
-        result.append(&mut self.named_keys.to_bytes()?);
-        result.append(&mut self.main_purse.to_bytes()?);
-        result.append(&mut self.associated_keys.to_bytes()?);
-        result.append(&mut self.action_thresholds.to_bytes()?);
+        self.account_hash().write_bytes(&mut result)?;
+        self.named_keys().write_bytes(&mut result)?;
+        self.main_purse.write_bytes(&mut result)?;
+        self.associated_keys().write_bytes(&mut result)?;
+        self.action_thresholds().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -264,6 +264,15 @@ impl ToBytes for Account {
             + self.main_purse.serialized_length()
             + self.associated_keys.serialized_length()
             + self.action_thresholds.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.account_hash().write_bytes(writer)?;
+        self.named_keys().write_bytes(writer)?;
+        self.main_purse().write_bytes(writer)?;
+        self.associated_keys().write_bytes(writer)?;
+        self.action_thresholds().write_bytes(writer)?;
+        Ok(())
     }
 }
 
