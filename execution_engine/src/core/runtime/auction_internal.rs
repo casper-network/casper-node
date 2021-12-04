@@ -1,14 +1,13 @@
 use std::collections::BTreeSet;
 
-use casper_types::system::auction::Delegator;
 use casper_types::{
     account::{self, AccountHash},
     bytesrepr::{FromBytes, ToBytes},
     contracts::NamedKeys,
     system::{
         auction::{
-            AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-            StorageProvider, UnbondingPurse,
+            AccountProvider, Auction, Bid, Delegator, EraInfo, Error, MintProvider,
+            RuntimeProvider, StorageProvider, UnbondingPurse,
         },
         mint, MINT,
     },
