@@ -387,11 +387,11 @@ mod tests {
             ),
             (
                 "0123456789",
-                "7b6CB8D374484e221785288b035Dc53fC9dDf000607F473fc2a3258D89A70398",
+                "7b6Cb8D374484e221785288B035dc53FC9DDF000607f473FC2a3258d89a70398",
             ),
             (
                 "01234567890",
-                "3D199478C18B7fE3ca1F4F2a9B3E07f708FF66ED52Eb345dB258ABE8a812eD5C",
+                "3D199478c18B7fE3cA1F4F2A9B3E07F708Ff66eD52Eb345Db258abE8A812Ed5c",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
