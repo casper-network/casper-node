@@ -6,7 +6,8 @@ use alloc::{string::String, vec::Vec};
 use core::ops::RangeInclusive;
 
 use base16;
-use blake2::{Blake2b, Digest};
+
+use crate::crypto;
 
 /// The number of input bytes, at or below which [`encode`] will checksum-encode the output.
 pub const SMALL_BYTES_COUNT: usize = 75;
@@ -33,13 +34,6 @@ fn bytes_to_bits_cycle(bytes: Vec<u8>) -> impl Iterator<Item = bool> {
         .flat_map(move |byte| (0..8usize).map(move |offset| ((byte >> offset) & 0x01) == 0x01))
 }
 
-/// Computes a Blake2b hash.
-fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
-    let mut hasher = Blake2b::new();
-    hasher.update(data);
-    hasher.finalize().to_vec()
-}
-
 /// If `input` is not greater than [`SMALL_BYTES_COUNT`], returns the bytes encoded as hexadecimal
 /// with mixed-case based checksums following a scheme similar to [EIP-55][1].  If `input` is
 /// greater than `SMALL_BYTES_COUNT`, no mixed-case checksumming is applied, and lowercase hex is
@@ -61,7 +55,7 @@ pub fn encode<T: AsRef<[u8]>>(input: T) -> String {
 /// `encode` but it returns an iterator.
 fn encode_iter<'a, T: 'a + AsRef<[u8]>>(input: &'a T) -> impl Iterator<Item = char> + 'a {
     let nibbles = bytes_to_nibbles(input);
-    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input.as_ref()));
+    let mut hash_bits = bytes_to_bits_cycle(crypto::blake2b(input.as_ref()).to_vec());
     nibbles.map(move |mut nibble| {
         // Base 16 numbers greater than 10 are represented by the ascii characters a through f.
         if nibble >= 10 && hash_bits.next().unwrap_or(true) {
