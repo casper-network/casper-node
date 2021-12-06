@@ -190,10 +190,10 @@ impl Finalize for RestServer {
 }
 
 #[cfg(test)]
-mod tests {
+mod schema_tests {
     use std::fs;
 
-    use assert_json_diff::assert_json_eq;
+    use assert_json_diff::{assert_json_matches_no_panic, Config, CompareMode};
     use schemars::{schema_for, JsonSchema};
     use serde_json::Value;
 
@@ -201,16 +201,20 @@ mod tests {
         rpcs::{docs::OpenRpcSchema, info::GetValidatorChangesResult},
         types::GetStatusResult,
     };
+    use std::io::Write;
 
     fn assert_schema<T: JsonSchema>(schema_path: String) {
-        let expected_schema = fs::read_to_string(schema_path).unwrap();
+        let expected_schema = fs::read_to_string(&schema_path).unwrap();
         let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
 
         let actual_schema = schema_for!(T);
         let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
+        let mut temp_file = tempfile::Builder::new().suffix(".json").tempfile().unwrap();
+        temp_file.write_all(actual_schema.as_bytes()).unwrap();
         let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
 
-        assert_json_eq!(actual_schema, expected_schema);
+        let result = assert_json_matches_no_panic(&actual_schema, &expected_schema,  Config::new(CompareMode::Inclusive));
+        assert_eq!(result, Ok(()), "schema does not match {}, compare actual schema in temp file {:?}", schema_path, temp_file.path());
     }
 
     #[test]
