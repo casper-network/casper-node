@@ -49,8 +49,8 @@ impl RustType {
             .clone()
     }
 
-    /// Returns the types identifier with type arguments attached as strings, i.e.
-    /// `GossipIncomingDeploy`'.
+    /// Returns the type's identifier with type arguments concatenated into a single camel case
+    /// identifier, e.g. `GossipIncomingDeploy`.
     pub(crate) fn stringified_ident(&self) -> Ident {
         let base = self
             .0
