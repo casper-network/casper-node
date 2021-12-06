@@ -266,11 +266,9 @@ fn put_block_signatures(
     signatures: BlockSignatures,
 ) -> bool {
     let response = harness.send_request(storage, move |responder| {
-        {
-            StorageRequest::PutBlockSignatures {
-                signatures,
-                responder,
-            }
+        StorageRequest::PutBlockSignatures {
+            signatures,
+            responder,
         }
         .into()
     });
@@ -299,12 +297,10 @@ fn put_execution_results(
     execution_results: HashMap<DeployHash, ExecutionResult>,
 ) {
     let response = harness.send_request(storage, move |responder| {
-        {
-            StorageRequest::PutExecutionResults {
-                block_hash: Box::new(block_hash),
-                execution_results,
-                responder,
-            }
+        StorageRequest::PutExecutionResults {
+            block_hash: Box::new(block_hash),
+            execution_results,
+            responder,
         }
         .into()
     });

@@ -41,10 +41,10 @@ pub(crate) type NetRequestIncoming = MessageIncoming<NodeId, NetRequest>;
 /// A new message requesting a trie arrived.
 pub(crate) type TrieRequestIncoming = MessageIncoming<NodeId, TrieRequest>;
 
-/// A new message requesting various objects arrived.
+/// A new message responding to a request arrived.
 pub(crate) type NetResponseIncoming = MessageIncoming<NodeId, NetResponse>;
 
-/// A new message requesting a trie arrived.
+/// A new message responding to a trie request arrived.
 pub(crate) type TrieResponseIncoming = MessageIncoming<NodeId, TrieResponse>;
 
 /// A new finality signature arrived over the network.

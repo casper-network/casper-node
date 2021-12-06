@@ -307,7 +307,7 @@ impl<REv: 'static> Default for ComponentHarness<REv> {
 
 /// A special event for unit tests.
 ///
-/// Essentially discards most events (they are not even processed by the unit testing hardness),
+/// Essentially discards most events (they are not even processed by the unit testing harness),
 /// except for control announcements, which are preserved.
 #[derive(Debug, From)]
 pub(crate) enum UnitTestEvent {
