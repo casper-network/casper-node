@@ -5,21 +5,28 @@
         {
           "Account": {
             "balance": "100000000000000000",
-            "public_key": "01D5af25e204AD03D0A26e236996404F1be51a60948bCc026cd084a83690B756D3",
+            "public_key": "01d5AF25e204AD03D0a26e236996404F1be51a60948bcc026cD084a83690B756d3",
             "validator": null
           }
         },
         {
           "Account": {
             "balance": "100000000000000000",
-            "public_key": "01bB47D33d777B4559BB917d1825827421C4A6b1b9737f12E1C58eA4305Af88b74",
+            "public_key": "01BB47d33d777B4559Bb917d1825827421C4a6B1b9737F12e1C58EA4305aF88b74",
             "validator": null
           }
         },
         {
           "Account": {
             "balance": "7500000000000000",
-            "public_key": "01ca57EeD30e4A7274EF4C648f56F58f880b20d2CA25725D9E5C13C83C08c09AeB",
+            "public_key": "01cA57eEd30e4a7274Ef4C648F56F58F880B20D2CA25725D9e5C13C83C08c09aEB",
+            "validator": null
+          }
+        },
+        {
+          "Account": {
+            "balance": "7500000000000000",
+            "public_key": "0153840868cB293a6e0a636B1f2245BEfBe1988fB287Bd6A9D84dF5Df4A519dd11",
             "validator": null
           }
         }
@@ -465,8 +472,8 @@
         }
       }
     },
-    "genesis_config_hash": "2a2A2a2a2A2A2a2A2A2a2A2a2a2a2a2a2a2A2A2A2A2A2a2a2a2A2a2A2A2a2A2a",
+    "genesis_config_hash": "2a2a2A2A2a2a2a2A2a2A2A2A2a2A2a2a2A2a2A2A2a2A2A2a2a2A2a2a2A2A2a2a",
     "protocol_version": "1.0.0"
   },
-  "post_state_hash": "14493fBEa4ED523B9fE3575337eB58476c0Fe8a559BAED36D679607c19016449"
+  "post_state_hash": "AaF255056ED8966704422AfaC3B9c5F95c9Cc8Fc90E777939c82c31451e826C9"
 }
