@@ -231,7 +231,8 @@ where
 
 /// Given a root hash, find any try keys that are descendant from it that are:
 /// 1. referenced but not present in the database
-/// 2. (Optionally, when `check_integrity` is `true`) referenced and present but whose values' hashes do not equal their keys (ie, corrupted)
+/// 2. (Optionally, when `check_integrity` is `true`) referenced and present but whose values'
+/// hashes do not equal their keys (ie, corrupted)
 // TODO: We only need to check one trie key at a time
 pub fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,

@@ -263,7 +263,8 @@ impl StateProvider for InMemoryGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values and optionally performs an integrity check on each node
+    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values and optionally
+    /// performs an integrity check on each node
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,

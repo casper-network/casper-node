@@ -191,10 +191,9 @@ impl Finalize for RestServer {
 
 #[cfg(test)]
 mod schema_tests {
-    use std::{fs, env};
-    use std::io::Write;
+    use std::{env, fs, io::Write};
 
-    use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, Config, CompareMode};
+    use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, CompareMode, Config};
     use schemars::{schema_for, JsonSchema};
     use serde_json::Value;
 
@@ -209,14 +208,27 @@ mod schema_tests {
 
         let actual_schema = schema_for!(T);
         let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
-        let mut temp_file = tempfile::Builder::new().suffix(".json").tempfile_in(env!("OUT_DIR")).unwrap();
+        let mut temp_file = tempfile::Builder::new()
+            .suffix(".json")
+            .tempfile_in(env!("OUT_DIR"))
+            .unwrap();
         temp_file.write_all(actual_schema.as_bytes()).unwrap();
         let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
         let (_file, path) = temp_file.keep().unwrap();
         let temp_file_path = path.as_path().clone();
 
-        let result = assert_json_matches_no_panic(&actual_schema, &expected_schema,  Config::new(CompareMode::Strict));
-        assert_eq!(result, Ok(()), "schema does not match:\nexpected:\n{}\nactual:\n{}\n", schema_path, temp_file_path.display());
+        let result = assert_json_matches_no_panic(
+            &actual_schema,
+            &expected_schema,
+            Config::new(CompareMode::Strict),
+        );
+        assert_eq!(
+            result,
+            Ok(()),
+            "schema does not match:\nexpected:\n{}\nactual:\n{}\n",
+            schema_path,
+            temp_file_path.display()
+        );
         assert_json_eq!(actual_schema, expected_schema);
     }
 
