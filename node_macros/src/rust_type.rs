@@ -19,7 +19,7 @@ pub(crate) struct RustType(Path);
 impl Debug for RustType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let path = &self.0;
-        write!(f, "{}", quote!(#path).to_string())
+        write!(f, "{}", quote!(#path))
     }
 }
 

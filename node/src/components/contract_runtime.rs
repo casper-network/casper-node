@@ -631,7 +631,7 @@ impl ContractRuntime {
         let start = Instant::now();
         let result = self
             .engine_state
-            .missing_trie_keys(correlation_id, trie_keys);
+            .missing_trie_keys(correlation_id, trie_keys, true);
         self.metrics
             .missing_trie_keys
             .observe(start.elapsed().as_secs_f64());
