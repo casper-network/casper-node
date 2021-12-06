@@ -1,10 +1,14 @@
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+    time::Instant,
+};
 
 use tracing::{debug, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest, Execution,
+        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
         ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
         StepRequest, StepSuccess,
     },
@@ -25,12 +29,12 @@ use crate::{
     types::{Block, Deploy, DeployHash as NodeDeployHash, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{
-    core::execution,
+    core::{engine_state::execution_result::ExecutionResults, execution},
     storage::global_state::{CommitProvider, StateProvider},
 };
+use itertools::Itertools;
 
 /// Executes a finalized block.
-#[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: Option<Arc<ContractRuntimeMetrics>>,
@@ -52,18 +56,46 @@ pub fn execute_finalized_block(
         parent_seed,
         next_block_height: _,
     } = execution_pre_state;
-
+    let mut state_root_hash = pre_state_root_hash;
+    let mut execution_results: HashMap<NodeDeployHash, (DeployHeader, ExecutionResult)> =
+        HashMap::new();
     // Run any deploys that must be executed
+    let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
 
-    let (execution_results, mut state_root_hash) = execute_and_commit(
-        engine_state,
-        metrics.clone(),
-        protocol_version,
-        &finalized_block,
-        transfers.into_iter().chain(deploys.into_iter()).collect(),
-        pre_state_root_hash,
-    )?;
+    // Create a new EngineState that reads from LMDB but only caches changes in memory.
+    let scratch_state = engine_state.get_scratch_engine_state();
+
+    for deploy in deploys.into_iter().chain(transfers) {
+        let deploy_hash = *deploy.id();
+        let deploy_header = deploy.header().clone();
+        let execute_request = ExecuteRequest::new(
+            state_root_hash,
+            block_time,
+            vec![DeployItem::from(deploy)],
+            protocol_version,
+            finalized_block.proposer().clone(),
+        );
+
+        // TODO: this is currently working coincidentally because we are passing only one
+        // deploy_item per exec. The execution results coming back from the ee lacks the
+        // mapping between deploy_hash and execution result, and this outer logic is
+        // enriching it with the deploy hash. If we were passing multiple deploys per exec
+        // the relation between the deploy and the execution results would be lost.
+        let result = execute(&scratch_state, metrics.clone(), execute_request)?;
+
+        trace!(?deploy_hash, ?result, "deploy execution result");
+        // As for now a given state is expected to exist.
+        let (state_hash, execution_result) = commit_execution_effects(
+            &scratch_state,
+            metrics.clone(),
+            state_root_hash,
+            deploy_hash.into(),
+            result,
+        )?;
+        execution_results.insert(deploy_hash, (deploy_header, execution_result));
+        state_root_hash = state_hash;
+    }
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -98,6 +130,11 @@ pub fn execute_finalized_block(
             None
         };
 
+    // Finally, the new state-root-hash from the cumulative changes to global state is returned when
+    // they are written to LMDB.
+    state_root_hash =
+        engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
+
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 
@@ -131,112 +168,60 @@ pub fn execute_finalized_block(
 
     Ok(BlockAndExecutionEffects {
         block,
-        execution_results: execution_results.into_iter().collect(),
+        execution_results,
         maybe_step_effect_and_upcoming_era_validators,
     })
 }
 
-type ExecResultMap = BTreeMap<NodeDeployHash, (DeployHeader, ExecutionResult)>;
-
-fn execute_and_commit(
-    engine_state: &EngineState<LmdbGlobalState>,
+/// Commits the execution effects.
+fn commit_execution_effects<S>(
+    engine_state: &EngineState<S>,
     metrics: Option<Arc<ContractRuntimeMetrics>>,
-    protocol_version: ProtocolVersion,
-    finalized_block: &FinalizedBlock,
-    deploys: Vec<Deploy>,
     state_root_hash: Digest,
-) -> Result<(ExecResultMap, Digest), BlockExecutionError> {
-    let block_time = finalized_block.timestamp().millis();
+    deploy_hash: DeployHash,
+    execution_results: ExecutionResults,
+) -> Result<(Digest, ExecutionResult), BlockExecutionError>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let ee_execution_result = execution_results
+        .into_iter()
+        .exactly_one()
+        .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
+    let json_execution_result = ExecutionResult::from(&ee_execution_result);
 
-    // Create a new EngineState that reads from LMDB but only caches changes in memory.
-    let scratch_state = engine_state.get_scratch_engine_state();
-
-    let deploy_items = deploys
-        .iter()
-        .cloned()
-        .map(DeployItem::from)
-        .collect::<Vec<_>>();
-
-    let mut execution_results = BTreeMap::new();
-
-    for deploy_item in deploy_items {
-        // Note that we generate a request to execute all deploys in the block.
-        let execute_request = ExecuteRequest::new(
-            state_root_hash,
-            block_time,
-            vec![deploy_item],
-            protocol_version,
-            finalized_block.proposer(),
-        );
-
-        // Execute our request against the in-memory cache.
-        let Execution { exec_results } = execute(&scratch_state, metrics.clone(), execute_request)?;
-
-        let transforms_by_deploy = extract_transforms_from_execution_results(&exec_results);
-
-        // This ensures that transforms are applied in the order they were executed.
-        for (_deploy_hash, transforms) in transforms_by_deploy.into_iter() {
-            // Because we are applying the transforms to the ScratchGlobalState, no new
-            // state-root-hash is generated here.
-            let _same_root_hash =
-                apply_transforms(&scratch_state, metrics.clone(), state_root_hash, transforms)?;
+    let execution_effect: AdditiveMap<Key, Transform> = match ee_execution_result {
+        EngineExecutionResult::Success {
+            execution_journal,
+            cost,
+            ..
+        } => {
+            // We do want to see the deploy hash and cost in the logs.
+            // We don't need to see the effects in the logs.
+            debug!(?deploy_hash, %cost, "execution succeeded");
+            execution_journal
         }
-
-        for (deploy_hash, ee_exec_result) in exec_results {
-            let node_deploy_hash: NodeDeployHash = deploy_hash.into();
-            if let Some(deploy) = deploys
-                .iter()
-                .find(|deploy| node_deploy_hash == *deploy.id())
-            {
-                execution_results.insert(
-                    node_deploy_hash,
-                    (
-                        deploy.header().clone(),
-                        ExecutionResult::from(&ee_exec_result),
-                    ),
-                );
-            }
+        EngineExecutionResult::Failure {
+            error,
+            execution_journal,
+            cost,
+            ..
+        } => {
+            // Failure to execute a contract is a user error, not a system error.
+            // We do want to see the deploy hash, error, and cost in the logs.
+            // We don't need to see the effects in the logs.
+            debug!(?deploy_hash, ?error, %cost, "execution failure");
+            execution_journal
         }
     }
-
-    // Finally the new state-root-hash from the cumulative changes to global state is returned when
-    // they are written to LMDB.
-    let new_state_root_hash =
-        engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
-
-    Ok((execution_results, new_state_root_hash))
+    .into();
+    let new_state_root =
+        commit_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
+    Ok((new_state_root, json_execution_result))
 }
 
-fn extract_transforms_from_execution_results(
-    execution_results: &[(DeployHash, EngineExecutionResult)],
-) -> Vec<(DeployHash, AdditiveMap<Key, Transform>)> {
-    let mut all_transforms = Vec::new();
-    for (deploy_hash, ee_execution_result) in execution_results.iter() {
-        let mut per_deploy_transforms = AdditiveMap::new();
-        match ee_execution_result {
-            EngineExecutionResult::Success { cost, .. } => {
-                // We do want to see the deploy hash and cost in the logs.
-                // We don't need to see the effects in the logs.
-                debug!(?deploy_hash, %cost, "execution succeeded");
-            }
-            EngineExecutionResult::Failure { error, cost, .. } => {
-                // Failure to execute a contract is a user error, not a system error.
-                // We do want to see the deploy hash, error, and cost in the logs.
-                // We don't need to see the effects in the logs.
-                debug!(?deploy_hash, ?error, %cost, "execution failure");
-            }
-        }
-        let journal = ee_execution_result.execution_journal().clone();
-        let journal: AdditiveMap<Key, Transform> = journal.into();
-        for (key, transform) in journal.iter() {
-            per_deploy_transforms.insert(*key, transform.clone());
-        }
-        all_transforms.push((*deploy_hash, per_deploy_transforms));
-    }
-    all_transforms
-}
-
-fn apply_transforms<S>(
+fn commit_transforms<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<ContractRuntimeMetrics>>,
     state_root_hash: Digest,
@@ -261,7 +246,7 @@ fn execute<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<ContractRuntimeMetrics>>,
     execute_request: ExecuteRequest,
-) -> Result<Execution, engine_state::Error>
+) -> Result<ExecutionResults, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,

@@ -71,7 +71,7 @@ use crate::{
     core::{
         engine_state::{
             executable_deploy_item::DeployKind,
-            execution_result::ExecutionResultBuilder,
+            execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
             upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
@@ -102,13 +102,6 @@ pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT)
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
-
-/// Return type from run_execute
-#[derive(Debug)]
-pub struct Execution {
-    /// Execution results, stored by deploy hash.
-    pub exec_results: Vec<(DeployHash, ExecutionResult)>,
-}
 
 /// Main implementation of an execution engine state.
 ///
@@ -496,20 +489,19 @@ where
     ///
     /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
     ///
-    /// Returns an `Execution` which contains results from each deploy executed.
+    /// Return execution results which contains results from each deploy ran.
     pub fn run_execute(
         &self,
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
-    ) -> Result<Execution, Error> {
+    ) -> Result<ExecutionResults, Error> {
         let executor = Executor::new(*self.config());
 
-        let deploy_items = exec_request.take_deploys();
-        let mut exec_results = Vec::new();
+        let deploys = exec_request.take_deploys();
+        let mut results = ExecutionResults::with_capacity(deploys.len());
 
-        for deploy_item in deploy_items {
-            let deploy_hash = deploy_item.deploy_hash;
-            let execution_result = match deploy_item.session {
+        for deploy_item in deploys {
+            let result = match deploy_item.session {
                 ExecutableDeployItem::Transfer { .. } => self.transfer(
                     correlation_id,
                     &executor,
@@ -518,7 +510,7 @@ where
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
                     exec_request.proposer.clone(),
-                )?,
+                ),
                 _ => self.deploy(
                     correlation_id,
                     &executor,
@@ -527,11 +519,17 @@ where
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
                     exec_request.proposer.clone(),
-                )?,
+                ),
             };
-            exec_results.push((deploy_hash, execution_result));
+            match result {
+                Ok(result) => results.push_back(result),
+                Err(error) => {
+                    return Err(error);
+                }
+            };
         }
-        Ok(Execution { exec_results })
+
+        Ok(results)
     }
 
     fn get_authorized_account(

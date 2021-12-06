@@ -342,14 +342,14 @@ fn transfer_to_account_multiple_native_transfers(
             exec_request.proposer.clone(),
         );
         if use_scratch {
-            builder.scratch_execute_and_commit(request).expect_success();
+            builder.scratch_exec(request).expect_success();
         } else {
             builder.exec(request).expect_success();
             builder.commit();
         }
     }
     if use_scratch {
-        builder.scratch_put_values_into_lmdb();
+        builder.write_scratch_to_lmdb();
     }
     // flush to disk only after entire block (simulates manual_sync_enabled=true config entry)
     builder.flush_environment();
@@ -425,7 +425,7 @@ where
     group.throughput(Throughput::Elements(BLOCK_TRANSFER_COUNT as u64));
 
     for purse_count in [50, 100] {
-        for transfer_count in [500, 1200, 2500usize] {
+        for transfer_count in [500, 1500, 2500usize] {
             // baseline, one deploy per exec request
             multiple_native_transfers(&mut group, transfer_count, purse_count, true);
             multiple_native_transfers(&mut group, transfer_count, purse_count, false);

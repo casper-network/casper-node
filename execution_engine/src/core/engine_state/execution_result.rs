@@ -1,4 +1,7 @@
 //! Outcome of an `ExecutionRequest`.
+
+use std::collections::VecDeque;
+
 use casper_types::{
     bytesrepr::FromBytes, CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
@@ -67,6 +70,9 @@ impl Default for ExecutionResult {
         }
     }
 }
+
+/// A type alias that represents multiple execution results.
+pub type ExecutionResults = VecDeque<ExecutionResult>;
 
 /// Indicates the outcome of a transfer payment check.
 pub enum ForcedTransferResult {

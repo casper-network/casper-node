@@ -13,7 +13,6 @@ use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
 use bytesrepr::FromBytes;
-
 use casper_execution_engine::{
     core::{
         engine_state,
@@ -23,9 +22,8 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, Execution, GenesisSuccess, GetBidsRequest,
-            QueryRequest, QueryResult, StepError, SystemContractRegistry, UpgradeConfig,
-            UpgradeSuccess,
+            BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
+            QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -88,16 +86,15 @@ pub struct WasmTestBuilder<S> {
     /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     engine_state: Rc<EngineState<S>>,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
-    exec_results: Vec<Vec<(DeployHash, Rc<ExecutionResult>)>>,
-    /// Upgrade results.
+    exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
-    /// .
+    /// Genesis hash.
     genesis_hash: Option<Digest>,
-    ///
+    /// Post state hash.
     post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
-    transforms: Vec<(DeployHash, AdditiveMap<Key, Transform>)>,
+    transforms: Vec<AdditiveMap<Key, Transform>>,
     /// Cached genesis transforms
     genesis_account: Option<Account>,
     /// Genesis transforms
@@ -313,9 +310,7 @@ impl LmdbWasmTestBuilder {
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
     /// You MUST call scratch_flush to flush these changes to LmdbGlobalState.
-    /// This is a condensed version of the contract_runtime::operations::execute_and_commit
-    /// function.
-    pub fn scratch_execute_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+    pub fn scratch_exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
         }
@@ -335,7 +330,7 @@ impl LmdbWasmTestBuilder {
         let mut exec_results = Vec::new();
         // First execute the request against our scratch global state.
         let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
-        for (deploy_hash, execution_result) in maybe_exec_results.unwrap().exec_results {
+        for execution_result in maybe_exec_results.unwrap() {
             let journal = execution_result.execution_journal().clone();
             let transforms: AdditiveMap<Key, Transform> = journal.into();
             let _post_state_hash = cached_state
@@ -347,15 +342,15 @@ impl LmdbWasmTestBuilder {
                 .expect("should commit");
 
             // Save transforms and execution results for WasmTestBuilder.
-            self.transforms.push((deploy_hash, transforms));
-            exec_results.push((deploy_hash, Rc::new(execution_result)))
+            self.transforms.push(transforms);
+            exec_results.push(Rc::new(execution_result))
         }
         self.exec_results.push(exec_results);
         self
     }
 
-    /// Commit scratch to global state and reset it.
-    pub fn scratch_put_values_into_lmdb(&mut self) -> &mut Self {
+    /// Commit scratch to global state, and reset the scratch cache.
+    pub fn write_scratch_to_lmdb(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
         if let Some(scratch) = self.scratch_engine_state.take() {
             self.post_state_hash = Some(
@@ -525,19 +520,20 @@ where
         let maybe_exec_results = self
             .engine_state
             .run_execute(CorrelationId::new(), exec_request);
-
-        let Execution { exec_results } = maybe_exec_results.unwrap();
-
+        assert!(maybe_exec_results.is_ok());
+        // Parse deploy results
+        let execution_results = maybe_exec_results.as_ref().unwrap();
         // Cache transformations
         self.transforms.extend(
-            exec_results
+            execution_results
                 .iter()
-                .map(|(deploy_hash, res)| (*deploy_hash, res.execution_journal().clone().into())),
+                .map(|res| res.execution_journal().clone().into()),
         );
         self.exec_results.push(
-            exec_results
+            maybe_exec_results
+                .unwrap()
                 .into_iter()
-                .map(|(deploy_hash, res)| (deploy_hash, Rc::new(res)))
+                .map(Rc::new)
                 .collect(),
         );
         self
@@ -547,7 +543,7 @@ where
     pub fn commit(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
 
-        let (_deploy_hash, effects) = self.transforms.last().cloned().unwrap_or_default();
+        let effects = self.transforms.last().cloned().unwrap_or_default();
 
         self.commit_transforms(prestate_hash, effects)
     }
@@ -690,7 +686,7 @@ where
     }
 
     /// Gets the transform map that's cached between runs
-    pub fn get_transforms(&self) -> &[(DeployHash, AdditiveMap<Key, Transform>)] {
+    pub fn get_transforms(&self) -> &[AdditiveMap<Key, Transform>] {
         &self.transforms
     }
 
@@ -753,24 +749,14 @@ where
     pub fn get_last_exec_results(&self) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.last()?;
 
-        Some(
-            exec_results
-                .iter()
-                .map(|(_deploy_hash, exec_result)| Rc::clone(exec_result))
-                .collect(),
-        )
+        Some(exec_results.iter().map(Rc::clone).collect())
     }
 
     /// Returns the results of a specific exec.
     pub fn get_exec_result(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.get(index)?;
 
-        Some(
-            exec_results
-                .iter()
-                .map(|(_, exec_result)| Rc::clone(exec_result))
-                .collect(),
-        )
+        Some(exec_results.iter().map(Rc::clone).collect())
     }
 
     /// Returns a count of exec results.

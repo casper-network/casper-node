@@ -40,7 +40,7 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
 
     builder.exec(no_wasm_transfer_request).expect_success();
 
-    let (_deploy_hash, ref transforms) = builder.get_transforms()[0];
+    let transforms = &builder.get_transforms()[0];
 
     for (key, value) in transforms {
         if let Transform::Write(val) = value {
