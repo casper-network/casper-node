@@ -33,6 +33,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum TrackingCopyQueryResult {
     Success {
         value: StoredValue,

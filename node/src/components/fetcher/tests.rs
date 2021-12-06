@@ -242,7 +242,7 @@ async fn store_deploy(
     node_id: &NodeId,
     network: &mut Network<Reactor>,
     responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
-    mut rng: &mut TestRng,
+    rng: &mut TestRng,
 ) {
     network
         .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone(), responder))
@@ -252,7 +252,7 @@ async fn store_deploy(
     network
         .crank_until(
             node_id,
-            &mut rng,
+            rng,
             move |event: &ReactorEvent| {
                 matches!(
                     event,
