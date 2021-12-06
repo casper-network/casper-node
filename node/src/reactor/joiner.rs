@@ -152,8 +152,6 @@ pub(crate) enum JoinerEvent {
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
     // Requests.
-
-
     /// Storage request.
     #[from]
     StorageRequest(StorageRequest),
@@ -970,22 +968,18 @@ impl reactor::Reactor for Reactor {
                             }
                         }
 
-                    NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
-                       match
-                fetcher::Event::<BlockHeaderWithMetadata>::from_get_response_serialized_item(
-                            sender,
-                        serialized_item,
-                        ) {
-                            Some(fetcher_event) => {
-                                self.dispatch_event(effect_builder, rng,
-                JoinerEvent::BlockHeaderByHeightFetcher(fetcher_event))             } ,
+                    NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) =>
+                        match fetcher::Event::<BlockHeaderWithMetadata>::from_get_response_serialized_item(
+                            sender, serialized_item) {
+                            Some(fetcher_event) =>
+                                self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderByHeightFetcher(fetcher_event))
+                            ,
                             None => {
-                                  info!("{} sent us a block header with finality signatures we
-                couldn't parse! Banning", sender);
-                effect_builder.announce_disconnect_from_peer(sender).ignore()
-                }         }
-                    },
-                 }
+                                info!("{} sent us a block header with finality signatures we couldn't parse! Banning", sender);
+                                effect_builder.announce_disconnect_from_peer(sender).ignore()
+                            }
+                        },
+                    }
             }
             JoinerEvent::TrieRequestIncoming(incoming) => {
                 debug!(%incoming, "trie request ignored");
