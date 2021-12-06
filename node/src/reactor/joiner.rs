@@ -1004,11 +1004,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::BlockHeaderByHeightFetcher(request.into()),
             ),
             JoinerEvent::FinishedJoining { switch_block_header } => {
-                self.linear_chain_sync = LinearChainSyncState::Done{ switch_block_header };
+                self.linear_chain_sync = LinearChainSyncState::Done{ block_header: switch_block_header };
                 Effects::new()
             }
             JoinerEvent::FinishedGenesis { switch_block_header } => {
-                self.linear_chain_sync = LinearChainSyncState::NotGoingToSync{ switch_block_header };
+                self.linear_chain_sync = LinearChainSyncState::NotGoingToSync{ block_header: switch_block_header };
                 Effects::new()
             }
             JoinerEvent::Shutdown(exit_code) => {
@@ -1043,10 +1043,10 @@ impl Reactor {
         let latest_switch_block_header = match self.linear_chain_sync {
             LinearChainSyncState::Syncing => return Err(Error::StillSyncing),
             LinearChainSyncState::Done {
-                switch_block_header,
+                block_header: switch_block_header,
             }
             | LinearChainSyncState::NotGoingToSync {
-                switch_block_header,
+                block_header: switch_block_header,
             } => *switch_block_header,
         };
         let storage = Arc::try_unwrap(self.storage).map_err(|_| Error::StorageOwnership)?;
@@ -1057,7 +1057,7 @@ impl Reactor {
             config: self.config,
             contract_runtime: self.contract_runtime,
             storage,
-            latest_switch_block_header,
+            latest_block_header: latest_switch_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             node_startup_instant: self.node_startup_instant,
@@ -1067,10 +1067,8 @@ impl Reactor {
         Ok(config)
     }
 
-    // If we have a latest block header, we joined via the joiner reactor.
-    //
-    // If not, run genesis or upgrade and construct a switch block, and use that for the latest
-    // block header.
+    // If we are at genesis or after an upgrade, constructs the genesis or upgrade block.
+    // Otherwise returns the latest block header.
     async fn commit_upgrade_or_genesis_switch_block(
         maybe_latest_block_header: Option<BlockHeader>,
         chainspec: Arc<Chainspec>,
@@ -1078,7 +1076,7 @@ impl Reactor {
         contract_runtime: &ContractRuntime,
         effect_builder: EffectBuilder<JoinerEvent>,
     ) -> Result<BlockHeader, Error> {
-        let block_header = match maybe_latest_block_header {
+        Ok(match maybe_latest_block_header {
             Some(latest_block_header)
                 if latest_block_header.protocol_version() == chainspec.protocol_config.version =>
             {
@@ -1108,7 +1106,6 @@ impl Reactor {
                     return Err(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id });
                 }
                 ActivationPoint::Genesis(genesis_timestamp) => {
-                    // Do not run genesis on a node which is not protocol version 1.0.0
                     Self::commit_genesis_switch_block(
                         chainspec,
                         storage,
@@ -1119,8 +1116,7 @@ impl Reactor {
                     .await?
                 }
             },
-        };
-        Ok(block_header)
+        })
     }
 
     async fn commit_genesis_switch_block(
@@ -1130,6 +1126,7 @@ impl Reactor {
         effect_builder: EffectBuilder<JoinerEvent>,
         genesis_timestamp: Timestamp,
     ) -> Result<BlockHeader, Error> {
+        // Do not run genesis on a node which is not protocol version 1.0.0
         if chainspec.protocol_config.version != ProtocolVersion::V1_0_0 {
             return Err(Error::GenesisNeedsProtocolVersion1_0_0 {
                 chainspec_protocol_version: chainspec.protocol_config.version,

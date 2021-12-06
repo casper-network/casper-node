@@ -14,12 +14,8 @@ pub(crate) use operations::{run_fast_sync_task, KeyBlockInfo};
 /// Both NotGoingToSync and Done pass onwards the header of the switch block created during those
 /// states.
 pub(crate) enum LinearChainSyncState {
-    NotGoingToSync {
-        switch_block_header: Box<BlockHeader>,
-    },
-    Done {
-        switch_block_header: Box<BlockHeader>,
-    },
+    NotGoingToSync { block_header: Box<BlockHeader> },
+    Done { block_header: Box<BlockHeader> },
     Syncing,
 }
 
