@@ -118,7 +118,7 @@ reactor!(Reactor {
         RpcServerAnnouncement -> [deploy_acceptor];
         ChainspecLoaderAnnouncement -> [!];
 
-        // The `handle_net_request` function implements the entire "custom" logic found in this test
+        // The `handle_net_response` function implements the entire "custom" logic found in this test
         // reactor, outside of routing.
         NetRequestIncoming -> [storage];
         NetResponseIncoming -> [fn handle_net_response];

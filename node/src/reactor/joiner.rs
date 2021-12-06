@@ -151,7 +151,9 @@ pub(crate) enum JoinerEvent {
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
-    /// Requests.
+    // Requests.
+
+
     /// Storage request.
     #[from]
     StorageRequest(StorageRequest),
@@ -938,8 +940,7 @@ impl reactor::Reactor for Reactor {
                             ),
                             None => {
                                 info!(
-                                    "{} sent us a block with metadata we couldn't parse!
-                Banning",
+                                    "{} sent us a block with metadata we couldn't parse! Banning",
                                     sender
                                 );
                                 effect_builder
