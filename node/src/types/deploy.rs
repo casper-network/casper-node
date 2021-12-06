@@ -3,16 +3,18 @@
 
 use std::{
     array::TryFromSliceError,
+    cmp,
     collections::HashMap,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
+    hash,
 };
 
 use datasize::DataSize;
 use derive_more::Display;
 use itertools::Itertools;
 use num_traits::Zero;
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use schemars::JsonSchema;
@@ -40,7 +42,7 @@ use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 use crate::testing::TestRng;
 use crate::{
     components::block_proposer::DeployInfo, crypto, crypto::AsymmetricKeyExt,
-    rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::DisplayIter,
+    rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::ds, utils::DisplayIter,
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -89,7 +91,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
         payment,
         session,
         approvals: vec![approval],
-        is_valid: None,
+        is_valid: OnceCell::new(),
     }
 });
 
@@ -564,9 +566,7 @@ impl FromBytes for Approval {
 }
 
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
-#[derive(
-    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
-)]
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Deploy {
     hash: DeployHash,
@@ -575,7 +575,71 @@ pub struct Deploy {
     session: ExecutableDeployItem,
     approvals: Vec<Approval>,
     #[serde(skip)]
-    is_valid: Option<Result<(), DeployConfigurationFailure>>,
+    #[data_size(with = ds::once_cell)]
+    is_valid: OnceCell<Result<(), DeployConfigurationFailure>>,
+}
+
+impl hash::Hash for Deploy {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        // Destructure to make sure we don't accidentally omit fields.
+        let Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+            is_valid: _,
+        } = self;
+        hash.hash(state);
+        header.hash(state);
+        payment.hash(state);
+        session.hash(state);
+        approvals.hash(state);
+    }
+}
+
+impl PartialEq for Deploy {
+    fn eq(&self, other: &Deploy) -> bool {
+        // Destructure to make sure we don't accidentally omit fields.
+        let Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+            is_valid: _,
+        } = self;
+        *hash == other.hash
+            && *header == other.header
+            && *payment == other.payment
+            && *session == other.session
+            && *approvals == other.approvals
+    }
+}
+
+impl Ord for Deploy {
+    fn cmp(&self, other: &Deploy) -> cmp::Ordering {
+        // Destructure to make sure we don't accidentally omit fields.
+        let Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+            is_valid: _,
+        } = self;
+        hash.cmp(&other.hash)
+            .then_with(|| header.cmp(&other.header))
+            .then_with(|| payment.cmp(&other.payment))
+            .then_with(|| session.cmp(&other.session))
+            .then_with(|| approvals.cmp(&other.approvals))
+    }
+}
+
+impl PartialOrd for Deploy {
+    fn partial_cmp(&self, other: &Deploy) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Deploy {
@@ -617,7 +681,7 @@ impl Deploy {
             payment,
             session,
             approvals: vec![],
-            is_valid: None,
+            is_valid: OnceCell::new(),
         };
 
         deploy.sign(secret_key);
@@ -719,15 +783,8 @@ impl Deploy {
     ///   * the body hash is correct (should be the hash of the body), and
     ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
-    pub fn is_valid(&mut self) -> Result<(), DeployConfigurationFailure> {
-        match self.is_valid.as_ref() {
-            None => {
-                let validity = validate_deploy(self);
-                self.is_valid = Some(validity.clone());
-                validity
-            }
-            Some(validity) => validity.clone(),
-        }
+    pub fn is_valid(&self) -> Result<(), DeployConfigurationFailure> {
+        self.is_valid.get_or_init(|| validate_deploy(self)).clone()
     }
 
     /// Returns true if and only if:
@@ -1378,7 +1435,7 @@ impl FromBytes for Deploy {
             payment,
             session,
             approvals,
-            is_valid: None,
+            is_valid: OnceCell::new(),
         };
         Ok((maybe_valid_deploy, remainder))
     }
@@ -1463,15 +1520,23 @@ mod tests {
     #[test]
     fn is_valid() {
         let mut rng = crate::new_rng();
-        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
-        assert_eq!(deploy.is_valid, None, "is valid should initially be None");
+        let deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+        assert_eq!(
+            deploy.is_valid.get(),
+            None,
+            "is valid should initially be None"
+        );
         deploy.is_valid().expect("should be valid");
-        assert_eq!(deploy.is_valid, Some(Ok(())), "is valid should be true");
+        assert_eq!(
+            deploy.is_valid.get(),
+            Some(&Ok(())),
+            "is valid should be true"
+        );
     }
 
-    fn check_is_not_valid(mut invalid_deploy: Deploy, expected_error: DeployConfigurationFailure) {
+    fn check_is_not_valid(invalid_deploy: Deploy, expected_error: DeployConfigurationFailure) {
         assert!(
-            invalid_deploy.is_valid.is_none(),
+            invalid_deploy.is_valid.get().is_none(),
             "is valid should initially be None"
         );
         let actual_error = invalid_deploy.is_valid().unwrap_err();
@@ -1499,8 +1564,8 @@ mod tests {
 
         // The actual error should have been lazily initialized correctly.
         assert_eq!(
-            invalid_deploy.is_valid,
-            Some(Err(actual_error)),
+            invalid_deploy.is_valid.get(),
+            Some(&Err(actual_error)),
             "is valid should now be Some"
         );
     }
@@ -1598,7 +1663,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1628,7 +1693,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1658,7 +1723,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1697,7 +1762,7 @@ mod tests {
             Err(DeployConfigurationFailure::MissingPaymentAmount)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1738,7 +1803,7 @@ mod tests {
             Err(DeployConfigurationFailure::FailedToParsePaymentAmount)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1785,7 +1850,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }

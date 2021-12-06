@@ -610,7 +610,7 @@ mod tests {
     #[test]
     fn should_sign_deploy() {
         let bytes = SAMPLE_DEPLOY.as_bytes();
-        let mut deploy = Deploy::read_deploy(bytes).unwrap();
+        let deploy = Deploy::read_deploy(bytes).unwrap();
         deploy
             .is_valid()
             .unwrap_or_else(|error| panic!("{} - {:#?}", error, deploy));
