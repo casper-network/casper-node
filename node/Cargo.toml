@@ -42,8 +42,6 @@ http = "0.2.1"
 humantime = "2"
 hyper = "0.14.4"
 itertools = "0.10.0"
-jemalloc-ctl = "0.3.3"
-jemallocator = "0.3.2"
 k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
 libc = "0.2.66"
 linked-hash-map = "0.5.3"
@@ -77,7 +75,6 @@ signature = "1"
 smallvec = { version = "1", features = ["serde"] }
 static_assertions = "1"
 structopt = "0.3.14"
-sys-info = "0.8.0"
 tempfile = "3"
 thiserror = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }

@@ -28,11 +28,6 @@ use crate::{
     },
 };
 
-// We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
-// env var.
-#[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
 #[structopt(version = crate::VERSION_STRING_COLOR.as_str())]

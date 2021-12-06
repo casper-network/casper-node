@@ -116,12 +116,6 @@ To set the threshold at which a warn-level log message is generated for a long-r
 CL_EVENT_MAX_MICROSECS=1000
 ```
 
-To set the threshold at which a queue dump will occur, use the env var `CL_MEM_DUMP_THRESHOLD_MB`. When the process reaches this level of memory allocation a dump will occur, but this will only occur once. Queue dumps can be found in `/tmp` once they are complete. For example, to set the threshold to 16000 megabytes:
-
-```
-CL_MEM_DUMP_THRESHOLD_MB=16000
-```
-
 
 ## Logging
 

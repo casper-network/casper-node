@@ -46,7 +46,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
@@ -68,21 +67,6 @@ use crate::{
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 pub(crate) use queue_kind::QueueKind;
-
-/// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
-const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
-static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
-    env::var(MEM_DUMP_THRESHOLD_MB_ENV_VAR)
-        .map(|threshold_str| {
-            u64::from_str(&threshold_str).unwrap_or_else(|error| {
-                panic!(
-                    "can't parse env var {}={} as a u64: {}",
-                    MEM_DUMP_THRESHOLD_MB_ENV_VAR, threshold_str, error
-                )
-            })
-        })
-        .ok()
-});
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -331,16 +315,6 @@ pub(crate) trait Finalize: Sized {
     }
 }
 
-/// Represents memory statistics in bytes.
-struct AllocatedMem {
-    /// Total allocated memory in bytes.
-    allocated: u64,
-    /// Total consumed memory in bytes.
-    consumed: u64,
-    /// Total system memory in bytes.
-    total: u64,
-}
-
 /// A runner for a reactor.
 ///
 /// The runner manages a reactor's event queue and reactor itself and can run it either continuously
@@ -388,8 +362,6 @@ struct RunnerMetrics {
     events: IntCounter,
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
-    /// Total allocated RAM in bytes, as reported by jemalloc.
-    allocated_ram_bytes: IntGauge,
     /// Total consumed RAM in bytes, as reported by sys-info.
     consumed_ram_bytes: IntGauge,
     /// Total system RAM in bytes, as reported by sys-info.
@@ -435,15 +407,12 @@ impl RunnerMetrics {
             ]),
         )?;
 
-        let allocated_ram_bytes =
-            IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
         let consumed_ram_bytes =
             IntGauge::new("consumed_ram_bytes", "total consumed ram in bytes")?;
         let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
 
         registry.register(Box::new(events.clone()))?;
         registry.register(Box::new(event_dispatch_duration.clone()))?;
-        registry.register(Box::new(allocated_ram_bytes.clone()))?;
         registry.register(Box::new(consumed_ram_bytes.clone()))?;
         registry.register(Box::new(total_ram_bytes.clone()))?;
 
@@ -451,7 +420,6 @@ impl RunnerMetrics {
             events,
             event_dispatch_duration,
             registry: registry.clone(),
-            allocated_ram_bytes,
             consumed_ram_bytes,
             total_ram_bytes,
         })
@@ -462,7 +430,6 @@ impl Drop for RunnerMetrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.events);
         unregister_metric!(self.registry, self.event_dispatch_duration);
-        unregister_metric!(self.registry, self.allocated_ram_bytes);
         unregister_metric!(self.registry, self.consumed_ram_bytes);
         unregister_metric!(self.registry, self.total_ram_bytes);
     }
@@ -543,30 +510,6 @@ where
                 // `event_metrics_min_delay` of event processing.
                 self.last_metrics = Instant::now();
             }
-
-            if let Some(AllocatedMem {
-                allocated,
-                consumed,
-                total,
-            }) = Self::get_allocated_memory()
-            {
-                debug!(%allocated, %total, "memory allocated");
-                self.metrics.allocated_ram_bytes.set(allocated as i64);
-                self.metrics.consumed_ram_bytes.set(consumed as i64);
-                self.metrics.total_ram_bytes.set(total as i64);
-                if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
-                    let threshold_bytes = threshold_mb * 1024 * 1024;
-                    if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
-                        info!(
-                            %allocated,
-                            %total,
-                            %threshold_bytes,
-                            "node has allocated enough memory to trigger queue dump"
-                        );
-                        self.dump_queues(DumpFormat::Debug).await;
-                    }
-                }
-            }
         }
 
         // Dump event queue in JSON format if requested, stopping the world.
@@ -636,54 +579,6 @@ where
         self.current_event_id += 1;
 
         keep_going
-    }
-
-    /// Gets both the allocated and total memory from sys-info + jemalloc
-    fn get_allocated_memory() -> Option<AllocatedMem> {
-        let mem_info = match sys_info::mem_info() {
-            Ok(mem_info) => mem_info,
-            Err(error) => {
-                warn!(%error, "unable to get mem_info using sys-info");
-                return None;
-            }
-        };
-
-        // mem_info gives us kB
-        let total = mem_info.total * 1024;
-        let consumed = total - (mem_info.free * 1024);
-
-        // whereas jemalloc_ctl gives us the numbers in bytes
-        match jemalloc_epoch::mib() {
-            Ok(mib) => {
-                // jemalloc_ctl requires you to advance the epoch to update its stats
-                if let Err(advance_error) = mib.advance() {
-                    warn!(%advance_error, "unable to advance jemalloc epoch");
-                }
-            }
-            Err(error) => {
-                warn!(%error, "unable to get epoch::mib from jemalloc");
-                return None;
-            }
-        }
-        let allocated = match jemalloc_allocated::mib() {
-            Ok(allocated_mib) => match allocated_mib.read() {
-                Ok(value) => value as u64,
-                Err(error) => {
-                    warn!(%error, "unable to read allocated mib using jemalloc");
-                    return None;
-                }
-            },
-            Err(error) => {
-                warn!(%error, "unable to get allocated mib using jemalloc");
-                return None;
-            }
-        };
-
-        Some(AllocatedMem {
-            allocated,
-            consumed,
-            total,
-        })
     }
 
     /// Handles dumping queue contents to files in /tmp.
