@@ -116,8 +116,8 @@ audit-rs:
 	$(CARGO) audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2020-0159
 
 .PHONY: audit-as
-audit-as: setup-as
-	cd smart_contracts/contract_as && $(NPM) audit --production
+audit-as:
+	cd smart_contracts/contract_as && $(NPM) ci && $(NPM) audit --production
 
 .PHONY: audit
 audit: audit-rs audit-as
