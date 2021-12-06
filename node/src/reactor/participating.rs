@@ -269,7 +269,6 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
-            ParticipatingEvent::Storage(_) => "Storage",
             ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
             ParticipatingEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             ParticipatingEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
@@ -331,7 +330,6 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
-            ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             ParticipatingEvent::RestServer(event) => write!(f, "rest server: {}", event),
             ParticipatingEvent::EventStreamServer(event) => {
@@ -860,10 +858,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockProposer(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockProposer,
                 self.block_proposer.handle_event(effect_builder, rng, event),
-            ),
-            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
-                ParticipatingEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::RpcServer(event) => reactor::wrap_effects(
                 ParticipatingEvent::RpcServer,
