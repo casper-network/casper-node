@@ -440,8 +440,8 @@ where
             };
 
             for key in withdraw_keys {
-                // Deserialize to the new representation of unbonding purses
-                // and the write the value back to global state.
+                // Transform only those withdraw purses that are still to be
+                // processed in the unbonding queue.
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
                     .read(correlation_id, &key)

@@ -170,7 +170,7 @@ pub struct WithdrawPurse {
 }
 
 impl WithdrawPurse {
-    /// Creates [`UnbondingPurse`] instance for an unbonding request.
+    /// Creates [`WithdrawPurse`] instance for an unbonding request.
     pub const fn new(
         bonding_purse: URef,
         validator_public_key: PublicKey,
@@ -207,7 +207,7 @@ impl WithdrawPurse {
     ///
     /// For withdrawal requests that originated from validator's public key through
     /// [`crate::system::auction::Auction::withdraw_bid`] entrypoint this is equal to
-    /// [`UnbondingPurse::validator_public_key`] and [`UnbondingPurse::is_validator`] is `true`.
+    /// [`WithdrawPurse::validator_public_key`] and [`WithdrawPurse::is_validator`] is `true`.
     pub fn unbonder_public_key(&self) -> &PublicKey {
         &self.unbonder_public_key
     }
@@ -287,7 +287,7 @@ impl CLTyped for WithdrawPurse {
 mod tests {
     use crate::{
         bytesrepr,
-        system::auction::{EraId, UnbondingPurse},
+        system::auction::{EraId, UnbondingPurse, WithdrawPurse},
         AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn serialization_roundtrip() {
+    fn serialization_roundtrip_for_unbonding_purse() {
         let unbonding_purse = UnbondingPurse {
             bonding_purse: BONDING_PURSE,
             validator_public_key: validator_public_key(),
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn should_be_validator_condition() {
+    fn should_be_validator_condition_for_unbonding_purse() {
         let validator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
             validator_public_key(),
@@ -336,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    fn should_be_delegator_condition() {
+    fn should_be_delegator_condition_for_unbonding_purse() {
         let delegator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
             validator_public_key(),
@@ -346,5 +346,42 @@ mod tests {
             None,
         );
         assert!(!delegator_unbonding_purse.is_validator());
+    }
+
+    #[test]
+    fn serialization_roundtrip_for_withdraw_purse() {
+        let withdraw_purse = WithdrawPurse {
+            bonding_purse: BONDING_PURSE,
+            validator_public_key: validator_public_key(),
+            unbonder_public_key: unbonder_public_key(),
+            era_of_creation: ERA_OF_WITHDRAWAL,
+            amount: amount(),
+        };
+
+        bytesrepr::test_serialization_roundtrip(&withdraw_purse);
+    }
+
+    #[test]
+    fn should_be_validator_condition_for_withdraw_purse() {
+        let validator_withdraw_purse = WithdrawPurse::new(
+            BONDING_PURSE,
+            validator_public_key(),
+            validator_public_key(),
+            ERA_OF_WITHDRAWAL,
+            amount(),
+        );
+        assert!(validator_withdraw_purse.is_validator());
+    }
+
+    #[test]
+    fn should_be_delegator_condition_for_withdraw_purse() {
+        let delegator_withdraw_purse = WithdrawPurse::new(
+            BONDING_PURSE,
+            validator_public_key(),
+            unbonder_public_key(),
+            ERA_OF_WITHDRAWAL,
+            amount(),
+        );
+        assert!(!delegator_withdraw_purse.is_validator());
     }
 }

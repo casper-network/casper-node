@@ -82,7 +82,7 @@ where
             Key::Unbond(account_hash) => account_hash,
             _ => return Err(Error::InvalidKeyVariant),
         };
-        let unbonding_purses = provider.read_withdraw(&account_hash)?;
+        let unbonding_purses = provider.read_unbond(&account_hash)?;
         ret.insert(account_hash, unbonding_purses);
     }
 
@@ -97,7 +97,7 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     for (account_hash, unbonding_purses) in unbonding_purses.into_iter() {
-        provider.write_withdraw(account_hash, unbonding_purses)?;
+        provider.write_unbond(account_hash, unbonding_purses)?;
     }
     Ok(())
 }
@@ -259,7 +259,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     }
 
     let validator_account_hash = AccountHash::from(&validator_public_key);
-    let mut unbonding_purses = provider.read_withdraw(&validator_account_hash)?;
+    let mut unbonding_purses = provider.read_unbond(&validator_account_hash)?;
     let era_of_creation = provider.read_era_id()?;
     let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
@@ -270,7 +270,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         new_validator_public_key,
     );
     unbonding_purses.push(new_unbonding_purse);
-    provider.write_withdraw(validator_account_hash, unbonding_purses)?;
+    provider.write_unbond(validator_account_hash, unbonding_purses)?;
 
     Ok(())
 }

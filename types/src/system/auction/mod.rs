@@ -341,13 +341,13 @@ pub trait Auction:
 
             let validator_account_hash = AccountHash::from(&validator_public_key);
             // Update unbonding entries for given validator
-            let unbonding_purses = self.read_withdraw(&validator_account_hash)?;
+            let unbonding_purses = self.read_unbond(&validator_account_hash)?;
             if !unbonding_purses.is_empty() {
                 burned_amount += unbonding_purses
                     .into_iter()
                     .map(|unbonding_purse| *unbonding_purse.amount())
                     .sum();
-                self.write_withdraw(validator_account_hash, Vec::new())?;
+                self.write_unbond(validator_account_hash, Vec::new())?;
             }
         }
 

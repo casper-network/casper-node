@@ -76,7 +76,7 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
+    fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
         match self.context.read_gs(&Key::Unbond(*account_hash)) {
             Ok(Some(StoredValue::Unbonding(unbonding_purses))) => Ok(unbonding_purses),
             Ok(Some(_)) => Err(Error::Storage),
@@ -89,7 +89,7 @@ where
         }
     }
 
-    fn write_withdraw(
+    fn write_unbond(
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
@@ -323,10 +323,7 @@ where
         let validator_account_hash = AccountHash::from(&validator_public_key);
 
         let mut bid = match self.read_bid(&validator_account_hash)? {
-            Some(bid) => {
-                if bid.inactive() {}
-                bid
-            }
+            Some(bid) => bid,
             None => {
                 // Return early if target validator is not in `bids`
                 return Err(Error::ValidatorNotFound);

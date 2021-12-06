@@ -3261,7 +3261,6 @@ fn should_delegate_and_redelegate() {
     );
 
     let delegators = bids[&NON_FOUNDER_VALIDATOR_2_PK].delegators();
-    println!("{:?}", delegators);
     assert_eq!(delegators.len(), 1);
     let redelegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
     assert_eq!(redelegated_amount_1, U512::from(UNDELEGATE_AMOUNT_1));
@@ -3354,7 +3353,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
-        .expect("should have default account")
+        .expect("should have account")
         .main_purse();
 
     let delegator_1_purse_balance_pre_step =
@@ -3384,7 +3383,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     let delegator_2_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_2_ADDR)
-        .expect("should have default account")
+        .expect("should have account")
         .main_purse();
 
     let delegator_2_purse_balance_pre_step =
@@ -3414,7 +3413,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     let delegator_3_undelegate_purse = builder
         .get_account(*DELEGATOR_1_ADDR)
-        .expect("should have default account")
+        .expect("should have account")
         .main_purse();
 
     let delegator_3_purse_balance_pre_step =
@@ -3580,7 +3579,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     let unbond_list = unbonding_purses
         .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
-        .expect("should have unbonding purse for non founding validator");
+        .expect("should have unbonding purses for non founding validator");
     assert_eq!(unbond_list.len(), 3);
     assert_eq!(
         unbond_list[0].validator_public_key(),
@@ -3592,7 +3591,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
-        .expect("should have default account")
+        .expect("should have account")
         .main_purse();
 
     let delegator_1_purse_balance_pre_step =
@@ -3622,7 +3621,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     let delegator_2_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_2_ADDR)
-        .expect("should have default account")
+        .expect("should have account")
         .main_purse();
 
     let delegator_2_purse_balance_pre_step =
@@ -3652,7 +3651,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     let delegator_3_undelegate_purse = builder
         .get_account(*DELEGATOR_1_ADDR)
-        .expect("should have default account")
+        .expect("should have account")
         .main_purse();
 
     let delegator_3_purse_balance_pre_step =
@@ -3740,7 +3739,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     builder.exec(withdraw_request).expect_success().commit();
 
-    for _ in 0..=(DEFAULT_AUCTION_DELAY) {
+    for _ in 0..=DEFAULT_AUCTION_DELAY {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)
@@ -3753,7 +3752,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
         builder
             .step(step_request)
-            .expect("must execute third step request post upgrade");
+            .expect("must execute step successfully");
     }
 
     let delegator_4_purse = builder

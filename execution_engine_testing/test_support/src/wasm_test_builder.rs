@@ -22,9 +22,8 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, ExecError, GenesisSuccess, GetBidsRequest,
-            QueryRequest, QueryResult, StepError, SystemContractRegistry, UpgradeConfig,
-            UpgradeSuccess,
+            BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
+            QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -954,13 +953,13 @@ where
 
         let reader = tracking_copy.reader();
 
-        let withdraws_keys = reader
+        let unbond_keys = reader
             .keys_with_prefix(correlation_id, &[KeyTag::Unbond as u8])
             .unwrap_or_default();
 
         let mut ret = BTreeMap::new();
 
-        for key in withdraws_keys.into_iter() {
+        for key in unbond_keys.into_iter() {
             let read_result = reader.read(correlation_id, &key);
             if let (Key::Unbond(account_hash), Ok(Some(StoredValue::Unbonding(unbonding_purses)))) =
                 (key, read_result)
@@ -972,7 +971,7 @@ where
         ret
     }
 
-    /// Gets [`UnbondingPurses`].
+    /// Gets [`WithdrawPurses`].
     pub fn get_withdraws(&mut self) -> WithdrawPurses {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
@@ -1001,28 +1000,6 @@ where
         }
 
         ret
-    }
-
-    /// Get all keys
-    pub fn get_all_keys(&mut self) -> Vec<Key> {
-        let correlation_id = CorrelationId::new();
-        let state_root_hash = self.get_post_state_hash();
-
-        let tracking_copy = self
-            .engine_state
-            .tracking_copy(state_root_hash)
-            .unwrap()
-            .unwrap();
-
-        let reader = tracking_copy.reader();
-
-        match reader.keys_with_prefix(correlation_id, &[]) {
-            Ok(keys) => keys,
-            Err(trie_error) => {
-                let exec_error: ExecError = trie_error.into();
-                panic!("{:?}", exec_error)
-            }
-        }
     }
 
     /// Gets all `[Key::Balance]`s in global state.

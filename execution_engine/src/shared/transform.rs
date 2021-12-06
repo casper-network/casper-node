@@ -369,7 +369,7 @@ impl From<&Transform> for casper_types::Transform {
                 casper_types::Transform::WriteWithdraw(unbonding_purses.clone())
             }
             Transform::Write(StoredValue::Withdraw(_)) => casper_types::Transform::Failure(
-                "withdraw purses should be be written to global state".to_string(),
+                "withdraw purses should not be be written to global state".to_string(),
             ),
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),
