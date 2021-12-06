@@ -150,7 +150,6 @@ impl Debug for ContractRuntime {
 pub struct ContractRuntimeMetrics {
     run_execute: Histogram,
     apply_effect: Histogram,
-    commit_cache: Histogram,
     commit_upgrade: Histogram,
     run_query: Histogram,
     commit_step: Histogram,
@@ -181,8 +180,6 @@ const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
 const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
 const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
 const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
-const COMMIT_CACHE_NAME: &str = "contract_runtime_write_values";
-const COMMIT_CACHE_HELP: &str = "tracking run of engine_state.write_values in seconds.";
 const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
 const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
 const COMMIT_STEP_NAME: &str = "contract_runtime_commit_step";
@@ -236,11 +233,6 @@ impl ContractRuntimeMetrics {
                 registry,
                 APPLY_EFFECT_NAME,
                 APPLY_EFFECT_HELP,
-            )?,
-            commit_cache: register_histogram_metric(
-                registry,
-                COMMIT_CACHE_NAME,
-                COMMIT_CACHE_HELP,
             )?,
             run_query: register_histogram_metric(registry, RUN_QUERY_NAME, RUN_QUERY_HELP)?,
             commit_step: register_histogram_metric(registry, COMMIT_STEP_NAME, COMMIT_STEP_HELP)?,
