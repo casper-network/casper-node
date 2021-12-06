@@ -12,6 +12,26 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+* Add new event to the main SSE server stream across all endpoints `<IP:Port>/events/*` which emits a shutdown event when the node shuts down.
+* Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
+* Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
+
+### Changed
+* `enable_manual_sync` configuration parameter defaults to `true`.
+* Major rewrite of the contract runtime component.
+* More node modules are now `pub(crate)`.
+* Chain automatically creates a switch block immediately after genesis or an upgrade.
+* Asymmetric connections are now swept regularly again.
+
+### Deprecated
+* Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
+
+### Removed
+* Legacy synchronization from genesis in favor of fast sync has been removed.
+
+
 
 ## [1.4.2] - 2021-11-11
 
@@ -26,11 +46,11 @@ All notable changes to this project will be documented in this file.  The format
 * The block proposer component now retains pending deploys and transfers across a restart.
 
 
+
 ## [1.4.0] - 2021-10-04
 
 ### Added
 * Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
-* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 * Add `contract_runtime_execute_block` histogram tracking execution time of a whole block.
 * Long-running events now log their event type.
 * Individual weights for traffic throttling can now be set through the configuration value `network.estimator_weights`.
@@ -39,8 +59,6 @@ All notable changes to this project will be documented in this file.  The format
 * Add gzip content negotiation (using accept-encoding header) to rpc endpoints.
 * Add `state_get_trie` JSON-RPC endpoint.
 * Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes` that return the status changes of active validators.
-* Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
-* Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
 
 ### Changed
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
@@ -60,13 +78,6 @@ All notable changes to this project will be documented in this file.  The format
   * `[gossip][gossip_request_timeout]`
   * `[gossip][get_remainder_timeout]`
   * `[fetcher][get_from_peer_timeout]`
-* Major rewrite of the contract runtime component.
-* More node modules are now `pub(crate)`.
-* Chain automatically creates a switch block immediately after genesis or an upgrade.
-* Asymmetric connections are now swept regularly again.
-
-### Deprecated
-* Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
 
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
@@ -74,7 +85,6 @@ All notable changes to this project will be documented in this file.  The format
 * Experimental support for libp2p has been removed.
 * The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
-* Legacy synchronization from genesis in favor of fast sync has been removed.
 
 ### Fixed
 * Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
