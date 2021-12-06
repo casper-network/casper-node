@@ -555,7 +555,7 @@ impl reactor::Reactor for Reactor {
             config,
             chainspec_loader,
             storage,
-            contract_runtime,
+            mut contract_runtime,
             latest_block_header: latest_switch_block_header,
             event_stream_server,
             small_network_identity,
@@ -1179,5 +1179,17 @@ impl reactor::Reactor for Reactor {
         self.linear_chain
             .stop_for_upgrade()
             .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
+    }
+}
+
+#[cfg(test)]
+impl NetworkedReactor for Reactor {
+    type NodeId = NodeId;
+    fn node_id(&self) -> Self::NodeId {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
+            self.network.node_id()
+        } else {
+            self.small_network.node_id()
+        }
     }
 }
