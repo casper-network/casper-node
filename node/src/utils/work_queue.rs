@@ -3,13 +3,15 @@
 //! A queue that allows for processing a variable amount of work that may spawn more jobs, but is
 //! expected to finish eventually.
 
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+};
 
 use futures::{stream, Stream};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Mutex,
-};
 use tokio::sync::Notify;
 
 /// Multi-producer, multi-consumer async job queue with end conditions.
