@@ -47,7 +47,7 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
+use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
@@ -362,10 +362,6 @@ struct RunnerMetrics {
     events: IntCounter,
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
-    /// Total consumed RAM in bytes, as reported by sys-info.
-    consumed_ram_bytes: IntGauge,
-    /// Total system RAM in bytes, as reported by sys-info.
-    total_ram_bytes: IntGauge,
     /// Handle to the metrics registry, in case we need to unregister.
     registry: Registry,
 }
@@ -406,22 +402,10 @@ impl RunnerMetrics {
                 5_000_000.0,
             ]),
         )?;
-
-        let consumed_ram_bytes =
-            IntGauge::new("consumed_ram_bytes", "total consumed ram in bytes")?;
-        let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
-
-        registry.register(Box::new(events.clone()))?;
-        registry.register(Box::new(event_dispatch_duration.clone()))?;
-        registry.register(Box::new(consumed_ram_bytes.clone()))?;
-        registry.register(Box::new(total_ram_bytes.clone()))?;
-
         Ok(RunnerMetrics {
             events,
             event_dispatch_duration,
             registry: registry.clone(),
-            consumed_ram_bytes,
-            total_ram_bytes,
         })
     }
 }
@@ -430,8 +414,6 @@ impl Drop for RunnerMetrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.events);
         unregister_metric!(self.registry, self.event_dispatch_duration);
-        unregister_metric!(self.registry, self.consumed_ram_bytes);
-        unregister_metric!(self.registry, self.total_ram_bytes);
     }
 }
 
