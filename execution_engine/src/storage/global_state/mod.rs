@@ -109,7 +109,7 @@ pub trait StateProvider {
         trie: &Trie<Key, StoredValue>,
     ) -> Result<Digest, Self::Error>;
 
-    /// Finds all of the missing or corrupt keys of which are descendants of `trie_key`
+    /// Finds all of the missing or corrupt keys of which are descendants of `trie_key` and optionally performs an integrity check on each node
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,

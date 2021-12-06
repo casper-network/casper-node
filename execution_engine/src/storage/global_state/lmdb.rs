@@ -214,7 +214,7 @@ impl StateProvider for LmdbGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values and optionally performs an integrity check on each node
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,

@@ -1754,7 +1754,7 @@ where
         Ok(missing_descendant_trie_keys)
     }
 
-    /// Performs a lookup for a list of missing root hashes.
+    /// Performs a lookup for a list of missing root hashes and optionally performs an integrity check on each node
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,

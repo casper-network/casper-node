@@ -540,7 +540,7 @@ pub async fn download_trie_channels(
                 .unwrap()
                 .as_millis();
             info!(
-                "({timestamp}) tries: {downloaded}/{total} - {kbytes_per_sec} kbps",
+                "({timestamp}) tries: {downloaded}/{total} - {kbytes_per_sec} kilobytes per second",
                 downloaded = tries_downloaded,
                 total = total_tries_count,
                 kbytes_per_sec = kbytes_per_sec,
@@ -849,7 +849,7 @@ async fn sync_trie_store_worker(
             let elapsed = last_update.elapsed().as_millis();
             if elapsed >= 1000 {
                 let scaled = *total_bytes_since_update as f32 * (elapsed as f32 / 1000f32);
-                info!("throughput rate: {} kbps", scaled / 1024f32);
+                info!("throughput rate: {} kilobytes per second", scaled / 1024f32);
                 *total_bytes_since_update = 0;
                 *last_update = Instant::now();
             }
