@@ -70,8 +70,18 @@ mod proptests {
         }
 
         #[test]
-        fn roundtrip_trie(trie in trie_arb()) {
-            bytesrepr::test_serialization_roundtrip(&trie);
+        fn bytesrepr_roundtrip_trie_leaf(trie_leaf in trie_leaf_arb()) {
+            bytesrepr::test_serialization_roundtrip(&trie_leaf);
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_trie_extension(trie_extension in trie_extension_arb()) {
+            bytesrepr::test_serialization_roundtrip(&trie_extension);
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_trie_node(trie_node in trie_node_arb()) {
+            bytesrepr::test_serialization_roundtrip(&trie_node);
         }
 
         #[test]
@@ -87,17 +97,45 @@ mod proptests {
         }
 
         #[test]
-        fn serde_roundtrip_trie(trie in trie_arb()) {
-             let json_str = serde_json::to_string(&trie)?;
+        fn serde_roundtrip_trie_leaf(trie_leaf in trie_leaf_arb()) {
+             let json_str = serde_json::to_string(&trie_leaf)?;
              let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str)?;
-             assert_eq!(trie, deserialized_trie)
+             assert_eq!(trie_leaf, deserialized_trie)
         }
 
         #[test]
-        fn bincode_roundtrip_trie(trie in trie_arb()) {
-           let bincode_bytes = bincode::serialize(&trie)?;
+        fn serde_roundtrip_trie_node(trie_node in trie_node_arb()) {
+             let json_str = serde_json::to_string(&trie_node)?;
+             let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str)?;
+             assert_eq!(trie_node, deserialized_trie)
+        }
+
+        #[test]
+        fn serde_roundtrip_trie_extension(trie_extension in trie_extension_arb()) {
+             let json_str = serde_json::to_string(&trie_extension)?;
+             let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str)?;
+             assert_eq!(trie_extension, deserialized_trie)
+        }
+
+        #[test]
+        fn bincode_roundtrip_trie_leaf(trie_leaf in trie_leaf_arb()) {
+           let bincode_bytes = bincode::serialize(&trie_leaf)?;
            let deserialized_trie = bincode::deserialize(&bincode_bytes)?;
-           assert_eq!(trie, deserialized_trie)
+           assert_eq!(trie_leaf, deserialized_trie)
+        }
+
+        #[test]
+        fn bincode_roundtrip_trie_node(trie_node in trie_node_arb()) {
+           let bincode_bytes = bincode::serialize(&trie_node)?;
+           let deserialized_trie = bincode::deserialize(&bincode_bytes)?;
+           assert_eq!(trie_node, deserialized_trie)
+        }
+
+        #[test]
+        fn bincode_roundtrip_trie_extension(trie_extension in trie_extension_arb()) {
+           let bincode_bytes = bincode::serialize(&trie_extension)?;
+           let deserialized_trie = bincode::deserialize(&bincode_bytes)?;
+           assert_eq!(trie_extension, deserialized_trie)
         }
 
         #[test]

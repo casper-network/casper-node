@@ -75,6 +75,11 @@ impl ToBytes for DeployHash {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for DeployHash {
@@ -192,14 +197,14 @@ impl FromBytes for Transfer {
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.deploy_hash.to_bytes()?);
-        result.append(&mut self.from.to_bytes()?);
-        result.append(&mut self.to.to_bytes()?);
-        result.append(&mut self.source.to_bytes()?);
-        result.append(&mut self.target.to_bytes()?);
-        result.append(&mut self.amount.to_bytes()?);
-        result.append(&mut self.gas.to_bytes()?);
-        result.append(&mut self.id.to_bytes()?);
+        (&self.deploy_hash).write_bytes(&mut result)?;
+        (&self.from).write_bytes(&mut result)?;
+        (&self.to).write_bytes(&mut result)?;
+        (&self.source).write_bytes(&mut result)?;
+        (&self.target).write_bytes(&mut result)?;
+        (&self.amount).write_bytes(&mut result)?;
+        (&self.gas).write_bytes(&mut result)?;
+        (&self.id).write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -212,6 +217,18 @@ impl ToBytes for Transfer {
             + self.amount.serialized_length()
             + self.gas.serialized_length()
             + self.id.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.deploy_hash).write_bytes(writer)?;
+        (&self.from).write_bytes(writer)?;
+        self.to.write_bytes(writer)?;
+        self.source.write_bytes(writer)?;
+        self.target.write_bytes(writer)?;
+        self.amount.write_bytes(writer)?;
+        self.gas.write_bytes(writer)?;
+        self.id.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -376,6 +393,12 @@ impl ToBytes for TransferAddr {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.0).write_bytes(writer)?;
+        Ok(())
     }
 }
 

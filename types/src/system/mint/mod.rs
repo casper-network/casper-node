@@ -31,13 +31,11 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         self.write_balance(purse_uref, initial_balance)?;
 
         if !is_empty_purse {
-            // get total supply uref if exists, otherwise create it.
+            // get total supply uref if exists, otherwise error
             let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
                 None => {
-                    // create total_supply value and track in mint context
-                    let uref: URef = self.new_uref(U512::zero())?;
-                    self.put_key(TOTAL_SUPPLY_KEY, uref.into())?;
-                    uref
+                    // total supply URef should exist due to genesis
+                    return Err(Error::TotalSupplyNotFound);
                 }
                 Some(Key::URef(uref)) => uref,
                 Some(_) => return Err(Error::MissingKey),
@@ -153,5 +151,40 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .checked_mul(&Ratio::from(total_supply))
             .map(|ratio| ratio.to_integer())
             .ok_or(Error::ArithmeticOverflow)
+    }
+
+    /// Mint `amount` new token into `existing_purse`.
+    /// Returns unit on success, otherwise an error.
+    fn mint_into_existing_purse(
+        &mut self,
+        existing_purse: URef,
+        amount: U512,
+    ) -> Result<(), Error> {
+        let caller = self.get_caller();
+        if caller != PublicKey::System.to_account_hash() {
+            return Err(Error::InvalidContext);
+        }
+        if amount.is_zero() {
+            // treat as noop
+            return Ok(());
+        }
+        if self.read_balance(existing_purse)?.is_none() {
+            return Err(Error::PurseNotFound);
+        }
+        self.add_balance(existing_purse, amount)?;
+        // get total supply uref if exists, otherwise error.
+        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+            None => {
+                // total supply URef should exist due to genesis
+                // which obviously must have been called
+                // before new rewards are minted at the end of an era
+                return Err(Error::TotalSupplyNotFound);
+            }
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey),
+        };
+        // increase total supply
+        self.add(total_supply_uref, amount)?;
+        Ok(())
     }
 }

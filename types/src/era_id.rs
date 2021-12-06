@@ -164,6 +164,12 @@ impl ToBytes for EraId {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for EraId {
