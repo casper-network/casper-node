@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -505,7 +505,10 @@ impl Reactor {
                     self.contract_runtime.get_trie(trie_key)
                 })
             }
-            _ => todo!("already handled"),
+            _ => {
+                warn!(%sender, ?tag, ?serialized_id, "tried to handle a non-trie get request, this should not have happened");
+                Effects::new()
+            }
         }
     }
 
