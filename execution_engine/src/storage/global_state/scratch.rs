@@ -45,10 +45,7 @@ impl Cache {
     }
 
     fn get(&self, key: &Key) -> Option<&StoredValue> {
-        self.stored_values
-            .iter()
-            .find(|(cached_key, _)| *cached_key == key)
-            .map(|(_, value)| value)
+        self.stored_values.get(key)
     }
 
     fn into_inner(self) -> HashMap<Key, StoredValue> {
