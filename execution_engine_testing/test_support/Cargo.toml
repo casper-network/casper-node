@@ -1,6 +1,6 @@
 [package]
 name = "casper-engine-test-support"
-version = "2.0.2" # when updating, also update 'html_root_url' in lib.rs
+version = "2.0.3" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Library to support testing of Wasm smart contracts for use on the Casper network."
@@ -11,9 +11,9 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_en
 license-file = "../../LICENSE"
 
 [dependencies]
-casper-execution-engine = { version = "1.4.2", path = "../../execution_engine", features = ["test-support"] }
+casper-execution-engine = { version = "1.4.3", path = "../../execution_engine", features = ["test-support"] }
 casper-hashing = { version = "1.4.2", path = "../../hashing" }
-casper-types = { version = "1.4.4", path = "../../types" }
+casper-types = { version = "1.4.5", path = "../../types" }
 lmdb = "0.8.0"
 log = "0.4.14"
 num-rational = "0.4.0"
