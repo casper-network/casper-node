@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::{self, AccountHash},
+    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     contracts::NamedKeys,
+    crypto,
     system::{
         auction::{
             AccountProvider, Auction, Bid, Delegator, EraInfo, Error, MintProvider,
@@ -130,7 +131,7 @@ where
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        account::blake2b(data)
+        crypto::blake2b(data)
     }
 }
 
@@ -141,7 +142,7 @@ where
 {
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
         let account_hash =
-            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), account::blake2b);
+            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
         let maybe_value = self
             .context
             .read_gs_direct(&Key::Account(account_hash))

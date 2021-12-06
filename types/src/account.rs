@@ -15,11 +15,6 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
-
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
     action_thresholds::ActionThresholds,
@@ -31,7 +26,7 @@ pub use self::{
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
-    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
+    crypto, AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// Represents an Account in the global state.
@@ -297,16 +292,12 @@ impl FromBytes for Account {
 }
 
 #[doc(hidden)]
+#[deprecated(
+    since = "1.4.4",
+    note = "function moved to casper_types::crypto::blake2b"
+)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-    let mut result = [0; BLAKE2B_DIGEST_LENGTH];
-    // NOTE: Assumed safe as `BLAKE2B_DIGEST_LENGTH` is a valid value for a hasher
-    let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
-
-    hasher.update(data);
-    hasher.finalize_variable(|slice| {
-        result.copy_from_slice(slice);
-    });
-    result
+    crypto::blake2b(data)
 }
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
