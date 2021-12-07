@@ -184,7 +184,7 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => *genesis_validator_stake_1 + 5000,
+            auction::ARG_AMOUNT => *genesis_validator_stake_1,
             auction::ARG_DELEGATION_RATE => delegation_rate,
         },
     )
