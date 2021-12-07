@@ -79,7 +79,7 @@ use tokio::sync::Notify;
 /// # let handle = rt.handle();
 /// # handle.block_on(test_func());
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct WorkQueue<T> {
     /// Jobs currently in the queue.
     jobs: Mutex<VecDeque<T>>,
@@ -87,6 +87,17 @@ pub struct WorkQueue<T> {
     in_progress: Arc<AtomicUsize>,
     /// Notifier for waiting tasks.
     notify: Notify,
+}
+
+// Manual default implementation, since the derivation would require a `T: Default` trait bound.
+impl<T> Default for WorkQueue<T> {
+    fn default() -> Self {
+        Self {
+            jobs: Default::default(),
+            in_progress: Default::default(),
+            notify: Default::default(),
+        }
+    }
 }
 
 impl<T> WorkQueue<T> {
