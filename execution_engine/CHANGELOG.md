@@ -14,6 +14,16 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 
+
+## 1.4.3 - 2021-12-06
+
+### Changed
+* Auction contract now handles minting into an existing purse.
+* Default maximum stack size in `WasmConfig` changed to 188.
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+
+
+
 ## [1.4.2] - 2021-11-11
 
 ### Changed

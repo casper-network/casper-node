@@ -13,6 +13,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+
+
+## 1.4.5 - 2021-12-06
+
+### Added
+* Add function to `auction::MintProvider` trait to support minting into an existing purse.
+
 ### Changed
 * Change checksummed hex implementation to use 32 byte rather than 64 byte blake2b digests. 
 

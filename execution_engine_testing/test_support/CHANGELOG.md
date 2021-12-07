@@ -13,6 +13,17 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+
+
+## 2.0.3 - 2021-12-06
+
+### Added
+* Added `WasmTestBuilder::get_balance_keys` function.
+
+
+
+## 2.0.2 - 2021-11-24
+
 ### Changed
 * Revert the change to the path detection logic applied in v2.0.1.
 

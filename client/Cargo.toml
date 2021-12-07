@@ -1,6 +1,6 @@
 [package]
 name = "casper-client"
-version = "1.4.2"
+version = "1.4.3"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "A client for interacting with the Casper network"
@@ -24,10 +24,10 @@ doc = false
 async-trait = "0.1.50"
 base16 = "0.2.1"
 base64 = "0.13.0"
-casper-execution-engine = { version = "1.4.2", path = "../execution_engine" }
-casper-node = { version = "1.4.2", path = "../node" }
+casper-execution-engine = { version = "1.4.3", path = "../execution_engine" }
+casper-node = { version = "1.4.3", path = "../node" }
 casper-hashing = { version = "1.4.2", path = "../hashing" }
-casper-types = { version = "1.4.4", path = "../types" }
+casper-types = { version = "1.4.5", path = "../types" }
 clap = "2"
 humantime = "2"
 jsonrpc-lite = "0.5.0"
