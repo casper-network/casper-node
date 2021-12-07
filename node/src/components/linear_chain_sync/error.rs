@@ -76,7 +76,7 @@ pub(crate) enum LinearChainSyncError {
     },
 
     #[error(
-        "Current version is {current_version}, but current block header has older version: \
+        "Network is still running an older version. Current version is {current_version}, but current block header has older version: \
          {block_header_with_old_version:?}"
     )]
     CurrentBlockHeaderHasOldVersion {

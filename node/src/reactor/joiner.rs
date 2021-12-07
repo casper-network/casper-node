@@ -513,22 +513,8 @@ impl reactor::Reactor for Reactor {
                                 info!(%current_version, %future_version, "restarting for upgrade");
                                 Some(JoinerEvent::Shutdown(ExitCode::Success))
                             }
-                            Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
-                                current_version,
-                                block_header_with_old_version,
-                            }) => {
-                                let old_version = block_header_with_old_version.protocol_version();
-                                fatal!(
-                                    effect_builder,
-                                    "network is still running an older version, exiting; current_version={}; old_version={}",
-                                    current_version,
-                                    old_version
-                                )
-                                .await;
-                                None
-                            }
                             Err(error) => {
-                                fatal!(effect_builder, "{:?}", error).await;
+                                fatal!(effect_builder, "{}", error).await;
                                 None
                             }
                         }
