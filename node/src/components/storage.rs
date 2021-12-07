@@ -730,9 +730,10 @@ impl Storage {
         REv: From<NetworkRequest<NodeId, Message>> + Send,
     {
         if self.enable_mem_deduplication {
+            let unique_id = incoming.message.unique_id();
             if let Some(serialized_item) = self
                 .serialized_item_pool
-                .get(incoming.message.serialized_item_id())
+                .get(AsRef::<[u8]>::as_ref(&unique_id))
             {
                 // We found an item in the pool. We can short-circuit all
                 // deserialization/serialization and return the canned item

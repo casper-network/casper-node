@@ -91,16 +91,25 @@ impl Display for NetRequest {
 }
 
 impl NetRequest {
-    /// Returns the _serialized_ hash of the requested object.
-    pub(crate) fn serialized_item_id(&self) -> &[u8] {
-        match self {
+    /// Returns a unique identifier of the requested object.
+    ///
+    /// The identifier is based on the domain-specific ID and the tag of the item, thus
+    /// `BlockAndMetadataByHeight` and `BlockHeaderAndFinalitySignaturesByHeight` have different IDs
+    /// even if the same height was requested.
+    pub(crate) fn unique_id(&self) -> Vec<u8> {
+        let id = match self {
             NetRequest::Deploy(ref id) => id,
             NetRequest::Block(ref id) => id,
             NetRequest::GossipedAddress(ref id) => id,
             NetRequest::BlockAndMetadataByHeight(ref id) => id,
             NetRequest::BlockHeaderByHash(ref id) => id,
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref id) => id,
-        }
+        };
+        let mut unique_id = Vec::with_capacity(id.len() + 1);
+        unique_id.push(self.tag() as u8);
+        unique_id.extend(id);
+
+        unique_id
     }
 
     /// Returns the tag associated with the request.
@@ -182,5 +191,20 @@ pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
 impl Display for TrieResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("response, trie")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NetRequest;
+
+    #[test]
+    fn unique_id_is_unique_across_variants() {
+        let inner_id = b"example".to_vec();
+
+        let a = NetRequest::BlockAndMetadataByHeight(inner_id.clone());
+        let b = NetRequest::BlockHeaderAndFinalitySignaturesByHeight(inner_id);
+
+        assert_ne!(a.unique_id(), b.unique_id());
     }
 }
