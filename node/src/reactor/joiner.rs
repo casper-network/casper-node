@@ -1012,7 +1012,7 @@ mod tests {
         effect::EffectBuilder,
         reactor::{EventQueueHandle, QueueKind, Scheduler},
         testing::TestRng,
-        types::{Block, BlockHeader},
+        types::Block,
         utils::{self, SharedFlag},
     };
 
@@ -1020,7 +1020,7 @@ mod tests {
 
     #[tokio::test]
     async fn generates_joiner_event() {
-        let scheduler = utils::leak(Scheduler::<JoinerEvent>::new(QueueKind::weights()));
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
         let event_queue = EventQueueHandle::new(scheduler, SharedFlag::default());
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -1034,7 +1034,7 @@ mod tests {
             Block::random_with_specifics(&mut rng, era_id, height, protocol_version, is_switch);
 
         // Ok(_) should result in generating JoinerEvent::FinishedJoining
-        let result_ok: Result<BlockHeader, LinearChainSyncError> = Ok(block.header().clone());
+        let result_ok = Ok(block.header().clone());
         let joiner_event = generate_joiner_event(result_ok, effect_builder).await;
         assert!(matches!(
             joiner_event,
@@ -1043,7 +1043,7 @@ mod tests {
 
         // Block from the future version should result in generating JoinerEvent::Shutdown
         // with proper exit code.
-        let result_block_from_future: Result<BlockHeader, LinearChainSyncError> = Err(
+        let result_block_from_future = Err(
             LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
                 current_version: protocol_version,
                 block_header_with_future_version: Box::new(block.header().clone()),
@@ -1057,19 +1057,17 @@ mod tests {
 
         // CurrentBlockHeaderHasOldVersion response should no longer generate JoinerEvent::Shutdown,
         // but None. See: https://github.com/casper-network/casper-node/issues/2338
-        let result_block_from_past: Result<BlockHeader, LinearChainSyncError> =
-            Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
-                current_version: protocol_version,
-                block_header_with_old_version: Box::new(block.header().clone()),
-            });
+        let result_block_from_past = Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+            current_version: protocol_version,
+            block_header_with_old_version: Box::new(block.header().clone()),
+        });
         let joiner_event = generate_joiner_event(result_block_from_past, effect_builder).await;
         assert!(matches!(joiner_event, None));
 
         // Other errors should result in None, we test against arbitrarily selected one.
-        let arbitrary_error: Result<BlockHeader, LinearChainSyncError> =
-            Err(LinearChainSyncError::BlockExecutionError(
-                BlockExecutionError::MoreThanOneExecutionResult,
-            ));
+        let arbitrary_error = Err(LinearChainSyncError::BlockExecutionError(
+            BlockExecutionError::MoreThanOneExecutionResult,
+        ));
         let joiner_event = generate_joiner_event(arbitrary_error, effect_builder).await;
         assert!(matches!(joiner_event, None));
     }
