@@ -6,7 +6,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Instant,
 };
 
@@ -478,8 +478,6 @@ impl reactor::Reactor for Reactor {
         let maybe_trusted_hash = match config.node.trusted_hash {
             Some(trusted_hash) => Some(trusted_hash),
             None => storage
-                .lock()
-                .expect("mutex poisoned")
                 .read_highest_block_header()
                 .expect("Could not read highest block header")
                 .map(|block_header| block_header.hash()),
@@ -561,9 +559,9 @@ impl reactor::Reactor for Reactor {
                                             switch_block: Box::new(switch_block),
                                         })
                                     }
-                                    Ok(None) => JoinerEvent::FinishedJoining {
+                                    Ok(None) => Some(JoinerEvent::FinishedJoining {
                                         block_header: Box::new(latest_block_header),
-                                    },
+                                    }),
                                     Err(error) => {
                                         fatal!(effect_builder, "{:?}", error).await;
                                         None
@@ -998,14 +996,17 @@ impl reactor::Reactor for Reactor {
             ),
             JoinerEvent::CreatedSwitchBlock { switch_block } => {
                 let mut effects = Effects::new();
-                effects.extend(async move {
+                effects.extend(
                     match self.storage.write_block(&switch_block) {
-                        Ok(true) => Box::new(switch_block.take_header()),
-                        Err(err) => fatal!(effect_builder, "error writing switch block {:?}", err).await,
+                        Ok(true) => self.dispatch_event(effect_builder, rng, JoinerEvent::FinishedJoining { block_header: Box::new(switch_block.take_header()) }),
+                        Ok(false) => {
+                            fatal!(effect_builder, "no new switch block written").ignore()
+                        },
+                        Err(err) => {
+                            fatal!(effect_builder, "error writing switch block {:?}", err).ignore()
+                        },
                     }
-                }.event(|block_header| {
-                    JoinerEvent::FinishedJoining { block_header }
-                }).ignore());
+                );
                 effects
             }
             JoinerEvent::FinishedJoining { block_header } => {
@@ -1050,14 +1051,12 @@ impl Reactor {
                 block_header: switch_block_header,
             } => *switch_block_header,
         };
-        let storage = Arc::try_unwrap(self.storage).map_err(|_| Error::StorageOwnership)?;
-        let storage = Mutex::into_inner(storage).map_err(|_| Error::StorageOwnership)?;
         let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,
             contract_runtime: self.contract_runtime,
-            storage,
+            storage: self.storage,
             latest_block_header: latest_switch_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
@@ -1089,38 +1088,36 @@ impl Reactor {
                     .is_last_block_before_activation(latest_block_header) =>
             {
                 Self::maybe_create_upgrade_switch_block(
-                    Some(latest_block_header),
+                    latest_block_header,
                     chainspec,
                     contract_runtime,
                     effect_builder,
                 )
                 .await?
             }
-            Some(latest_block) => {
+            Some(latest_block_header) => {
                 return Err(Error::UnexpectedLatestBlockHeader {
-                    latest_block_header: Box::new(latest_block.take_header()),
+                    latest_block_header: Box::new(latest_block_header.clone()),
                 });
             }
             None => match chainspec.protocol_config.activation_point {
                 ActivationPoint::EraId(upgrade_era_id) => {
                     return Err(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id });
                 }
-                ActivationPoint::Genesis(genesis_timestamp) => {
+                ActivationPoint::Genesis(genesis_timestamp) => Some(
                     Self::maybe_create_genesis_switch_block(
-                        None,
                         chainspec,
                         contract_runtime,
                         effect_builder,
                         genesis_timestamp,
                     )
-                    .await?
-                }
+                    .await?,
+                ),
             },
         })
     }
 
     async fn maybe_create_genesis_switch_block(
-        maybe_highest_block_header: Option<BlockHeader>,
         chainspec: Arc<Chainspec>,
         contract_runtime: &ContractRuntime,
         effect_builder: EffectBuilder<JoinerEvent>,
@@ -1132,11 +1129,8 @@ impl Reactor {
                 chainspec_protocol_version: chainspec.protocol_config.version,
             });
         }
-        if let Some(highest_block_header) = maybe_highest_block_header {
-            return Err(Error::CannotRunGenesisOnPreExistingBlockchain {
-                highest_block_header: Box::new(highest_block_header),
-            });
-        }
+        // TODO - the caller is now responsible for checking that there isn't already a block in
+        // storage at genesis
         let GenesisSuccess {
             post_state_hash,
             execution_effect,
@@ -1159,20 +1153,17 @@ impl Reactor {
     }
 
     async fn maybe_create_upgrade_switch_block(
-        maybe_highest_block_header: Option<&BlockHeader>,
+        highest_block_header: &BlockHeader,
         chainspec: Arc<Chainspec>,
         contract_runtime: &ContractRuntime,
         effect_builder: EffectBuilder<JoinerEvent>,
     ) -> Result<Option<Block>, Error> {
-        let upgrade_block_header = latest_block.header();
+        let upgrade_block_header = highest_block_header;
         let upgrade_era_id = upgrade_block_header.next_block_era_id();
-        if chainspec.protocol_config.last_emergency_restart != Some(upgrade_block_header.era_id()) {
-            if let Some(preexisting_block_header) = maybe_highest_block_header {
-                return Err(Error::NonEmergencyUpgradeWillClobberExistingBlockChain {
-                    preexisting_block_header: Box::new(preexisting_block_header.clone()),
-                });
-            }
-        }
+
+        // TODO: the caller is now responsible for ensuring that we have not progressed the chain by
+        // adding blocks since this last upgrade point.
+
         let global_state_update = chainspec.protocol_config.get_update_mapping()?;
         let UpgradeSuccess {
             post_state_hash,
@@ -1263,8 +1254,8 @@ impl NetworkedReactor for Reactor {
 #[cfg(test)]
 impl Reactor {
     /// Inspect storage.
-    pub(crate) fn storage(&self) -> Arc<Mutex<Storage>> {
-        Arc::clone(&self.storage)
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
     }
 
     /// Inspect the contract runtime.
