@@ -257,7 +257,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_queue_exists_immediately() {
+    async fn empty_queue_exits_immediately() {
         let q: Arc<WorkQueue<TestJob>> = Arc::new(Default::default());
         assert!(q.next_job().await.is_none());
     }
@@ -322,8 +322,8 @@ mod tests {
             worker.await.expect("task panicked");
         }
 
-        // A single job starting at `k` will add `SUM_{n=0}^{k} (k-n) * 2^(n+1)`, which is
-        // 114 for `k=5`. We start 5 jobs, so we expect `5*114 = 285` to be the result.
+        // A single job starting at `k` will add `SUM_{n=0}^{k} (k-n) * 2^n`, which is
+        // 57 for `k=5`. We start 5 jobs, so we expect `5 * 57 = 285` to be the result.
         let expected_total = 285;
         assert_eq!(output.load(Ordering::SeqCst), expected_total);
     }
