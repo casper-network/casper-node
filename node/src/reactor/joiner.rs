@@ -1042,6 +1042,7 @@ mod tests {
         ));
 
         // Block from the future version should result in generating JoinerEvent::Shutdown
+        // with proper exit code.
         let result_block_from_future: Result<BlockHeader, LinearChainSyncError> = Err(
             LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
                 current_version: protocol_version,
@@ -1049,7 +1050,10 @@ mod tests {
             },
         );
         let joiner_event = generate_joiner_event(result_block_from_future, effect_builder).await;
-        assert!(matches!(joiner_event, Some(JoinerEvent::Shutdown(_))));
+        assert!(matches!(
+            joiner_event,
+            Some(JoinerEvent::Shutdown(ExitCode::Success))
+        ));
 
         // CurrentBlockHeaderHasOldVersion response should no longer generate JoinerEvent::Shutdown,
         // but None. See: https://github.com/casper-network/casper-node/issues/2338
