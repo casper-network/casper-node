@@ -72,7 +72,7 @@ pub struct ScratchGlobalStateView {
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
     /// Trie store held within LMDB.
-    pub(crate) store: Arc<LmdbTrieStore>,
+    pub(crate) trie_store: Arc<LmdbTrieStore>,
     /// Root hash of this "view".
     pub(crate) root_hash: Digest,
 }
@@ -115,7 +115,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
             correlation_id,
             &txn,
-            self.store.deref(),
+            self.trie_store.deref(),
             &self.root_hash,
             key,
         )? {
@@ -145,7 +145,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         >(
             correlation_id,
             &txn,
-            self.store.deref(),
+            self.trie_store.deref(),
             &self.root_hash,
             key,
         )? {
@@ -166,7 +166,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
             correlation_id,
             &txn,
-            self.store.deref(),
+            self.trie_store.deref(),
             &self.root_hash,
             prefix,
         );
@@ -229,7 +229,7 @@ impl StateProvider for ScratchGlobalState {
         let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
             cache: Arc::clone(&self.cache),
             environment: Arc::clone(&self.environment),
-            store: Arc::clone(&self.trie_store),
+            trie_store: Arc::clone(&self.trie_store),
             root_hash: state_hash,
         });
         txn.commit()?;
