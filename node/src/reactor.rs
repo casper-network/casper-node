@@ -47,7 +47,7 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
+use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
@@ -67,6 +67,7 @@ use crate::{
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 pub(crate) use queue_kind::QueueKind;
+use stats_alloc::Stats;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -315,6 +316,16 @@ pub(crate) trait Finalize: Sized {
     }
 }
 
+/// Represents memory statistics in bytes.
+struct AllocatedMem {
+    /// Total allocated memory in bytes.
+    allocated: u64,
+    /// Total consumed memory in bytes.
+    consumed: u64,
+    /// Total system memory in bytes.
+    total: u64,
+}
+
 /// A runner for a reactor.
 ///
 /// The runner manages a reactor's event queue and reactor itself and can run it either continuously
@@ -362,6 +373,12 @@ struct RunnerMetrics {
     events: IntCounter,
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
+    /// Total allocated RAM in bytes, as reported by stats_alloc.
+    allocated_ram_bytes: IntGauge,
+    /// Total consumed RAM in bytes, as reported by sys-info.
+    consumed_ram_bytes: IntGauge,
+    /// Total system RAM in bytes, as reported by sys-info.
+    total_ram_bytes: IntGauge,
     /// Handle to the metrics registry, in case we need to unregister.
     registry: Registry,
 }
@@ -402,10 +419,26 @@ impl RunnerMetrics {
                 5_000_000.0,
             ]),
         )?;
+
+        let allocated_ram_bytes =
+            IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
+        let consumed_ram_bytes =
+            IntGauge::new("consumed_ram_bytes", "total consumed ram in bytes")?;
+        let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
+
+        registry.register(Box::new(events.clone()))?;
+        registry.register(Box::new(event_dispatch_duration.clone()))?;
+        registry.register(Box::new(allocated_ram_bytes.clone()))?;
+        registry.register(Box::new(consumed_ram_bytes.clone()))?;
+        registry.register(Box::new(total_ram_bytes.clone()))?;
+
         Ok(RunnerMetrics {
             events,
             event_dispatch_duration,
             registry: registry.clone(),
+            allocated_ram_bytes,
+            consumed_ram_bytes,
+            total_ram_bytes,
         })
     }
 }
@@ -414,6 +447,9 @@ impl Drop for RunnerMetrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.events);
         unregister_metric!(self.registry, self.event_dispatch_duration);
+        unregister_metric!(self.registry, self.allocated_ram_bytes);
+        unregister_metric!(self.registry, self.consumed_ram_bytes);
+        unregister_metric!(self.registry, self.total_ram_bytes);
     }
 }
 
@@ -492,6 +528,18 @@ where
                 // `event_metrics_min_delay` of event processing.
                 self.last_metrics = Instant::now();
             }
+
+            if let Some(AllocatedMem {
+                allocated,
+                consumed,
+                total,
+            }) = Self::get_allocated_memory()
+            {
+                debug!(%allocated, %total, "memory allocated");
+                self.metrics.allocated_ram_bytes.set(allocated as i64);
+                self.metrics.consumed_ram_bytes.set(consumed as i64);
+                self.metrics.total_ram_bytes.set(total as i64);
+            }
         }
 
         // Dump event queue in JSON format if requested, stopping the world.
@@ -561,6 +609,36 @@ where
         self.current_event_id += 1;
 
         keep_going
+    }
+
+    /// Gets both the allocated and total memory from sys-info + jemalloc
+    fn get_allocated_memory() -> Option<AllocatedMem> {
+        let mem_info = match sys_info::mem_info() {
+            Ok(mem_info) => mem_info,
+            Err(error) => {
+                warn!(%error, "unable to get mem_info using sys-info");
+                return None;
+            }
+        };
+
+        // mem_info gives us kilobytes
+        let total = mem_info.total * 1024;
+        let consumed = total - (mem_info.avail * 1024);
+
+        let Stats {
+            allocations: _,
+            deallocations: _,
+            reallocations: _,
+            bytes_allocated,
+            bytes_deallocated: _,
+            bytes_reallocated: _,
+        } = stats_alloc::StatsAlloc::system().stats();
+
+        Some(AllocatedMem {
+            allocated: bytes_allocated as u64,
+            consumed,
+            total,
+        })
     }
 
     /// Handles dumping queue contents to files in /tmp.

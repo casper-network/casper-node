@@ -586,7 +586,9 @@ dependencies = [
  "signature",
  "smallvec",
  "static_assertions",
+ "stats_alloc",
  "structopt",
+ "sys-info",
  "tempfile",
  "thiserror",
  "tokio",
@@ -4044,6 +4046,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stats_alloc"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a260c96bf26273969f360c2fc2e2c7732acc2ce49d939c7243c7230c2ad179d0"
+
+[[package]]
 name = "storage-costs"
 version = "0.1.0"
 dependencies = [
@@ -4135,6 +4143,16 @@ dependencies = [
  "quote",
  "syn",
  "unicode-xid",
+]
+
+[[package]]
+name = "sys-info"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f3e7ba888a12ddcf0084e36ae4609b055845f38022d1946b67356fbc27d5795"
+dependencies = [
+ "cc",
+ "libc",
 ]
 
 [[package]]
