@@ -62,8 +62,8 @@ use crate::{
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     storage,
     types::{
-        ActivationPoint, BlockHeader, BlockPayload, Deploy, DeployHash, ExitCode, FinalizedBlock,
-        Item, NodeId, Tag,
+        ActivationPoint, BlockHeader, BlockPayload, Chainspec, Deploy, DeployHash, ExitCode,
+        FinalizedBlock, Item, NodeId, Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -578,25 +578,23 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
+        let chainspec = chainspec_loader.chainspec();
+
+        let protocol_version = chainspec.protocol_config.version;
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
             effect_builder,
-            *protocol_version,
+            protocol_version,
             node_startup_instant,
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
-            *protocol_version,
+            protocol_version,
             node_startup_instant,
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(
-            config.deploy_acceptor,
-            &*chainspec_loader.chainspec(),
-            registry,
-        )?;
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor, &*chainspec, registry)?;
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -616,12 +614,72 @@ impl reactor::Reactor for Reactor {
         // If not, run genesis or upgrade and construct a switch block, and use that for the latest
         // block header.
         let latest_block_header = if let Some(latest_block_header) = maybe_latest_block_header {
-            latest_block_header
+            if latest_block_header.protocol_version() == chainspec.protocol_config.version {
+                latest_block_header
+            } else if chainspec
+                .protocol_config
+                .is_last_block_before_activation(&latest_block_header)
+            {
+                let upgrade_block_header = latest_block_header;
+                let upgrade_era_id = upgrade_block_header.next_block_era_id();
+                // If it's not an emergency upgrade and there is a block higher than ours, bail
+                // because we will overwrite an existing blockchain.
+                if chainspec.protocol_config.last_emergency_restart
+                    != Some(upgrade_block_header.era_id())
+                {
+                    if let Some(preexisting_block_header) =
+                        storage.read_block_header_by_height(upgrade_block_header.height() + 1)?
+                    {
+                        return Err(Error::NonEmergencyUpgradeWillClobberExistingBlockChain {
+                            preexisting_block_header: Box::new(preexisting_block_header),
+                        });
+                    }
+                }
+                let global_state_update = chainspec.protocol_config.get_update_mapping()?;
+                let UpgradeSuccess {
+                    post_state_hash,
+                    execution_effect,
+                } = contract_runtime.commit_upgrade(UpgradeConfig::new(
+                    *upgrade_block_header.state_root_hash(),
+                    upgrade_block_header.protocol_version(),
+                    chainspec.protocol_version(),
+                    Some(chainspec.protocol_config.activation_point.era_id()),
+                    Some(chainspec.core_config.validator_slots),
+                    Some(chainspec.core_config.auction_delay),
+                    Some(chainspec.core_config.locked_funds_period.millis()),
+                    Some(chainspec.core_config.round_seigniorage_rate),
+                    Some(chainspec.core_config.unbonding_delay),
+                    global_state_update,
+                ))?;
+                info!(
+                    network_name = %chainspec.network_config.name,
+                    %post_state_hash,
+                    "upgrade committed"
+                );
+                trace!(%post_state_hash, ?execution_effect);
+                let initial_pre_state = ExecutionPreState::new(
+                    upgrade_block_header.height() + 1,
+                    post_state_hash,
+                    upgrade_block_header.hash(),
+                    upgrade_block_header.accumulated_seed(),
+                );
+                let (new_header, new_effects) = create_immediate_switch_block(
+                    &mut contract_runtime,
+                    &mut storage,
+                    effect_builder,
+                    chainspec,
+                    initial_pre_state,
+                    upgrade_block_header.timestamp(),
+                    upgrade_era_id,
+                )?;
+                effects.extend(reactor::wrap_effects(Into::into, new_effects));
+                new_header
+            } else {
+                return Err(Error::UnexpectedLatestBlockHeader {
+                    latest_block_header: Box::new(latest_block_header),
+                });
+            }
         } else {
-            let initial_pre_state;
-            let finalized_block;
-
-            let chainspec = chainspec_loader.chainspec();
             match chainspec.protocol_config.activation_point {
                 ActivationPoint::Genesis(genesis_timestamp) => {
                     // Do not run genesis on a node which is not protocol version 1.0.0
@@ -645,103 +703,35 @@ impl reactor::Reactor for Reactor {
                     info!("genesis chainspec name {}", chainspec.network_config.name);
                     info!("genesis state root hash {}", post_state_hash);
                     trace!(%post_state_hash, ?execution_effect);
-                    initial_pre_state = ExecutionPreState::new(
+                    let initial_pre_state = ExecutionPreState::new(
                         0,
                         post_state_hash,
                         Default::default(),
                         Default::default(),
                     );
-                    finalized_block = FinalizedBlock::new(
-                        BlockPayload::default(),
-                        Some(EraReport::default()),
+                    let (new_header, new_effects) = create_immediate_switch_block(
+                        &mut contract_runtime,
+                        &mut storage,
+                        effect_builder,
+                        chainspec,
+                        initial_pre_state,
                         genesis_timestamp,
                         EraId::from(0u64),
-                        0,
-                        PublicKey::System,
-                    );
+                    )?;
+                    effects.extend(reactor::wrap_effects(Into::into, new_effects));
+                    new_header
                 }
                 ActivationPoint::EraId(upgrade_era_id) => {
-                    let upgrade_block_header = storage
-                        .read_switch_block_header_by_era_id(upgrade_era_id.saturating_sub(1))?
-                        .ok_or(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id })?;
-                    // If it's not an emergency upgrade and there is a block higher than ours, bail
-                    // because we will overwrite an existing blockchain.
-                    if chainspec.protocol_config.last_emergency_restart
-                        != Some(upgrade_block_header.era_id())
-                    {
-                        if let Some(preexisting_block_header) = storage
-                            .read_block_header_by_height(upgrade_block_header.height() + 1)?
-                        {
-                            return Err(Error::NonEmergencyUpgradeWillClobberExistingBlockChain {
-                                preexisting_block_header: Box::new(preexisting_block_header),
-                            });
-                        }
-                    }
-                    let global_state_update = chainspec.protocol_config.get_update_mapping()?;
-                    let UpgradeSuccess {
-                        post_state_hash,
-                        execution_effect,
-                    } = contract_runtime.commit_upgrade(UpgradeConfig::new(
-                        *upgrade_block_header.state_root_hash(),
-                        upgrade_block_header.protocol_version(),
-                        chainspec.protocol_version(),
-                        Some(chainspec.protocol_config.activation_point.era_id()),
-                        Some(chainspec.core_config.validator_slots),
-                        Some(chainspec.core_config.auction_delay),
-                        Some(chainspec.core_config.locked_funds_period.millis()),
-                        Some(chainspec.core_config.round_seigniorage_rate),
-                        Some(chainspec.core_config.unbonding_delay),
-                        global_state_update,
-                    ))?;
-                    info!(
-                        network_name = %chainspec.network_config.name,
-                        %post_state_hash,
-                        "upgrade committed"
-                    );
-                    trace!(%post_state_hash, ?execution_effect);
-                    initial_pre_state = ExecutionPreState::new(
-                        upgrade_block_header.height() + 1,
-                        post_state_hash,
-                        upgrade_block_header.hash(),
-                        upgrade_block_header.accumulated_seed(),
-                    );
-                    finalized_block = FinalizedBlock::new(
-                        BlockPayload::default(),
-                        Some(EraReport::default()),
-                        upgrade_block_header.timestamp(),
-                        upgrade_era_id,
-                        upgrade_block_header.height() + 1,
-                        PublicKey::System,
-                    );
+                    return Err(Error::NoSuchSwitchBlockHeaderForUpgradeEra { upgrade_era_id });
                 }
-            };
-            // Execute the finalized block, creating a new switch block.
-            let (new_switch_block, new_effects) = contract_runtime.execute_finalized_block(
-                effect_builder,
-                chainspec_loader.chainspec().protocol_version(),
-                initial_pre_state,
-                finalized_block,
-                vec![],
-                vec![],
-            )?;
-            // Make sure the new block really is a switch block
-            if !new_switch_block.header().is_switch_block() {
-                return Err(Error::FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
-                    new_bad_block: Box::new(new_switch_block),
-                });
             }
-            // Write the block to storage so the era supervisor can be initialized properly.
-            storage.write_block(&new_switch_block)?;
-            // Effects inform other components to make finality signatures, etc.
-            effects.extend(reactor::wrap_effects(Into::into, new_effects));
-            new_switch_block.take_header()
         };
 
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
             effect_builder,
             latest_block_header.height() + 1,
-            chainspec_loader.chainspec().as_ref(),
+            chainspec.as_ref(),
             config.block_proposer,
         )?;
         effects.extend(reactor::wrap_effects(
@@ -755,7 +745,7 @@ impl reactor::Reactor for Reactor {
             Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
+            chainspec.as_ref(),
         )?;
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
@@ -763,7 +753,7 @@ impl reactor::Reactor for Reactor {
             storage.root_path(),
             WithDir::new(root, config.consensus),
             effect_builder,
-            chainspec_loader.chainspec().clone(),
+            chainspec.clone(),
             &latest_block_header,
             maybe_next_activation_point,
             registry,
@@ -778,16 +768,13 @@ impl reactor::Reactor for Reactor {
 
         contract_runtime.set_initial_state(ExecutionPreState::from(&latest_block_header));
 
-        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
+        let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
             registry,
-            *protocol_version,
-            chainspec_loader.chainspec().core_config.auction_delay,
-            chainspec_loader.chainspec().core_config.unbonding_delay,
-            chainspec_loader
-                .chainspec()
-                .highway_config
-                .finality_threshold_fraction,
+            protocol_version,
+            chainspec.core_config.auction_delay,
+            chainspec.core_config.unbonding_delay,
+            chainspec.highway_config.finality_threshold_fraction,
             maybe_next_activation_point,
         )?;
 
@@ -1325,4 +1312,48 @@ impl NetworkedReactor for Reactor {
     fn node_id(&self) -> Self::NodeId {
         self.small_network.node_id()
     }
+}
+
+/// Creates a switch block after an upgrade or genesis. This block has the system public key as a
+/// proposer and doesn't contain any deploys or transfers. It is the only block in its era, and no
+/// consensus instance is run for era 0 or an upgrade point era.
+fn create_immediate_switch_block(
+    contract_runtime: &mut ContractRuntime,
+    storage: &mut Storage,
+    effect_builder: EffectBuilder<ParticipatingEvent>,
+    chainspec: &Chainspec,
+    pre_state: ExecutionPreState,
+    timestamp: Timestamp,
+    era_id: EraId,
+) -> Result<(BlockHeader, Effects<ParticipatingEvent>), Error> {
+    let finalized_block = FinalizedBlock::new(
+        BlockPayload::default(),
+        Some(EraReport::default()),
+        timestamp,
+        era_id,
+        pre_state.next_block_height(),
+        PublicKey::System,
+    );
+    // Execute the finalized block, creating a new switch block.
+    let (new_switch_block, new_effects) = contract_runtime.execute_finalized_block(
+        effect_builder,
+        chainspec.protocol_version(),
+        pre_state,
+        finalized_block,
+        vec![],
+        vec![],
+    )?;
+    // Make sure the new block really is a switch block
+    if !new_switch_block.header().is_switch_block() {
+        return Err(Error::FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
+            new_bad_block: Box::new(new_switch_block),
+        });
+    }
+    // Write the block to storage so the era supervisor can be initialized properly.
+    storage.write_block(&new_switch_block)?;
+    Ok((
+        new_switch_block.take_header(),
+        // Effects inform other components to make finality signatures, etc.
+        reactor::wrap_effects(Into::into, new_effects),
+    ))
 }

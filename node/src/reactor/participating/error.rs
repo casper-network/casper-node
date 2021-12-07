@@ -88,6 +88,15 @@ pub(crate) enum Error {
         /// A new block we made which should be a switch block but is not.
         new_bad_block: Box<Block>,
     },
+
+    /// Unexpected latest block header: not our version and not the previous upgrade point.
+    #[error(
+        "Unexpected latest block header: not our version and not the previous upgrade point. \
+         Latest block: {latest_block_header}"
+    )]
+    UnexpectedLatestBlockHeader {
+        latest_block_header: Box<BlockHeader>,
+    },
 }
 
 impl From<bytesrepr::Error> for Error {

@@ -108,6 +108,12 @@ impl ExecutionPreState {
             parent_seed,
         }
     }
+
+    /// Returns the height of the next `Block` to be constructed. Note that this must match the
+    /// height of the `FinalizedBlock` used to generate the block.
+    pub(crate) fn next_block_height(&self) -> u64 {
+        self.next_block_height
+    }
 }
 
 impl From<&BlockHeader> for ExecutionPreState {
