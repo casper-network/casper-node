@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.  The format
 * Default maximum stack size in `WasmConfig` changed to 188.
 * Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
 
+### Fixed
+* Fix a case where an unlocked and partially unbonded genesis validator with smaller stake incorrectly occupies slot for a non-genesis validator with higher stake.
+
 
 
 ## [1.4.2] - 2021-11-11
