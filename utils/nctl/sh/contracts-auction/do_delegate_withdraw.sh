@@ -39,7 +39,7 @@ function main()
     DELEGATOR_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_USER" "$DELEGATOR_ID")
     DELEGATOR_MAIN_PURSE_UREF=$(get_main_purse_uref "$DELEGATOR_ACCOUNT_KEY" | tr '[:upper:]' '[:lower:]')
     VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$VALIDATOR_ID" | tr '[:upper:]' '[:lower:]')
-    if [ "$NEW_VALIDATOR_ID" == 2 ]; then
+    if [ "$NEW_VALIDATOR_ID" = null ]; then
         NEW_VALIDATOR_ACCOUNT_ARG="new_validator_public_key:opt_public_key=null"
     else
        NEW_VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NEW_VALIDATOR_ID" | tr '[:upper:]' '[:lower:]')
@@ -105,4 +105,4 @@ main \
     "${AMOUNT:-$NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT}" \
     "${DELEGATOR_ID:-1}" \
     "${VALIDATOR_ID:-1}" \
-    "${NEW_VALIDATOR_ID:-2}"
+    "${NEW_VALIDATOR_ID:-null}"
