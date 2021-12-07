@@ -376,8 +376,7 @@ pub fn assert_schema(schema_path: String, actual_schema: RootSchema) {
         .unwrap();
     temp_file.write_all(actual_schema.as_bytes()).unwrap();
     let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
-    let (_file, path) = temp_file.keep().unwrap();
-    let temp_file_path = path.as_path().clone();
+    let (_file, temp_file_path) = temp_file.keep().unwrap();
 
     let result = assert_json_matches_no_panic(
         &actual_schema,
