@@ -14,6 +14,7 @@ use std::{
     any::type_name,
     fmt::Debug,
     fs,
+    io::Write,
     marker::PhantomData,
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
@@ -41,7 +42,6 @@ use crate::{
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
 use schemars::schema::RootSchema;
-use std::io::Write;
 pub(crate) use test_rng::TestRng;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
