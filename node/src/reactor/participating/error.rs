@@ -101,10 +101,6 @@ pub(crate) enum Error {
     UnexpectedLatestBlockHeader {
         latest_block_header: Box<BlockHeader>,
     },
-
-    /// Unexpectedly can't take ownership of storage.
-    #[error("unable to take ownership of storage")]
-    StorageOwnership,
 }
 
 impl From<bytesrepr::Error> for Error {
