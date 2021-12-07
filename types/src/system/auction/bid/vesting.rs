@@ -71,17 +71,19 @@ impl VestingSchedule {
     }
 
     pub fn locked_amount(&self, timestamp_millis: u64) -> Option<U512> {
-        self.locked_amounts.map(|locked_amounts| {
-            assert!(u64::MAX as usize <= usize::MAX);
-            let index_timestamp =
-                (timestamp_millis - self.initial_release_timestamp_millis) as usize;
-            let index = index_timestamp / WEEK_MILLIS;
-            if index < LOCKED_AMOUNTS_LENGTH {
-                locked_amounts[index]
-            } else {
-                U512::zero()
-            }
-        })
+        let locked_amounts = self.locked_amounts.as_ref()?;
+        assert!(u64::MAX as usize <= usize::MAX);
+        let index_timestamp = (timestamp_millis - self.initial_release_timestamp_millis) as usize;
+
+        let index = index_timestamp / WEEK_MILLIS;
+
+        let locked_amount = if index < LOCKED_AMOUNTS_LENGTH {
+            locked_amounts[index]
+        } else {
+            U512::zero()
+        };
+
+        Some(locked_amount)
     }
 }
 

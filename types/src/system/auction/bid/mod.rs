@@ -110,6 +110,15 @@ impl Bid {
         &self.bonding_purse
     }
 
+    /// Gets the locked amount of the provided bid (if any)
+    pub fn locked_amount(&self, timestamp_millis: u64) -> Option<U512> {
+        let amount = self.vesting_schedule?.locked_amount(timestamp_millis)?;
+        if amount.is_zero() {
+            return None;
+        }
+        Some(amount)
+    }
+
     /// Gets the staked amount of the provided bid
     pub fn staked_amount(&self) -> &U512 {
         &self.staked_amount
