@@ -67,7 +67,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 
     let expected_transfers_count = 0;
     let transforms = builder.get_transforms();
-    let transform = &transforms[1].1;
+    let transform = &transforms[1];
 
     assert_eq!(
         transform.len(),
@@ -535,8 +535,8 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .commit();
 
     let transforms = builder.get_transforms();
-    let transforms_from_genesis = &transforms[1].1;
-    let transforms_from_account_1 = &transforms[2].1;
+    let transforms_from_genesis = &transforms[1];
+    let transforms_from_account_1 = &transforms[2];
 
     // Retrieve the payment purse.
     let payment_purse = builder

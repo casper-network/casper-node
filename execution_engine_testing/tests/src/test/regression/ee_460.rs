@@ -31,7 +31,7 @@ fn should_run_ee_460_no_side_effects_on_error_regression() {
     // mint uref is left untouched.
     let mint_contract_uref = builder.get_mint_contract_hash();
 
-    let transforms = &builder.get_transforms()[0].1;
+    let transforms = &builder.get_transforms()[0];
     let mint_transforms = transforms
         .get(&mint_contract_uref.into())
         // Skips the Identity writes introduced since payment code execution for brevity of the
