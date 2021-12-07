@@ -31,7 +31,7 @@ pub(crate) mod reactor;
 #[cfg(test)]
 pub(crate) mod testing;
 pub(crate) mod tls;
-pub(crate) mod utils;
+pub mod utils;
 
 // Public API
 pub mod cli;
@@ -43,7 +43,7 @@ pub use components::{
     rpc_server::rpcs,
     storage::{self, Config as StorageConfig},
 };
-pub use utils::{work_queue, WithDir};
+pub use utils::WithDir;
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},

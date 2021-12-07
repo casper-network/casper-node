@@ -29,7 +29,7 @@ use casper_node::{
     },
     storage::Storage,
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
-    work_queue::WorkQueue,
+    utils::work_queue::WorkQueue,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes},
