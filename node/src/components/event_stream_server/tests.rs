@@ -9,13 +9,11 @@ use std::{
     time::Duration,
 };
 
-use assert_json_diff::assert_json_eq;
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
 use schemars::schema_for;
-use serde_json::Value;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -25,7 +23,10 @@ use tokio::{
 use tracing::debug;
 
 use super::*;
-use crate::{logging, testing::TestRng};
+use crate::{
+    logging,
+    testing::{assert_schema, TestRng},
+};
 use sse_server::{
     DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
     SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
@@ -1185,7 +1186,7 @@ async fn should_limit_concurrent_subscribers() {
 /// versions of the events emitted by the SSE server by comparing the contents of
 /// `resources/test/sse_data_schema.json` across different versions of the codebase.
 #[test]
-fn schema() {
+fn schema_test() {
     // To generate the contents to replace the input JSON files, run the test
     // and print the `actual_schema`  by uncommenting the `println!`
     // towards the end of the test.
@@ -1193,13 +1194,5 @@ fn schema() {
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    let expected_schema = fs::read_to_string(schema_path).unwrap();
-    let schema = schema_for!(SseData);
-    let actual_schema = serde_json::to_string_pretty(&schema).unwrap();
-
-    // println!("{}", actual_schema);
-
-    let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
-    let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
-    assert_json_eq!(actual_schema, expected_schema);
+    assert_schema(schema_path, schema_for!(SseData));
 }
