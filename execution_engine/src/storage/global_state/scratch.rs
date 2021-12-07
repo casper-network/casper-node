@@ -192,8 +192,8 @@ impl CommitProvider for ScratchGlobalState {
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
         for (key, transform) in effects.into_iter() {
-            let read_result = self.cache.read().unwrap().get(&key).cloned();
-            let value = match (read_result, transform) {
+            let cached_value = self.cache.read().unwrap().get(&key).cloned();
+            let value = match (cached_value, transform) {
                 (None, Transform::Write(new_value)) => new_value,
                 (None, transform) => {
                     error!(
