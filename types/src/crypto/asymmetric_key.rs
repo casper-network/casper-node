@@ -362,6 +362,21 @@ impl ToBytes for PublicKey {
                 PublicKey::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            PublicKey::System => writer.push(SYSTEM_TAG),
+            PublicKey::Ed25519(pk) => {
+                writer.push(ED25519_TAG);
+                writer.extend_from_slice(pk.as_bytes());
+            }
+            PublicKey::Secp256k1(pk) => {
+                writer.push(SECP256K1_TAG);
+                writer.extend_from_slice(&pk.to_bytes());
+            }
+        }
+        Ok(())
+    }
 }
 
 impl FromBytes for PublicKey {
@@ -599,6 +614,23 @@ impl ToBytes for Signature {
                 Signature::Ed25519(_) => Self::ED25519_LENGTH,
                 Signature::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Signature::System => {
+                writer.push(SYSTEM_TAG);
+            }
+            Signature::Ed25519(ed25519_signature) => {
+                writer.push(ED25519_TAG);
+                writer.extend(&ed25519_signature.to_bytes());
+            }
+            Signature::Secp256k1(signature) => {
+                writer.push(SECP256K1_TAG);
+                writer.extend_from_slice(signature.as_ref());
+            }
+        }
+        Ok(())
     }
 }
 

@@ -89,9 +89,6 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    // Flush once, after all deploys have been executed.
-    engine_state.flush_environment()?;
-
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
     }
@@ -124,6 +121,9 @@ pub fn execute_finalized_block(
         } else {
             None
         };
+
+    // Flush once, after all deploys have been executed.
+    engine_state.flush_environment()?;
 
     // Update the metric.
     let block_height = finalized_block.height();

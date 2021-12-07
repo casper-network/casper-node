@@ -37,6 +37,7 @@ use crate::{
             evidence::Evidence,
             highway::{Endorsements, HashedWireUnit, SignedWireUnit, WireUnit},
             validators::{ValidatorIndex, ValidatorMap},
+            ENABLE_ENDORSEMENTS,
         },
         traits::Context,
     },
@@ -815,16 +816,26 @@ impl<C: Context> State<C> {
                 }
             }
         }
-        // All endorsed units from the panorama of this wunit.
-        let endorsements_in_panorama = panorama
-            .iter_correct_hashes()
-            .flat_map(|hash| self.unit(hash).claims_endorsed())
-            .collect::<HashSet<_>>();
-        if endorsements_in_panorama
-            .iter()
-            .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
-        {
-            return Err(UnitError::EndorsementsNotMonotonic);
+        if ENABLE_ENDORSEMENTS {
+            // All endorsed units from the panorama of this wunit.
+            let endorsements_in_panorama = panorama
+                .iter_correct_hashes()
+                .flat_map(|hash| self.unit(hash).claims_endorsed())
+                .collect::<HashSet<_>>();
+            if endorsements_in_panorama
+                .iter()
+                .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
+            {
+                return Err(UnitError::EndorsementsNotMonotonic);
+            }
+            for hash in &wunit.endorsed {
+                if !wunit.panorama.sees(self, hash) {
+                    return Err(UnitError::EndorsedButUnseen {
+                        hash: format!("{:?}", hash),
+                        wire_unit: format!("{:?}", wunit),
+                    });
+                }
+            }
         }
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
@@ -839,14 +850,6 @@ impl<C: Context> State<C> {
             let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
             if self.fork_choice(panorama).map_or(false, is_terminal) {
                 return Err(UnitError::ValueAfterTerminalBlock);
-            }
-        }
-        for hash in &wunit.endorsed {
-            if !wunit.panorama.sees(self, hash) {
-                return Err(UnitError::EndorsedButUnseen {
-                    hash: format!("{:?}", hash),
-                    wire_unit: format!("{:?}", wunit),
-                });
             }
         }
         match self.validate_lnc(creator, panorama, &wunit.endorsed) {
@@ -935,6 +938,9 @@ impl<C: Context> State<C> {
 
     /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
     pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+        if !ENABLE_ENDORSEMENTS {
+            return Default::default();
+        };
         // First we collect all units that were already seen as endorsed by earlier units.
         let mut result: BTreeSet<C::Hash> = pan
             .iter_correct_hashes()
@@ -964,7 +970,7 @@ impl<C: Context> State<C> {
     }
 
     /// Validates whether a unit with the given panorama and `endorsed` set satisfies the
-    /// Limited Naïveté Criterion (LNC).
+    /// Limited Naivety Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
     fn validate_lnc(
@@ -973,6 +979,9 @@ impl<C: Context> State<C> {
         panorama: &Panorama<C>,
         endorsed: &BTreeSet<C::Hash>,
     ) -> Option<ValidatorIndex> {
+        if !ENABLE_ENDORSEMENTS {
+            return None;
+        }
         let violates_lnc =
             |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx);
         panorama.iter_faulty().find(violates_lnc)

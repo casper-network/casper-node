@@ -262,10 +262,15 @@ pub enum Error {
     /// assert_eq!(39, Error::ArithmeticOverflow as u8);
     /// ```
     ArithmeticOverflow = 39,
+
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
-    GasLimit,
+    GasLimit = 40,
+
+    /// An error that is raised when there is an error in the mint contract that cannot
+    /// be mapped to a specific auction error.
+    MintError = 41,
 }
 
 impl Display for Error {
@@ -311,6 +316,7 @@ impl Display for Error {
             Error::DelegationRateTooLarge => formatter.write_str("Delegation rate too large"),
             Error::DelegatorFundsLocked => formatter.write_str("Delegator's funds are locked"),
             Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow"),
+            Error::MintError => formatter.write_str("An error in the mint contract execution"),
             Error::GasLimit => formatter.write_str("GasLimit"),
         }
     }
@@ -381,6 +387,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
+            d if d == Error::MintError as u8 => Ok(Error::MintError),
             _ => Err(TryFromU8ForError(())),
         }
     }
