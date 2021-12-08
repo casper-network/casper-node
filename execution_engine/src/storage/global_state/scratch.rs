@@ -482,10 +482,7 @@ mod tests {
                             tmp.insert(*key, Transform::AddInt32(2i32));
                         }
                         CLType::String => {}
-                        _ => assert!(
-                            false,
-                            "remember to update the test pairs if new cl_types are added"
-                        ),
+                        _ => unreachable!("remember to update the test pairs if new cl_types are added"),
                     }
                 }
             }
