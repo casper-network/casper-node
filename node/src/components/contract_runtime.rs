@@ -108,6 +108,12 @@ impl ExecutionPreState {
             parent_seed,
         }
     }
+
+    /// Returns the height of the next `Block` to be constructed. Note that this must match the
+    /// height of the `FinalizedBlock` used to generate the block.
+    pub(crate) fn next_block_height(&self) -> u64 {
+        self.next_block_height
+    }
 }
 
 impl From<&BlockHeader> for ExecutionPreState {
@@ -608,8 +614,14 @@ impl ContractRuntime {
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
-        self.engine_state
-            .missing_trie_keys(correlation_id, trie_keys)
+        let start = Instant::now();
+        let result = self
+            .engine_state
+            .missing_trie_keys(correlation_id, trie_keys);
+        self.metrics
+            .missing_trie_keys
+            .observe(start.elapsed().as_secs_f64());
+        result
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {

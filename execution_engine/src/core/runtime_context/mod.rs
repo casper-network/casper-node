@@ -186,7 +186,7 @@ where
 
     /// Returns a mutable reference to named keys.
     pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
-        &mut self.named_keys
+        self.named_keys
     }
 
     /// Checks if named keys contains a key referenced by name.

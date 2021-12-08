@@ -24,7 +24,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_hashing::Digest;
+use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -68,6 +68,16 @@ pub struct Chainspec {
 impl Chainspec {
     /// Returns `false` and logs errors if the values set in the config don't make sense.
     pub(crate) fn is_valid(&self) -> bool {
+        if (self.network_config.maximum_net_message_size as usize)
+            < ChunkWithProof::CHUNK_SIZE_BYTES * 3
+        {
+            warn!(
+                "config value [network][maximum_net_message_size] should be set to at least
+            CHUNK_SIZE_BYTES * 3 ({})",
+                ChunkWithProof::CHUNK_SIZE_BYTES * 3
+            );
+        }
+
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
