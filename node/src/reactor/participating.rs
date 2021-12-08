@@ -883,6 +883,7 @@ impl reactor::Reactor for Reactor {
 
                 let event = block_proposer::Event::BufferDeploy {
                     hash: deploy.deploy_or_transfer_hash(),
+                    approvals: deploy.approvals().clone(),
                     deploy_info: Box::new(deploy_info),
                 };
                 let mut effects = self.dispatch_event(

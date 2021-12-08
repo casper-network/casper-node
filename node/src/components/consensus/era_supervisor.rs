@@ -53,7 +53,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+        DeployOrTransferHash, FinalitySignature, FinalizedApprovals, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -926,8 +926,20 @@ where
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
                 });
+                let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
+                let finalized_approvals: HashMap<_, _> = proposed_block
+                    .deploys()
+                    .iter()
+                    .chain(proposed_block.transfers().iter())
+                    .map(|dwa| {
+                        (
+                            *dwa.deploy_hash(),
+                            FinalizedApprovals::new(dwa.approvals().clone()),
+                        )
+                    })
+                    .collect();
                 let finalized_block = FinalizedBlock::new(
-                    Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
+                    proposed_block,
                     report,
                     timestamp,
                     era_id,
@@ -947,7 +959,10 @@ where
                     .ignore();
                 self.next_block_height = self.next_block_height.max(finalized_block.height() + 1);
                 // Request execution of the finalized block.
-                effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());
+                effects.extend(
+                    execute_finalized_block(effect_builder, finalized_approvals, finalized_block)
+                        .ignore(),
+                );
                 self.update_consensus_pause();
                 effects
             }
@@ -1161,7 +1176,7 @@ where
     let mut deploys_or_transfer: Vec<Deploy> = Vec::with_capacity(hashes.len());
     for maybe_deploy_or_transfer in effect_builder.get_deploys_from_storage(hashes).await {
         if let Some(deploy_or_transfer) = maybe_deploy_or_transfer {
-            deploys_or_transfer.push(deploy_or_transfer)
+            deploys_or_transfer.push(deploy_or_transfer.into_naive())
         } else {
             return None;
         }
@@ -1171,6 +1186,7 @@ where
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
+    finalized_approvals: HashMap<DeployHash, FinalizedApprovals>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
@@ -1182,6 +1198,11 @@ async fn execute_finalized_block<REv>(
         .await
     {
         return;
+    }
+    for (deploy_hash, finalized_approvals) in finalized_approvals {
+        effect_builder
+            .store_finalized_approvals(deploy_hash, finalized_approvals)
+            .await;
     }
     // Get all deploys in order they appear in the finalized block.
     let deploys =
