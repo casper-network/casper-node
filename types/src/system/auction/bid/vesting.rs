@@ -72,10 +72,12 @@ impl VestingSchedule {
 
     pub fn locked_amount(&self, timestamp_millis: u64) -> Option<U512> {
         let locked_amounts = self.locked_amounts.as_ref()?;
-        assert!(u64::MAX as usize <= usize::MAX);
-        let index_timestamp = (timestamp_millis - self.initial_release_timestamp_millis) as usize;
 
-        let index = index_timestamp / WEEK_MILLIS;
+        let index = {
+            let index_timestamp =
+                timestamp_millis.checked_sub(self.initial_release_timestamp_millis)? as usize;
+            index_timestamp.checked_div(WEEK_MILLIS)?
+        };
 
         let locked_amount = if index < LOCKED_AMOUNTS_LENGTH {
             locked_amounts[index]
@@ -187,11 +189,20 @@ mod tests {
 
     /// Default lock-in period of 90 days
     const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
+    const RELEASE_TIMESTAMP: u64 = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    const STAKE: u64 = 140;
+
+    #[test]
+    fn test_locked_amount_check_should_not_panic() {
+        let mut vesting_schedule = VestingSchedule::new(RELEASE_TIMESTAMP);
+        vesting_schedule.initialize(U512::from(STAKE));
+
+        assert_eq!(vesting_schedule.locked_amount(0), None);
+        assert_eq!(vesting_schedule.locked_amount(RELEASE_TIMESTAMP - 1), None);
+    }
 
     #[test]
     fn test_locked_amount() {
-        const STAKE: u64 = 140;
-        const RELEASE_TIMESTAMP: u64 = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
         let mut vesting_schedule = VestingSchedule::new(RELEASE_TIMESTAMP);
         vesting_schedule.initialize(U512::from(STAKE));
 

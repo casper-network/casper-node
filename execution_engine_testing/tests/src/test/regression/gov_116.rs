@@ -26,7 +26,7 @@ const WITHDRAW_AMOUNT: u64 = MINIMUM_BONDED_AMOUNT - 1;
 
 const VESTING_BASE: u64 = DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
-
+const DELEGATION_RATE: DelegationRate = 0;
 /// Simplified vesting weeks for testing purposes. Each element is used as an argument to
 /// run_auction call.
 const VESTING_WEEKS: [u64; 3] = [
@@ -180,8 +180,6 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
     // New validator bids with the original stake of unbonding_account to take his place in future
     // era. We know that unbonding_account has now smaller stake than before.
 
-    let delegation_rate: DelegationRate = 0;
-
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         builder.get_auction_contract_hash(),
@@ -189,7 +187,7 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
         runtime_args! {
             auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_AMOUNT => *genesis_validator_stake_1,
-            auction::ARG_DELEGATION_RATE => delegation_rate,
+            auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
     .build();
@@ -227,6 +225,75 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
     };
     assert_eq!(
         next_validator_set_3, expected_validators,
+        "actual next validator set does not match expected validator set"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_retain_genesis_validator_slot_protection() {
+    let mut builder = initialize_builder();
+
+    let era_validators_1: EraValidators = builder.get_era_validators();
+
+    let (last_era_1, weights_1) = era_validators_1.iter().last().unwrap();
+    let genesis_validator_stake_1 = weights_1.get(&LOWEST_STAKE_VALIDATOR).unwrap();
+    // One higher than the lowest stake
+    let winning_stake = *genesis_validator_stake_1 + U512::one();
+    let next_validator_set_1 = BTreeSet::from_iter(weights_1.keys().cloned());
+    assert_eq!(
+        next_validator_set_1,
+        GENESIS_VALIDATOR_PUBLIC_KEYS.clone(),
+        "expected validator set should be unchanged"
+    );
+
+    builder.run_auction(VESTING_BASE, Vec::new());
+
+    let era_validators_2: EraValidators = builder.get_era_validators();
+
+    let (last_era_2, weights_2) = era_validators_2.iter().last().unwrap();
+    assert!(last_era_2 > last_era_1);
+    let next_validator_set_2 = BTreeSet::from_iter(weights_2.keys().cloned());
+    assert_eq!(next_validator_set_2, GENESIS_VALIDATOR_PUBLIC_KEYS.clone());
+
+    let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        builder.get_auction_contract_hash(),
+        auction::METHOD_ADD_BID,
+        runtime_args! {
+            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_AMOUNT => winning_stake,
+            auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
+        },
+    )
+    .build();
+
+    builder.exec(add_bid_request).expect_success().commit();
+
+    builder.run_auction(VESTING_BASE + WEEK_MILLIS, Vec::new());
+
+    // All genesis validator slots are protected after ~1 week
+    let era_validators_3: EraValidators = builder.get_era_validators();
+    let (last_era_3, weights_3) = era_validators_3.iter().last().unwrap();
+    assert!(last_era_3 > last_era_2);
+    let next_validator_set_3 = BTreeSet::from_iter(weights_3.keys().cloned());
+    assert_eq!(next_validator_set_3, GENESIS_VALIDATOR_PUBLIC_KEYS.clone());
+
+    // After 13 weeks ~ 91 days lowest stake validator is dropped and replaced with higher bid
+    builder.run_auction(VESTING_BASE + (13 * WEEK_MILLIS), Vec::new());
+
+    let era_validators_4: EraValidators = builder.get_era_validators();
+    let (last_era_4, weights_4) = era_validators_4.iter().last().unwrap();
+    assert!(last_era_4 > last_era_3);
+    let next_validator_set_4 = BTreeSet::from_iter(weights_4.keys().cloned());
+    let expected_validators = {
+        let mut pks = GENESIS_VALIDATOR_PUBLIC_KEYS.clone();
+        pks.remove(&LOWEST_STAKE_VALIDATOR);
+        pks.insert(DEFAULT_ACCOUNT_PUBLIC_KEY.clone());
+        pks
+    };
+    assert_eq!(
+        next_validator_set_4, expected_validators,
         "actual next validator set does not match expected validator set"
     );
 }
