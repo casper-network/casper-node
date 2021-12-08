@@ -502,14 +502,11 @@ where
                 match source {
                     Source::Peer(peer) => {
                         self.metrics.found_on_peer.inc();
-                        match item.id() {
-                            Ok(id) => {
-                                self.signal(id, Ok(FetchedData::FromPeer { item, peer }), peer)
-                            }
-                            Err(err) => {
-                                warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
-                                effect_builder.announce_disconnect_from_peer(peer).ignore()
-                            }
+                        if let Err(err) = item.validate() {
+                            warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
+                            effect_builder.announce_disconnect_from_peer(peer).ignore()
+                        } else {
+                            self.signal(item.id(), Ok(FetchedData::FromPeer { item, peer }), peer)
                         }
                     }
                     Source::Client | Source::Ourself => {

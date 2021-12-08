@@ -33,8 +33,12 @@ impl Item for GossipedAddress {
     const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
 
-    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
-        Ok(*self)
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+
+    fn id(&self) -> Self::Id {
+        *self
     }
 }
 

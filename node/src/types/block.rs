@@ -944,9 +944,13 @@ impl Item for BlockHeaderWithMetadata {
     const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
-        validate_block_header_and_finality_signatures(&self.block_header, &self.block_signatures)?;
-        Ok(self.block_header.height())
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        // TODO: Validate finality signatures later, and only if they are by validators.
+        validate_block_header_and_finality_signatures(&self.block_header, &self.block_signatures)
+    }
+
+    fn id(&self) -> Self::Id {
+        self.block_header.height()
     }
 }
 
@@ -1575,9 +1579,12 @@ impl Item for Block {
     const TAG: Tag = Tag::Block;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
-        self.verify()?;
-        Ok(*self.hash())
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+
+    fn id(&self) -> Self::Id {
+        *self.hash()
     }
 }
 
@@ -1631,13 +1638,18 @@ impl Item for BlockWithMetadata {
     const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
+    fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
+        // TODO: Verify signatures only later.
         validate_block_header_and_finality_signatures(
             self.block.header(),
             &self.finality_signatures,
         )?;
-        Ok(self.block.height())
+        Ok(())
+    }
+
+    fn id(&self) -> Self::Id {
+        self.block.height()
     }
 }
 

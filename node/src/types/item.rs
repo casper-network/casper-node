@@ -61,8 +61,12 @@ pub(crate) trait Item:
     const TAG: Tag;
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
-    /// The ID of the specific item.  Returns an [`ItemValidationError`] if the item is not valid.
-    fn id(&self) -> Result<Self::Id, Self::ValidationError>;
+
+    /// Checks cryptographic validity of the item, and returns an error if invalid.
+    fn validate(&self) -> Result<(), Self::ValidationError>;
+
+    /// The ID of the specific item.
+    fn id(&self) -> Self::Id;
 }
 
 impl Item for Trie<Key, StoredValue> {
@@ -71,9 +75,13 @@ impl Item for Trie<Key, StoredValue> {
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+
+    fn id(&self) -> Self::Id {
         let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
-        Ok(Digest::hash(&node_bytes))
+        Digest::hash(&node_bytes)
     }
 }
 
@@ -83,7 +91,11 @@ impl Item for BlockHeader {
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
-        Ok(self.hash())
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+
+    fn id(&self) -> Self::Id {
+        self.hash()
     }
 }

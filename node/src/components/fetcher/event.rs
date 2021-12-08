@@ -125,18 +125,9 @@ impl<T: Item> Display for Event<T> {
                     write!(formatter, "failed to fetch {} from storage", id)
                 }
             }
-            Event::GotRemotely { item, source } => match item.id() {
-                Ok(id) => {
-                    write!(formatter, "got {} from {}", id, source)
-                }
-                Err(err) => {
-                    write!(
-                        formatter,
-                        "peer {} gave us invalid item; validation error: {:?}",
-                        source, err
-                    )
-                }
-            },
+            Event::GotRemotely { item, source } => {
+                write!(formatter, "got {} from {}", item.id(), source)
+            }
             Event::RejectedRemotely { id, source } => {
                 write!(formatter, "other component rejected {} from {}", id, source)
             }

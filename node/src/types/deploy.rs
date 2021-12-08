@@ -1351,9 +1351,13 @@ impl Item for Deploy {
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Result<Self::Id, Self::ValidationError> {
-        validate_deploy(self)?;
-        Ok(*self.id())
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        // TODO: Validate approvals later, and only if the approvers are actually authorized!
+        validate_deploy(self)
+    }
+
+    fn id(&self) -> Self::Id {
+        *self.id()
     }
 }
 
