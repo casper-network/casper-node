@@ -1346,7 +1346,7 @@ where
     let mut deploys_or_transfer: Vec<Deploy> = Vec::with_capacity(hashes.len());
     for maybe_deploy_or_transfer in effect_builder.get_deploys_from_storage(hashes).await {
         if let Some(deploy_or_transfer) = maybe_deploy_or_transfer {
-            deploys_or_transfer.push(deploy_or_transfer)
+            deploys_or_transfer.push(deploy_or_transfer.into_naive())
         } else {
             return None;
         }

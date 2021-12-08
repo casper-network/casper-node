@@ -285,7 +285,7 @@ pub(crate) enum StorageRequest {
         responder: Responder<bool>,
     },
     /// Retrieve deploys with given hashes.
-    GetDeploys {
+    GetOriginalDeploys {
         /// Hashes of deploys to be retrieved.
         deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
@@ -391,8 +391,12 @@ impl Display for StorageRequest {
                 write!(formatter, "get transfers for {}", block_hash)
             }
             StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
-            StorageRequest::GetDeploys { deploy_hashes, .. } => {
-                write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
+            StorageRequest::GetOriginalDeploys { deploy_hashes, .. } => {
+                write!(
+                    formatter,
+                    "get original {}",
+                    DisplayIter::new(deploy_hashes.iter())
+                )
             }
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)

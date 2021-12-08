@@ -206,7 +206,7 @@ fn get_deploys(
     deploy_hashes: Multiple<DeployHash>,
 ) -> Vec<Option<Deploy>> {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetDeploys {
+        StorageRequest::GetOriginalDeploys {
             deploy_hashes: deploy_hashes.to_vec(),
             responder,
         }

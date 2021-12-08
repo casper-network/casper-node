@@ -110,8 +110,9 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, TimeDiff, Timestamp,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
+        TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -1020,10 +1021,32 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploys_from_storage(
+    ///
+    /// Returns the "original" deploys, which are the first received by the node. These may not
+    /// necessarily be the executed form of the deploy, as it may have different approvals in the
+    /// recorded block.
+    pub(crate) async fn get_original_deploys_from_storage(
         self,
         deploy_hashes: Vec<DeployHash>,
     ) -> Vec<Option<Deploy>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetOriginalDeploys {
+                deploy_hashes,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploys from the deploy store.
+    pub(crate) async fn get_deploys_from_storage(
+        self,
+        deploy_hashes: Vec<DeployHash>,
+    ) -> Vec<Option<DeployWithFinalizedApprovals>>
     where
         REv: From<StorageRequest>,
     {

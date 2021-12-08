@@ -713,7 +713,7 @@ impl Storage {
             StorageRequest::PutDeploy { deploy, responder } => {
                 responder.respond(self.put_deploy(&*deploy)?).ignore()
             }
-            StorageRequest::GetDeploys {
+            StorageRequest::GetOriginalDeploys {
                 deploy_hashes,
                 responder,
             } => responder

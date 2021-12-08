@@ -122,7 +122,7 @@ pub(super) async fn execute_block<REv>(
     let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
     for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
         if let Some(deploy) = maybe_deploy {
-            deploys.push(deploy)
+            deploys.push(deploy.into_naive())
         } else {
             fatal!(
                 effect_builder,
@@ -148,7 +148,7 @@ pub(super) async fn execute_block<REv>(
         .await
     {
         if let Some(transfer) = maybe_transfer {
-            transfers.push(transfer)
+            transfers.push(transfer.into_naive())
         } else {
             fatal!(
                 effect_builder,
