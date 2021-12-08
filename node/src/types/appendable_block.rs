@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     components::block_proposer::DeployInfo,
-    types::{chainspec::DeployConfig, BlockPayload, DeployHash, Timestamp},
+    types::{chainspec::DeployConfig, BlockPayload, DeployHash, DeployWithApprovals, Timestamp},
 };
 
 #[derive(Debug, Error)]
@@ -32,8 +32,8 @@ pub(crate) enum AddError {
 #[derive(Clone, DataSize, Debug)]
 pub struct AppendableBlock {
     deploy_config: DeployConfig,
-    deploy_hashes: Vec<DeployHash>,
-    transfer_hashes: Vec<DeployHash>,
+    deploys: Vec<DeployWithApprovals>,
+    transfers: Vec<DeployWithApprovals>,
     deploy_and_transfer_set: HashSet<DeployHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
@@ -46,8 +46,8 @@ impl AppendableBlock {
     pub(crate) fn new(deploy_config: DeployConfig, timestamp: Timestamp) -> Self {
         AppendableBlock {
             deploy_config,
-            deploy_hashes: Vec::new(),
-            transfer_hashes: Vec::new(),
+            deploys: Vec::new(),
+            transfers: Vec::new(),
             timestamp,
             deploy_and_transfer_set: HashSet::new(),
             total_gas: Gas::zero(),
@@ -67,10 +67,10 @@ impl AppendableBlock {
     /// actually a transfer.
     pub(crate) fn add_transfer(
         &mut self,
-        hash: DeployHash,
+        transfer: DeployWithApprovals,
         deploy_info: &DeployInfo,
     ) -> Result<(), AddError> {
-        if self.deploy_and_transfer_set.contains(&hash) {
+        if self.deploy_and_transfer_set.contains(&transfer.deploy_hash) {
             return Err(AddError::Duplicate);
         }
         if !deploy_info
@@ -82,8 +82,8 @@ impl AppendableBlock {
         if self.has_max_transfer_count() {
             return Err(AddError::TransferCount);
         }
-        self.transfer_hashes.push(hash);
-        self.deploy_and_transfer_set.insert(hash);
+        self.deploy_and_transfer_set.insert(transfer.deploy_hash);
+        self.transfers.push(transfer);
         Ok(())
     }
 
@@ -94,10 +94,10 @@ impl AppendableBlock {
     /// is actually not a transfer.
     pub(crate) fn add_deploy(
         &mut self,
-        hash: DeployHash,
+        deploy: DeployWithApprovals,
         deploy_info: &DeployInfo,
     ) -> Result<(), AddError> {
-        if self.deploy_and_transfer_set.contains(&hash) {
+        if self.deploy_and_transfer_set.contains(&deploy.deploy_hash) {
             return Err(AddError::Duplicate);
         }
         if !deploy_info
@@ -122,10 +122,10 @@ impl AppendableBlock {
         if new_total_gas > Gas::from(self.deploy_config.block_gas_limit) {
             return Err(AddError::GasLimit);
         }
-        self.deploy_hashes.push(hash);
         self.total_gas = new_total_gas;
         self.total_size = new_total_size;
-        self.deploy_and_transfer_set.insert(hash);
+        self.deploy_and_transfer_set.insert(deploy.deploy_hash);
+        self.deploys.push(deploy);
         Ok(())
     }
 
@@ -137,22 +137,20 @@ impl AppendableBlock {
         random_bit: bool,
     ) -> BlockPayload {
         let AppendableBlock {
-            deploy_hashes,
-            transfer_hashes,
-            ..
+            deploys, transfers, ..
         } = self;
-        BlockPayload::new(deploy_hashes, transfer_hashes, accusations, random_bit)
+        BlockPayload::new(deploys, transfers, accusations, random_bit)
     }
 
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
     /// more transfers can be added to this block.
     fn has_max_transfer_count(&self) -> bool {
-        self.transfer_hashes.len() == self.deploy_config.block_max_transfer_count as usize
+        self.transfers.len() == self.deploy_config.block_max_transfer_count as usize
     }
 
     /// Returns `true` if the number of deploys is already the maximum allowed count, i.e. no more
     /// deploys can be added to this block.
     fn has_max_deploy_count(&self) -> bool {
-        self.deploy_hashes.len() == self.deploy_config.block_max_deploy_count as usize
+        self.deploys.len() == self.deploy_config.block_max_deploy_count as usize
     }
 }

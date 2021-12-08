@@ -36,8 +36,8 @@ use crate::{
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, Timestamp,
+        appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployHash,
+        DeployOrTransferHash, DeployWithApprovals, Timestamp,
     },
     NodeRng,
 };
@@ -73,28 +73,26 @@ impl ValidatingBlock {
         }
     }
 
-    fn deploy_hashes(&self) -> &[DeployHash] {
+    fn deploy_hashes(&self) -> Box<dyn Iterator<Item = &DeployHash> + '_> {
         match self {
-            ValidatingBlock::Block(block) => block.deploy_hashes(),
-            ValidatingBlock::ProposedBlock(pb) => pb.value().deploy_hashes(),
+            ValidatingBlock::Block(block) => Box::new(block.deploy_hashes().iter()),
+            ValidatingBlock::ProposedBlock(pb) => Box::new(pb.value().deploy_hashes()),
         }
     }
 
-    fn transfer_hashes(&self) -> &[DeployHash] {
+    fn transfer_hashes(&self) -> Box<dyn Iterator<Item = &DeployHash> + '_> {
         match self {
-            ValidatingBlock::Block(block) => block.transfer_hashes(),
-            ValidatingBlock::ProposedBlock(pb) => pb.value().transfer_hashes(),
+            ValidatingBlock::Block(block) => Box::new(block.transfer_hashes().iter()),
+            ValidatingBlock::ProposedBlock(pb) => Box::new(pb.value().transfer_hashes()),
         }
     }
 
     fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
         let deploys = self
             .deploy_hashes()
-            .iter()
             .map(|hash| DeployOrTransferHash::Deploy(*hash));
         let transfers = self
             .transfer_hashes()
-            .iter()
             .map(|hash| DeployOrTransferHash::Transfer(*hash));
         deploys.chain(transfers)
     }
@@ -111,6 +109,7 @@ pub(crate) enum Event<I> {
     #[display(fmt = "{} found", dt_hash)]
     DeployFound {
         dt_hash: DeployOrTransferHash,
+        approvals: Vec<Approval>,
         deploy_info: Box<DeployInfo>,
     },
 
@@ -234,7 +233,7 @@ where
                 sender,
                 responder,
             }) => {
-                let deploy_count = block.deploy_hashes().len() + block.transfer_hashes().len();
+                let deploy_count = block.deploy_hashes().count() + block.transfer_hashes().count();
                 if deploy_count == 0 {
                     // If there are no deploys, return early.
                     return responder.respond(true).ignore();
@@ -286,6 +285,7 @@ where
             }
             Event::DeployFound {
                 dt_hash,
+                approvals,
                 deploy_info,
             } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
@@ -302,10 +302,16 @@ where
                         // notify everyone still waiting on it that all is lost.
                         let add_result = match dt_hash {
                             DeployOrTransferHash::Deploy(hash) => {
-                                state.appendable_block.add_deploy(hash, &*deploy_info)
+                                state.appendable_block.add_deploy(
+                                    DeployWithApprovals::new(hash, approvals.clone()),
+                                    &*deploy_info,
+                                )
                             }
                             DeployOrTransferHash::Transfer(hash) => {
-                                state.appendable_block.add_transfer(hash, &*deploy_info)
+                                state.appendable_block.add_transfer(
+                                    DeployWithApprovals::new(hash, approvals.clone()),
+                                    &*deploy_info,
+                                )
                             }
                         };
                         if let Err(err) = add_result {
@@ -419,13 +425,20 @@ where
         FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
             (deploy.deploy_or_transfer_hash() == dt_hash)
                 .then(|| deploy)
-                .and_then(|deploy| deploy.deploy_info().ok())
-                .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_info| {
-                    Event::DeployFound {
-                        dt_hash,
-                        deploy_info: Box::new(deploy_info),
-                    }
+                .and_then(|deploy| {
+                    deploy
+                        .deploy_info()
+                        .ok()
+                        .map(|deploy_info| (deploy_info, deploy.approvals().to_vec()))
                 })
+                .map_or(
+                    Event::CannotConvertDeploy(dt_hash),
+                    |(deploy_info, approvals)| Event::DeployFound {
+                        dt_hash,
+                        approvals,
+                        deploy_info: Box::new(deploy_info),
+                    },
+                )
         }
     };
 

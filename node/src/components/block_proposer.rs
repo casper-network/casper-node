@@ -38,7 +38,8 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        BlockPayload, Chainspec, DeployHash, DeployHeader, DeployOrTransferHash, Timestamp,
+        Approval, BlockPayload, Chainspec, DeployHash, DeployHeader, DeployOrTransferHash,
+        DeployWithApprovals, Timestamp,
     },
     NodeRng,
 };
@@ -296,8 +297,12 @@ impl BlockProposerReady {
                         .ignore()
                 }
             }
-            Event::BufferDeploy { hash, deploy_info } => {
-                self.add_deploy(Timestamp::now(), hash, *deploy_info);
+            Event::BufferDeploy {
+                hash,
+                approvals,
+                deploy_info,
+            } => {
+                self.add_deploy(Timestamp::now(), hash, approvals, *deploy_info);
                 Effects::new()
             }
             Event::Prune => {
@@ -378,6 +383,7 @@ impl BlockProposerReady {
         &mut self,
         current_instant: Timestamp,
         hash: DeployOrTransferHash,
+        approvals: Vec<Approval>,
         deploy_info: DeployInfo,
     ) {
         if deploy_info.header.expired(current_instant) {
@@ -398,13 +404,15 @@ impl BlockProposerReady {
         }
 
         if hash.is_transfer() {
-            self.sets
-                .pending_transfers
-                .insert(*hash.deploy_hash(), (deploy_info, current_instant));
+            self.sets.pending_transfers.insert(
+                *hash.deploy_hash(),
+                (approvals, deploy_info, current_instant),
+            );
         } else {
-            self.sets
-                .pending_deploys
-                .insert(*hash.deploy_hash(), (deploy_info, current_instant));
+            self.sets.pending_deploys.insert(
+                *hash.deploy_hash(),
+                (approvals, deploy_info, current_instant),
+            );
         }
 
         info!(%hash, "added deploy to the buffer");
@@ -425,7 +433,7 @@ impl BlockProposerReady {
                 }
             };
             match remove_result {
-                Some((deploy_info, _)) => {
+                Some((_, deploy_info, _)) => {
                     self.sets.finalized_deploys.insert(hash, deploy_info.header);
                 }
                 // If we haven't seen this deploy before, we still need to take note of it.
@@ -497,7 +505,7 @@ impl BlockProposerReady {
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
 
         // We prioritize transfers over deploys, so we try to include them first.
-        for (hash, (deploy_info, received_time)) in &self.sets.pending_transfers {
+        for (hash, (approvals, deploy_info, received_time)) in &self.sets.pending_transfers {
             if !self.deps_resolved(&deploy_info.header, &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
@@ -506,7 +514,10 @@ impl BlockProposerReady {
                 continue;
             }
 
-            if let Err(err) = appendable_block.add_transfer(*hash, deploy_info) {
+            if let Err(err) = appendable_block.add_transfer(
+                DeployWithApprovals::new(*hash, approvals.clone()),
+                deploy_info,
+            ) {
                 match err {
                     // We added the maximum number of transfers.
                     AddError::TransferCount | AddError::GasLimit | AddError::BlockSize => break,
@@ -521,7 +532,7 @@ impl BlockProposerReady {
         }
 
         // Now we try to add other deploys to the block.
-        for (hash, (deploy_info, received_time)) in &self.sets.pending_deploys {
+        for (hash, (approvals, deploy_info, received_time)) in &self.sets.pending_deploys {
             if !self.deps_resolved(&deploy_info.header, &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
@@ -530,7 +541,10 @@ impl BlockProposerReady {
                 continue;
             }
 
-            if let Err(err) = appendable_block.add_deploy(*hash, deploy_info) {
+            if let Err(err) = appendable_block.add_deploy(
+                DeployWithApprovals::new(*hash, approvals.clone()),
+                deploy_info,
+            ) {
                 match err {
                     // We added the maximum number of deploys.
                     AddError::DeployCount => break,

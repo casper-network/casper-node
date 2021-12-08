@@ -8,7 +8,7 @@ use datasize::DataSize;
 use itertools::{Either, Itertools};
 
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{DeployHash, DeployHeader, Timestamp};
+use crate::types::{Approval, DeployHash, DeployHeader, Timestamp};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -29,10 +29,10 @@ impl PruneResult {
 pub(super) struct BlockProposerDeploySets {
     /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
     /// received them.
-    pub(super) pending_deploys: HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    pub(super) pending_deploys: HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)>,
     /// The collection of transfers pending for inclusion in a block, with a timestamp of when we
     /// received them.
-    pub(super) pending_transfers: HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    pub(super) pending_transfers: HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -136,10 +136,10 @@ fn prune_deploys(
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// hashes of deploys pruned.
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    deploys: &mut HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hashmap_drain_filter_in_place(deploys, |(deploy_info, _)| {
+    hashmap_drain_filter_in_place(deploys, |(_, deploy_info, _)| {
         deploy_info.header.expired(current_instant)
     })
 }
@@ -153,7 +153,8 @@ mod tests {
     #[test]
     fn prunes_pending_deploys() {
         let mut test_rng = TestRng::new();
-        let mut deploys: HashMap<DeployHash, (DeployInfo, Timestamp)> = HashMap::new();
+        let mut deploys: HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)> =
+            HashMap::new();
         let now = Timestamp::now();
 
         let deploy_1 = testing::create_not_expired_deploy(now, &mut test_rng);
@@ -162,11 +163,26 @@ mod tests {
         let deploy_4 = testing::create_not_expired_deploy(now, &mut test_rng);
         let deploy_5 = testing::create_expired_deploy(now, &mut test_rng);
 
-        deploys.insert(*deploy_1.id(), (deploy_1.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_2.id(), (deploy_2.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_3.id(), (deploy_3.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_4.id(), (deploy_4.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_5.id(), (deploy_5.deploy_info().unwrap(), now));
+        deploys.insert(
+            *deploy_1.id(),
+            (vec![], deploy_1.deploy_info().unwrap(), now),
+        );
+        deploys.insert(
+            *deploy_2.id(),
+            (vec![], deploy_2.deploy_info().unwrap(), now),
+        );
+        deploys.insert(
+            *deploy_3.id(),
+            (vec![], deploy_3.deploy_info().unwrap(), now),
+        );
+        deploys.insert(
+            *deploy_4.id(),
+            (vec![], deploy_4.deploy_info().unwrap(), now),
+        );
+        deploys.insert(
+            *deploy_5.id(),
+            (vec![], deploy_5.deploy_info().unwrap(), now),
+        );
 
         // We expect deploys created with `create_expired_deploy` to be drained
         let mut expected_drained = vec![*deploy_2.id(), *deploy_3.id(), *deploy_5.id()];

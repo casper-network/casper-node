@@ -563,6 +563,25 @@ impl FromBytes for Approval {
     }
 }
 
+/// The hash of a deploy (or transfer) together with signatures approving it for execution.
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DeployWithApprovals {
+    /// The hash of the deploy.
+    pub deploy_hash: DeployHash,
+    /// The approvals for the deploy.
+    pub approvals: Vec<Approval>,
+}
+
+impl DeployWithApprovals {
+    /// Creates a new `DeployWithApprovals`.
+    pub fn new(deploy_hash: DeployHash, approvals: Vec<Approval>) -> Self {
+        Self {
+            deploy_hash,
+            approvals,
+        }
+    }
+}
+
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FinalizedApprovals(Vec<Approval>);
