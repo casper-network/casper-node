@@ -482,7 +482,9 @@ mod tests {
                             tmp.insert(*key, Transform::AddInt32(2i32));
                         }
                         CLType::String => {}
-                        _ => unreachable!("remember to update the test pairs if new cl_types are added"),
+                        _ => unreachable!(
+                            "remember to update the test pairs if new cl_types are added"
+                        ),
                     }
                 }
             }
@@ -504,11 +506,11 @@ mod tests {
         // Check that cache matches the contents of the second instance of lmdb
         for key in all_keys {
             assert_eq!(
-               scratch_checkout
+                scratch_checkout
                     .read(correlation_id, &key)
                     .unwrap()
                     .as_ref(),
-               updated_checkout
+                updated_checkout
                     .read(correlation_id, &key)
                     .unwrap()
                     .as_ref()
