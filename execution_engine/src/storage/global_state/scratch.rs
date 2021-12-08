@@ -294,7 +294,7 @@ mod tests {
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue, CLType};
+    use casper_types::{account::AccountHash, CLType, CLValue};
 
     use super::*;
     use crate::storage::{
@@ -442,7 +442,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn commit_updates_state_with_add() {
         let correlation_id = CorrelationId::new();
@@ -450,7 +449,10 @@ mod tests {
 
         // create two lmdb instances, with a scratch instance on the first
         let TestState { state, root_hash } = create_test_state();
-        let TestState { state: state2, root_hash: state_2_root_hash } = create_test_state();
+        let TestState {
+            state: state2,
+            root_hash: state_2_root_hash,
+        } = create_test_state();
 
         let scratch = state.create_scratch();
 
@@ -466,7 +468,9 @@ mod tests {
         scratch
             .commit(correlation_id, root_hash, effects.clone())
             .unwrap();
-        let updated_hash = state2.commit(correlation_id, state_2_root_hash, effects).unwrap();
+        let updated_hash = state2
+            .commit(correlation_id, state_2_root_hash, effects)
+            .unwrap();
 
         // Create add transforms as well
         let add_effects: AdditiveMap<Key, Transform> = {
@@ -478,7 +482,10 @@ mod tests {
                             tmp.insert(*key, Transform::AddInt32(2i32));
                         }
                         CLType::String => {}
-                        _ => assert!(false, "remember to update the test pairs if new cl_types are added"),
+                        _ => assert!(
+                            false,
+                            "remember to update the test pairs if new cl_types are added"
+                        ),
                     }
                 }
             }
@@ -487,7 +494,9 @@ mod tests {
         scratch
             .commit(correlation_id, root_hash, add_effects.clone())
             .unwrap();
-        let updated_hash = state2.commit(correlation_id, updated_hash, add_effects).unwrap();
+        let updated_hash = state2
+            .commit(correlation_id, updated_hash, add_effects)
+            .unwrap();
 
         let updated_checkout = state2.checkout(updated_hash).unwrap().unwrap();
         let all_keys = updated_checkout
