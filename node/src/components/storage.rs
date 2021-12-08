@@ -347,6 +347,9 @@ pub struct Storage {
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
+    /// The finalized approvals database.
+    #[data_size(skip)]
+    finalized_approvals_db: Database,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
@@ -447,6 +450,8 @@ impl Storage {
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
+        let finalized_approvals_db =
+            env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
         let block_body_v1_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
         let block_body_v2_db = env.create_db(Some("block_body_merkle"), DatabaseFlags::empty())?;
         let deploy_hashes_db = env.create_db(Some("deploy_hashes"), DatabaseFlags::empty())?;
@@ -575,6 +580,7 @@ impl Storage {
             deploy_metadata_db,
             transfer_db,
             state_store_db,
+            finalized_approvals_db,
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
