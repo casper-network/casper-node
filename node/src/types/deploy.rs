@@ -41,8 +41,12 @@ use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::block_proposer::DeployInfo, crypto, crypto::AsymmetricKeyExt,
-    rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::ds, utils::DisplayIter,
+    components::block_proposer::DeployInfo,
+    crypto,
+    crypto::AsymmetricKeyExt,
+    rpcs::docs::DocExample,
+    types::chainspec::DeployConfig,
+    utils::{ds, DisplayIter},
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
