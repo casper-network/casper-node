@@ -48,8 +48,8 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, ChainspecInfo,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed,
-        TimeDiff,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedApprovals, FinalizedBlock, Item,
+        NodeId, StatusFeed, TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -355,6 +355,15 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Store a set of finalized approvals for a specific deploy.
+    FinalizeApprovals {
+        /// The deploy hash to store the finalized approvals for.
+        deploy_hash: DeployHash,
+        /// The set of finalized approvals.
+        finalized_approvals: FinalizedApprovals,
+        /// Responder, responded to once the approvals are written.
+        responder: Responder<()>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -420,6 +429,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetFinalizedDeploys { ttl, .. } => {
                 write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
+            }
+            StorageRequest::FinalizeApprovals { deploy_hash, .. } => {
+                write!(formatter, "finalized approvals for deploy {}", deploy_hash)
             }
         }
     }

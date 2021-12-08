@@ -111,7 +111,7 @@ use crate::{
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, TimeDiff, Timestamp,
+        FinalizedApprovals, FinalizedBlock, Item, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -1817,6 +1817,27 @@ impl<REv> EffectBuilder<REv> {
         .await
         .into_iter()
         .collect()
+    }
+
+    /// Stores a set of given finalized approvals in storage.
+    ///
+    /// Any previously stored finalized approvals for the given hash are quietly overwritten
+    pub(crate) async fn store_finalized_approvals(
+        self,
+        deploy_hash: DeployHash,
+        finalized_approvals: FinalizedApprovals,
+    ) where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::FinalizeApprovals {
+                deploy_hash,
+                finalized_approvals,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 }
 

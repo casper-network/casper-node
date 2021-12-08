@@ -892,7 +892,7 @@ impl Deploy {
 /// to the local node, while a second set of approvals makes it to the proposing node. The local
 /// node has to adhere to the proposer's approval to obtain the same outcome.
 #[derive(DataSize, Debug, Deserialize, Serialize)]
-struct DeployWithFinalizedApprovals {
+pub(crate) struct DeployWithFinalizedApprovals {
     /// The deploy that likely has been included in a block.
     deploy: Deploy,
     /// Approvals used to verify the deploy during block execution.

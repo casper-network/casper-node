@@ -84,8 +84,8 @@ use crate::{
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
-        SharedObject, TimeDiff,
+        FinalizedApprovals, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
+        MerkleLinkedListNode, SharedObject, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -898,6 +898,13 @@ impl Storage {
             StorageRequest::GetFinalizedDeploys { ttl, responder } => {
                 responder.respond(self.get_finalized_deploys(ttl)?).ignore()
             }
+            StorageRequest::FinalizeApprovals {
+                ref deploy_hash,
+                ref finalized_approvals,
+                responder,
+            } => responder
+                .respond(self.finalize_approvals(deploy_hash, finalized_approvals)?)
+                .ignore(),
         })
     }
 
@@ -1383,6 +1390,23 @@ impl Storage {
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
             .transpose()
+    }
+
+    /// Stores a set of finalized approvals.
+    pub fn finalize_approvals(
+        &self,
+        deploy_hash: &DeployHash,
+        finalized_approvals: &FinalizedApprovals,
+    ) -> Result<(), Error> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let _ = txn.put_value(
+            self.finalized_approvals_db,
+            deploy_hash,
+            finalized_approvals,
+            true,
+        )?;
+        txn.commit()?;
+        Ok(())
     }
 }
 
