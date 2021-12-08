@@ -996,25 +996,6 @@ impl Deploy {
         self.header.chain_name.clear();
     }
 
-    /// Returns `true` if the two deploys are equal except for possibly the `is_valid` flag. I.e.
-    /// comparing the same deploy before and after validation will still return `true`.
-    pub(crate) fn equals_ignoring_is_valid(&self, other: &Deploy) -> bool {
-        // Destructure so we can't forget any other fields.
-        let Deploy {
-            hash,
-            header,
-            payment,
-            session,
-            approvals,
-            is_valid: _,
-        } = self;
-        *hash == other.hash
-            && *header == other.header
-            && *payment == other.payment
-            && *session == other.session
-            && *approvals == other.approvals
-    }
-
     pub(crate) fn random_valid_native_transfer(rng: &mut TestRng) -> Self {
         let deploy = Self::random(rng);
         let transfer_args = runtime_args! {
