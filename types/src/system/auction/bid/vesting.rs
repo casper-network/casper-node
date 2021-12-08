@@ -20,7 +20,8 @@ const WEEK_MILLIS: usize = DAYS_IN_WEEK * DAY_MILLIS;
 /// Length of total vesting schedule in days.
 const VESTING_SCHEDULE_LENGTH_DAYS: usize = 91;
 /// Length of total vesting schedule expressed in days.
-pub const VESTING_SCHEDULE_LENGTH_MILLIS: usize = VESTING_SCHEDULE_LENGTH_DAYS * DAY_MILLIS;
+pub const VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
+    VESTING_SCHEDULE_LENGTH_DAYS as u64 * DAY_MILLIS as u64;
 /// 91 days / 7 days in a week = 13 weeks
 const LOCKED_AMOUNTS_LENGTH: usize = (VESTING_SCHEDULE_LENGTH_DAYS / DAYS_IN_WEEK) + 1;
 
