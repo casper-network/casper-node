@@ -30,7 +30,7 @@ use crate::{
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployMetadata,
-        FinalitySignature, HashingAlgorithmVersion,
+        DeployWithFinalizedApprovals, FinalitySignature, HashingAlgorithmVersion,
     },
     utils::WithDir,
 };
@@ -200,13 +200,15 @@ fn get_block_signatures(
 }
 
 /// Loads a set of deploys from a storage component.
-fn get_deploys(
+///
+/// Applies `into_naive` to all loaded deploys.
+fn get_naive_deploys(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hashes: Multiple<DeployHash>,
 ) -> Vec<Option<Deploy>> {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetOriginalDeploys {
+        StorageRequest::GetDeploys {
             deploy_hashes: deploy_hashes.to_vec(),
             responder,
         }
@@ -214,6 +216,9 @@ fn get_deploys(
     });
     assert!(harness.is_idle());
     response
+        .into_iter()
+        .map(|opt_dfa| opt_dfa.map(DeployWithFinalizedApprovals::into_naive))
+        .collect()
 }
 
 /// Loads a deploy with associated metadata from the storage component.
@@ -648,11 +653,11 @@ fn get_vec_of_non_existing_deploy_returns_nones() {
     let mut storage = storage_fixture(&harness);
 
     let deploy_id = DeployHash::random(&mut harness.rng);
-    let response = get_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
+    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
     assert_eq!(response, vec![None]);
 
     // Also verify that we can retrieve using an empty set of deploy hashes.
-    let response = get_deploys(&mut harness, &mut storage, smallvec![]);
+    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![]);
     assert!(response.is_empty());
 }
 
@@ -675,7 +680,7 @@ fn can_retrieve_store_and_load_deploys() {
     );
 
     // Retrieve the stored deploy.
-    let response = get_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
+    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
     assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
 
     // Finally try to get the metadata as well. Since we did not store any, we expect empty default
@@ -715,7 +720,7 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
 
     // Retrieve all from storage, ensuring they are found.
     for chunk in deploy_hashes.chunks(batch_size) {
-        let result = get_deploys(&mut harness, &mut storage, chunk.iter().cloned().collect());
+        let result = get_naive_deploys(&mut harness, &mut storage, chunk.iter().cloned().collect());
         assert!(result.iter().all(Option::is_some));
     }
 }
@@ -735,7 +740,7 @@ fn store_execution_results_for_two_blocks() {
 
     // Ensure deploy exists.
     assert_eq!(
-        get_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]),
+        get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]),
         vec![Some(deploy.clone())]
     );
 
@@ -1047,7 +1052,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         .expect("missing block we stored earlier");
     assert_eq!(actual_block, *block);
 
-    let actual_deploys = get_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
+    let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
     assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
     let (_, deploy_metadata) = get_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())

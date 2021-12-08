@@ -1022,27 +1022,8 @@ impl<REv> EffectBuilder<REv> {
 
     /// Gets the requested deploys from the deploy store.
     ///
-    /// Returns the "original" deploys, which are the first received by the node. These may not
-    /// necessarily be the executed form of the deploy, as it may have different approvals in the
-    /// recorded block.
-    pub(crate) async fn get_original_deploys_from_storage(
-        self,
-        deploy_hashes: Vec<DeployHash>,
-    ) -> Vec<Option<Deploy>>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetOriginalDeploys {
-                deploy_hashes,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested deploys from the deploy store.
+    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// potentially different set of approvals used during execution of the recorded block.
     pub(crate) async fn get_deploys_from_storage(
         self,
         deploy_hashes: Vec<DeployHash>,

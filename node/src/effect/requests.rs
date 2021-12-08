@@ -291,13 +291,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployWithFinalizedApprovals>>>,
     },
-    /// Retrieve unaltered/first received deploys with given hashes.
-    GetOriginalDeploys {
-        /// Hashes of deploys to be retrieved.
-        deploy_hashes: Vec<DeployHash>,
-        /// Responder to call with the results.
-        responder: Responder<Vec<Option<Deploy>>>,
-    },
     /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
     GetFinalizedDeploys {
         /// Maximum TTL of block we're interested in.
@@ -400,13 +393,6 @@ impl Display for StorageRequest {
             StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
                 write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
-            }
-            StorageRequest::GetOriginalDeploys { deploy_hashes, .. } => {
-                write!(
-                    formatter,
-                    "get original {}",
-                    DisplayIter::new(deploy_hashes.iter())
-                )
             }
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)

@@ -722,12 +722,6 @@ impl Storage {
                     deploy_hashes.as_slice(),
                 )?)
                 .ignore(),
-            StorageRequest::GetOriginalDeploys {
-                deploy_hashes,
-                responder,
-            } => responder
-                .respond(self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?)
-                .ignore(),
             StorageRequest::PutExecutionResults {
                 block_hash,
                 execution_results,
@@ -1332,18 +1326,6 @@ impl Storage {
         block_body_hash: &Digest,
     ) -> Result<Option<BlockBody>, LmdbExtError> {
         tx.get_value(self.block_body_v1_db, block_body_hash)
-    }
-
-    /// Retrieves a set of deploys from storage.
-    fn get_deploys<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        deploy_hashes: &[DeployHash],
-    ) -> Result<Vec<Option<Deploy>>, LmdbExtError> {
-        deploy_hashes
-            .iter()
-            .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
-            .collect()
     }
 
     /// Retrieves a set of deploys from storage, along with their potential finalized approvals.

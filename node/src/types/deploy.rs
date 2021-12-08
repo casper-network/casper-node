@@ -564,7 +564,7 @@ impl FromBytes for Approval {
 }
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
-#[derive(DataSize, Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FinalizedApprovals(Vec<Approval>);
 
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
@@ -891,7 +891,7 @@ impl Deploy {
 /// A typical case where these can differ is if a deploy is sent with an original set of approvals
 /// to the local node, while a second set of approvals makes it to the proposing node. The local
 /// node has to adhere to the proposer's approval to obtain the same outcome.
-#[derive(DataSize, Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DeployWithFinalizedApprovals {
     /// The deploy that likely has been included in a block.
     deploy: Deploy,
