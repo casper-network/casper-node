@@ -30,10 +30,11 @@ use crate::{
     components::storage::{self, Storage},
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
-        requests::ContractRuntimeRequest,
+        requests::{ContractRuntimeRequest, NetworkRequest},
         Responder,
     },
     logging,
+    protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Runner},
     testing::ConditionCheckReactor,
     types::{Block, Chainspec, Deploy, NodeId},
@@ -60,6 +61,10 @@ enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    #[from]
+    StorageRequest(StorageRequest),
+    #[from]
+    NetworkRequest(NetworkRequest<NodeId, Message>),
 }
 
 impl ReactorEvent for Event {
@@ -69,12 +74,6 @@ impl ReactorEvent for Event {
         } else {
             None
         }
-    }
-}
-
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(storage::Event::from(request))
     }
 }
 
@@ -91,6 +90,8 @@ impl Display for Event {
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
+            Event::StorageRequest(request) => write!(formatter, "storage request: {:?}", request),
+            Event::NetworkRequest(request) => write!(formatter, "network request: {:?}", request),
         }
     }
 }
@@ -425,6 +426,10 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
+            Event::StorageRequest(req) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
             Event::DeployAcceptor(event) => reactor::wrap_effects(
                 Event::DeployAcceptor,
                 self.deploy_acceptor
@@ -558,6 +563,7 @@ impl reactor::Reactor for Reactor {
                 }
                 _ => panic!("should not receive {:?}", event),
             },
+            Event::NetworkRequest(_) => panic!("test does not handle network requests"),
         }
     }
 
@@ -574,7 +580,7 @@ fn put_block_to_storage(
         effect_builder
             .into_inner()
             .schedule(
-                StorageRequest::PutBlock { block, responder },
+                storage::Event::StorageRequest(StorageRequest::PutBlock { block, responder }),
                 QueueKind::Regular,
             )
             .ignore()
@@ -589,7 +595,7 @@ fn put_deploy_to_storage(
         effect_builder
             .into_inner()
             .schedule(
-                StorageRequest::PutDeploy { deploy, responder },
+                storage::Event::StorageRequest(StorageRequest::PutDeploy { deploy, responder }),
                 QueueKind::Regular,
             )
             .ignore()

@@ -295,16 +295,15 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     components::Component,
-    effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
-        Effects,
-    },
+    effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
     logging,
     reactor::{EventQueueHandle, QueueKind},
     testing::TestRng,
     types::NodeId,
     NodeRng,
 };
+
+use super::small_network::FromIncoming;
 
 /// A network.
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
@@ -393,7 +392,7 @@ where
         rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: Send + FromIncoming<NodeId, P>,
     {
         ACTIVE_NETWORK.with(|active_network| {
             active_network
@@ -436,7 +435,7 @@ where
         rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: Send + FromIncoming<NodeId, P>,
     {
         InMemoryNetwork::new_with_data(event_queue, NodeId::random(rng), self.nodes.clone())
     }
@@ -461,7 +460,7 @@ where
     /// This function is an alias of `NetworkController::create_node_local`.
     pub(crate) fn new<REv>(event_queue: EventQueueHandle<REv>, rng: &mut NodeRng) -> Self
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: Send + FromIncoming<NodeId, P>,
     {
         NetworkController::create_node(event_queue, rng)
     }
@@ -473,7 +472,7 @@ where
         nodes: Network<P>,
     ) -> Self
     where
-        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+        REv: Send + FromIncoming<NodeId, P>,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
 
@@ -598,11 +597,11 @@ async fn receiver_task<REv, P>(
     event_queue: EventQueueHandle<REv>,
     mut receiver: mpsc::UnboundedReceiver<(NodeId, P)>,
 ) where
-    REv: From<NetworkAnnouncement<NodeId, P>>,
+    REv: FromIncoming<NodeId, P>,
     P: 'static + Send,
 {
     while let Some((sender, payload)) = receiver.recv().await {
-        let announce = NetworkAnnouncement::MessageReceived { sender, payload };
+        let announce: REv = REv::from_incoming(sender, payload);
 
         event_queue
             .schedule(announce, QueueKind::NetworkIncoming)

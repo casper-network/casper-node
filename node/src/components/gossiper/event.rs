@@ -3,17 +3,22 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use derive_more::From;
 use serde::Serialize;
 
-use super::{Item, Message};
+use super::Item;
 use crate::{
+    effect::{incoming::GossiperIncoming, requests::BeginGossipRequest},
     types::NodeId,
     utils::{DisplayIter, Source},
 };
 
 /// `Gossiper` events.
-#[derive(Debug, Serialize)]
+#[derive(Debug, From, Serialize)]
 pub enum Event<T: Item> {
+    /// A request to gossip an item has been made.
+    #[from]
+    BeginGossipRequest(BeginGossipRequest<T>),
     /// A new item has been received to be gossiped.
     ItemReceived {
         item_id: T::Id,
@@ -32,7 +37,8 @@ pub enum Event<T: Item> {
     /// arrived.
     CheckGetFromPeerTimeout { item_id: T::Id, peer: NodeId },
     /// An incoming gossip network message.
-    MessageReceived { sender: NodeId, message: Message<T> },
+    #[from]
+    Incoming(GossiperIncoming<T>),
     /// The result of the gossiper getting an item from the component responsible for holding it.
     /// If the result is `Ok`, the item should be sent to the requesting peer.
     GetFromHolderResult {
@@ -45,6 +51,15 @@ pub enum Event<T: Item> {
 impl<T: Item> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::BeginGossipRequest(BeginGossipRequest {
+                item_id, source, ..
+            }) => {
+                write!(
+                    formatter,
+                    "begin gossping new item {} received from {}",
+                    item_id, source
+                )
+            }
             Event::ItemReceived { item_id, source } => {
                 write!(formatter, "new item {} received from {}", item_id, source)
             }
@@ -64,8 +79,8 @@ impl<T: Item> Display for Event<T> {
                 "check get from peer timeout for {} with {}",
                 item_id, peer
             ),
-            Event::MessageReceived { sender, message } => {
-                write!(formatter, "{} received from {}", message, sender)
+            Event::Incoming(incoming) => {
+                write!(formatter, "incoming: {}", incoming)
             }
             Event::GetFromHolderResult {
                 item_id, result, ..

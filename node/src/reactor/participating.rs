@@ -41,7 +41,7 @@ use crate::{
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
-        storage::Storage,
+        storage::{self, Storage},
         Component,
     },
     effect::{
@@ -49,18 +49,23 @@ use crate::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
             ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
             DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
+            LinearChainBlock, RpcServerAnnouncement,
+        },
+        incoming::{
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
-            BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
+            BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    storage,
     types::{
         ActivationPoint, BlockHeader, BlockPayload, Chainspec, Deploy, DeployHash, ExitCode,
         FinalizedBlock, Item, NodeId, Tag, Timestamp,
@@ -84,12 +89,12 @@ pub(crate) enum ParticipatingEvent {
     /// Small network event.
     #[from]
     SmallNetwork(small_network::Event<Message>),
+    /// Storage event.
+    #[from]
+    Storage(storage::Event),
     /// Block proposer event.
     #[from]
     BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
-    #[from]
-    /// Storage event.
-    Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     /// RPC server event.
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
@@ -151,6 +156,9 @@ pub(crate) enum ParticipatingEvent {
     /// Storage request.
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    /// Address gossip request.
+    #[from]
+    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
@@ -159,9 +167,6 @@ pub(crate) enum ParticipatingEvent {
     /// Control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
-    /// Network announcement.
-    #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     /// API server announcement.
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
@@ -189,6 +194,30 @@ pub(crate) enum ParticipatingEvent {
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+    /// Incoming consensus network message.
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
+    /// Incoming deploy gossiper network message.
+    #[from]
+    DeployGossiperIncoming(GossiperIncoming<Deploy>),
+    /// Incoming address gossiper network message.
+    #[from]
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
+    /// Incoming net request network message.
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+    /// Incoming net response network message.
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+    /// Incoming trie request network message.
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+    /// Incoming trie response network message.
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+    /// Incoming finality signature network message.
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
     /// Block proposer announcement.
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
@@ -230,7 +259,6 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
-            ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
             ParticipatingEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
@@ -241,6 +269,15 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
+            ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            ParticipatingEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
+            ParticipatingEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
+            ParticipatingEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
+            ParticipatingEvent::NetRequestIncoming(_) => "NetRequestIncoming",
+            ParticipatingEvent::NetResponseIncoming(_) => "NetResponseIncoming",
+            ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
+            ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
         }
     }
 }
@@ -290,9 +327,9 @@ impl From<ConsensusRequest> for ParticipatingEvent {
 impl Display for ParticipatingEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
-            ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             ParticipatingEvent::RestServer(event) => write!(f, "rest server: {}", event),
             ParticipatingEvent::EventStreamServer(event) => {
@@ -321,6 +358,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::DeployFetcherRequest(req) => {
                 write!(f, "deploy fetcher request: {}", req)
             }
+            ParticipatingEvent::BeginAddressGossipRequest(request) => {
+                write!(f, "begin address gossip request: {}", request)
+            }
             ParticipatingEvent::BlockProposerRequest(req) => {
                 write!(f, "block proposer request: {}", req)
             }
@@ -329,9 +369,6 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
-            ParticipatingEvent::NetworkAnnouncement(ann) => {
-                write!(f, "network announcement: {}", ann)
-            }
             ParticipatingEvent::RpcServerAnnouncement(ann) => {
                 write!(f, "api server announcement: {}", ann)
             }
@@ -362,6 +399,14 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
             }
+            ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::NetRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
         }
     }
 }
@@ -455,43 +500,14 @@ impl Reactor {
         serialized_id: &[u8],
     ) -> Effects<<Self as reactor::Reactor>::Event> {
         match tag {
-            Tag::Deploy => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |deploy_hash| {
-                    self.storage.get_deploy(deploy_hash)
-                })
-            }
-            Tag::Block => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_hash| {
-                    self.storage.read_block(&block_hash)
-                })
-            }
-            Tag::BlockAndMetadataByHeight => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
-                    self.storage
-                        .read_block_and_sufficient_finality_signatures_by_height(block_height)
-                })
-            }
-            Tag::GossipedAddress => {
-                warn!("received get request for gossiped-address from {}", sender);
-                Effects::new()
-            }
-            Tag::BlockHeaderByHash => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_hash| {
-                    self.storage.read_block_header_by_hash(&block_hash)
-                })
-            }
-            Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |block_height| {
-                    self.storage
-                        .read_block_header_and_sufficient_finality_signatures_by_height(
-                            block_height,
-                        )
-                })
-            }
             Tag::Trie => {
                 Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_key| {
                     self.contract_runtime.get_trie(trie_key)
                 })
+            }
+            _ => {
+                warn!(%sender, ?tag, ?serialized_id, "tried to handle a non-trie get request, this should not have happened");
+                Effects::new()
             }
         }
     }
@@ -821,6 +837,10 @@ impl reactor::Reactor for Reactor {
         event: ParticipatingEvent,
     ) -> Effects<Self::Event> {
         match event {
+            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::SmallNetwork(event) => reactor::wrap_effects(
                 ParticipatingEvent::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -828,10 +848,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockProposer(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockProposer,
                 self.block_proposer.handle_event(effect_builder, rng, event),
-            ),
-            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
-                ParticipatingEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::RpcServer(event) => reactor::wrap_effects(
                 ParticipatingEvent::RpcServer,
@@ -922,135 +938,23 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::ChainspecLoader(req.into()),
             ),
-            ParticipatingEvent::StorageRequest(req) => {
-                self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
-            }
-            ParticipatingEvent::StateStoreRequest(req) => {
-                self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
-            }
+            ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
 
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
-            }
-            ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => {
-                let reactor_event = match payload {
-                    Message::Consensus(msg) => {
-                        ParticipatingEvent::Consensus(consensus::Event::MessageReceived {
-                            sender,
-                            msg,
-                        })
-                    }
-                    Message::DeployGossiper(message) => {
-                        ParticipatingEvent::DeployGossiper(gossiper::Event::MessageReceived {
-                            sender,
-                            message,
-                        })
-                    }
-                    Message::AddressGossiper(message) => {
-                        ParticipatingEvent::AddressGossiper(gossiper::Event::MessageReceived {
-                            sender,
-                            message,
-                        })
-                    }
-                    Message::GetRequest { tag, serialized_id } => {
-                        return self.handle_get_request(effect_builder, sender, tag, &serialized_id)
-                    }
-                    Message::GetResponse {
-                        tag,
-                        serialized_item,
-                    } => match tag {
-                        Tag::Deploy => {
-                            let deploy: Box<Deploy> = match bincode::deserialize::<
-                                FetchedOrNotFound<Deploy, DeployHash>,
-                            >(
-                                &serialized_item
-                            ) {
-                                Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                                Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                                    error!(
-                                        "peer did not have deploy with hash {}: {}",
-                                        sender, deploy_hash
-                                    );
-                                    return Effects::new();
-                                }
-                                Err(error) => {
-                                    error!("failed to decode deploy from {}: {}", sender, error);
-                                    return Effects::new();
-                                }
-                            };
-                            ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
-                                deploy,
-                                source: Source::Peer(sender),
-                                maybe_responder: None,
-                            })
-                        }
-                        Tag::Block => {
-                            error!(
-                                "cannot handle get response for block-by-hash from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::BlockAndMetadataByHeight => {
-                            error!(
-                                "cannot handle get response for block-by-height from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::GossipedAddress => {
-                            error!(
-                                "cannot handle get response for gossiped-address from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::BlockHeaderByHash => {
-                            error!(
-                                "cannot handle get response for block-header-by-hash from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                            error!(
-                                "cannot handle get response for \
-                                 block-header-and-finality-signatures-by-height from {}",
-                                sender
-                            );
-                            return Effects::new();
-                        }
-                        Tag::Trie => {
-                            error!("cannot handle get response for read-trie from {}", sender);
-                            return Effects::new();
-                        }
-                    },
-                    Message::FinalitySignature(fs) => ParticipatingEvent::LinearChain(
-                        linear_chain::Event::FinalitySignatureReceived(fs, true),
-                    ),
-                };
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
-                gossiped_address,
-            )) => {
-                let event = gossiper::Event::ItemReceived {
-                    item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
-                };
-                self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    ParticipatingEvent::AddressGossiper(event),
-                )
-            }
-            ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_peer_id)) => {
-                trace!("new peer announcement not handled in the participating reactor");
-                Effects::new()
             }
             ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
@@ -1284,6 +1188,108 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
+            ),
+            ParticipatingEvent::ConsensusMessageIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            ParticipatingEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            ParticipatingEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            ParticipatingEvent::NetRequestIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            ParticipatingEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
+                // TODO: Code to be refactored, we do not want to handle all this logic inside the
+                //       routing function.
+                let event = match message {
+                    NetResponse::Deploy(ref serialized_item) => {
+                        let deploy: Box<Deploy> = match bincode::deserialize::<
+                            FetchedOrNotFound<Deploy, DeployHash>,
+                        >(serialized_item)
+                        {
+                            Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                            Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                                error!(
+                                    "peer did not have deploy with hash {}: {}",
+                                    sender, deploy_hash
+                                );
+                                return Effects::new();
+                            }
+                            Err(error) => {
+                                error!("failed to decode deploy from {}: {}", sender, error);
+                                return Effects::new();
+                            }
+                        };
+
+                        ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                            deploy,
+                            source: Source::Peer(sender),
+                            maybe_responder: None,
+                        })
+                    }
+                    NetResponse::Block(_) => {
+                        error!(
+                            "cannot handle get response for block-by-hash from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::GossipedAddress(_) => {
+                        error!(
+                            "cannot handle get response for gossiped-address from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::BlockAndMetadataByHeight(_) => {
+                        error!(
+                            "cannot handle get response for block-by-height from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::BlockHeaderByHash(_) => {
+                        error!(
+                            "cannot handle get response for block-header-by-hash from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                    NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
+                        error!(
+                            "cannot handle get response for \
+                            block-header-and-finality-signatures-by-height from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
+                };
+
+                self.dispatch_event(effect_builder, rng, event)
+            }
+            ParticipatingEvent::TrieRequestIncoming(TrieRequestIncoming {
+                sender,
+                message: TrieRequest(ref serialized_id),
+            }) => self.handle_get_request(effect_builder, sender, Tag::Trie, serialized_id),
+            ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {
+                error!("cannot handle get response for read-trie from {}", sender);
+                Effects::new()
+            }
+            ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::LinearChain,
+                self.linear_chain
+                    .handle_event(effect_builder, rng, incoming.into()),
             ),
             ParticipatingEvent::ContractRuntimeAnnouncement(ann) => self.dispatch_event(
                 effect_builder,

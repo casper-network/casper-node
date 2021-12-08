@@ -288,6 +288,11 @@ pub(crate) trait Payload:
     }
 }
 
+/// Network message conversion support.
+pub(crate) trait FromIncoming<I, P> {
+    /// Creates a new value from a received payload.
+    fn from_incoming(sender: I, payload: P) -> Self;
+}
 /// A generic configuration for payload weights.
 ///
 /// Implementors of `Payload` are free to interpret this as they see fit.

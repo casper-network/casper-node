@@ -30,10 +30,14 @@ use tracing::{debug, warn};
 
 use crate::{
     components::Component,
-    effect::{announcements::ControlAnnouncement, EffectBuilder, Effects, Responder},
+    effect::{
+        announcements::ControlAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
+        Responder,
+    },
     logging,
+    protocol::Message,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
-    types::{Deploy, TimeDiff, Timestamp},
+    types::{Deploy, NodeId, TimeDiff, Timestamp},
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
@@ -303,19 +307,23 @@ impl<REv: 'static> Default for ComponentHarness<REv> {
 
 /// A special event for unit tests.
 ///
-/// Essentially discards all event (they are not even processed by the unit testing hardness),
+/// Essentially discards most events (they are not even processed by the unit testing harness),
 /// except for control announcements, which are preserved.
 #[derive(Debug, From)]
 pub(crate) enum UnitTestEvent {
     /// A preserved control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+    /// A network request made by the component under test.
+    #[from]
+    NetworkRequest(NetworkRequest<NodeId, Message>),
 }
 
 impl ReactorEvent for UnitTestEvent {
     fn as_control(&self) -> Option<&ControlAnnouncement> {
         match self {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+            _ => None,
         }
     }
 }

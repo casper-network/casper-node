@@ -19,7 +19,6 @@ use crate::{
     components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
     effect::{
-        announcements::NetworkAnnouncement,
         requests::{ContractRuntimeRequest, NetworkRequest},
         EffectExt,
     },
@@ -340,10 +339,7 @@ async fn run_equivocator_network() {
         .set_filter(move |event| {
             let now = Timestamp::now();
             match &event {
-                ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                    payload,
-                    ..
-                }) if matches!(*payload, Message::Consensus(_)) => {}
+                ParticipatingEvent::ConsensusMessageIncoming { .. } => {}
                 ParticipatingEvent::NetworkRequest(
                     NetworkRequest::SendMessage { payload, .. }
                     | NetworkRequest::Broadcast { payload, .. }
