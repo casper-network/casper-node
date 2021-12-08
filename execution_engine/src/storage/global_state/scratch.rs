@@ -495,20 +495,20 @@ mod tests {
             .commit(correlation_id, updated_hash, add_effects)
             .unwrap();
 
+        let scratch_checkout = scratch.checkout(root_hash).unwrap().unwrap();
         let updated_checkout = state2.checkout(updated_hash).unwrap().unwrap();
         let all_keys = updated_checkout
             .keys_with_prefix(correlation_id, &[])
             .unwrap();
 
-        let stored_values = scratch.into_inner();
-        assert_eq!(all_keys.len(), stored_values.len());
-
         // Check that cache matches the contents of the second instance of lmdb
         for key in all_keys {
-            assert!(stored_values.get(&key).is_some());
             assert_eq!(
-                stored_values.get(&key),
-                updated_checkout
+               scratch_checkout
+                    .read(correlation_id, &key)
+                    .unwrap()
+                    .as_ref(),
+               updated_checkout
                     .read(correlation_id, &key)
                     .unwrap()
                     .as_ref()
