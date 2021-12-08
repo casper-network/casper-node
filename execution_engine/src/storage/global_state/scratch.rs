@@ -294,7 +294,7 @@ mod tests {
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, CLValue, CLType};
 
     use super::*;
     use crate::storage::{
@@ -394,14 +394,6 @@ mod tests {
     }
 
     #[test]
-    fn checkout_fails_if_unknown_hash_is_given() {
-        let TestState { state, .. } = create_test_state();
-        let fake_hash: Digest = Digest::hash(&[1u8; 32]);
-        let result = state.checkout(fake_hash).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
     fn commit_updates_state() {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
@@ -423,16 +415,15 @@ mod tests {
             .unwrap();
 
         let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
-        let stored_values = scratch.into_inner();
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         let all_keys = updated_checkout
             .keys_with_prefix(correlation_id, &[])
             .unwrap();
 
+        let stored_values = scratch.into_inner();
         assert_eq!(all_keys.len(), stored_values.len());
 
         for key in all_keys {
-            println!("key {}", key);
             assert!(stored_values.get(&key).is_some());
             assert_eq!(
                 stored_values.get(&key),
@@ -451,14 +442,17 @@ mod tests {
         }
     }
 
+
     #[test]
-    fn commit_updates_state_and_original_state_stays_intact() {
+    fn commit_updates_state_with_add() {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let TestState {
-            state, root_hash, ..
-        } = create_test_state();
+        // create two lmdb instances, with a scratch instance on the first
+        let TestState { state, root_hash } = create_test_state();
+        let TestState { state: state2, root_hash: state_2_root_hash } = create_test_state();
+
+        let scratch = state.create_scratch();
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
@@ -468,9 +462,76 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        // Commit effects to both databases.
+        scratch
+            .commit(correlation_id, root_hash, effects.clone())
+            .unwrap();
+        let updated_hash = state2.commit(correlation_id, state_2_root_hash, effects).unwrap();
 
-        let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
+        // Create add transforms as well
+        let add_effects: AdditiveMap<Key, Transform> = {
+            let mut tmp = AdditiveMap::new();
+            for TestPair { key, value } in &test_pairs_updated {
+                if let StoredValue::CLValue(cl_value) = value {
+                    match cl_value.cl_type() {
+                        CLType::I32 => {
+                            tmp.insert(*key, Transform::AddInt32(2i32));
+                        }
+                        CLType::String => {}
+                        _ => assert!(false, "remember to update the test pairs if new cl_types are added"),
+                    }
+                }
+            }
+            tmp
+        };
+        scratch
+            .commit(correlation_id, root_hash, add_effects.clone())
+            .unwrap();
+        let updated_hash = state2.commit(correlation_id, updated_hash, add_effects).unwrap();
+
+        let updated_checkout = state2.checkout(updated_hash).unwrap().unwrap();
+        let all_keys = updated_checkout
+            .keys_with_prefix(correlation_id, &[])
+            .unwrap();
+
+        let stored_values = scratch.into_inner();
+        assert_eq!(all_keys.len(), stored_values.len());
+
+        // Check that cache matches the contents of the second instance of lmdb
+        for key in all_keys {
+            assert!(stored_values.get(&key).is_some());
+            assert_eq!(
+                stored_values.get(&key),
+                updated_checkout
+                    .read(correlation_id, &key)
+                    .unwrap()
+                    .as_ref()
+            );
+        }
+    }
+
+    #[test]
+    fn commit_updates_state_and_original_state_stays_intact() {
+        let correlation_id = CorrelationId::new();
+        let test_pairs_updated = create_test_pairs_updated();
+
+        let TestState {
+            state, root_hash, ..
+        } = create_test_state();
+
+        let scratch = state.create_scratch();
+
+        let effects: AdditiveMap<Key, Transform> = {
+            let mut tmp = AdditiveMap::new();
+            for TestPair { key, value } in &test_pairs_updated {
+                tmp.insert(*key, Transform::Write(value.to_owned()));
+            }
+            tmp
+        };
+
+        let updated_hash = scratch.commit(correlation_id, root_hash, effects).unwrap();
+
+        let updated_checkout = scratch.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),

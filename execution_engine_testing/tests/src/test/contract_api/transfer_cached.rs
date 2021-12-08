@@ -54,10 +54,7 @@ fn should_transfer_to_account_with_correct_balances() {
     builder.write_scratch_to_lmdb();
     builder.flush_environment();
 
-    assert!(
-        pre_state_hash != builder.get_post_state_hash(),
-        "post state hash didn't change...",
-    );
+    assert_ne!(pre_state_hash, builder.get_post_state_hash(), "post state hash didn't change...");
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -135,10 +132,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
     builder.write_scratch_to_lmdb();
     builder.flush_environment();
 
-    assert!(
-        pre_state_hash != builder.get_post_state_hash(),
-        "post state hash didn't change...",
-    );
+    assert_ne!(pre_state_hash, builder.get_post_state_hash(), "post state hash didn't change...");
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
