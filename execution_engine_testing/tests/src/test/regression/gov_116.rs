@@ -12,7 +12,7 @@ use casper_execution_engine::core::engine_state::{genesis::GenesisValidator, Gen
 use casper_types::{
     runtime_args,
     system::{
-        auction::{self, DelegationRate, EraValidators},
+        auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
         mint,
     },
     Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
@@ -24,16 +24,22 @@ const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
 /// to unlock his whole vesting schedule.
 const WITHDRAW_AMOUNT: u64 = MINIMUM_BONDED_AMOUNT - 1;
 
+/// Initial lockup period
 const VESTING_BASE: u64 = DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+
+const DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
+const WEEK_MILLIS: u64 = 7 * DAY_MILLIS;
 const DELEGATION_RATE: DelegationRate = 0;
+
 /// Simplified vesting weeks for testing purposes. Each element is used as an argument to
 /// run_auction call.
 const VESTING_WEEKS: [u64; 3] = [
-    // Unlock genesis validator's funds after 91 days ~ 13 weeks
-    VESTING_BASE + (13 * WEEK_MILLIS),
-    VESTING_BASE + (14 * WEEK_MILLIS),
-    VESTING_BASE + (15 * WEEK_MILLIS),
+    // Passes the vesting schedule (aka initial lockup + schedule length)
+    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64,
+    // One week after
+    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64 + WEEK_MILLIS,
+    // Two weeks after
+    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64 + (2 * WEEK_MILLIS),
 ];
 
 static GENESIS_VALIDATOR_PUBLIC_KEYS: Lazy<BTreeSet<PublicKey>> = Lazy::new(|| {
@@ -280,7 +286,10 @@ fn should_retain_genesis_validator_slot_protection() {
     assert_eq!(next_validator_set_3, GENESIS_VALIDATOR_PUBLIC_KEYS.clone());
 
     // After 13 weeks ~ 91 days lowest stake validator is dropped and replaced with higher bid
-    builder.run_auction(VESTING_BASE + (13 * WEEK_MILLIS), Vec::new());
+    builder.run_auction(
+        VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64,
+        Vec::new(),
+    );
 
     let era_validators_4: EraValidators = builder.get_era_validators();
     let (last_era_4, weights_4) = era_validators_4.iter().last().unwrap();

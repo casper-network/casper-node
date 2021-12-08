@@ -13,11 +13,14 @@ use crate::{
     U512,
 };
 
-const VESTING_SCHEDULE_LENGTH_DAYS: usize = 91;
+const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
 const DAYS_IN_WEEK: usize = 7;
+const WEEK_MILLIS: usize = DAYS_IN_WEEK * DAY_MILLIS;
 
-const WEEK_MILLIS: usize = DAYS_IN_WEEK * 24 * 60 * 60 * 1000;
-
+/// Length of total vesting schedule in days.
+const VESTING_SCHEDULE_LENGTH_DAYS: usize = 91;
+/// Length of total vesting schedule expressed in days.
+pub const VESTING_SCHEDULE_LENGTH_MILLIS: usize = VESTING_SCHEDULE_LENGTH_DAYS * DAY_MILLIS;
 /// 91 days / 7 days in a week = 13 weeks
 const LOCKED_AMOUNTS_LENGTH: usize = (VESTING_SCHEDULE_LENGTH_DAYS / DAYS_IN_WEEK) + 1;
 
@@ -75,8 +78,8 @@ impl VestingSchedule {
 
         let index = {
             let index_timestamp =
-                timestamp_millis.checked_sub(self.initial_release_timestamp_millis)? as usize;
-            index_timestamp.checked_div(WEEK_MILLIS)?
+                timestamp_millis.checked_sub(self.initial_release_timestamp_millis)?;
+            (index_timestamp as usize).checked_div(WEEK_MILLIS)?
         };
 
         let locked_amount = if index < LOCKED_AMOUNTS_LENGTH {
@@ -86,6 +89,15 @@ impl VestingSchedule {
         };
 
         Some(locked_amount)
+    }
+
+    /// Checks if this vesting schedule is still under the vesting
+    pub(crate) fn is_vesting(&self, timestamp_millis: u64) -> bool {
+        let vested_period = self
+            .initial_release_timestamp_millis()
+            .saturating_add(VESTING_SCHEDULE_LENGTH_MILLIS as u64);
+
+        timestamp_millis < vested_period
     }
 }
 

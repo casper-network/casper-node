@@ -17,7 +17,7 @@ use num_traits::{CheckedMul, CheckedSub};
 
 use crate::{account::AccountHash, EraId, PublicKey, U512};
 
-pub use bid::Bid;
+pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
 pub use constants::*;
 pub use delegator::Delegator;
 pub use entry_points::auction_entry_points;
@@ -439,7 +439,7 @@ pub trait Auction:
             let locked_validators: ValidatorWeights = bids
                 .iter()
                 .filter(|(_public_key, bid)| {
-                    bid.locked_amount(era_end_timestamp_millis).is_some() && !bid.inactive()
+                    bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
                 })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
@@ -451,7 +451,7 @@ pub trait Auction:
             let mut unlocked_validators: Vec<(PublicKey, U512)> = bids
                 .iter()
                 .filter(|(_public_key, bid)| {
-                    bid.locked_amount(era_end_timestamp_millis).is_none() && !bid.inactive()
+                    !bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
                 })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
