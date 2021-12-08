@@ -7,10 +7,7 @@ use thiserror::Error;
 use casper_hashing::Digest;
 use casper_types::{bytesrepr, EraId, PublicKey, U512};
 
-use crate::{
-    crypto,
-    types::{block::EraReport, Block, BlockHash},
-};
+use crate::types::{block::EraReport, Block, BlockHash};
 
 /// An error that can arise when creating a block from a finalized block and other components
 #[derive(Error, Debug)]
@@ -73,8 +70,6 @@ impl From<bytesrepr::Error> for BlockValidationError {
 
 #[derive(Error, Debug)]
 pub(crate) enum BlockHeaderWithMetadataValidationError {
-    #[error(transparent)]
-    CryptoError(#[from] crypto::Error),
     #[error(
         "Finality signatures have unexpected block hash. \
          Expected block hash: {expected_block_hash}, \

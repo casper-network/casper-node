@@ -326,6 +326,12 @@ where
                     chainspec.highway_config.finality_threshold_fraction,
                     item.finality_signatures(),
                 ) {
+                    warn!(?error, ?peer, "insufficient finality signatures from peer",);
+                    effect_builder.announce_disconnect_from_peer(peer).await;
+                    continue;
+                }
+
+                if let Err(error) = item.finality_signatures().verify() {
                     warn!(
                         ?error,
                         ?peer,

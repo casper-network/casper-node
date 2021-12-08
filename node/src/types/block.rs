@@ -945,8 +945,7 @@ impl Item for BlockHeaderWithMetadata {
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
-        // TODO: Validate finality signatures later, and only if they are by validators.
-        validate_block_header_and_finality_signatures(&self.block_header, &self.block_signatures)
+        validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
     }
 
     fn id(&self) -> Self::Id {
@@ -1607,7 +1606,7 @@ impl Display for BlockWithMetadata {
     }
 }
 
-fn validate_block_header_and_finality_signatures(
+fn validate_block_header_and_signature_hash(
     block_header: &BlockHeader,
     finality_signatures: &BlockSignatures,
 ) -> Result<(), BlockHeaderWithMetadataValidationError> {
@@ -1627,7 +1626,6 @@ fn validate_block_header_and_finality_signatures(
             },
         );
     }
-    finality_signatures.verify()?;
     Ok(())
 }
 
@@ -1640,11 +1638,7 @@ impl Item for BlockWithMetadata {
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
-        // TODO: Verify signatures only later.
-        validate_block_header_and_finality_signatures(
-            self.block.header(),
-            &self.finality_signatures,
-        )?;
+        validate_block_header_and_signature_hash(self.block.header(), &self.finality_signatures)?;
         Ok(())
     }
 
