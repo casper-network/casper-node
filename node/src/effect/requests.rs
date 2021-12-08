@@ -48,8 +48,8 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, ChainspecInfo,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedApprovals, FinalizedBlock, Item,
-        NodeId, StatusFeed, TimeDiff,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -285,6 +285,13 @@ pub(crate) enum StorageRequest {
         responder: Responder<bool>,
     },
     /// Retrieve deploys with given hashes.
+    GetDeploys {
+        /// Hashes of deploys to be retrieved.
+        deploy_hashes: Vec<DeployHash>,
+        /// Responder to call with the results.
+        responder: Responder<Vec<Option<DeployWithFinalizedApprovals>>>,
+    },
+    /// Retrieve unaltered/first received deploys with given hashes.
     GetOriginalDeploys {
         /// Hashes of deploys to be retrieved.
         deploy_hashes: Vec<DeployHash>,
@@ -391,6 +398,9 @@ impl Display for StorageRequest {
                 write!(formatter, "get transfers for {}", block_hash)
             }
             StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
+            StorageRequest::GetDeploys { deploy_hashes, .. } => {
+                write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
+            }
             StorageRequest::GetOriginalDeploys { deploy_hashes, .. } => {
                 write!(
                     formatter,

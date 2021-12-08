@@ -84,8 +84,8 @@ use crate::{
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        FinalizedApprovals, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
-        MerkleLinkedListNode, SharedObject, TimeDiff,
+        DeployWithFinalizedApprovals, FinalizedApprovals, HashingAlgorithmVersion, Item,
+        MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, SharedObject, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -713,6 +713,15 @@ impl Storage {
             StorageRequest::PutDeploy { deploy, responder } => {
                 responder.respond(self.put_deploy(&*deploy)?).ignore()
             }
+            StorageRequest::GetDeploys {
+                deploy_hashes,
+                responder,
+            } => responder
+                .respond(self.get_deploys_with_finalized_approvals(
+                    &mut self.env.begin_ro_txn()?,
+                    deploy_hashes.as_slice(),
+                )?)
+                .ignore(),
             StorageRequest::GetOriginalDeploys {
                 deploy_hashes,
                 responder,
@@ -1334,6 +1343,31 @@ impl Storage {
         deploy_hashes
             .iter()
             .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
+            .collect()
+    }
+
+    /// Retrieves a set of deploys from storage, along with their potential finalized approvals.
+    fn get_deploys_with_finalized_approvals<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        deploy_hashes: &[DeployHash],
+    ) -> Result<Vec<Option<DeployWithFinalizedApprovals>>, LmdbExtError> {
+        deploy_hashes
+            .iter()
+            .map(|deploy_hash| {
+                let original: Option<Deploy> = tx.get_value(self.deploy_db, deploy_hash)?;
+
+                if let Some(deploy) = original {
+                    let finalized_approvals: Option<FinalizedApprovals> =
+                        tx.get_value(self.finalized_approvals_db, deploy_hash)?;
+                    Ok(Some(DeployWithFinalizedApprovals::new(
+                        deploy,
+                        finalized_approvals,
+                    )))
+                } else {
+                    Ok(None)
+                }
+            })
             .collect()
     }
 
