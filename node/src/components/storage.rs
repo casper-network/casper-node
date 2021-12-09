@@ -60,6 +60,7 @@ use lmdb::{
     WriteFlags,
 };
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
@@ -787,8 +788,6 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                // We re-use `get_deploys_with_finalized_approvals` here to save a bit on
-                // code-duplication. This incurs a runtime penalty of an extra allocation.
                 let deploy = {
                     let opt_deploy = self
                         .get_deploys_with_finalized_approvals(&mut txn, &[deploy_hash])?
@@ -1345,7 +1344,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         deploy_hashes: &[DeployHash],
-    ) -> Result<Vec<Option<DeployWithFinalizedApprovals>>, LmdbExtError> {
+    ) -> Result<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>, LmdbExtError> {
         deploy_hashes
             .iter()
             .map(|deploy_hash| {

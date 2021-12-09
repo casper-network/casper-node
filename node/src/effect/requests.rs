@@ -13,6 +13,7 @@ use std::{
 
 use datasize::DataSize;
 use serde::Serialize;
+use smallvec::SmallVec;
 use static_assertions::const_assert;
 
 use casper_execution_engine::{
@@ -289,7 +290,7 @@ pub(crate) enum StorageRequest {
         /// Hashes of deploys to be retrieved.
         deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
-        responder: Responder<Vec<Option<DeployWithFinalizedApprovals>>>,
+        responder: Responder<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>>,
     },
     /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
     GetFinalizedDeploys {

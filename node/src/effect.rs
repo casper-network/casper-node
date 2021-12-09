@@ -1027,7 +1027,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploys_from_storage(
         self,
         deploy_hashes: Vec<DeployHash>,
-    ) -> Vec<Option<DeployWithFinalizedApprovals>>
+    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
