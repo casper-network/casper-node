@@ -521,6 +521,10 @@ impl BlockProposerReady {
                 match err {
                     // We added the maximum number of transfers.
                     AddError::TransferCount | AddError::GasLimit | AddError::BlockSize => break,
+                    // This transfer would exceed the approval count, but another one with less
+                    // approvals might not.
+                    AddError::ApprovalCount if approvals.len() > 1 => (),
+                    AddError::ApprovalCount => break,
                     // The deploy is not valid in this block, but might be valid in another.
                     AddError::InvalidDeploy => (),
                     // These errors should never happen when adding a transfer.
@@ -555,6 +559,10 @@ impl BlockProposerReady {
                             break; // Probably no deploy will fit in this block anymore.
                         }
                     }
+                    // This deploy would exceed the approval count, but another one with less
+                    // approvals might not.
+                    AddError::ApprovalCount if approvals.len() > 1 => (),
+                    AddError::ApprovalCount => break,
                     // The deploy is not valid in this block, but might be valid in another.
                     // TODO: Do something similar to DEPLOY_APPROX_MIN_SIZE for gas.
                     AddError::InvalidDeploy | AddError::GasLimit => (),

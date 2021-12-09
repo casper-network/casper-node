@@ -16,6 +16,8 @@ pub(crate) enum AddError {
     TransferCount,
     #[error("would exceed maximum deploy count per block")]
     DeployCount,
+    #[error("would exceed maximum approval count per block")]
+    ApprovalCount,
     #[error("would exceed maximum gas per block")]
     GasLimit,
     #[error("would exceed maximum block size")]
@@ -39,6 +41,7 @@ pub struct AppendableBlock {
     #[data_size(skip)]
     total_gas: Gas,
     total_size: usize,
+    total_approvals: usize,
 }
 
 impl AppendableBlock {
@@ -52,6 +55,7 @@ impl AppendableBlock {
             deploy_and_transfer_set: HashSet::new(),
             total_gas: Gas::zero(),
             total_size: 0,
+            total_approvals: 0,
         }
     }
 
@@ -82,7 +86,11 @@ impl AppendableBlock {
         if self.has_max_transfer_count() {
             return Err(AddError::TransferCount);
         }
+        if self.would_exceed_max_approvals(transfer.approvals.len()) {
+            return Err(AddError::ApprovalCount);
+        }
         self.deploy_and_transfer_set.insert(transfer.deploy_hash);
+        self.total_approvals += transfer.approvals.len();
         self.transfers.push(transfer);
         Ok(())
     }
@@ -109,6 +117,9 @@ impl AppendableBlock {
         if self.has_max_deploy_count() {
             return Err(AddError::DeployCount);
         }
+        if self.would_exceed_max_approvals(deploy.approvals.len()) {
+            return Err(AddError::ApprovalCount);
+        }
         // Only deploys count towards the size and gas limits.
         let new_total_size = self
             .total_size
@@ -124,6 +135,7 @@ impl AppendableBlock {
         }
         self.total_gas = new_total_gas;
         self.total_size = new_total_size;
+        self.total_approvals += deploy.approvals.len();
         self.deploy_and_transfer_set.insert(deploy.deploy_hash);
         self.deploys.push(deploy);
         Ok(())
@@ -152,5 +164,12 @@ impl AppendableBlock {
     /// deploys can be added to this block.
     fn has_max_deploy_count(&self) -> bool {
         self.deploys.len() == self.deploy_config.block_max_deploy_count as usize
+    }
+
+    /// Returns `true` if the number of approvals including the additional ones would exceed the
+    /// maximum allowed count, i.e. this many approvals cannot be added to this block.
+    fn would_exceed_max_approvals(&self, additional_approvals: usize) -> bool {
+        self.total_approvals + additional_approvals
+            > self.deploy_config.block_max_approval_count as usize
     }
 }
