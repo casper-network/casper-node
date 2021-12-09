@@ -587,6 +587,11 @@ impl DeployWithApprovals {
 pub struct FinalizedApprovals(Vec<Approval>);
 
 impl FinalizedApprovals {
+    /// Creates a new instance of `FinalizedApprovals`.
+    pub fn new(approvals: Vec<Approval>) -> Self {
+        Self(approvals)
+    }
+
     /// Returns the approvals as a slice.
     pub fn as_slice(&self) -> &[Approval] {
         &self.0

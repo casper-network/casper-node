@@ -51,7 +51,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash,
-        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -1164,8 +1164,25 @@ where
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
                 });
+                let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
+                let mut finalized_approvals: HashMap<_, _> = proposed_block
+                    .deploys()
+                    .iter()
+                    .map(|dwa| {
+                        (
+                            dwa.deploy_hash,
+                            FinalizedApprovals::new(dwa.approvals.clone()),
+                        )
+                    })
+                    .collect();
+                finalized_approvals.extend(proposed_block.transfers().iter().map(|dwa| {
+                    (
+                        dwa.deploy_hash,
+                        FinalizedApprovals::new(dwa.approvals.clone()),
+                    )
+                }));
                 let finalized_block = FinalizedBlock::new(
-                    Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
+                    proposed_block,
                     era_end,
                     timestamp,
                     era_id,
@@ -1189,7 +1206,10 @@ where
                     .max(finalized_block.height() + 1);
                 // Request execution of the finalized block.
                 let effect_builder = self.effect_builder;
-                effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());
+                effects.extend(
+                    execute_finalized_block(effect_builder, finalized_approvals, finalized_block)
+                        .ignore(),
+                );
                 self.era_supervisor.update_consensus_pause();
                 effects
             }
@@ -1356,10 +1376,16 @@ where
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
+    finalized_approvals: HashMap<DeployHash, FinalizedApprovals>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
 {
+    for (deploy_hash, finalized_approvals) in finalized_approvals {
+        effect_builder
+            .store_finalized_approvals(deploy_hash, finalized_approvals)
+            .await;
+    }
     // Get all deploys in order they appear in the finalized block.
     let deploys =
         match get_deploys_or_transfers(effect_builder, finalized_block.deploy_hashes().to_owned())
