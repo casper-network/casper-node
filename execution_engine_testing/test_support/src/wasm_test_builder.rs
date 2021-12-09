@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
 };
 
+use filesize::PathExt;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
@@ -110,6 +111,8 @@ pub struct WasmTestBuilder<S> {
     auction_contract_hash: Option<ContractHash>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
+    /// Global state dir, for implementations that define one.
+    global_state_dir: Option<PathBuf>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -140,6 +143,7 @@ impl Default for InMemoryWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
+            global_state_dir: None,
             scratch_engine_state: None,
         }
     }
@@ -163,6 +167,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             standard_payment_hash: self.standard_payment_hash,
             auction_contract_hash: self.auction_contract_hash,
             scratch_engine_state: None,
+            global_state_dir: self.global_state_dir.clone(),
         }
     }
 }
@@ -225,6 +230,7 @@ impl LmdbWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
+            global_state_dir: Some(global_state_dir),
             scratch_engine_state: None,
         }
     }
@@ -291,6 +297,7 @@ impl LmdbWasmTestBuilder {
             standard_payment_hash: None,
             auction_contract_hash: None,
             scratch_engine_state: None,
+            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
         }
     }
 
@@ -308,6 +315,17 @@ impl LmdbWasmTestBuilder {
         path.push(GLOBAL_STATE_DIR);
         path
     }
+
+    /// Returns the file size on disk of the backing lmdb file behind LmdbGlobalState.
+    pub fn lmdb_on_disk_size(&self) -> Option<u64> {
+        if let Some(path) = self.global_state_dir.as_ref() {
+            let mut path = path.clone();
+            path.push("data.lmdb");
+            return path.as_path().size_on_disk().ok();
+        }
+        None
+    }
+
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
     /// You MUST call scratch_flush to flush these changes to LmdbGlobalState.
