@@ -586,6 +586,13 @@ impl DeployWithApprovals {
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FinalizedApprovals(Vec<Approval>);
 
+impl FinalizedApprovals {
+    /// Returns the approvals as a slice.
+    pub fn as_slice(&self) -> &[Approval] {
+        &self.0
+    }
+}
+
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
 #[derive(
     Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,

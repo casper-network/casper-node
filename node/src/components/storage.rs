@@ -298,6 +298,15 @@ pub enum Error {
         /// The hash of the superfluous body part.
         part_hash: Digest,
     },
+    /// We tried to store finalized approvals for a nonexistent deploy.
+    #[error(
+        "Tried to store FinalizedApprovals for a nonexistent deploy. \
+        Deploy hash: {deploy_hash:?}"
+    )]
+    UnexpectedFinalizedApprovals {
+        /// The missing deploy hash.
+        deploy_hash: DeployHash,
+    },
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -1425,14 +1434,22 @@ impl Storage {
         deploy_hash: &DeployHash,
         finalized_approvals: &FinalizedApprovals,
     ) -> Result<(), Error> {
-        let mut txn = self.env.begin_rw_txn()?;
-        let _ = txn.put_value(
-            self.finalized_approvals_db,
-            deploy_hash,
-            finalized_approvals,
-            true,
-        )?;
-        txn.commit()?;
+        let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
+        let original_deploy =
+            maybe_original_deploy.ok_or_else(|| Error::UnexpectedFinalizedApprovals {
+                deploy_hash: *deploy_hash,
+            })?;
+        // Only store the finalized approvals if they are different from the original ones.
+        if original_deploy.approvals() != finalized_approvals.as_slice() {
+            let mut txn = self.env.begin_rw_txn()?;
+            let _ = txn.put_value(
+                self.finalized_approvals_db,
+                deploy_hash,
+                finalized_approvals,
+                true,
+            )?;
+            txn.commit()?;
+        }
         Ok(())
     }
 }
