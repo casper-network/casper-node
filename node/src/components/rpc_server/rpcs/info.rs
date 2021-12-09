@@ -31,6 +31,7 @@ use crate::{
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
     deploy_hash: *Deploy::doc_example().id(),
+    finalized_approvals: true,
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -60,6 +61,15 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
 pub struct GetDeployParams {
     /// The deploy hash.
     pub deploy_hash: DeployHash,
+    /// Whether to return the deploy with the finalized approvals substituted. If `false` or
+    /// omitted, returns the deploy with the approvals that were originally received by the node.
+    #[serde(default = "finalized_approvals_default")]
+    pub finalized_approvals: bool,
+}
+
+/// The default for `GetDeployParams::finalized_approvals`.
+fn finalized_approvals_default() -> bool {
+    false
 }
 
 impl DocExample for GetDeployParams {
