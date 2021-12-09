@@ -918,6 +918,11 @@ impl DeployWithFinalizedApprovals {
 
         deploy
     }
+
+    /// Extracts the original deploy by discarding the finalized approvals.
+    pub fn discard_finalized_approvals(self) -> Deploy {
+        self.deploy
+    }
 }
 
 #[cfg(test)]

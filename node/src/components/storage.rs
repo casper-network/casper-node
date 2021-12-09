@@ -787,18 +787,30 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                // A missing deploy causes an early `None` return.
-                let deploy: Deploy =
-                    if let Some(deploy) = txn.get_value(self.deploy_db, &deploy_hash)? {
+                // We re-use `get_deploys_with_finalized_approvals` here to save a bit on
+                // code-duplication. This incurs a runtime penalty of an extra allocation.
+                let deploy = {
+                    let opt_deploy = self
+                        .get_deploys_with_finalized_approvals(&mut txn, &[deploy_hash])?
+                        .into_iter()
+                        .next()
+                        // Fold-in the case of the vec not having exactly one element. This should
+                        // never happen, but if it does, we will treat it as not found instead of
+                        // panicking.
+                        .flatten();
+
+                    if let Some(deploy) = opt_deploy {
                         deploy
                     } else {
                         return Ok(responder.respond(None).ignore());
-                    };
+                    }
+                };
 
                 // Missing metadata is filled using a default.
                 let metadata = self
                     .get_deploy_metadata(&mut txn, &deploy_hash)?
                     .unwrap_or_default();
+
                 responder.respond(Some((deploy, metadata))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHash {

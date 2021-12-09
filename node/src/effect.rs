@@ -1065,7 +1065,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(Deploy, DeployMetadata)>
+    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadata)>
     where
         REv: From<StorageRequest>,
     {

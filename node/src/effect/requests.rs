@@ -319,7 +319,7 @@ pub(crate) enum StorageRequest {
         /// Hash of deploy to be retrieved.
         deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<(Deploy, DeployMetadata)>>,
+        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadata)>>,
     },
     /// Retrieve block and its metadata by its hash.
     GetBlockAndMetadataByHash {
@@ -593,6 +593,8 @@ pub(crate) enum RpcRequest<I> {
     GetDeploy {
         /// The hash of the deploy to be retrieved.
         hash: DeployHash,
+        /// Whether to return finalized approvals.
+        finalized_approvals: bool,
         /// Responder to call with the result.
         responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
@@ -652,7 +654,15 @@ impl<I> Display for RpcRequest<I> {
                 "balance {}, purse_uref: {}",
                 state_root_hash, purse_uref
             ),
-            RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
+            RpcRequest::GetDeploy {
+                hash,
+                finalized_approvals,
+                ..
+            } => write!(
+                formatter,
+                "get {} (finalized approvals: {})",
+                hash, finalized_approvals
+            ),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
         }

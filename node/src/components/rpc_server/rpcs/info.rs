@@ -129,6 +129,7 @@ impl RpcWithParamsExt for GetDeploy {
                 .make_request(
                     |responder| RpcRequest::GetDeploy {
                         hash: params.deploy_hash,
+                        finalized_approvals: params.finalized_approvals,
                         responder,
                     },
                     QueueKind::Api,

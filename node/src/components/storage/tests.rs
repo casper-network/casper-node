@@ -222,7 +222,9 @@ fn get_naive_deploys(
 }
 
 /// Loads a deploy with associated metadata from the storage component.
-fn get_deploy_and_metadata(
+///
+/// Any potential finalized approvals are discarded.
+fn get_naive_deploy_and_metadata(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hash: DeployHash,
@@ -235,7 +237,9 @@ fn get_deploy_and_metadata(
         .into()
     });
     assert!(harness.is_idle());
-    response
+    response.map(|(deploy_with_finalized_approvals, metadata)| {
+        (deploy_with_finalized_approvals.into_naive(), metadata)
+    })
 }
 
 /// Requests the highest block from a storage component.
@@ -695,7 +699,7 @@ fn can_retrieve_store_and_load_deploys() {
         })
         .expect("no deploy with metadata returned");
 
-    assert_eq!(deploy_response, *deploy);
+    assert_eq!(deploy_response.into_naive(), *deploy);
     assert_eq!(metadata_response, DeployMetadata::default());
 }
 
@@ -752,7 +756,7 @@ fn store_execution_results_for_two_blocks() {
 
     // Retrieve and check if correct.
     let (first_deploy, first_metadata) =
-        get_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
+        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
             .expect("missing on first attempt");
     assert_eq!(first_deploy, deploy);
     let mut expected_per_block_results = HashMap::new();
@@ -767,7 +771,7 @@ fn store_execution_results_for_two_blocks() {
 
     // Retrieve the deploy again, should now contain both.
     let (second_deploy, second_metadata) =
-        get_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
+        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
             .expect("missing on second attempt");
     assert_eq!(second_deploy, deploy);
     expected_per_block_results.insert(block_hash_b, second_result);
@@ -873,8 +877,9 @@ fn store_random_execution_results() {
     // At this point, we are all set up and ready to receive results. Iterate over every deploy and
     // see if its execution-data-per-block matches our expectations.
     for (deploy_hash, raw_meta) in expected_outcome.iter() {
-        let (deploy, metadata) = get_deploy_and_metadata(&mut harness, &mut storage, *deploy_hash)
-            .expect("missing deploy");
+        let (deploy, metadata) =
+            get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy_hash)
+                .expect("missing deploy");
 
         assert_eq!(deploy_hash, deploy.id());
 
@@ -1055,8 +1060,9 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
     assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
-    let (_, deploy_metadata) = get_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
-        .expect("missing deploy we stored earlier");
+    let (_, deploy_metadata) =
+        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
+            .expect("missing deploy we stored earlier");
 
     let execution_results = deploy_metadata.execution_results;
     assert_eq!(execution_results.len(), 1);
@@ -1167,7 +1173,7 @@ fn should_hard_reset() {
         // Check execution results in deleted blocks have been removed.
         for (index, deploy) in deploys.iter().enumerate() {
             let (_deploy, metadata) =
-                get_deploy_and_metadata(&mut harness, &mut storage, *deploy.id()).unwrap();
+                get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id()).unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
             assert_eq!(
                 should_have_exec_results,
