@@ -244,7 +244,12 @@ max_state_store_size = 10_737_418_240
 # Memory deduplication.
 #
 # If enabled, nodes will attempt to share loaded objects if possible.
-enable_mem_deduplication = false
+enable_mem_deduplication = true
+
+# Memory duplication garbage collection.
+#
+# Sets the frequency how often the memory pool cache is swept for free references.
+mem_pool_prune_interval = 4096
 
 
 # ===================================
